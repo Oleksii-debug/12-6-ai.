@@ -718,3 +718,137 @@ def test_hf_hook_overdeep_result_cleans_private_roots(
     assert not list(tmp_path.glob(".hf.reference-*"))
     assert not list(tmp_path.glob(".hf.hook-candidate-*"))
     assert not list(tmp_path.glob(".hf.staging-*"))
+
+@pytest.mark.parametrize("interrupt_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_hook_candidate_materialization_interrupt_cleans_private_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    primary = interrupt_type("candidate materialization interrupted")
+    real_write_bytes = Path.write_bytes
+
+    def interrupt_candidate_write(path: Path, data: bytes):
+        if ".hook-candidate-" in path.parent.name:
+            raise primary
+        return real_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", interrupt_candidate_write)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._materialize_hook_candidate(
+            parent=tmp_path,
+            name="hf",
+            weights=b"weights",
+            config=b"{}",
+            source_manifest=b"{}",
+        )
+
+    assert caught.value is primary
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
+
+
+def test_parity_failure_remains_primary_when_candidate_cleanup_also_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(4.4375), identity=identity("d"))
+    primary = RuntimeError("parity primary failure")
+    real_rmtree = hf_export.shutil.rmtree
+
+    def broken_hook(_reference: Path, _candidate: Path):
+        raise primary
+
+    def fail_candidate_cleanup(path, *args, **kwargs):
+        if ".hook-candidate-" in Path(path).name:
+            raise OSError("simulated candidate cleanup double-fault")
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(hf_export.shutil, "rmtree", fail_candidate_cleanup)
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            export_hf_directory(
+                checkpoint,
+                output,
+                hf_config={"model_type": "twelve_six_export_transactional"},
+                parity_hook=broken_hook,
+            )
+
+        assert caught.value is primary
+        assert any(
+            "HF parity hook candidate cleanup also failed" in note
+            for note in getattr(primary, "__notes__", ())
+        )
+        assert not output.exists()
+        assert list(tmp_path.glob(".hf.hook-candidate-*"))
+        assert not list(tmp_path.glob(".hf.reference-*"))
+    finally:
+        for path in tmp_path.glob(".hf.hook-candidate-*"):
+            real_rmtree(path)
+
+
+def test_publish_failure_remains_primary_when_staging_cleanup_also_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(4.46875), identity=identity("d"))
+    primary = RuntimeError("publish primary failure")
+    real_rmtree = hf_export.shutil.rmtree
+
+    def fail_publish(_staging: Path, _destination: Path):
+        raise primary
+
+    def fail_staging_cleanup(path, *args, **kwargs):
+        if ".staging-" in Path(path).name:
+            raise OSError("simulated staging cleanup double-fault")
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(hf_export, "_publish_directory_noreplace", fail_publish)
+    monkeypatch.setattr(hf_export.shutil, "rmtree", fail_staging_cleanup)
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            export_hf_directory(
+                checkpoint,
+                output,
+                hf_config={"model_type": "twelve_six_export_transactional"},
+            )
+
+        assert caught.value is primary
+        assert any(
+            "HF export staging cleanup also failed" in note
+            for note in getattr(primary, "__notes__", ())
+        )
+        assert not output.exists()
+        assert list(tmp_path.glob(".hf.staging-*"))
+    finally:
+        for path in tmp_path.glob(".hf.staging-*"):
+            real_rmtree(path)
+
+
+@pytest.mark.parametrize("interrupt_type", [KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_cleanup_only_interrupt_retains_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    root = tmp_path / ".hf.hook-candidate-interrupt"
+    root.mkdir()
+    identity_value = hf_export._temporary_directory_identity(root)
+    primary = interrupt_type("cleanup interrupted")
+
+    def interrupt_cleanup(*_args, **_kwargs):
+        raise primary
+
+    monkeypatch.setattr(hf_export, "_remove_temp_path_strict", interrupt_cleanup)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._cleanup_temp_paths_strict(
+            ((root, "HF parity hook candidate", identity_value),)
+        )
+
+    assert caught.value is primary
+
