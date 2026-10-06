@@ -1830,7 +1830,14 @@ def _assert_d02_checkpoint_rng_policy(
         )
 
     missing_numeric_policy = sorted(
-        {"default_dtype", "float32_matmul_precision", "cudnn_allow_tf32"}
+        {
+            "default_dtype",
+            "float32_matmul_precision",
+            "cudnn_allow_tf32",
+            "cudnn_enabled",
+            "cudnn_deterministic",
+            "cudnn_benchmark",
+        }
         - torch_state.keys()
     )
     if missing_numeric_policy:
@@ -1979,6 +1986,24 @@ def _restore_ambient_rng_after_failed_apply(
                 "PyTorch cuDNN TF32 rollback also failed: "
                 f"{rollback_exc!r}"
             )
+    cudnn_rollbacks = (
+        ("cudnn_enabled", _core._restore_torch_cudnn_enabled, "enabled"),
+        (
+            "cudnn_deterministic",
+            _core._restore_torch_cudnn_deterministic,
+            "deterministic",
+        ),
+        ("cudnn_benchmark", _core._restore_torch_cudnn_benchmark, "benchmark"),
+    )
+    for field, restore, label in cudnn_rollbacks:
+        if field not in torch_state:
+            continue
+        try:
+            restore(torch, torch_state[field])
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                f"PyTorch cuDNN {label} rollback also failed: {rollback_exc!r}"
+            )
 
 
 def _restore_preapply_process_state(
@@ -2035,6 +2060,21 @@ def _restore_checkpoint_numeric_policy_for_apply(
         _core._restore_torch_cudnn_allow_tf32(
             torch,
             torch_state["cudnn_allow_tf32"],
+        )
+    if "cudnn_enabled" in torch_state:
+        _core._restore_torch_cudnn_enabled(
+            torch,
+            torch_state["cudnn_enabled"],
+        )
+    if "cudnn_deterministic" in torch_state:
+        _core._restore_torch_cudnn_deterministic(
+            torch,
+            torch_state["cudnn_deterministic"],
+        )
+    if "cudnn_benchmark" in torch_state:
+        _core._restore_torch_cudnn_benchmark(
+            torch,
+            torch_state["cudnn_benchmark"],
         )
 
 
