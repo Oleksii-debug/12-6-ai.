@@ -206,7 +206,7 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/v7-rada-current" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-rada-current" rev-parse HEAD)" = "$V7_HEAD"
 
-          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<\'PY\'
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           import os
           import sys
           from pathlib import Path
