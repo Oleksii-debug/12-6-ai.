@@ -123,6 +123,10 @@ jobs:
           ]
           assert report["scientific_credit"]["optimized_target_exposure"] == 0
           assert report["scientific_credit"]["real_target_optimizer_updates"] == 0
+          default = report["modes"]["default-one-group"]
+          assert default["same_optimizer_moments"] is True
+          assert default["same_next_update"] is True
+          assert default["expected_names"] == [["left", "right"]]
           for mode in ("one-group", "two-groups"):
               item = report["modes"][mode]
               assert item["same_optimizer_moments"] is True
@@ -221,6 +225,10 @@ jobs:
           ]
           assert report["scientific_credit"]["optimized_target_exposure"] == 0
           assert report["scientific_credit"]["real_target_optimizer_updates"] == 0
+          default = report["modes"]["default-one-group"]
+          assert default["same_optimizer_moments"] is True
+          assert default["same_next_update"] is True
+          assert default["expected_names"] == [["left", "right"]]
           for mode in ("one-group", "two-groups"):
               item = report["modes"][mode]
               assert item["same_optimizer_moments"] is True
