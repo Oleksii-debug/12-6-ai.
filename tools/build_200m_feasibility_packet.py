@@ -16,7 +16,7 @@ from typing import Any
 from twelve_six.feasibility_200m import (
     FeasibilityPacketError,
     build_200m_feasibility_packet,
-    expected_external_identities,
+    retained_identities_for_built_packet,
     validate_200m_feasibility_packet,
 )
 
@@ -216,7 +216,7 @@ def _build(args: argparse.Namespace) -> int:
     if args.external_identities is not None:
         _write_json(
             args.external_identities,
-            expected_external_identities(packet),
+            retained_identities_for_built_packet(packet),
             label="external_identities",
         )
     print(packet["packet_sha256"])
