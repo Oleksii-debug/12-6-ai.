@@ -168,6 +168,7 @@ _EXPECTED_TOKENIZER_IDENTITY_CLASS = _CanonicalTokenizerIdentity
 _EXPECTED_BYTE_JSON_MODULE = json
 _EXPECTED_BYTE_HASHLIB_MODULE = hashlib
 _EXPECTED_BYTE_JSON_DUMPS = json.dumps
+_EXPECTED_BYTE_JSON_LOADS = json.loads
 _EXPECTED_BYTE_HASHLIB_SHA1 = hashlib.sha1
 _EXPECTED_BYTE_HASHLIB_SHA256 = hashlib.sha256
 
@@ -178,7 +179,7 @@ class TokenizerDecisionError(ValueError):
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
     try:
-        rendered = json.dumps(
+        rendered = _EXPECTED_BYTE_JSON_DUMPS(
             value, sort_keys=True, separators=(",", ":"),
             ensure_ascii=False, allow_nan=False,
         )
@@ -192,7 +193,7 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
 def authority_sha256(value: Mapping[str, Any]) -> str:
     """Return the SHA-256 identity of a canonical JSON mapping."""
 
-    return hashlib.sha256(_canonical_json(value).encode()).hexdigest()
+    return _EXPECTED_BYTE_HASHLIB_SHA256(_canonical_json(value).encode()).hexdigest()
 
 
 def _self_hash(value: Mapping[str, Any], identity_field: str) -> str:
@@ -211,7 +212,30 @@ def _require_sha256(value: object, *, field: str) -> str:
 
 def _git_blob_sha1(payload: bytes) -> str:
     header = f"blob {len(payload)}\0".encode("ascii")
-    return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
+    return _EXPECTED_BYTE_HASHLIB_SHA1(
+        header + payload,
+        usedforsecurity=False,
+    ).hexdigest()
+
+
+def _detached_json_mapping(value: Mapping[str, Any], *, field: str) -> dict[str, Any]:
+    """Capture one deep JSON snapshot and discard all caller-owned aliases."""
+
+    try:
+        rendered = _EXPECTED_BYTE_JSON_DUMPS(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        rendered.encode("utf-8")
+        detached = _EXPECTED_BYTE_JSON_LOADS(rendered)
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+        raise TokenizerDecisionError(f"{field} must be strict UTF-8 JSON") from exc
+    if type(detached) is not dict:
+        raise TokenizerDecisionError(f"{field} must be a JSON object")
+    return detached
 
 
 def _read_canonical_byte_tokenizer_source() -> bytes:
@@ -372,6 +396,10 @@ def _verify_byte_tokenizer_runtime_dependencies() -> None:
     if json.dumps is not _EXPECTED_BYTE_JSON_DUMPS:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: json.dumps"
+        )
+    if json.loads is not _EXPECTED_BYTE_JSON_LOADS:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: json.loads"
         )
     if hashlib.sha1 is not _EXPECTED_BYTE_HASHLIB_SHA1:
         raise TokenizerDecisionError(
@@ -649,7 +677,7 @@ def _verify_selection(
 ) -> tuple[str, dict[str, Any]]:
     if not isinstance(selection, Mapping):
         raise TokenizerDecisionError("unsupported balanced-selection authority")
-    selection = dict(selection)
+    selection = _detached_json_mapping(selection, field="balanced selection")
     if selection.get("schema") != SELECTION_SCHEMA:
         raise TokenizerDecisionError("unsupported balanced-selection authority")
     try:
@@ -690,7 +718,7 @@ def _verify_split_application(
 ) -> str:
     if not isinstance(application, Mapping):
         raise TokenizerDecisionError("split application fields are not closed-world")
-    application = dict(application)
+    application = _detached_json_mapping(application, field="split application")
     if set(application) != _APPLICATION_KEYS:
         raise TokenizerDecisionError("split application fields are not closed-world")
     if application.get("schema") != APPLICATION_SCHEMA:
@@ -797,8 +825,14 @@ def _bind_upstreams(
         raise TokenizerDecisionError("unsupported balanced-selection authority")
     if not isinstance(application, Mapping):
         raise TokenizerDecisionError("split application fields are not closed-world")
-    selection_snapshot = dict(selection)
-    application_snapshot = dict(application)
+    selection_snapshot = _detached_json_mapping(
+        selection,
+        field="balanced selection",
+    )
+    application_snapshot = _detached_json_mapping(
+        application,
+        field="split application",
+    )
 
     selection_identity, totals = _verify_selection(
         selection_snapshot,
@@ -923,7 +957,7 @@ def verify_byte_baseline_decision(
     _verify_byte_tokenizer_runtime_dependencies()
     if not isinstance(report, Mapping):
         raise TokenizerDecisionError("report fields are not closed-world")
-    report = dict(report)
+    report = _detached_json_mapping(report, field="decision report")
     if set(report) != _REPORT_KEYS:
         raise TokenizerDecisionError("report fields are not closed-world")
     if report.get("schema") != SCHEMA or report.get("status") != STATUS:
