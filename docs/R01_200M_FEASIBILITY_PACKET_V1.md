@@ -84,6 +84,12 @@ The verify command emits one machine-readable JSON line and returns `0` only for
 an error-free packet. Duplicate JSON keys and non-finite JSON constants fail
 closed at the CLI boundary.
 
+Build and verify also reject canonical path collisions between their authority
+inputs and outputs. Output publication renders before touching the destination,
+rejects non-regular existing destinations, fsyncs a same-directory temporary
+regular file, and uses atomic replacement. A publication failure therefore does
+not truncate the previous destination.
+
 ## Authority boundary
 
 A prepared or validated packet is engineering/scientific feasibility evidence.
