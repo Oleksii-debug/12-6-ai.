@@ -482,6 +482,177 @@ def test_public_restore_rejects_autograd_execution_mode_drift(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
+@pytest.mark.parametrize("phase", ["model_apply", "trainer_apply"])
+@pytest.mark.parametrize("mutation", ["grad_enabled", "inference_mode"])
+def test_public_restore_apply_failure_records_execution_mode_leak(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    restore_rng: bool,
+    phase: str,
+    mutation: str,
+) -> None:
+    checkpoint = tmp_path / (
+        f"apply-failure-autograd-drift-{phase}-{mutation}-{restore_rng}"
+    )
+    config = TrainerConfig(max_steps=10, seed=703)
+    leaked_contexts: list[Any] = []
+    failure = RuntimeError("restore apply failed after execution-mode drift")
+
+    def mutate_process_state() -> None:
+        random.random()
+        np.random.random_sample()
+        torch.rand(1)
+        torch.backends.cudnn.benchmark = not torch.backends.cudnn.benchmark
+        if mutation == "grad_enabled":
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+        elif mutation == "inference_mode":
+            context = torch.inference_mode(
+                not torch.is_inference_mode_enabled()
+            )
+            context.__enter__()
+            leaked_contexts.append(context)
+        else:
+            raise AssertionError(f"unknown execution-mode mutation: {mutation}")
+
+    class FailingDriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            if phase == "model_apply":
+                mutate_process_state()
+                raise failure
+            return result
+
+    source_model = FailingDriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = FailingDriftLinear(3, 3)
+    target = Trainer(target_model, config)
+    entry_grad_enabled = torch.is_grad_enabled()
+
+    if phase == "trainer_apply":
+        original_bind = loader._bind_trainer_state_loader
+
+        def bind_failing_loader(trainer: Any) -> Any:
+            apply_state = original_bind(trainer)
+
+            def failing_apply(state: Any) -> Any:
+                result = apply_state(state)
+                mutate_process_state()
+                raise failure
+
+            return failing_apply
+
+        monkeypatch.setattr(
+            loader,
+            "_bind_trainer_state_loader",
+            bind_failing_loader,
+        )
+
+    ambient = core.capture_rng_state()
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="restore apply failed after execution-mode drift",
+        ) as caught:
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=restore_rng,
+            )
+
+        assert caught.value is failure
+        notes = getattr(caught.value, "__notes__", ())
+        assert any(
+            "checkpoint restore apply also leaked caller-owned torch execution mode"
+            in note
+            for note in notes
+        )
+        assert random.getstate() == ambient["python"]
+        current_numpy = np.random.get_state()
+        assert current_numpy[0] == ambient["numpy"][0]
+        np.testing.assert_array_equal(current_numpy[1], ambient["numpy"][1])
+        assert current_numpy[2:] == ambient["numpy"][2:]
+        assert torch.equal(torch.get_rng_state(), ambient["torch"]["cpu"])
+        assert (
+            bool(torch.backends.cudnn.benchmark)
+            == ambient["torch"]["cudnn_benchmark"]
+        )
+    finally:
+        for context in reversed(leaked_contexts):
+            context.__exit__(None, None, None)
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    assert target._failure_reason == "checkpoint_restore_apply_failed"
+    assert target._update_incomplete is True
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="checkpoint restore requires a fresh trainer",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=restore_rng,
+        )
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
+def test_public_restore_preserves_caller_inference_mode(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    checkpoint = tmp_path / f"caller-inference-mode-{restore_rng}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    source_model = torch.nn.Linear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+    target_model = torch.nn.Linear(3, 3)
+    target = Trainer(target_model, config)
+
+    with torch.inference_mode():
+        expected = (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        )
+        result = loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=restore_rng,
+        )
+        assert (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        ) == expected
+
+    assert result.manifest["identity"]["step"] == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_public_restore_preserves_caller_no_grad_mode(
     tmp_path: Path,
     checkpoint_identity: CheckpointIdentity,
