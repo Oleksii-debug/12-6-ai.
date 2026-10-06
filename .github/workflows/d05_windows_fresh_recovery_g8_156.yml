@@ -24,7 +24,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 35
     env:
-      D05_RUNTIME_SHA: "c94df82844b3e657907ba4e3671f28d7e5cf2e4a"
+      D05_RUNTIME_SHA: "17c9571cf043bebb337322e7b414f4da04d124e0"
       EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
       PYTHONUTF8: "1"

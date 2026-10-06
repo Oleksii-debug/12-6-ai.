@@ -743,6 +743,54 @@ class ApplyStateDriftAdamW(AdamW):
         return result
 
 
+class ApplyReproducibilityDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+        self.guarded_zero_grad_calls = 0
+
+    def load_state_dict(self, state_dict):
+        result = super().load_state_dict(state_dict)
+        if self.armed:
+            assert self.owner is not None
+            if self.mutation == "determinism":
+                torch.use_deterministic_algorithms(
+                    not self.owner.config.deterministic_algorithms,
+                    warn_only=self.owner.config.deterministic_warn_only,
+                )
+            elif self.mutation == "training_mode":
+                self.owner.model.eval()
+            elif self.mutation == "grad_mode":
+                torch.set_grad_enabled(not torch.is_grad_enabled())
+            elif self.mutation == "default_dtype":
+                replacement = (
+                    torch.float64
+                    if torch.get_default_dtype() is not torch.float64
+                    else torch.float32
+                )
+                torch.set_default_dtype(replacement)
+            elif self.mutation == "matmul_precision":
+                replacement = (
+                    "high"
+                    if torch.get_float32_matmul_precision() == "highest"
+                    else "highest"
+                )
+                torch.set_float32_matmul_precision(replacement)
+            else:
+                raise AssertionError(
+                    f"unknown reproducibility mutation: {self.mutation}"
+                )
+        return result
+
+    def zero_grad(self, *args, **kwargs):
+        if self.armed:
+            self.guarded_zero_grad_calls += 1
+        return super().zero_grad(*args, **kwargs)
+
+
 class ZeroGradAuxiliaryDriftAdamW(AdamW):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -791,6 +839,53 @@ def test_direct_restore_rejects_apply_time_state_drift(
         trainer.state_dict()
     with pytest.raises(TrainingStateInvalidError, match="verified model"):
         trainer.load_state_dict(state)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("determinism", "live PyTorch deterministic policy disagrees"),
+        ("training_mode", "checkpoint model training mode must remain enabled"),
+        ("grad_mode", "trainer autograd mode changed during load"),
+        ("default_dtype", "trainer numeric policy changed during load"),
+        ("matmul_precision", "trainer numeric policy changed during load"),
+    ],
+)
+def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(
+        ApplyReproducibilityDriftAdamW,
+        config,
+    )
+    assert isinstance(optimizer, ApplyReproducibilityDriftAdamW)
+    optimizer.mutation = mutation
+    expected_enabled = torch.are_deterministic_algorithms_enabled()
+    expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    expected_grad_enabled = torch.is_grad_enabled()
+    expected_default_dtype = torch.get_default_dtype()
+    expected_matmul_precision = torch.get_float32_matmul_precision()
+
+    try:
+        with pytest.raises(TrainingStateInvalidError, match=message):
+            trainer.load_state_dict(state)
+    finally:
+        torch.use_deterministic_algorithms(
+            expected_enabled,
+            warn_only=expected_warn_only,
+        )
+        torch.set_grad_enabled(expected_grad_enabled)
+        torch.set_default_dtype(expected_default_dtype)
+        torch.set_float32_matmul_precision(expected_matmul_precision)
+
+    assert optimizer.guarded_zero_grad_calls == 0
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
 
 
 def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
@@ -1308,6 +1403,267 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
+
+
+def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
+    import random
+
+    import numpy as np
+
+    config = _config()
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    cuda_was_initialized = torch.cuda.is_initialized()
+
+    first = target._checkpoint_rng_fingerprint()
+    second = target._checkpoint_rng_fingerprint()
+
+    assert first == second
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    assert np.array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+    assert torch.equal(torch.get_rng_state(), torch_before)
+    assert torch.cuda.is_initialized() is cuda_was_initialized
+
+
+def test_direct_restore_preflight_seals_numeric_policy() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_dtype = torch.get_default_dtype()
+
+    class NumericPolicyMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            replacement = (
+                torch.float64 if expected_dtype is not torch.float64 else torch.float32
+            )
+            torch.set_default_dtype(replacement)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=NumericPolicyMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer numeric policy changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.get_default_dtype() is not expected_dtype
+        assert target._failure_reason == (
+            "trainer numeric policy changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_default_dtype(expected_dtype)
+
+
+def test_direct_restore_preflight_seals_autograd_mode() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_grad_enabled = torch.is_grad_enabled()
+
+    class GradModeMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.set_grad_enabled(not expected_grad_enabled)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=GradModeMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer autograd mode changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.is_grad_enabled() is not expected_grad_enabled
+        assert target._failure_reason == (
+            "trainer autograd mode changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_grad_enabled(expected_grad_enabled)
+
+
+def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    rng_before = torch.get_rng_state().clone()
+
+    class RngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.rand(1)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=RngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer RNG state changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_rng_state(rng_before)
+
+
+def test_direct_restore_preflight_seals_python_and_numpy_rng() -> None:
+    import random
+
+    import numpy as np
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=23,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+
+    class PythonNumpyRngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            random.random()
+            np.random.random()
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=PythonNumpyRngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert random.getstate() != python_before
+        numpy_after = np.random.get_state()
+        assert (
+            numpy_after[2] != numpy_before[2]
+            or not np.array_equal(numpy_after[1], numpy_before[1])
+        )
+        assert target._failure_reason == (
+            "trainer RNG state changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+    finally:
+        random.setstate(python_before)
+        np.random.set_state(numpy_before)
+
+
+def test_direct_restore_poison_target_when_component_load_consumes_rng() -> None:
+    config = _config()
+    state = _clean_state(config)
+    model = nn.Linear(3, 2)
+
+    class RngMutatingAdamW(AdamW):
+        def load_state_dict(self, state_dict):
+            result = super().load_state_dict(state_dict)
+            torch.rand(1)
+            return result
+
+    optimizer = RngMutatingAdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+    target = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=None,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during load",
+        ):
+            target.load_state_dict(state)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer state restore failed after possible partial apply"
+        )
+        assert target._update_incomplete is True
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="failed trainer cannot be repaired in place",
+        ):
+            target.load_state_dict(state)
+    finally:
+        torch.set_rng_state(rng_before)
 
 
 def test_direct_restore_rejects_entry_deterministic_policy_drift_before_state_access() -> None:
