@@ -253,12 +253,11 @@ def _iter_train_pairs(train: Sequence[dict[str, Any]]) -> Iterator[tuple[int, in
     index: dict[_CandidateKey, _Posting] = {}
     for i, fp in enumerate(train):
         candidates: set[int] = set()
-        keys = tuple(_candidate_keys(fp))
-        for key in keys:
+        for key in _candidate_keys(fp):
             _add_posting_candidates(candidates, index.get(key))
         for j in sorted(candidates):
             yield j, i
-        for key in keys:
+        for key in _candidate_keys(fp):
             _append_posting(index, key, i)
 
 
