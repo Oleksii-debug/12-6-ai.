@@ -1,0 +1,290 @@
+name: D05 post-G160 Product acceptance G8-160e
+
+on:
+  pull_request:
+    branches:
+      - hardening/2773-config-binding-convergence-g8-132-20261005
+    paths:
+      - ".github/workflows/d05_post_g160_acceptance_g8_160e.yml"
+      - "tools/run_checkpoint346_model341_current_d05_recovery_v8.py"
+      - "tools/run_d05_windows_fresh_recovery_g8_159e.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d05-post-g160-acceptance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  D05_RUNTIME_SHA: "ea200b7d956442231b952e5aaa443e639c12b647"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  MODEL341_SHA: "f151c77a8ef8721f0f568509147b1a5f961ae6c7"
+  MODEL341_CANDIDATE_BLOB: "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
+  PYTHONUTF8: "1"
+
+jobs:
+  focused-linux:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2778-post-g160-acceptance-g8-160e-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Product and focused closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$D05_RUNTIME_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$D05_RUNTIME_SHA" HEAD)" = "$D05_RUNTIME_SHA"
+          git diff --name-only "$D05_RUNTIME_SHA"..HEAD | sort > /tmp/changed.txt
+          cat >/tmp/expected.txt <<'EOF'
+          .github/workflows/d05_post_g160_acceptance_g8_160e.yml
+          tools/run_checkpoint346_model341_current_d05_recovery_v8.py
+          tools/run_d05_windows_fresh_recovery_g8_159e.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+          test "$(git rev-parse "$D05_RUNTIME_SHA:src/twelve_six/checkpoint/core.py")" = "58bde19b37c1e1de31c4fc2ae151e9220cd5d969"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:src/twelve_six/checkpoint/progress_trainer.py")" = "c600908df1ac962338460097485922f64af02709"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "bb5041725996435f1f475a558dbc28e2b9a9ca3d"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:src/twelve_six/checkpoint/transactional_rng.py")" = "f7c0531bd7fc4a200337ebf860765747c5447b6a"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:src/twelve_six/training/trainer.py")" = "493b482bf9d87533790fd4cd3087269a7062c3ba"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:tests/test_checkpoint_rng_completeness_d02.py")" = "7d92abdabe784fb0da117a5315b5f5cf7ef6dc59"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:tests/test_checkpoint_transactional_rng.py")" = "38d475435f9ac2c2f17de9cb4e8f694db8834c42"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:tests/test_trainer_direct_restore_binding.py")" = "c02e9c2453493cc463f0e020a342e4eb14a5c5b6"
+          test "$(git rev-parse "$D05_RUNTIME_SHA:tests/test_checkpoint_load_result_aliasing.py")" = "1246f432e4daca7603ca366b180ecf782cda445c"
+          python -m py_compile             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             tools/run_d05_windows_fresh_recovery_g8_159e.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact Product closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             tools/run_d05_windows_fresh_recovery_g8_159e.py
+
+      - name: Execute focused checkpoint regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py
+
+      - name: Prove carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+  model341-linux:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2778-post-g160-acceptance-g8-160e-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind carrier and runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$D05_RUNTIME_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$D05_RUNTIME_SHA" HEAD)" = "$D05_RUNTIME_SHA"
+          test "$(git hash-object tools/run_checkpoint346_model341_current_d05_recovery_v8.py)" = "ea09e6ae78bf8f323487876092cd67c2f35afa7e"
+          echo "QUALIFICATION_RUNNER_BLOB=ea09e6ae78bf8f323487876092cd67c2f35afa7e" >> "$GITHUB_ENV"
+          python -m py_compile tools/run_checkpoint346_model341_current_d05_recovery_v8.py
+
+      - name: Checkout exact D05 Product runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.D05_RUNTIME_SHA }}
+          path: d05-runtime
+          persist-credentials: false
+
+      - name: Checkout exact canonical MODEL-341 carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.MODEL341_SHA }}
+          path: model341-carrier
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind runtime and MODEL-341 identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C d05-runtime rev-parse HEAD)" = "$D05_RUNTIME_SHA"
+          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" = "493b482bf9d87533790fd4cd3087269a7062c3ba"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "bb5041725996435f1f475a558dbc28e2b9a9ca3d"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/core.py)" = "58bde19b37c1e1de31c4fc2ae151e9220cd5d969"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "c600908df1ac962338460097485922f64af02709"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/transactional_rng.py)" = "f7c0531bd7fc4a200337ebf860765747c5447b6a"
+          test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
+          test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
+
+      - name: Bootstrap frozen LOCAL_FREE CPU environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python model341-carrier/tools/execution_bootstrap.py bootstrap             --repo-root model341-carrier             --capabilities runtime             --venv "$GITHUB_WORKSPACE/.checkpoint346-v11-runtime"             --manifest "$GITHUB_WORKSPACE/checkpoint346-v11-environment.json"
+
+      - name: Execute current-head fresh-process recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          .checkpoint346-v11-runtime/bin/python             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             --runtime-root d05-runtime             --model341-root model341-carrier             --output checkpoint346-v11-result.json
+
+      - name: Enforce exact-head mechanics-only result contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          .checkpoint346-v11-runtime/bin/python - <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("checkpoint346-v11-result.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          tool_path = Path("tools/run_checkpoint346_model341_current_d05_recovery_v8.py")
+          spec = importlib.util.spec_from_file_location("checkpoint346_v11", tool_path)
+          assert spec is not None and spec.loader is not None
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          module._validate_report_contract(report)
+
+          runtime = report["runtime"]
+          execution = report["execution"]
+          credit = report["scientific_credit"]
+          assert runtime["product_pr"] == 2778
+          assert runtime["git_sha"] == os.environ["D05_RUNTIME_SHA"]
+          assert runtime["qualification_git_sha"] == os.environ["QUALIFICATION_CARRIER_SHA"]
+          assert runtime["qualification_runner_blob_sha"] == os.environ["QUALIFICATION_RUNNER_BLOB"]
+          assert execution["fresh_process_distinct"] is True
+          assert execution["same_next_step_equal"] is True
+          assert execution["binding_mismatch_failed_closed"] is True
+          assert execution["binding_mismatch_retry_same_target"] is True
+          assert execution["exact_full_rng_state_equal"] is True
+          assert execution["optimizer_updates_total"] == 3
+          assert credit == {
+              "real_corpus_used": False,
+              "training_authorized_corpus_used": False,
+              "optimized_target_exposure": 0,
+              "model_training_credit": False,
+              "learned_weights_created": False,
+              "final_test_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+              "tokenizer_fit_authorized": False,
+              "scale_promotion_authorized": False,
+          }
+          print("D05_CURRENT_HEAD_MODEL341_RECOVERY=PASS_ZERO_CREDIT")
+          print("RESULT_IDENTITY_SHA256=" + report["identity_sha256"])
+          PY
+
+      - name: Upload MODEL-341 recovery evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d05-post-g160-model341-${{ github.event.pull_request.head.sha }}
+          path: |
+            checkpoint346-v11-result.json
+            checkpoint346-v11-environment.json
+          retention-days: 30
+          compression-level: 9
+          if-no-files-found: error
+
+  windows-recovery:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2778-post-g160-acceptance-g8-160e-20261006'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Product and Windows runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:EVENT_BASE_SHA -ne $env:D05_RUNTIME_SHA) { throw "base SHA drifted" }
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA drifted" }
+          if ((git merge-base $env:D05_RUNTIME_SHA HEAD).Trim() -ne $env:D05_RUNTIME_SHA) { throw "carrier ancestry drifted" }
+          $runnerBlob = (git hash-object tools/run_d05_windows_fresh_recovery_g8_159e.py).Trim()
+          if ($runnerBlob -ne "c6f1971343f6f6628a5f229b766fbc1480fe92cb") { throw "Windows runner blob drifted" }
+          Add-Content -Path $env:GITHUB_ENV -Value "QUALIFICATION_RUNNER_BLOB=$runnerBlob" -Encoding UTF8
+          python -m py_compile tools/run_d05_windows_fresh_recovery_g8_159e.py
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty: $dirty" }
+
+      - name: Install Product runtime dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Execute Windows fresh-process recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python tools/run_d05_windows_fresh_recovery_g8_159e.py --output d05-windows-fresh-recovery.json
+
+      - name: Enforce zero-credit result contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python tools/run_d05_windows_fresh_recovery_g8_159e.py --validate-report d05-windows-fresh-recovery.json
+
+      - name: Upload Windows recovery evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d05-post-g160-windows-${{ github.event.pull_request.head.sha }}
+          path: d05-windows-fresh-recovery.json
+          retention-days: 30
+          compression-level: 9
+          if-no-files-found: error
