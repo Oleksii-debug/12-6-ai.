@@ -116,6 +116,83 @@ def test_effectful_optimizer_state_dict_never_publishes_unsafe_snapshot(
         trainer.state_dict()
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_message"),
+    [
+        ("config", "checkpoint export config changed during checkpoint export"),
+        ("policy", "checkpoint export policy changed during checkpoint export"),
+        ("device", "checkpoint export binding changed during checkpoint export"),
+    ],
+)
+def test_effectful_optimizer_export_cannot_drift_checkpoint_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+    mutation: str,
+    expected_message: str,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    original_state_dict = trainer.optimizer.state_dict
+
+    def mutate_contract() -> dict[str, Any]:
+        snapshot = original_state_dict()
+        if mutation == "config":
+            object.__setattr__(trainer.config, "seed", trainer.config.seed + 1)
+        elif mutation == "policy":
+            trainer._canonical_unscheduled_default_optimizer = False
+        elif mutation == "device":
+            trainer.device = torch.device("meta")
+        else:
+            raise AssertionError(f"unknown checkpoint contract mutation: {mutation}")
+        return snapshot
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", mutate_contract)
+    with pytest.raises(TrainingStateInvalidError, match=expected_message):
+        trainer.state_dict()
+
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
+def test_checkpoint_preflight_cannot_drift_config_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    original_state_dict = trainer.scaler.state_dict
+    calls = 0
+
+    def mutate_config_on_preflight() -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        snapshot = original_state_dict()
+        if calls == 1:
+            object.__setattr__(trainer.config, "seed", trainer.config.seed + 1)
+        return snapshot
+
+    monkeypatch.setattr(trainer.scaler, "state_dict", mutate_config_on_preflight)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export config changed during checkpoint preflight",
+    ):
+        trainer.state_dict()
+
+    assert calls == 1
+    assert trainer._failure_reason == (
+        "checkpoint preflight failed after committed boundary"
+    )
+
+
 def test_ordinary_state_export_still_preserves_named_adamw_resume(
     preserve_process_state: Any,
 ) -> None:

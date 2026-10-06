@@ -2650,6 +2650,75 @@ class Trainer:
         # A normal incomplete accumulation is retryable. Reject it before
         # fingerprinting legitimate pending gradients or other transient state.
         Trainer.assert_accumulation_boundary(self)
+        export_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        export_binding_fields = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_export_bindings = [
+            name for name in export_binding_fields if name not in export_attrs
+        ]
+        if missing_export_bindings:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export binding fields are unavailable: "
+                f"{missing_export_bindings}"
+            )
+        expected_export_bindings = {
+            name: export_attrs[name] for name in export_binding_fields
+        }
+        expected_export_config = export_attrs["config"]
+        if type(expected_export_config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export config must use canonical TrainerConfig"
+            )
+        expected_export_config_state = asdict(expected_export_config)
+        export_policy_fields = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_export_policies = [
+            name for name in export_policy_fields if name not in export_attrs
+        ]
+        if missing_export_policies:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export policy fields are unavailable: "
+                f"{missing_export_policies}"
+            )
+        expected_export_policies = {
+            name: copy.deepcopy(export_attrs[name])
+            for name in export_policy_fields
+        }
+
+        def _require_export_contract_unchanged(phase: str) -> None:
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if any(
+                name not in current or current[name] is not expected
+                for name, expected in expected_export_bindings.items()
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export binding changed during {phase}"
+                )
+            if not _typed_state_equal(
+                asdict(expected_export_config),
+                expected_export_config_state,
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export config changed during {phase}"
+                )
+            if any(
+                name not in current
+                or not _typed_state_equal(current[name], expected)
+                for name, expected in expected_export_policies.items()
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export policy changed during {phase}"
+                )
+
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         try:
             model_before = self._model_export_fingerprint()
@@ -2692,6 +2761,7 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "checkpoint export changed live scheduler"
                 )
+            _require_export_contract_unchanged("checkpoint preflight")
         except BaseException:  # noqa: BLE001
             # Mid-accumulation was rejected above as the one retryable export
             # refusal. Any failure after committed-boundary observation means
@@ -2725,7 +2795,7 @@ class Trainer:
                     None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
                 ),
                 scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-                config=asdict(self.config),
+                config=copy.deepcopy(expected_export_config_state),
             )
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
@@ -2765,6 +2835,7 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler export differs from live committed state"
                 )
+            _require_export_contract_unchanged("checkpoint export")
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
