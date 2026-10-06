@@ -42,41 +42,7 @@ from .expected_binding import (
 )
 
 _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
-    "__dict__",
-    "__getattribute__",
-    "__setattr__",
-    "_canonical_model_members",
-    "_canonical_optimizer_storage",
-    "_canonical_scheduler_storage",
-    "_canonical_scaler_storage",
-    "_canonical_scaler_live_state",
-    "_canonical_lambda_lr_live_state",
-    "_optimizer_live_fingerprint",
-    "_model_export_fingerprint",
-    "_checkpoint_auxiliary_fingerprint",
-    "_require_exported_model_matches_live",
-    "_require_exported_scheduler_matches_live",
-    "_require_exported_scaler_matches_live",
-    "_require_exported_optimizer_matches_live",
-    "_exact_export_leaf_equal",
-    "assert_accumulation_boundary",
-    "assert_checkpoint_safe",
-    "_assert_trainable",
-    "_require_finite_auxiliary_state",
-    "_require_finite_committed_update",
-    "_require_no_residual_model_gradients",
-    "_require_deterministic_policy",
-    "_require_optimizer_parameter_coverage",
-    "_require_safe_optimizer_hyperparameters",
-    "_require_default_optimizer_options",
-    "_require_constant_default_rate",
-    "_require_finite_state_tree",
-    "_require_checkpoint_scaler_state",
-    "_require_default_schedule_rates",
-    "_require_checkpoint_scheduler_chronology",
-    "_require_optimizer_state_parameter_order",
-    "_optimizer_parameter_name_groups",
-    "_mark_failed",
+    _CanonicalTrainer._CHECKPOINT_SAFETY_AUTHORITIES
 )
 
 _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
