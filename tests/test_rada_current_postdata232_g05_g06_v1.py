@@ -763,3 +763,59 @@ def test_declared_dependency_import_closure_is_fully_pinned() -> None:
             source,
             label=relative,
         ) <= allowed
+
+def _post_g06_survivor(record_id: str, payload: str) -> dict[str, str]:
+    return {
+        "record_id": record_id,
+        "source_id": f"source:{record_id}",
+        "family": "ua.rada.open-data.laws-texts",
+        "modality": "uk",
+        "normalized_payload": payload,
+    }
+
+
+def test_post_g06_payload_uniqueness_accepts_distinct_payloads_deterministically() -> None:
+    records = [
+        _post_g06_survivor("r-1", "перший текст"),
+        _post_g06_survivor("r-2", "другий текст"),
+    ]
+
+    first = target.verify_post_g06_exact_payload_uniqueness(records)
+    second = target.verify_post_g06_exact_payload_uniqueness(
+        list(reversed(records))
+    )
+
+    assert first == second
+    assert first["unique_payload_count"] == 2
+    assert len(first["payload_set_identity_sha256"]) == 64
+
+
+def test_post_g06_payload_uniqueness_rejects_redaction_collapse() -> None:
+    transformed = "контакт <redacted>"
+    records = [
+        _post_g06_survivor("r-before-a", transformed),
+        _post_g06_survivor("r-before-b", transformed),
+    ]
+
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="post-G06 exact payload collision after transformation",
+    ):
+        target.verify_post_g06_exact_payload_uniqueness(records)
+
+
+def test_post_g06_payload_uniqueness_fails_closed_on_digest_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = [
+        _post_g06_survivor("r-hash-a", "payload A"),
+        _post_g06_survivor("r-hash-b", "payload B"),
+    ]
+    monkeypatch.setattr(target, "sha256", lambda _raw: "0" * 64)
+
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="post-G06 exact payload collision after transformation",
+    ):
+        target.verify_post_g06_exact_payload_uniqueness(records)
+
