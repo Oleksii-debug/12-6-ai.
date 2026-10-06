@@ -45,6 +45,11 @@ STATE_TREE_NAME = "state.json"
 _PAYLOAD_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
 _DIRECTORY_NAMES = frozenset({MANIFEST_NAME, MANIFEST_CHECKSUM_NAME, *_PAYLOAD_NAMES})
 _HEX = frozenset("0123456789abcdef")
+_TORCH_PROCESS_ENVIRONMENT_KEYS = (
+    "CUBLAS_WORKSPACE_CONFIG",
+    "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE",
+    "NVIDIA_TF32_OVERRIDE",
+)
 
 
 class CheckpointError(RuntimeError):
@@ -311,6 +316,53 @@ def environment_snapshot() -> dict[str, Any]:
     }
 
 
+def _capture_torch_process_environment() -> dict[str, str | None]:
+    """Capture CUDA/cuBLAS environment inputs that can override torch policy."""
+
+    return {
+        key: os.environ.get(key)
+        for key in _TORCH_PROCESS_ENVIRONMENT_KEYS
+    }
+
+
+def _preflight_torch_process_environment(state: Any) -> None:
+    """Validate a complete environment snapshot without mutating the process."""
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError(
+            "checkpoint torch cuda_environment must be a mapping"
+        )
+    expected = set(_TORCH_PROCESS_ENVIRONMENT_KEYS)
+    if set(state) != expected:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch cuda_environment fields differ from the supported contract"
+        )
+    for key in _TORCH_PROCESS_ENVIRONMENT_KEYS:
+        value = state[key]
+        if value is not None and type(value) is not str:
+            raise CheckpointCompatibilityError(
+                f"checkpoint torch cuda_environment {key} must be a string or null"
+            )
+
+
+def _assert_torch_process_environment_matches(state: Mapping[str, Any]) -> None:
+    """Reject a fresh-process environment mismatch before live state apply."""
+
+    _preflight_torch_process_environment(state)
+    live = _capture_torch_process_environment()
+    if dict(state) != live:
+        changed = [
+            key
+            for key in _TORCH_PROCESS_ENVIRONMENT_KEYS
+            if state[key] != live[key]
+        ]
+        raise CheckpointCompatibilityError(
+            "checkpoint CUDA process environment differs from the live process: "
+            f"{changed}; restart with the checkpoint environment or load with "
+            "restore_rng=False to opt out of exact replay"
+        )
+
+
 def capture_rng_state() -> dict[str, Any]:
     """Capture Python, NumPy, and available PyTorch RNG state."""
 
@@ -336,6 +388,7 @@ def capture_rng_state() -> dict[str, Any]:
         "cudnn_enabled": bool(torch.backends.cudnn.enabled),
         "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
         "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
+        "cuda_environment": _capture_torch_process_environment(),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -408,6 +461,8 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 f"checkpoint torch {field} must be a boolean"
             )
+    if "cuda_environment" in torch_state:
+        _preflight_torch_process_environment(torch_state["cuda_environment"])
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:

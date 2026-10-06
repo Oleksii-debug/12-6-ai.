@@ -61,6 +61,9 @@ def _seal_checkpoint(
     if missing == "cuda":
         deliberately_incomplete["torch"] = dict(captured["torch"])
         deliberately_incomplete["torch"].pop("cuda")
+    elif missing == "cuda_environment":
+        deliberately_incomplete["torch"] = dict(captured["torch"])
+        deliberately_incomplete["torch"].pop("cuda_environment")
     elif missing == "warn_only":
         deliberately_incomplete["torch"] = dict(captured["torch"])
         deliberately_incomplete["torch"].pop("deterministic_warn_only")
@@ -95,6 +98,8 @@ def _seal_checkpoint(
     _, decoded = core._decode_verified_state(core.prepare_checkpoint_load(path))
     if missing == "cuda":
         assert "cuda" not in decoded["rng"]["torch"]
+    elif missing == "cuda_environment":
+        assert "cuda_environment" not in decoded["rng"]["torch"]
     elif missing == "warn_only":
         assert "deterministic_warn_only" not in decoded["rng"]["torch"]
     elif missing in {
@@ -128,6 +133,7 @@ def _seal_checkpoint(
         "python",
         "numpy",
         "cuda",
+        "cuda_environment",
         "default_dtype",
         "matmul_precision",
         "cudnn_tf32",
@@ -173,6 +179,7 @@ def test_incomplete_but_verified_rng_rejected_before_model_materialization(
         "python",
         "numpy",
         "cuda",
+        "cuda_environment",
         "default_dtype",
         "matmul_precision",
         "cudnn_tf32",
@@ -238,6 +245,146 @@ def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    ("environment_key", "checkpoint_value", "live_value"),
+    [
+        ("CUBLAS_WORKSPACE_CONFIG", ":16:8", ":4096:2"),
+        ("TORCH_ALLOW_TF32_CUBLAS_OVERRIDE", "0", "1"),
+        ("NVIDIA_TF32_OVERRIDE", "0", None),
+    ],
+)
+def test_cuda_process_environment_mismatch_rejected_before_model_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    environment_key: str,
+    checkpoint_value: str,
+    live_value: str | None,
+) -> None:
+    checkpoint = tmp_path / "sealed-cuda-environment"
+    with monkeypatch.context() as source_env:
+        source_env.setenv(environment_key, checkpoint_value)
+        config = TrainerConfig(max_steps=10, seed=703)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=checkpoint_identity,
+        )
+    core.verify_checkpoint(checkpoint)
+
+    with monkeypatch.context() as live_env:
+        if live_value is None:
+            live_env.delenv(environment_key, raising=False)
+        else:
+            live_env.setenv(environment_key, live_value)
+        target_model = torch.nn.Linear(3, 3)
+        target = Trainer(target_model, config)
+        before = [parameter.detach().clone() for parameter in target_model.parameters()]
+
+        def forbidden_materialization(*_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError(
+                "environment mismatch must reject before model materialization"
+            )
+
+        live_env.setattr(loader, "_prepare_model_weights", forbidden_materialization)
+        with pytest.raises(
+            CheckpointCompatibilityError,
+            match="CUDA process environment differs",
+        ):
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=True,
+            )
+
+        for current, initial in zip(target_model.parameters(), before, strict=True):
+            torch.testing.assert_close(current.detach(), initial, rtol=0, atol=0)
+        assert target.optimizer_step == 0
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_cuda_process_environment_mismatch_explicit_opt_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "sealed-cuda-environment-opt-out"
+    with monkeypatch.context() as source_env:
+        source_env.setenv("CUBLAS_WORKSPACE_CONFIG", ":16:8")
+        config = TrainerConfig(max_steps=10, seed=703)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=checkpoint_identity,
+        )
+
+    with monkeypatch.context() as live_env:
+        live_env.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
+        target_model = torch.nn.Linear(3, 3)
+        target = Trainer(target_model, config)
+        result = loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=False,
+        )
+        assert result.manifest["identity"]["step"] == 0
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ({"CUBLAS_WORKSPACE_CONFIG": None}, "fields differ"),
+        (
+            {
+                "CUBLAS_WORKSPACE_CONFIG": None,
+                "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE": None,
+                "NVIDIA_TF32_OVERRIDE": 0,
+            },
+            "NVIDIA_TF32_OVERRIDE",
+        ),
+    ],
+)
+def test_invalid_cuda_process_environment_rejected_before_torch_rng_mutation(
+    mutation: dict[str, Any],
+    message: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    state = core.capture_rng_state()
+    state["torch"] = dict(state["torch"])
+    state["torch"]["cuda_environment"] = mutation
+    cpu_before = torch.get_rng_state().clone()
+
+    try:
+        with pytest.raises(CheckpointCompatibilityError, match=message):
+            core.restore_rng_state(state)
+        torch.testing.assert_close(torch.get_rng_state(), cpu_before, rtol=0, atol=0)
+    finally:
+        core.restore_rng_state(ambient)
 
 
 @pytest.mark.parametrize(
@@ -406,6 +553,7 @@ def test_generic_legacy_rng_restore_preserves_live_numeric_policy() -> None:
         legacy["torch"].pop("cudnn_enabled")
         legacy["torch"].pop("cudnn_deterministic")
         legacy["torch"].pop("cudnn_benchmark")
+        legacy["torch"].pop("cuda_environment")
 
         torch.set_default_dtype(torch.float64)
         torch.set_float32_matmul_precision("high")
