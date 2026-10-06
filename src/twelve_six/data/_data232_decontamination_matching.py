@@ -5,8 +5,11 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any
+from fractions import Fraction
+from heapq import nsmallest
+from typing import Any, TypeVar
 
 SCHEMA = "12-6.data232-decontamination-report.v2"
 ALGORITHM = "data232-deterministic-overlap-cluster-v2"
@@ -186,6 +189,7 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
 
 _Posting = int | list[int]
 _CandidateKey = tuple[str, str]
+_PostingKey = TypeVar("_PostingKey")
 
 
 def _candidate_keys(fp: Mapping[str, Any]) -> Iterator[_CandidateKey]:
@@ -199,8 +203,8 @@ def _candidate_keys(fp: Mapping[str, Any]) -> Iterator[_CandidateKey]:
 
 
 def _append_posting(
-    index: dict[_CandidateKey, _Posting],
-    key: _CandidateKey,
+    index: dict[_PostingKey, _Posting],
+    key: _PostingKey,
     record_index: int,
 ) -> None:
     """Store singleton postings without allocating a set per unique shingle."""
@@ -264,6 +268,188 @@ def _iter_train_pairs(train: Sequence[dict[str, Any]]) -> Iterator[tuple[int, in
 def _train_pairs(train: Sequence[dict[str, Any]]) -> set[tuple[int, int]]:
     """Compatibility wrapper retaining the historical private helper contract."""
     return set(_iter_train_pairs(train))
+
+
+def _fraction(value: Any) -> Fraction:
+    """Convert configured decimal thresholds without binary-float rounding drift."""
+    return Fraction(str(value))
+
+
+def _jaccard_smaller_overlap_ratio(value: Any) -> Fraction:
+    """Necessary overlap fraction of the smaller set for a Jaccard threshold."""
+    threshold = _fraction(value)
+    return (2 * threshold) / (1 + threshold)
+
+
+def _necessary_prefix_width(size: int, overlap_ratio: Fraction) -> int:
+    """Return a prefix width that cannot hide the required overlap."""
+    if size <= 0:
+        return 0
+    numerator = size * overlap_ratio.numerator
+    required_overlap = (
+        numerator + overlap_ratio.denominator - 1
+    ) // overlap_ratio.denominator
+    return max(1, size - required_overlap + 1)
+
+
+def _rare_prefix(
+    values: frozenset[str],
+    width: int,
+    frequencies: Mapping[str, int],
+) -> tuple[str, ...]:
+    """Choose a deterministic low-frequency necessary prefix."""
+    if width <= 0:
+        return ()
+    return tuple(
+        nsmallest(
+            min(width, len(values)),
+            values,
+            key=lambda value: (frequencies.get(value, 0), value),
+        )
+    )
+
+
+def _iter_viable_train_pairs(
+    train: Sequence[dict[str, Any]],
+    thresholds: Mapping[str, Any],
+) -> Iterator[tuple[int, int]]:
+    """Yield every peer pair that can satisfy the incumbent exact matcher.
+
+    The historical candidate relation admits any pair sharing one content or
+    skeleton shingle. At corpus scale that spends most runtime evaluating pairs
+    whose maximum possible overlap is below every DATA-232 threshold.
+
+    For containment, a matching pair must overlap at least q of its smaller
+    shingle set. For Jaccard threshold j, the smaller-set overlap is at least
+    2j/(1+j). If a smaller set has m members and needs k overlaps, any matching
+    larger set must intersect any prefix of m-k+1 members; otherwise at most k-1
+    members remain available for intersection.
+
+    Exact raw and normalized identities are indexed separately. Code skeleton
+    Jaccard uses the weaker per-indexed-set bound intersection >= j*indexed_size
+    because content-size order does not imply skeleton-size order. Every emitted
+    pair is still decided only by _pair.
+    """
+
+    t = _thresholds(thresholds)
+    content_frequency: Counter[str] = Counter()
+    skeleton_frequency: Counter[str] = Counter()
+    for fp in train:
+        content_frequency.update(fp["shingles"])
+        if fp["record"]["modality"] == "code":
+            skeleton_frequency.update(fp["skeleton_shingles"])
+
+    raw_index: dict[str, _Posting] = {}
+    normalized_index: dict[str, _Posting] = {}
+    natural_noncode_index: dict[str, _Posting] = {}
+    mixed_code_index: dict[str, _Posting] = {}
+    code_index: dict[str, _Posting] = {}
+    skeleton_index: dict[str, _Posting] = {}
+
+    natural_jaccard_ratio = _jaccard_smaller_overlap_ratio(
+        t["natural_near_jaccard"]
+    )
+    code_jaccard_ratio = _jaccard_smaller_overlap_ratio(
+        t["code_near_jaccard"]
+    )
+    natural_containment = _fraction(t["natural_fragment_containment"])
+    code_containment = _fraction(t["code_fragment_containment"])
+    skeleton_jaccard = _fraction(t["code_copy_jaccard"])
+
+    natural_noncode_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    mixed_code_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    code_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    skeleton_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    for index, fp in enumerate(train):
+        content_size = len(fp["shingles"])
+        is_code = fp["record"]["modality"] == "code"
+        natural_ratio = (
+            natural_containment
+            if fp["token_count"] >= int(t["natural_fragment_min_tokens"])
+            else natural_jaccard_ratio
+        )
+        natural_width = _necessary_prefix_width(content_size, natural_ratio)
+        natural_prefix = _rare_prefix(
+            fp["shingles"],
+            natural_width,
+            content_frequency,
+        )
+        if is_code:
+            mixed_code_prefixes[index] = natural_prefix
+            code_ratio = (
+                code_containment
+                if fp["token_count"] >= int(t["code_fragment_min_tokens"])
+                else code_jaccard_ratio
+            )
+            code_width = _necessary_prefix_width(content_size, code_ratio)
+            code_prefixes[index] = _rare_prefix(
+                fp["shingles"],
+                code_width,
+                content_frequency,
+            )
+            if fp["skeleton_token_count"] >= int(t["code_copy_min_tokens"]):
+                skeleton_width = _necessary_prefix_width(
+                    len(fp["skeleton_shingles"]),
+                    skeleton_jaccard,
+                )
+                skeleton_prefixes[index] = _rare_prefix(
+                    fp["skeleton_shingles"],
+                    skeleton_width,
+                    skeleton_frequency,
+                )
+        else:
+            natural_noncode_prefixes[index] = natural_prefix
+
+    # Do not retain full corpus frequency maps while posting indexes grow.
+    del content_frequency
+    del skeleton_frequency
+
+    order = sorted(
+        range(len(train)),
+        key=lambda index: (len(train[index]["shingles"]), index),
+    )
+    for index in order:
+        fp = train[index]
+        is_code = fp["record"]["modality"] == "code"
+        candidates: set[int] = set()
+
+        _add_posting_candidates(candidates, raw_index.get(str(fp["raw"])))
+        _add_posting_candidates(
+            candidates,
+            normalized_index.get(str(fp["normalized"])),
+        )
+
+        for value in fp["shingles"]:
+            _add_posting_candidates(candidates, natural_noncode_index.get(value))
+            if is_code:
+                _add_posting_candidates(candidates, code_index.get(value))
+            else:
+                _add_posting_candidates(candidates, mixed_code_index.get(value))
+
+        if is_code:
+            for value in fp["skeleton_shingles"]:
+                _add_posting_candidates(candidates, skeleton_index.get(value))
+
+        for other_index in sorted(candidates):
+            yield (
+                (other_index, index)
+                if other_index < index
+                else (index, other_index)
+            )
+
+        _append_posting(raw_index, str(fp["raw"]), index)
+        _append_posting(normalized_index, str(fp["normalized"]), index)
+
+        if is_code:
+            for value in mixed_code_prefixes[index]:
+                _append_posting(mixed_code_index, value, index)
+            for value in code_prefixes[index]:
+                _append_posting(code_index, value, index)
+            for value in skeleton_prefixes[index]:
+                _append_posting(skeleton_index, value, index)
+        else:
+            for value in natural_noncode_prefixes[index]:
+                _append_posting(natural_noncode_index, value, index)
 
 
 def _forbidden_key(value: Any, path: str = "$") -> str | None:
