@@ -523,6 +523,211 @@ def test_public_restore_preserves_caller_no_grad_mode(
 
 
 @pytest.mark.parametrize(
+    "phase",
+    ["trainer_export", "model_state_dict", "model_validator", "prepublish"],
+)
+@pytest.mark.parametrize(
+    "mutation", ["grad_enabled", "inference_mode"],
+)
+def test_checkpoint_save_rejects_autograd_execution_mode_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    phase: str,
+    mutation: str,
+) -> None:
+    checkpoint = tmp_path / f"save-autograd-drift-{phase}-{mutation}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+    leaked_contexts: list[Any] = []
+    entry_grad_enabled = torch.is_grad_enabled()
+
+    def mutate_execution_mode() -> None:
+        if mutation == "grad_enabled":
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+        elif mutation == "inference_mode":
+            context = torch.inference_mode(
+                not torch.is_inference_mode_enabled()
+            )
+            context.__enter__()
+            leaked_contexts.append(context)
+        else:
+            raise AssertionError(f"unknown execution-mode mutation: {mutation}")
+
+    if phase == "trainer_export":
+        original_bind = trainer_adapter._bind_trainer_state_exporter
+
+        def bind_drifting_exporter(target: Any) -> Any:
+            export_state = original_bind(target)
+
+            def drifting_export() -> Any:
+                state = export_state()
+                mutate_execution_mode()
+                return state
+
+            return drifting_export
+
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_bind_trainer_state_exporter",
+            bind_drifting_exporter,
+        )
+    elif phase == "model_state_dict":
+        original_state_dict = model.state_dict
+
+        def drifting_model_state_dict(*args: Any, **kwargs: Any) -> Any:
+            state = original_state_dict(*args, **kwargs)
+            mutate_execution_mode()
+            return state
+
+        monkeypatch.setattr(model, "state_dict", drifting_model_state_dict)
+    elif phase == "model_validator":
+        original_bind = trainer_adapter._bind_native_model_export_validator
+
+        def bind_drifting_validator(target: Any) -> Any:
+            validate = original_bind(target)
+            if validate is None:
+                raise AssertionError("native model export validator unavailable")
+
+            def drifting_validate(exported: Any) -> Any:
+                result = validate(exported)
+                mutate_execution_mode()
+                return result
+
+            return drifting_validate
+
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_bind_native_model_export_validator",
+            bind_drifting_validator,
+        )
+    else:
+        original_exact_live = trainer_adapter._assert_native_d02_exact_live_state
+
+        def drifting_prepublish(*args: Any, **kwargs: Any) -> Any:
+            result = original_exact_live(*args, **kwargs)
+            mutate_execution_mode()
+            return result
+
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_assert_native_d02_exact_live_state",
+            drifting_prepublish,
+        )
+
+    try:
+        with pytest.raises(
+            CheckpointCompatibilityError,
+            match="live torch autograd/inference mode changed",
+        ):
+            trainer_adapter.save_trainer_checkpoint(
+                checkpoint,
+                model=model,
+                trainer=trainer,
+                identity=checkpoint_identity,
+            )
+    finally:
+        for context in reversed(leaked_contexts):
+            context.__exit__(None, None, None)
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    assert not checkpoint.exists()
+    assert trainer._failure_reason is not None
+    assert trainer._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "mutation", ["grad_enabled", "inference_mode"],
+)
+def test_checkpoint_save_failure_poisoned_when_model_export_leaks_execution_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    mutation: str,
+) -> None:
+    checkpoint = tmp_path / f"save-failure-autograd-drift-{mutation}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+    original_state_dict = model.state_dict
+    leaked_contexts: list[Any] = []
+    entry_grad_enabled = torch.is_grad_enabled()
+
+    def drifting_failing_state_dict(*args: Any, **kwargs: Any) -> Any:
+        original_state_dict(*args, **kwargs)
+        if mutation == "grad_enabled":
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+        elif mutation == "inference_mode":
+            context = torch.inference_mode(
+                not torch.is_inference_mode_enabled()
+            )
+            context.__enter__()
+            leaked_contexts.append(context)
+        else:
+            raise AssertionError(f"unknown execution-mode mutation: {mutation}")
+        raise RuntimeError("model export failed after execution-mode drift")
+
+    monkeypatch.setattr(model, "state_dict", drifting_failing_state_dict)
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="model export failed after execution-mode drift",
+        ) as caught:
+            trainer_adapter.save_trainer_checkpoint(
+                checkpoint,
+                model=model,
+                trainer=trainer,
+                identity=checkpoint_identity,
+            )
+    finally:
+        for context in reversed(leaked_contexts):
+            context.__exit__(None, None, None)
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    notes = getattr(caught.value, "__notes__", ())
+    assert any(
+        "checkpoint save also leaked caller-owned torch execution mode" in note
+        for note in notes
+    )
+    assert not checkpoint.exists()
+    assert trainer._failure_reason == "checkpoint_export_state_drift"
+    assert trainer._update_incomplete is True
+
+
+def test_checkpoint_save_preserves_caller_no_grad_mode(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+) -> None:
+    checkpoint = tmp_path / "save-caller-no-grad"
+    config = TrainerConfig(max_steps=10, seed=703)
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+
+    with torch.no_grad():
+        expected = (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        )
+        manifest = trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=trainer,
+            identity=checkpoint_identity,
+        )
+        assert (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        ) == expected
+
+    assert manifest["identity"]["step"] == 0
+    assert checkpoint.is_dir()
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
+@pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
 def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
