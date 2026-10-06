@@ -52,6 +52,7 @@ from .trainer_adapter import (
     _preflight_trainer_state,
     _preflight_trainer_target,
     _restore_ambient_rng_after_failed_apply,
+    _restore_checkpoint_numeric_policy_for_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _restore_preapply_process_state,
@@ -315,6 +316,10 @@ def load_trainer_checkpoint(
     # Canonical D02 trainers must then refuse any further optimizer step or
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
+        if restore_rng:
+            _restore_checkpoint_numeric_policy_for_apply(
+                combined_state["rng"],
+            )
         model_apply(materialized)
         if model_apply_authority is not None:
             try:

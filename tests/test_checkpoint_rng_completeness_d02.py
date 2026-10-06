@@ -64,6 +64,14 @@ def _seal_checkpoint(
     elif missing == "warn_only":
         deliberately_incomplete["torch"] = dict(captured["torch"])
         deliberately_incomplete["torch"].pop("deterministic_warn_only")
+    elif missing in {"default_dtype", "matmul_precision"}:
+        deliberately_incomplete["torch"] = dict(captured["torch"])
+        field = (
+            "default_dtype"
+            if missing == "default_dtype"
+            else "float32_matmul_precision"
+        )
+        deliberately_incomplete["torch"].pop(field)
     elif missing is not None:
         deliberately_incomplete.pop(missing)
     # Produce a completely re-signed checkpoint through the production writer.
@@ -79,6 +87,13 @@ def _seal_checkpoint(
         assert "cuda" not in decoded["rng"]["torch"]
     elif missing == "warn_only":
         assert "deterministic_warn_only" not in decoded["rng"]["torch"]
+    elif missing in {"default_dtype", "matmul_precision"}:
+        field = (
+            "default_dtype"
+            if missing == "default_dtype"
+            else "float32_matmul_precision"
+        )
+        assert field not in decoded["rng"]["torch"]
     elif missing is not None:
         assert missing not in decoded["rng"]
     return captured, config
@@ -87,7 +102,10 @@ def _seal_checkpoint(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
-@pytest.mark.parametrize("missing", ["python", "numpy", "cuda"])
+@pytest.mark.parametrize(
+    "missing",
+    ["python", "numpy", "cuda", "default_dtype", "matmul_precision"],
+)
 def test_incomplete_but_verified_rng_rejected_before_model_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -119,7 +137,10 @@ def test_incomplete_but_verified_rng_rejected_before_model_materialization(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
-@pytest.mark.parametrize("missing", ["python", "numpy", "cuda"])
+@pytest.mark.parametrize(
+    "missing",
+    ["python", "numpy", "cuda", "default_dtype", "matmul_precision"],
+)
 def test_explicit_rng_opt_out_retains_existing_checkpoint_compatibility(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -177,6 +198,223 @@ def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_complete_checkpoint_replays_torch_numeric_policy(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    ambient = core.capture_rng_state()
+
+    class PolicyObservingAdamW(torch.optim.AdamW):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.observed_numeric_policy: tuple[str, str] | None = None
+
+        def load_state_dict(self, state_dict: Any):
+            self.observed_numeric_policy = (
+                str(torch.get_default_dtype()),
+                torch.get_float32_matmul_precision(),
+            )
+            return super().load_state_dict(state_dict)
+
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        config = TrainerConfig(max_steps=10, seed=703)
+        source_model = torch.nn.Linear(3, 3, dtype=torch.float32)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "sealed-numeric-policy"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=checkpoint_identity,
+        )
+        core.verify_checkpoint(checkpoint)
+
+        torch.set_default_dtype(torch.float32)
+        torch.set_float32_matmul_precision("highest")
+        target_model = torch.nn.Linear(3, 3, dtype=torch.float32)
+        target_optimizer = PolicyObservingAdamW(
+            target_model.parameters(),
+            lr=config.learning_rate,
+            betas=config.betas,
+            eps=config.eps,
+            weight_decay=config.weight_decay,
+        )
+        target = Trainer(
+            target_model,
+            config,
+            optimizer=target_optimizer,
+        )
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=True,
+        )
+
+        assert target_optimizer.observed_numeric_policy == (
+            "torch.float64",
+            "high",
+        )
+        assert torch.get_default_dtype() is torch.float64
+        assert torch.get_float32_matmul_precision() == "high"
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+    finally:
+        core.restore_rng_state(ambient)
+
+
+def test_checkpoint_save_is_numeric_policy_neutral(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+) -> None:
+    ambient = core.capture_rng_state()
+
+    class EffectfulLinear(torch.nn.Linear):
+        def state_dict(self, *args: Any, **kwargs: Any):
+            torch.set_default_dtype(torch.float32)
+            torch.set_float32_matmul_precision("highest")
+            return super().state_dict(*args, **kwargs)
+
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        model = EffectfulLinear(3, 3, dtype=torch.float32)
+        checkpoint = tmp_path / "numeric-policy-neutral-save"
+
+        def final_validator() -> None:
+            torch.set_default_dtype(torch.float32)
+            torch.set_float32_matmul_precision("medium")
+
+        core.save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=checkpoint_identity,
+            post_rng_prepublish_validator=final_validator,
+        )
+
+        assert torch.get_default_dtype() is torch.float64
+        assert torch.get_float32_matmul_precision() == "high"
+        verified = core.prepare_checkpoint_load(checkpoint)
+        _, decoded = core._decode_verified_state(verified)
+        assert decoded["rng"]["torch"]["default_dtype"] == "torch.float64"
+        assert decoded["rng"]["torch"]["float32_matmul_precision"] == "high"
+    finally:
+        core.restore_rng_state(ambient)
+
+
+def test_generic_legacy_rng_restore_preserves_live_numeric_policy() -> None:
+    ambient = core.capture_rng_state()
+    try:
+        legacy = core.capture_rng_state()
+        legacy["torch"] = dict(legacy["torch"])
+        legacy["torch"].pop("default_dtype")
+        legacy["torch"].pop("float32_matmul_precision")
+
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        core.restore_rng_state(legacy)
+
+        assert torch.get_default_dtype() is torch.float64
+        assert torch.get_float32_matmul_precision() == "high"
+    finally:
+        core.restore_rng_state(ambient)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("default_dtype", "torch.int32", "default_dtype"),
+        ("float32_matmul_precision", "fastest", "float32_matmul_precision"),
+    ],
+)
+def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    state = core.capture_rng_state()
+    state["torch"] = dict(state["torch"])
+    state["torch"][field] = value
+    cpu_before = torch.get_rng_state().clone()
+    dtype_before = torch.get_default_dtype()
+    precision_before = torch.get_float32_matmul_precision()
+
+    try:
+        with pytest.raises(CheckpointCompatibilityError, match=message):
+            core.restore_rng_state(state)
+
+        torch.testing.assert_close(torch.get_rng_state(), cpu_before, rtol=0, atol=0)
+        assert torch.get_default_dtype() is dtype_before
+        assert torch.get_float32_matmul_precision() == precision_before
+    finally:
+        core.restore_rng_state(ambient)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["default_dtype", "matmul_precision"],
+)
+def test_failed_apply_numeric_policy_rollback_isolates_setter_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        expected = core.capture_rng_state()
+
+        torch.set_default_dtype(torch.float32)
+        torch.set_float32_matmul_precision("highest")
+        primary = RuntimeError("injected checkpoint apply failure")
+
+        def fail_default_dtype(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("injected default-dtype rollback failure")
+
+        def fail_matmul_precision(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("injected matmul-precision rollback failure")
+
+        with monkeypatch.context() as patch:
+            if fault == "default_dtype":
+                patch.setattr(
+                    core,
+                    "_restore_torch_default_dtype",
+                    fail_default_dtype,
+                )
+            else:
+                patch.setattr(
+                    core,
+                    "_restore_torch_matmul_precision",
+                    fail_matmul_precision,
+                )
+            trainer_adapter._restore_ambient_rng_after_failed_apply(
+                expected,
+                primary,
+            )
+
+        notes = getattr(primary, "__notes__", ())
+        if fault == "default_dtype":
+            assert torch.get_default_dtype() is torch.float32
+            assert torch.get_float32_matmul_precision() == "high"
+            assert any("default-dtype rollback" in note for note in notes)
+        else:
+            assert torch.get_default_dtype() is torch.float64
+            assert torch.get_float32_matmul_precision() == "highest"
+            assert any("float32-matmul-precision rollback" in note for note in notes)
+    finally:
+        core.restore_rng_state(ambient)
 
 
 def _seal_warn_only_mismatch(
