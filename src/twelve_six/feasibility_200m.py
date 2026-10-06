@@ -164,11 +164,11 @@ def _detached_json_value(value: Any, *, field: str) -> Any:
 def compute_packet_sha256(packet: Mapping[str, Any]) -> str:
     """Hash all packet semantics except the self-hash field."""
 
-    if not isinstance(packet, Mapping):
+    detached = _detached_json_value(packet, field="packet")
+    if type(detached) is not dict:
         raise FeasibilityPacketError("packet_not_mapping")
-    body = dict(packet)
-    body.pop("packet_sha256", None)
-    return canonical_sha256(body)
+    detached.pop("packet_sha256", None)
+    return canonical_sha256(detached)
 
 
 def _is_git_sha(value: Any) -> bool:
