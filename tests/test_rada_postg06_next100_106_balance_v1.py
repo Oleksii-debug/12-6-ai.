@@ -831,6 +831,22 @@ def test_compare_outputs_accepts_bound_checkout_provenance(
         return value
 
     monkeypatch.setattr(target, "verify_source_head", accept_head)
+    expected_result = json.loads(
+        (a / "balance-result.json").read_text(encoding="utf-8")
+    )
+
+    class ReplayGate:
+        def validate_vector(self, value: dict) -> None:
+            assert value["dedup_authority"]["terminal_verdict"] == "PASS"
+
+        def evaluate(self, policy: dict, value: dict) -> dict:
+            return expected_result
+
+    monkeypatch.setattr(
+        target,
+        "load_canonical_authorities",
+        lambda: (ReplayGate(), object(), {}),
+    )
     proof_path = tmp_path / "proof-provenance-ok.json"
     proof = target.compare_outputs(
         a,
@@ -877,6 +893,7 @@ def test_compare_outputs_rejects_unbound_extra_files(tmp_path: Path) -> None:
     ):
         target.compare_outputs(a, b, tmp_path / "proof-extra.json")
 
+
 def test_write_output_dir_rejects_receipt_before_children(tmp_path: Path) -> None:
     output = tmp_path / "receipt-first"
     output.mkdir()
@@ -900,6 +917,7 @@ def test_write_output_dir_rejects_receipt_before_children(tmp_path: Path) -> Non
     assert sorted(path.name for path in output.iterdir()) == [
         "execution-receipt.json"
     ]
+
 
 def test_git_helper_maps_called_process_error_to_domain_error(
     monkeypatch: pytest.MonkeyPatch,
@@ -930,6 +948,7 @@ def test_verify_source_head_maps_git_launch_failure(
         match="git merge-base failed",
     ):
         target.verify_source_head(expected)
+
 
 def test_compare_outputs_rejects_composition_zero_credit_reseal(
     tmp_path: Path,
@@ -1008,4 +1027,42 @@ def test_compare_outputs_rejects_post_g06_chain_drift(tmp_path: Path) -> None:
         match="post-G06 identity differs across evidence chain",
     ):
         target.compare_outputs(a, b, tmp_path / "proof-post-g06.json")
+
+
+def test_compare_outputs_rejects_nonreproducible_canonical_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a = tmp_path / "a-replay-drift"
+    b = tmp_path / "b-replay-drift"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    monkeypatch.setattr(target, "verify_dependency_blobs", lambda: None)
+    monkeypatch.setattr(target, "verify_source_head", lambda value: value)
+
+    class DriftGate:
+        def validate_vector(self, value: dict) -> None:
+            assert value["dedup_authority"]["terminal_verdict"] == "PASS"
+
+        def evaluate(self, policy: dict, value: dict) -> dict:
+            return {"replayed": False}
+
+    monkeypatch.setattr(
+        target,
+        "load_canonical_authorities",
+        lambda: (DriftGate(), object(), {}),
+    )
+    proof = tmp_path / "proof-replay-drift.json"
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="balance result is not a deterministic replay of canonical gate",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            proof,
+            enforce_checkout_provenance=True,
+        )
+
+    assert not proof.exists()
 
