@@ -16,8 +16,8 @@ from typing import Any
 
 from twelve_six.data.current_clean_balanced_selection_v1 import (
     SELECTION_REALIZATION_POLICY,
-    _NoExactRecordSubset,
     _exact_record_subset,
+    _NoExactRecordSubset,
 )
 
 PRODUCT_HEAD = "c3b122d9361c3d18142c37e9f387d1f685d57a56"
