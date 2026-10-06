@@ -406,32 +406,42 @@ def verify_parent(
     return report_id, evidence_id, proof_id
 
 
-def materialize_quality_survivors_with_partial(
-    inputs: Sequence[Mapping[str, str]],
+def _materialize_quality_survivors_with_partial(
+    inputs: list[dict[str, str]],
     metadata: Mapping[str, Mapping[str, str]],
     quality: Mapping[str, Any],
-) -> tuple[list[dict[str, str]], dict[str, int], dict[str, Any]]:
-    """Materialize exact authoritative G05 accepted windows."""
+) -> tuple[
+    list[dict[str, str]],
+    dict[str, int],
+    dict[str, Any],
+]:
+    """Materialize authoritative G05 accepted units, including partial windows.
+
+    This is the exact seam proven by the terminal Rada quality-window lineage:
+    a RETAIN_PARTIAL natural-language document emits each accepted authoritative
+    quality window independently; rejected siblings are not allowed to evict
+    accepted siblings. The current G05 authority remains the sole source of
+    spans, decisions, hashes, and byte counts.
+    """
     raw_rows = quality.get("records")
     require(isinstance(raw_rows, list), "G05 records missing")
     by_id: dict[str, Mapping[str, Any]] = {}
-    for raw in raw_rows:
-        require(isinstance(raw, Mapping), "G05 row must be an object")
-        record_id = raw.get("record_id")
+    for row in raw_rows:
+        require(isinstance(row, Mapping), "G05 record is not an object")
+        record_id = row.get("record_id")
         require(
-            isinstance(record_id, str)
-            and bool(record_id)
-            and record_id not in by_id,
-            "G05 record-id drift",
+            isinstance(record_id, str) and bool(record_id),
+            "G05 record_id missing",
         )
-        by_id[record_id] = raw
+        require(record_id not in by_id, "duplicate G05 record_id")
+        by_id[record_id] = row
     require(
         set(by_id) == {row["id"] for row in inputs},
         "G05/input record-set drift",
     )
 
     output: list[dict[str, str]] = []
-    output_ids: set[str] = set()
+    seen_output_ids: set[str] = set()
     partial_projection: list[dict[str, Any]] = []
     stats = {
         "g05_reject_documents": 0,
@@ -464,8 +474,8 @@ def materialize_quality_survivors_with_partial(
             f"G05 payload binding drift: {record_id}",
         )
         status = row.get("status")
-        authoritative_unit = row.get("authoritative_unit")
         units = row.get("units")
+        authoritative_unit = row.get("authoritative_unit")
         require(
             status in {"RETAIN_ALL", "RETAIN_PARTIAL", "REJECT_DOCUMENT"},
             f"G05 status drift: {record_id}",
@@ -485,9 +495,9 @@ def materialize_quality_survivors_with_partial(
         rejected_bytes = 0
         expected_start = 0
         accepted_units: list[tuple[Mapping[str, Any], str]] = []
-        seen_units: set[str] = set()
+        seen_unit_ids: set[str] = set()
         for index, unit in enumerate(units):
-            require(isinstance(unit, Mapping), "G05 unit must be object")
+            require(isinstance(unit, Mapping), "G05 unit must be an object")
             start = unit.get("start_char")
             end = unit.get("end_char")
             accepted = unit.get("accepted")
@@ -501,15 +511,15 @@ def materialize_quality_survivors_with_partial(
             )
             require(
                 type(accepted) is bool,
-                f"G05 accepted flag drift: {record_id}",
+                f"G05 unit accepted type drift: {record_id}",
             )
             require(
                 isinstance(unit_id, str)
                 and bool(unit_id)
-                and unit_id not in seen_units,
-                f"G05 unit-id drift: {record_id}",
+                and unit_id not in seen_unit_ids,
+                f"G05 unit_id drift: {record_id}",
             )
-            seen_units.add(unit_id)
+            seen_unit_ids.add(unit_id)
             if authoritative_unit == "DOCUMENT":
                 require(
                     len(units) == 1
@@ -523,19 +533,21 @@ def materialize_quality_survivors_with_partial(
                 require(
                     unit_id
                     == f"{record_id}#quality-window-{index:04d}",
-                    f"G05 window identity drift: {record_id}",
+                    f"G05 quality-window identity drift: {record_id}",
                 )
+
             piece = text[start:end]
             piece_raw = piece.encode("utf-8")
+            piece_sha = sha256(piece_raw)
             require(
-                unit.get("payload_sha256") == sha256(piece_raw)
+                unit.get("payload_sha256") == piece_sha
                 and unit.get("utf8_bytes") == len(piece_raw),
                 f"G05 unit payload drift: {unit_id}",
             )
-            decision = unit.get("decision_sha256")
+            decision_sha = unit.get("decision_sha256")
             require(
-                isinstance(decision, str)
-                and _SHA64.fullmatch(decision) is not None,
+                isinstance(decision_sha, str)
+                and _SHA64.fullmatch(decision_sha) is not None,
                 f"G05 decision identity drift: {unit_id}",
             )
             if accepted:
@@ -554,21 +566,24 @@ def materialize_quality_survivors_with_partial(
         require(
             accepted_bytes == row.get("retained_utf8_bytes")
             and rejected_bytes == row.get("rejected_utf8_bytes"),
-            f"G05 byte accounting drift: {record_id}",
+            f"G05 retained/rejected byte accounting drift: {record_id}",
         )
         detail["retained_utf8_bytes"] += accepted_bytes
         detail["rejected_utf8_bytes"] += rejected_bytes
-        meta = metadata[record_id]
 
+        meta = metadata[record_id]
         if status == "RETAIN_ALL":
             require(
                 accepted_bytes == len(payload)
                 and rejected_bytes == 0
                 and len(accepted_units) == len(units),
-                f"G05 RETAIN_ALL drift: {record_id}",
+                f"G05 RETAIN_ALL vector drift: {record_id}",
             )
-            require(record_id not in output_ids, "G05 output ID collision")
-            output_ids.add(record_id)
+            require(
+                record_id not in seen_output_ids,
+                f"G05 materialized record-id collision: {record_id}",
+            )
+            seen_output_ids.add(record_id)
             output.append(
                 {
                     "record_id": record_id,
@@ -586,15 +601,18 @@ def materialize_quality_survivors_with_partial(
                 accepted_bytes == 0
                 and rejected_bytes == len(payload)
                 and not accepted_units,
-                f"G05 rejected document retained bytes: {record_id}",
+                f"G05 rejected record retained bytes: {record_id}",
             )
             stats["g05_reject_documents"] += 1
             detail["reject_documents"] += 1
             continue
 
         require(
-            authoritative_unit == "BOUNDED_NATURAL_LANGUAGE_WINDOW"
-            and accepted_bytes > 0
+            authoritative_unit == "BOUNDED_NATURAL_LANGUAGE_WINDOW",
+            f"G05 partial row is not authoritative windows: {record_id}",
+        )
+        require(
+            accepted_bytes > 0
             and rejected_bytes > 0
             and accepted_units
             and len(accepted_units) < len(units),
@@ -602,14 +620,19 @@ def materialize_quality_survivors_with_partial(
         )
         stats["g05_partial_documents"] += 1
         detail["partial_documents"] += 1
-        detail["partial_rejected_units"] += len(units) - len(accepted_units)
+        rejected_unit_count = len(units) - len(accepted_units)
+        detail["partial_rejected_units"] += rejected_unit_count
+
         for unit, piece in accepted_units:
             piece_raw = piece.encode("utf-8")
             piece_sha = sha256(piece_raw)
             unit_id = str(unit["unit_id"])
             derived_id = f"{unit_id}:{piece_sha}"
-            require(derived_id not in output_ids, "G05 derived ID collision")
-            output_ids.add(derived_id)
+            require(
+                derived_id not in seen_output_ids,
+                f"G05 derived record-id collision: {derived_id}",
+            )
+            seen_output_ids.add(derived_id)
             output.append(
                 {
                     "record_id": derived_id,
@@ -636,16 +659,29 @@ def materialize_quality_survivors_with_partial(
             )
             detail["partial_emitted_units"] += 1
 
-    require(bool(output), "G05 removed every post-DATA232 record")
+    require(bool(output), "G05 removed every post-decontamination record")
     require(
         detail["input_utf8_bytes"]
         == detail["retained_utf8_bytes"] + detail["rejected_utf8_bytes"],
         "G05 byte conservation drift",
     )
     require(
+        detail["partial_documents"] == stats["g05_partial_documents"],
+        "G05 partial-document accounting drift",
+    )
+    require(
+        detail["reject_documents"] == stats["g05_reject_documents"],
+        "G05 rejected-document accounting drift",
+    )
+    require(
+        detail["partial_rejected_units"]
+        <= stats["g05_rejected_units"],
+        "G05 partial rejected-unit accounting drift",
+    )
+    require(
         len(output)
         == detail["retain_all_documents"] + detail["partial_emitted_units"],
-        "G05 output count drift",
+        "G05 materialized output-count drift",
     )
     output.sort(key=lambda row: row["record_id"])
     detail["partial_unit_projection_sha256"] = sha256(
@@ -653,6 +689,7 @@ def materialize_quality_survivors_with_partial(
     )
     detail["partial_unit_projection_count"] = len(partial_projection)
     return output, stats, detail
+
 
 
 def execute(args: argparse.Namespace) -> dict[str, Any]:
@@ -747,7 +784,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     quality_survivors, quality_stats, partial_detail = (
-        materialize_quality_survivors_with_partial(
+        _materialize_quality_survivors_with_partial(
             quality_inputs,
             metadata,
             quality,
