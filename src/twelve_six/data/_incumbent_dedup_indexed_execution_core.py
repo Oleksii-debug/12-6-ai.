@@ -724,6 +724,93 @@ def _add_bucket_pairs(
                 )
 
 
+def _minimum_overlap_prefix(
+    values: Sequence[str],
+    threshold: float,
+    frequencies: Mapping[str, int],
+) -> tuple[str, ...]:
+    """Pick a deterministic prefix that every threshold-overlap peer must touch."""
+    unique = tuple(sorted(set(values)))
+    if not unique:
+        return ()
+    if type(threshold) is not float or threshold <= 0.0 or threshold > 1.0:
+        raise IndexedExecutionError("candidate threshold must be a positive float <= 1")
+    required_overlap = max(1, int(threshold * len(unique)))
+    prefix_length = min(len(unique), len(unique) - required_overlap + 1)
+    return tuple(
+        sorted(unique, key=lambda value: (frequencies.get(value, 0), value))[
+            :prefix_length
+        ]
+    )
+
+
+def _minimum_weight_prefix(
+    values: Sequence[str],
+    required_shared_weight: int,
+    frequencies: Mapping[str, int],
+) -> tuple[str, ...]:
+    """Pick lines whose omitted complement cannot meet the shared-weight predicate."""
+    unique = tuple(sorted(set(values)))
+    if type(required_shared_weight) is not int or required_shared_weight <= 0:
+        raise IndexedExecutionError("required_shared_weight must be a positive exact int")
+    remaining_weight = sum(len(value) for value in unique)
+    if remaining_weight < required_shared_weight:
+        return ()
+    selected: list[str] = []
+    for value in sorted(
+        unique,
+        key=lambda item: (frequencies.get(item, 0), -len(item), item),
+    ):
+        selected.append(value)
+        remaining_weight -= len(value)
+        if remaining_weight < required_shared_weight:
+            break
+    return tuple(selected)
+
+
+def _add_cross_bucket_pairs(
+    prefix_bucket: Sequence[int],
+    full_bucket: Sequence[int],
+    packed: set[int],
+    count: int,
+    candidate_limit: int,
+    pair_expansion_limit: int,
+    seen_buckets: set[tuple[tuple[int, ...], tuple[int, ...]]],
+    work: dict[str, int],
+) -> None:
+    prefix = tuple(sorted(set(prefix_bucket)))
+    full = tuple(sorted(set(full_bucket)))
+    if not prefix:
+        return
+    prefix_members = set(prefix)
+    if not prefix_members.issubset(full):
+        raise IndexedExecutionError("candidate prefix bucket is not a subset of full postings")
+    signature = (prefix, full)
+    if signature in seen_buckets:
+        return
+    seen_buckets.add(signature)
+    work["unique_bucket_signatures"] += 1
+    expansion = len(prefix) * (len(full) - len(prefix))
+    expansion += len(prefix) * (len(prefix) - 1) // 2
+    if work["pair_expansion_attempts"] + expansion > pair_expansion_limit:
+        raise IndexedExecutionError(
+            f"pair expansion work budget exceeded: >{pair_expansion_limit}; refusing unbounded execution"
+        )
+    work["pair_expansion_attempts"] += expansion
+    for left in prefix:
+        for right in full:
+            if left == right:
+                continue
+            if right in prefix_members and right < left:
+                continue
+            low, high = (left, right) if left < right else (right, left)
+            packed.add(low * count + high)
+            if len(packed) > candidate_limit:
+                raise IndexedExecutionError(
+                    f"candidate pair budget exceeded: >{candidate_limit}; refusing unbounded execution"
+                )
+
+
 def _edge_lines(v1: Any, text: str) -> frozenset[str]:
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     values = {
@@ -741,7 +828,7 @@ def candidate_pair_indices_with_stats(
     max_index_postings: int = DEFAULT_MAX_INDEX_POSTINGS,
     max_pair_expansions: int = DEFAULT_MAX_PAIR_EXPANSIONS,
 ) -> tuple[list[tuple[int, int]], dict[str, int]]:
-    """Return the conservative candidate union plus deterministic index-work telemetry."""
+    """Return the conservative threshold-aware candidate union plus work telemetry."""
     candidate_limit = _positive_exact_int(max_candidate_pairs, "max_candidate_pairs")
     posting_limit = _positive_exact_int(max_index_postings, "max_index_postings")
     expansion_limit = _positive_exact_int(max_pair_expansions, "max_pair_expansions")
@@ -749,6 +836,7 @@ def candidate_pair_indices_with_stats(
     packed: set[int] = set()
     equal_indexes: dict[tuple[str, str], list[int]] = defaultdict(list)
     overlap_indexes: dict[tuple[str, str], list[int]] = defaultdict(list)
+    prefix_indexes: dict[tuple[str, str], list[int]] = defaultdict(list)
     work = {"index_postings": 0, "pair_expansion_attempts": 0, "unique_bucket_signatures": 0}
 
     def post(index_map: dict[tuple[str, str], list[int]], key: tuple[str, str], index: int) -> None:
@@ -759,6 +847,7 @@ def candidate_pair_indices_with_stats(
         index_map[key].append(index)
         work["index_postings"] += 1
 
+    edge_values: list[frozenset[str]] = []
     for index, item in enumerate(fingerprints):
         row = item["row"]
         post(equal_indexes, ("origin", str(row["origin_key"])), index)
@@ -771,19 +860,79 @@ def candidate_pair_indices_with_stats(
         if kind == "code":
             for shingle in item["skeleton_shingles"]:
                 post(overlap_indexes, ("code:skeleton", str(shingle)), index)
-        for line in _edge_lines(v1, str(item["text"])):
+        edges = _edge_lines(v1, str(item["text"]))
+        edge_values.append(edges)
+        for line in edges:
             post(overlap_indexes, ("edge", line), index)
 
-    seen_buckets: set[tuple[int, ...]] = set()
+    def frequencies(family: str) -> dict[str, int]:
+        return {
+            value: len(bucket)
+            for (candidate_family, value), bucket in overlap_indexes.items()
+            if candidate_family == family
+        }
+
+    natural_frequencies = frequencies("natural:content")
+    code_frequencies = frequencies("code:content")
+    skeleton_frequencies = frequencies("code:skeleton")
+    edge_frequencies = frequencies("edge")
+
+    for index, item in enumerate(fingerprints):
+        row = item["row"]
+        kind = "code" if row["modality"] == "code" else "natural"
+        family = f"{kind}:content"
+        threshold = float(EXPECTED_THRESHOLDS[f"{kind}_near_jaccard"])
+        content_frequencies = code_frequencies if kind == "code" else natural_frequencies
+        for shingle in _minimum_overlap_prefix(
+            tuple(str(value) for value in item["shingles"]),
+            threshold,
+            content_frequencies,
+        ):
+            post(prefix_indexes, (family, shingle), index)
+
+        if kind == "code":
+            for shingle in _minimum_overlap_prefix(
+                tuple(str(value) for value in item["skeleton_shingles"]),
+                float(EXPECTED_THRESHOLDS["code_copy_jaccard"]),
+                skeleton_frequencies,
+            ):
+                post(prefix_indexes, ("code:skeleton", shingle), index)
+
+        for line in _minimum_weight_prefix(
+            tuple(edge_values[index]),
+            80,
+            edge_frequencies,
+        ):
+            post(prefix_indexes, ("edge", line), index)
+
+    seen_equal_buckets: set[tuple[int, ...]] = set()
     for bucket in equal_indexes.values():
-        _add_bucket_pairs(bucket, packed, count, candidate_limit, expansion_limit, seen_buckets, work)
-    for bucket in overlap_indexes.values():
-        _add_bucket_pairs(bucket, packed, count, candidate_limit, expansion_limit, seen_buckets, work)
+        _add_bucket_pairs(
+            bucket,
+            packed,
+            count,
+            candidate_limit,
+            expansion_limit,
+            seen_equal_buckets,
+            work,
+        )
+
+    seen_overlap_buckets: set[tuple[tuple[int, ...], tuple[int, ...]]] = set()
+    for key, prefix_bucket in prefix_indexes.items():
+        _add_cross_bucket_pairs(
+            prefix_bucket,
+            overlap_indexes[key],
+            packed,
+            count,
+            candidate_limit,
+            expansion_limit,
+            seen_overlap_buckets,
+            work,
+        )
 
     pairs = [(value // count, value % count) for value in sorted(packed)] if count else []
     work["unique_candidate_pairs"] = len(pairs)
     return pairs, work
-
 
 def candidate_pair_indices(
     v1: Any,
