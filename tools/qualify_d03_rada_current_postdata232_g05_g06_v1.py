@@ -9,13 +9,20 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 EVIDENCE_SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
 PROOF_SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-two-clean.v1"
@@ -58,6 +65,20 @@ EXPECTED_TRUTH_BOUNDARY = {
     "scale_promotion_authorized": False,
 }
 EXPECTED_NEXT_GATE = "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST"
+PINNED_AUTHORITY_BLOBS = {
+    "src/twelve_six/__init__.py":
+        "5433166c507bc845bd12d8d5c4145f1fbedda204",
+    "src/twelve_six/data/document_quality.py":
+        "b1461263034b4fb9510479b20c9697e22faa5f97",
+    "src/twelve_six/data/quality_granularity.py":
+        "513523b86824c423cad97352b3abb3d1241531b9",
+    "src/twelve_six/data/quality_execution_authority.py":
+        "4659a9d4aba49908f372250904a54361c8d8cf46",
+    "src/twelve_six/data/privacy_execution_authority.py":
+        "9215287e81c0a82f05ec8405dc4f34c60313c193",
+    "src/twelve_six/data/privacy_filter_v3.py":
+        "bcc5938395724f6728ab212f98b39f2334b0f37d",
+}
 
 
 class G05G06TwoCleanError(RuntimeError):
@@ -174,6 +195,7 @@ def _git(*args: str) -> str:
     try:
         return subprocess.check_output(
             ["git", *args],
+            cwd=ROOT,
             text=True,
             encoding="utf-8",
             stderr=subprocess.DEVNULL,
@@ -189,6 +211,7 @@ def verify_checkout(expected_execution_head: str) -> str:
     try:
         ancestry = subprocess.run(
             ["git", "merge-base", "--is-ancestor", PARENT_EXECUTION_HEAD, expected],
+            cwd=ROOT,
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -200,6 +223,122 @@ def verify_checkout(expected_execution_head: str) -> str:
         "execution HEAD is outside the exact matrix-DATA232 successor stack",
     )
     return expected
+
+
+def verify_dependency_blobs() -> None:
+    for relative, expected in PINNED_AUTHORITY_BLOBS.items():
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"dependency path invalid: {relative}")
+        require(
+            _git("hash-object", str(path)) == expected,
+            f"canonical authority blob drift: {relative}",
+        )
+
+
+def _verify_module_provenance(module: Any, relative: str) -> None:
+    raw = getattr(module, "__file__", None)
+    require(isinstance(raw, str) and raw, f"module path missing: {relative}")
+    try:
+        observed = Path(raw).resolve(strict=True)
+        expected = (ROOT / relative).resolve(strict=True)
+    except OSError as exc:
+        raise G05G06TwoCleanError(f"module provenance drift: {relative}") from exc
+    require(observed == expected, f"module provenance drift: {relative}")
+
+
+def load_authority_verifiers() -> tuple[Any, Any]:
+    verify_dependency_blobs()
+    quality_module = importlib.import_module(
+        "twelve_six.data.quality_execution_authority"
+    )
+    privacy_module = importlib.import_module(
+        "twelve_six.data.privacy_execution_authority"
+    )
+    _verify_module_provenance(
+        quality_module,
+        "src/twelve_six/data/quality_execution_authority.py",
+    )
+    _verify_module_provenance(
+        privacy_module,
+        "src/twelve_six/data/privacy_execution_authority.py",
+    )
+    return (
+        quality_module.verify_quality_execution_root,
+        privacy_module.verify_privacy_execution_root,
+    )
+
+
+def _verify_survivor_inventory(inventory: Mapping[str, Any]) -> None:
+    required_root = {
+        "schema_version",
+        "record_count",
+        "total_payload_bytes",
+        "record_inventory_digest_sha256",
+        "payload_inventory_digest_sha256",
+        "records",
+    }
+    require(set(inventory) == required_root, "survivor inventory schema is not closed")
+    require(
+        inventory.get("schema_version") == "12-6.data526-record-inventory.v1",
+        "survivor inventory schema drift",
+    )
+    rows = inventory.get("records")
+    require(isinstance(rows, list) and bool(rows), "survivor inventory records missing")
+    required_row = {
+        "record_id",
+        "source_id",
+        "family",
+        "modality",
+        "payload_sha256",
+        "payload_bytes",
+    }
+    previous: str | None = None
+    total_bytes = 0
+    for index, row in enumerate(rows):
+        require(
+            isinstance(row, Mapping) and set(row) == required_row,
+            f"survivor inventory row {index} schema drift",
+        )
+        for key in ("record_id", "source_id", "family", "modality"):
+            require(
+                isinstance(row.get(key), str) and bool(row[key]),
+                f"survivor inventory row {index} {key} invalid",
+            )
+        record_id = str(row["record_id"])
+        require(
+            previous is None or record_id > previous,
+            "survivor inventory record order/uniqueness drift",
+        )
+        previous = record_id
+        require_sha256(row.get("payload_sha256"), f"survivor row {index} payload SHA")
+        payload_bytes = row.get("payload_bytes")
+        require(
+            type(payload_bytes) is int and payload_bytes > 0,
+            f"survivor row {index} payload bytes invalid",
+        )
+        total_bytes += payload_bytes
+    payload_projection = [
+        {
+            "record_id": row["record_id"],
+            "payload_sha256": row["payload_sha256"],
+            "payload_bytes": row["payload_bytes"],
+        }
+        for row in rows
+    ]
+    require(inventory.get("record_count") == len(rows), "survivor record count drift")
+    require(
+        inventory.get("total_payload_bytes") == total_bytes,
+        "survivor payload-byte accounting drift",
+    )
+    require(
+        inventory.get("record_inventory_digest_sha256") == sha256(canonical(rows)),
+        "survivor record inventory digest drift",
+    )
+    require(
+        inventory.get("payload_inventory_digest_sha256")
+        == sha256(canonical(payload_projection)),
+        "survivor payload inventory digest drift",
+    )
 
 
 def write_immutable_bytes(path: Path, payload: bytes) -> None:
@@ -239,6 +378,8 @@ def _verify_evidence(
     expected_execution_head: str,
     expected_parent_artifact_id: int,
     expected_parent_artifact_zip_sha256: str,
+    quality_root_verifier: Any | None = None,
+    privacy_root_verifier: Any | None = None,
 ) -> dict[str, Any]:
     evidence = values["evidence"]
     quality = values["quality"]
@@ -299,6 +440,29 @@ def _verify_evidence(
         g06.get("execution_identity_sha256") == privacy_id,
         "G06 evidence/authority identity drift",
     )
+    if quality_root_verifier is not None:
+        quality_root_verifier(
+            quality,
+            expected_input_manifest_sha256=require_sha256(
+                parent.get("data232_execution_identity_sha256"),
+                "parent DATA232 execution identity",
+            ),
+            expected_input_rows_sha256=require_sha256(
+                g05.get("input_rows_sha256"),
+                "G05 input rows identity",
+            ),
+            expected_execution_identity_sha256=quality_id,
+        )
+    if privacy_root_verifier is not None:
+        privacy_root_verifier(
+            privacy,
+            expected_input_rows_sha256=require_sha256(
+                g06.get("input_rows_sha256"),
+                "G06 input rows identity",
+            ),
+            expected_execution_identity_sha256=privacy_id,
+        )
+
     require(
         g06.get("exact_payload_collision_free") is True,
         "G06 exact-payload uniqueness is nonterminal",
@@ -330,6 +494,7 @@ def _verify_evidence(
         "survivor inventory durable file hash drift",
     )
 
+    _verify_survivor_inventory(inventory)
     survivor = evidence.get("survivor_inventory")
     require(isinstance(survivor, Mapping), "survivor summary missing")
     for field in (
@@ -409,6 +574,15 @@ def qualify(
     resolved_b = _resolve_dir(output_b, "output B")
     require(resolved_a != resolved_b, "two-clean output directories must be distinct")
 
+    quality_root_verifier = None
+    privacy_root_verifier = None
+    if enforce_checkout_provenance:
+        verify_checkout(expected_execution_head)
+        (
+            quality_root_verifier,
+            privacy_root_verifier,
+        ) = load_authority_verifiers()
+
     raw_a, values_a = _read_bundle(output_a, "output A")
     raw_b, values_b = _read_bundle(output_b, "output B")
     file_hashes: dict[str, str] = {}
@@ -424,17 +598,18 @@ def qualify(
         expected_execution_head=expected_execution_head,
         expected_parent_artifact_id=expected_parent_artifact_id,
         expected_parent_artifact_zip_sha256=expected_parent_artifact_zip_sha256,
+        quality_root_verifier=quality_root_verifier,
+        privacy_root_verifier=privacy_root_verifier,
     )
     summary_b = _verify_evidence(
         values_b,
         expected_execution_head=expected_execution_head,
         expected_parent_artifact_id=expected_parent_artifact_id,
         expected_parent_artifact_zip_sha256=expected_parent_artifact_zip_sha256,
+        quality_root_verifier=quality_root_verifier,
+        privacy_root_verifier=privacy_root_verifier,
     )
     require(summary_a == summary_b, "two-clean semantic summary differs")
-
-    if enforce_checkout_provenance:
-        verify_checkout(expected_execution_head)
 
     core = {
         "schema_version": PROOF_SCHEMA,
