@@ -145,6 +145,8 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "range": builtins.range,
     "str": builtins.str,
 }
+_EXPECTED_BYTE_JSON_MODULE = json
+_EXPECTED_BYTE_HASHLIB_MODULE = hashlib
 _EXPECTED_BYTE_JSON_DUMPS = json.dumps
 _EXPECTED_BYTE_HASHLIB_SHA1 = hashlib.sha1
 _EXPECTED_BYTE_HASHLIB_SHA256 = hashlib.sha256
@@ -311,6 +313,14 @@ def _verify_byte_tokenizer_runtime_dependencies() -> None:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime dependency drift: builtins.{name}"
             )
+    if json is not _EXPECTED_BYTE_JSON_MODULE:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: json module"
+        )
+    if hashlib is not _EXPECTED_BYTE_HASHLIB_MODULE:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: hashlib module"
+        )
     if json.dumps is not _EXPECTED_BYTE_JSON_DUMPS:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: json.dumps"
@@ -337,11 +347,11 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: TokenizerIdentity"
         )
-    if module_state.get("hashlib") is not hashlib:
+    if module_state.get("hashlib") is not _EXPECTED_BYTE_HASHLIB_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: hashlib"
         )
-    if module_state.get("json") is not json:
+    if module_state.get("json") is not _EXPECTED_BYTE_JSON_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: json"
         )

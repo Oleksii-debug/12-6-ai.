@@ -1224,3 +1224,47 @@ def test_bind_rejects_mutated_shared_stdlib_dependency_member(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
 
+@pytest.mark.parametrize(
+    ("module_name", "expected_module"),
+    [
+        ("json", authority._EXPECTED_BYTE_JSON_MODULE),
+        ("hashlib", authority._EXPECTED_BYTE_HASHLIB_MODULE),
+    ],
+)
+def test_bind_rejects_dual_alias_stdlib_dependency_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    module_name: str,
+    expected_module: object,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    class Proxy:
+        def __getattr__(self, name: str):
+            return getattr(expected_module, name)
+
+    proxy = Proxy()
+    monkeypatch.setattr(authority, module_name, proxy)
+    monkeypatch.setattr(byte_module, module_name, proxy)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=(
+            "canonical byte tokenizer runtime dependency drift: "
+            f"{module_name} module"
+        ),
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
