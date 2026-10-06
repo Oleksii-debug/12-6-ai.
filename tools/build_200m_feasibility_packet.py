@@ -251,12 +251,19 @@ def _verify(args: argparse.Namespace) -> int:
             "requirement_evidence_sha256"
         ],
     )
+    packet_sha256 = (
+        packet.get("packet_sha256") if isinstance(packet, dict) else None
+    )
+    if not (
+        isinstance(packet_sha256, str)
+        and len(packet_sha256) == 64
+        and all(character in "0123456789abcdef" for character in packet_sha256)
+    ):
+        packet_sha256 = None
     report = {
         "valid": not errors,
         "errors": errors,
-        "packet_sha256": (
-            packet.get("packet_sha256") if isinstance(packet, dict) else None
-        ),
+        "packet_sha256": packet_sha256,
         "authority_granted": False,
     }
     print(json.dumps(report, sort_keys=True, separators=(",", ":")))
