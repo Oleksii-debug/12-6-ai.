@@ -1290,7 +1290,7 @@ class _FailingReadHandle:
     def __exit__(self, _exc_type, _exc, _traceback):
         return False
 
-    def read(self):
+    def read(self, *_args):
         raise self._failure
 
 
@@ -2187,7 +2187,7 @@ def test_hf_bounded_read_rejects_growth_after_stale_fstat(
         )
 
 
-def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
+def test_hf_snapshot_streams_model_weights_outside_metadata_read_cap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -2200,7 +2200,9 @@ def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
         hf_config={"model_type": "twelve_six_export_transactional"},
     )
     real_read = hf_export._read_regular_bytes
+    real_stream = hf_export._stream_regular_sha256
     observed_limits: dict[str, int | None] = {}
+    streamed: list[str] = []
 
     def observe_limit(
         root: Path,
@@ -2208,14 +2210,21 @@ def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
         *,
         max_bytes: int | None = None,
     ):
+        assert name != hf_export.EXPORTED_WEIGHTS_NAME
         observed_limits[name] = max_bytes
         return real_read(root, name, max_bytes=max_bytes)
 
+    def observe_stream(root: Path, name: str):
+        streamed.append(name)
+        return real_stream(root, name)
+
     monkeypatch.setattr(hf_export, "_read_regular_bytes", observe_limit)
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", observe_stream)
 
     hf_export._read_export_snapshot(output)
 
-    assert observed_limits[hf_export.EXPORTED_WEIGHTS_NAME] is None
+    assert streamed == [hf_export.EXPORTED_WEIGHTS_NAME]
+    assert hf_export.EXPORTED_WEIGHTS_NAME not in observed_limits
     assert observed_limits[hf_export.EXPORT_CHECKSUM_NAME] == 256
     for name in (
         hf_export.EXPORTED_CONFIG_NAME,
@@ -2224,6 +2233,113 @@ def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
         hf_export.EXPORT_ATTESTATION_NAME,
     ):
         assert observed_limits[name] == 8 * 1024 * 1024
+
+
+def test_hf_streamed_weight_digest_is_exact_across_multiple_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    payload = b"streamed-weights-" * 17
+    (root / name).write_bytes(payload)
+    monkeypatch.setattr(hf_export, "_STREAM_HASH_CHUNK_BYTES", 13)
+
+    digest, byte_count = hf_export._stream_regular_sha256(root, name)
+
+    assert digest == hf_export.sha256_bytes(payload)
+    assert byte_count == len(payload)
+
+
+def test_hf_streamed_weight_read_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    failure = OSError("simulated streamed weight read failure")
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(failure),
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot read HF-style export artifact",
+    ) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_streamed_weight_read_oserror_survives_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    failure = OSError("simulated streamed weight read failure")
+    real_close = hf_export.os.close
+    real_fstat = hf_export.os.fstat
+    closed: list[int] = []
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(failure),
+    )
+    monkeypatch.setattr(
+        hf_export.os,
+        "close",
+        _close_then_raise_oserror(real_close, real_fstat, closed),
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot read HF-style export artifact",
+    ) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value.__cause__ is failure
+    assert closed
+    assert any(
+        "HF-style export artifact close also failed" in note
+        for note in getattr(caught.value, "__notes__", ())
+    )
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_hf_streamed_weight_interrupt_retains_exact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    primary = interrupt_type("simulated streamed weight interruption")
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(primary),
+    )
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value is primary
 
 def test_hf_snapshot_rejects_seventh_inventory_entry(
     tmp_path: Path,
