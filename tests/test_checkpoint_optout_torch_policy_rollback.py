@@ -12,8 +12,7 @@ from typing import Any
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointIdentity
-from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
+from twelve_six.checkpoint import CheckpointIdentity, core, progress_trainer, trainer_adapter
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.trainer import Trainer
 
