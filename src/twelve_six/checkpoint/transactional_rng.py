@@ -44,13 +44,13 @@ def _transactional_restore(
     before_policy = _snapshot_torch_policy()
     try:
         return original_restore(state)
-    except BaseException as exc:  # noqa: BLE001 - rollback must be interrupt-safe
+    except BaseException as exc:
         try:
             original_restore(before)
             # Checkpoint-v1 RNG payloads do not encode Torch warn-only mode.
             # Restore the exact ambient process policy alongside RNG rollback.
             _restore_torch_policy(before_policy)
-        except BaseException as rollback_exc:  # noqa: BLE001
+        except BaseException as rollback_exc:
             if not isinstance(exc, Exception):
                 exc.add_note(
                     "RNG rollback of the prior process state also failed: "
