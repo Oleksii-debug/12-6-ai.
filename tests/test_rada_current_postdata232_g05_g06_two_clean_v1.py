@@ -27,12 +27,43 @@ def _bundle(
     path.mkdir()
     quality = {"execution_identity_sha256": _sha("quality"), "records": []}
     privacy = {"execution_identity_sha256": _sha("privacy"), "records": []}
+    inventory_rows = [
+        {
+            "record_id": "r1",
+            "source_id": "s1",
+            "family": "f1",
+            "modality": "uk",
+            "payload_sha256": _sha("payload-1"),
+            "payload_bytes": 10,
+        },
+        {
+            "record_id": "r2",
+            "source_id": "s2",
+            "family": "f2",
+            "modality": "en",
+            "payload_sha256": _sha("payload-2"),
+            "payload_bytes": 10,
+        },
+    ]
+    payload_projection = [
+        {
+            "record_id": row["record_id"],
+            "payload_sha256": row["payload_sha256"],
+            "payload_bytes": row["payload_bytes"],
+        }
+        for row in inventory_rows
+    ]
     inventory = {
+        "schema_version": "12-6.data526-record-inventory.v1",
         "record_count": 2,
         "total_payload_bytes": 20,
-        "record_inventory_digest_sha256": _sha("record-root"),
-        "payload_inventory_digest_sha256": _sha("payload-root"),
-        "records": [],
+        "record_inventory_digest_sha256": target.sha256(
+            target.canonical(inventory_rows)
+        ),
+        "payload_inventory_digest_sha256": target.sha256(
+            target.canonical(payload_projection)
+        ),
+        "records": inventory_rows,
     }
     quality_raw = target.canonical_line(quality)
     privacy_raw = target.canonical_line(privacy)
@@ -45,12 +76,15 @@ def _bundle(
             "execution_head_sha": target.PARENT_EXECUTION_HEAD,
             "artifact_id": parent_artifact_id,
             "artifact_zip_sha256": parent_zip,
+            "data232_execution_identity_sha256": _sha("data232-execution"),
             "two_fresh_data232_processes_byte_identical": True,
         },
         "g05": {
+            "input_rows_sha256": _sha("g05-input"),
             "execution_identity_sha256": quality["execution_identity_sha256"],
         },
         "g06": {
+            "input_rows_sha256": _sha("g06-input"),
             "execution_identity_sha256": privacy["execution_identity_sha256"],
             "exact_payload_collision_free": True,
             "unique_payload_count": 2,
@@ -294,3 +328,120 @@ def test_checkout_provenance_runs_before_proof_write(
         )
     assert calls == ["c" * 40]
     assert not proof_path.exists()
+
+
+def test_two_clean_calls_pinned_text_free_authority_root_verifiers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a = tmp_path / "a-root"
+    b = tmp_path / "b-root"
+    _bundle(a)
+    _bundle(b)
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(
+        target,
+        "verify_checkout",
+        lambda value: value,
+    )
+
+    def quality_verify(
+        authority: dict,
+        *,
+        expected_input_manifest_sha256: str,
+        expected_input_rows_sha256: str,
+        expected_execution_identity_sha256: str,
+    ) -> str:
+        calls.append(
+            (
+                "quality",
+                expected_input_manifest_sha256,
+                expected_input_rows_sha256,
+            )
+        )
+        assert authority["execution_identity_sha256"] == (
+            expected_execution_identity_sha256
+        )
+        return expected_execution_identity_sha256
+
+    def privacy_verify(
+        authority: dict,
+        *,
+        expected_input_rows_sha256: str,
+        expected_execution_identity_sha256: str,
+    ) -> str:
+        calls.append(
+            (
+                "privacy",
+                expected_input_rows_sha256,
+                expected_execution_identity_sha256,
+            )
+        )
+        assert authority["execution_identity_sha256"] == (
+            expected_execution_identity_sha256
+        )
+        return expected_execution_identity_sha256
+
+    monkeypatch.setattr(
+        target,
+        "load_authority_verifiers",
+        lambda: (quality_verify, privacy_verify),
+    )
+    target.qualify(
+        a,
+        b,
+        tmp_path / "proof-root.json",
+        expected_execution_head="c" * 40,
+        expected_parent_artifact_id=123,
+        expected_parent_artifact_zip_sha256="d" * 64,
+        enforce_checkout_provenance=True,
+    )
+
+    assert [row[0] for row in calls] == [
+        "quality",
+        "privacy",
+        "quality",
+        "privacy",
+    ]
+
+
+def test_two_clean_rejects_coherently_resealed_inventory_digest_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-inventory"
+    b = tmp_path / "b-inventory"
+    _bundle(a)
+    _bundle(b)
+    for output in (a, b):
+        inventory_path = output / target.FILES["survivor_inventory"]
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        inventory["record_inventory_digest_sha256"] = "0" * 64
+        inventory_path.write_bytes(target.canonical_line(inventory))
+
+        evidence_path = output / target.FILES["evidence"]
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["survivor_inventory"][
+            "record_inventory_digest_sha256"
+        ] = "0" * 64
+        evidence["durable_artifacts"][
+            "survivor_inventory_file_sha256"
+        ] = target.sha256(target.canonical_line(inventory))
+        evidence["evidence_identity_sha256"] = target.self_hash(
+            evidence, "evidence_identity_sha256"
+        )
+        evidence_path.write_bytes(target.canonical_line(evidence))
+
+    with pytest.raises(
+        target.G05G06TwoCleanError,
+        match="survivor record inventory digest drift",
+    ):
+        target.qualify(
+            a,
+            b,
+            tmp_path / "proof-inventory.json",
+            expected_execution_head="c" * 40,
+            expected_parent_artifact_id=123,
+            expected_parent_artifact_zip_sha256="d" * 64,
+            enforce_checkout_provenance=False,
+        )
