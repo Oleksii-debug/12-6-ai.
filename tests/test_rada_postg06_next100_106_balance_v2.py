@@ -1562,3 +1562,86 @@ def test_compare_outputs_rejects_resealed_execution_profile_drift(
         match="execution receipt profile drift",
     ):
         _compare_outputs(a, b, tmp_path / "proof-profile.json")
+
+def test_load_pinned_json_rejects_path_swap_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = tmp_path / "authority.json"
+    original = target.canonical_line({"schema": "fixture", "value": 1})
+    replacement = tmp_path / "replacement.json"
+    authority.write_bytes(original)
+    replacement.write_bytes(target.canonical_line({"schema": "fixture", "value": 2}))
+
+    actual_open = target.os.open
+    swapped = False
+
+    def open_then_swap(path: object, flags: int) -> int:
+        nonlocal swapped
+        descriptor = actual_open(path, flags)
+        if not swapped and Path(path) == authority:
+            replacement.replace(authority)
+            swapped = True
+        return descriptor
+
+    monkeypatch.setattr(target.os, "open", open_then_swap)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="pathname changed during read",
+    ):
+        target.load_pinned_json(
+            authority,
+            expected_file_sha256=target.sha256(original),
+            label="swap fixture",
+        )
+    assert swapped is True
+
+
+def test_load_pinned_json_rejects_inplace_mutation_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = tmp_path / "authority.json"
+    original = target.canonical_line({"schema": "fixture", "value": "stable"})
+    authority.write_bytes(original)
+
+    actual_read = target.os.read
+    mutated = False
+
+    def read_then_mutate(descriptor: int, count: int) -> bytes:
+        nonlocal mutated
+        chunk = actual_read(descriptor, count)
+        if chunk and not mutated:
+            authority.write_bytes(original + b" ")
+            mutated = True
+        return chunk
+
+    monkeypatch.setattr(target.os, "read", read_then_mutate)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="file changed during read",
+    ):
+        target.load_pinned_json(
+            authority,
+            expected_file_sha256=target.sha256(original),
+            label="mutation fixture",
+        )
+    assert mutated is True
+
+
+def test_load_pinned_json_rejects_symlink(tmp_path: Path) -> None:
+    authority = tmp_path / "authority.json"
+    authority.write_bytes(target.canonical_line({"schema": "fixture"}))
+    link = tmp_path / "authority-link.json"
+    link.symlink_to(authority)
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="file invalid",
+    ):
+        target.load_pinned_json(
+            link,
+            expected_file_sha256=target.sha256(authority.read_bytes()),
+            label="symlink fixture",
+        )
+
