@@ -1796,9 +1796,14 @@ def test_hf_snapshot_rejects_root_replacement_during_artifact_read(
     real_read = hf_export._read_regular_bytes
     replaced = False
 
-    def replace_after_first_read(path: Path, name: str):
+    def replace_after_first_read(
+        path: Path,
+        name: str,
+        *,
+        max_bytes: int | None = None,
+    ):
         nonlocal replaced
-        data = real_read(path, name)
+        data = real_read(path, name, max_bytes=max_bytes)
         if path == root and not replaced:
             path.rename(moved)
             path.mkdir()
