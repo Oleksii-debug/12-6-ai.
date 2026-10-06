@@ -152,6 +152,7 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "len": builtins.len,
     "list": builtins.list,
     "object": builtins.object,
+    "open": builtins.open,
     "range": builtins.range,
     "set": builtins.set,
     "str": builtins.str,
@@ -159,6 +160,7 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "vars": builtins.vars,
 }
 _EXPECTED_BYTE_SOURCE_PATH = _BYTE_TOKENIZER_SOURCE_PATH
+_EXPECTED_BYTE_SOURCE_PATH_TEXT = str(_BYTE_TOKENIZER_SOURCE_PATH)
 _EXPECTED_BYTE_SOURCE_PATH_CLASS = type(_BYTE_TOKENIZER_SOURCE_PATH)
 _EXPECTED_BYTE_SOURCE_READ_BYTES = _EXPECTED_BYTE_SOURCE_PATH_CLASS.read_bytes
 _EXPECTED_TOKENIZER_BASE_MODULE = base_module
@@ -212,14 +214,30 @@ def _git_blob_sha1(payload: bytes) -> str:
     return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
 
 
-def _canonical_byte_tokenizer_git_blob_sha1() -> str:
+def _read_canonical_byte_tokenizer_source() -> bytes:
+    """Read canonical source without mutable Path instance dispatch."""
+
     _verify_byte_tokenizer_runtime_dependencies()
     try:
-        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
+        with _EXPECTED_BYTE_RUNTIME_BUILTINS["open"](
+            _EXPECTED_BYTE_SOURCE_PATH_TEXT,
+            "rb",
+        ) as source_file:
+            payload = source_file.read()
     except OSError as exc:
-        raise TokenizerDecisionError("cannot read canonical byte tokenizer implementation") from exc
+        raise TokenizerDecisionError(
+            "cannot read canonical byte tokenizer implementation"
+        ) from exc
     _verify_byte_tokenizer_runtime_dependencies()
-    return _git_blob_sha1(payload)
+    if type(payload) is not bytes:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer implementation reader returned non-bytes"
+        )
+    return payload
+
+
+def _canonical_byte_tokenizer_git_blob_sha1() -> str:
+    return _git_blob_sha1(_read_canonical_byte_tokenizer_source())
 
 
 def _verify_canonical_byte_tokenizer_implementation() -> str:
@@ -232,14 +250,7 @@ def _verify_canonical_byte_tokenizer_implementation() -> str:
 def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     """Compile the pinned source without executing it and bind live method code."""
 
-    _verify_byte_tokenizer_runtime_dependencies()
-    try:
-        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
-    except OSError as exc:
-        raise TokenizerDecisionError(
-            "cannot read canonical byte tokenizer implementation"
-        ) from exc
-    _verify_byte_tokenizer_runtime_dependencies()
+    payload = _read_canonical_byte_tokenizer_source()
     if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
@@ -287,14 +298,7 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
 def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
     """Compile the pinned source and return behavior-bearing module helper code."""
 
-    _verify_byte_tokenizer_runtime_dependencies()
-    try:
-        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
-    except OSError as exc:
-        raise TokenizerDecisionError(
-            "cannot read canonical byte tokenizer implementation"
-        ) from exc
-    _verify_byte_tokenizer_runtime_dependencies()
+    payload = _read_canonical_byte_tokenizer_source()
     if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
