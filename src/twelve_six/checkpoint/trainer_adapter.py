@@ -1846,6 +1846,13 @@ def _assert_d02_checkpoint_rng_policy(
             f"fields: {missing_numeric_policy}; load with restore_rng=False to "
             "opt out of exact replay"
         )
+    cuda_environment = torch_state.get("cuda_environment")
+    if not isinstance(cuda_environment, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint is missing CUDA process environment; "
+            "load with restore_rng=False to opt out of exact replay"
+        )
+    _core._assert_torch_process_environment_matches(cuda_environment)
 
     # A sealed V1 artifact can be valid while omitting one or more streams.
     # Replaying only the available streams silently changes the next batch.
