@@ -1,0 +1,124 @@
+{
+  "schema": "checkpoint346.model341-current-d05-recovery-evidence-pin.v1",
+  "verdict": "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS",
+  "source": {
+    "workflow_run_id": 37384989803,
+    "workflow_head_sha": "505a4806aa1792ab880324b27769e1958eaf46e6",
+    "dedicated_job_id": 112015991946,
+    "dedicated_job_name": "checkpoint346-current-d05-model341-v8-structural-v2",
+    "dedicated_job_conclusion": "success",
+    "artifact_id": 11377960501,
+    "artifact_name": "checkpoint346-current-d05-model341-v8-structural-v2",
+    "artifact_zip_sha256": "a84da8969030c26c7eec28c3ba5cdfdba16770baa33b2faea4ef00ce0e2cf1e1",
+    "artifact_expires_at": "2026-11-04T22:51:32Z",
+    "raw_result_file": {
+      "name": "checkpoint346-v8-result.json",
+      "bytes": 9780,
+      "sha256": "19f0e1289d5db9fcfc959fc469e58dc76a073bb2c29826a9f7fdc3e18f1658f7",
+      "identity_sha256": "4e3d7b2339e36b45077d135fa5c0424edda291add85a86af89ca5eedb3686da6"
+    },
+    "raw_environment_file": {
+      "name": "checkpoint346-v8-environment.json",
+      "bytes": 2399,
+      "sha256": "d597999aa1bb29e4c8b2b135a8da70af2a0c510cd0a210614f11f72e93e9f32f",
+      "identity_sha256": "1c8a270d378c75d14a89e8379744353a933d99a3fd299722dccd5436668d79e5"
+    }
+  },
+  "runtime": {
+    "product_pr": 2778,
+    "git_sha": "ab87d2390fdea04aa5c3958b24f4e510617fe001",
+    "qualification_git_sha": "505a4806aa1792ab880324b27769e1958eaf46e6",
+    "qualification_runner_blob_sha": "ea09e6ae78bf8f323487876092cd67c2f35afa7e",
+    "checkpoint_core_blob_sha": "915eec641d90ed4f22e6e52dc5fda6f75969876e",
+    "model_blob_sha": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+    "progress_trainer_blob_sha": "917d5b108e83105383e21e167609dac0bea93498",
+    "trainer_adapter_blob_sha": "fb44516b3576496760f9c177e5b57d011477c29c",
+    "trainer_blob_sha": "933ae8621452e1c8cc1e9c71a99dc44e26bb6a7d"
+  },
+  "model341": {
+    "carrier_pr": 802,
+    "carrier_git_sha": "f151c77a8ef8721f0f568509147b1a5f961ae6c7",
+    "candidate_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "execution": {
+    "optimizer_updates_total": 3,
+    "parent_updates": 2,
+    "fresh_process_resumed_updates": 1,
+    "fresh_process_distinct": true,
+    "same_next_step_equal": true,
+    "binding_mismatch_failed_closed": true,
+    "binding_mismatch_retry_same_target": true,
+    "exact_checkpoint_id_bound": true,
+    "exact_manifest_sha256_bound": true,
+    "exact_full_rng_state_equal": true,
+    "full_rng_state_sha256": "1477812827e09bc759e56f909decc7934c05d2131f031c5b6015df7055b42827",
+    "state_hash_scheme": "sha256:length-prefixed-structural-v2",
+    "structural_hash_self_test": true,
+    "device": "cpu",
+    "precision": "fp32",
+    "synthetic_mechanics_only": true
+  },
+  "same_next_step": {
+    "loss": 2.29952073097229,
+    "update_loss": 2.29952073097229,
+    "optimizer_step": 2,
+    "micro_step": 2,
+    "tokens_seen": 2,
+    "model_state_sha256": "2a0d718d4fabb75dc5b9b8aa68bac9b7a203d2266dfefd32718e0d655aed9134",
+    "optimizer_state_sha256": "10d1766ad4c278e17e75f8eedac56b18c5a5b24631fd85d5295d165534c67a96",
+    "trainer_state_sha256": "878e7908a74cf8b75cb06a75dd954db45732c7c8d775d7be27b791dfb43f16c3"
+  },
+  "checkpoint": {
+    "checkpoint_id": "3478547425ea7737a9cf396bbb58f891e98f09c2b873a1598a4e260a8e52fbf1",
+    "manifest_sha256": "067372e7519f3dfa4f9b2c457a1a8596df266b09f626f6476e044f413fbc7a58",
+    "total_bytes": 247810234
+  },
+  "resource_observation": {
+    "scope": "single Ubuntu CPU runner observation; not Windows/CUDA or 200M/1B feasibility",
+    "parent_peak_rss_bytes": 1242091520,
+    "fresh_child_peak_rss_bytes": 1242091520,
+    "concurrent_process_peak_rss_upper_bound_bytes": 2484183040,
+    "fresh_child_before_load_current_rss_bytes": 400203776,
+    "fresh_child_after_load_current_rss_bytes": 815243264,
+    "fresh_child_resume_current_rss_delta_bytes": 415039488,
+    "fresh_child_resume_hwm_growth_bytes": 411914240,
+    "save_trainer_checkpoint_seconds": 3.274488634999983,
+    "load_trainer_checkpoint_seconds": 1.2044059189999814,
+    "baseline_step2_seconds": 0.17741386700001271
+  },
+  "environment": {
+    "python": "3.11.16",
+    "torch": "2.13.0+cpu",
+    "numpy": "2.4.6",
+    "safetensors": "0.8.0",
+    "cuda_hardware_claim": false,
+    "preflight": "PASS",
+    "toolchain_lock_sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3",
+    "cpu_runtime_lock_sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a"
+  },
+  "scientific_credit": {
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false,
+    "optimized_target_exposure": 0,
+    "model_training_credit": false,
+    "learned_weights_created": false,
+    "final_test_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "tokenizer_fit_authorized": false,
+    "scale_promotion_authorized": false
+  },
+  "limits": {
+    "maximum_optimizer_updates": 3,
+    "long_campaign": false,
+    "selection_or_recipe_tuning": false,
+    "learned20m_terminal_claim": false,
+    "windows_cuda_recovery_qualified": false,
+    "realistic_200m_1b_checkpoint_feasibility_claimed": false
+  },
+  "continuation_marker": "[APSTEP:scenario-work%3Ascenario-murmt746-287tfs9%3Achat%3Ageneration-6:132]"
+}
