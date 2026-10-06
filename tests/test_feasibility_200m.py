@@ -602,3 +602,183 @@ def test_validator_rejects_malformed_external_scalar_identities() -> None:
     )
     assert "expected_source_git_sha_invalid" in errors
     assert "expected_measurements_20m_sha256_invalid" in errors
+
+
+
+def _cli_request() -> dict:
+    return {
+        "source_git_sha": GIT_A,
+        "candidate": candidate(),
+        "measurements_20m": measurements(),
+        "measurement_authority": measurement_authority(),
+        "requirement_evidence": evidence(),
+        "decision": "GO",
+    }
+
+
+def test_cli_build_then_verify_round_trip(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    roadmap_path.write_text(
+        json.dumps(roadmap(), sort_keys=True),
+        encoding="utf-8",
+    )
+    input_path.write_text(
+        json.dumps(_cli_request(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    build_args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    assert build_args.run(build_args) == 0
+    build_stdout = capsys.readouterr().out.strip()
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert build_stdout == packet["packet_sha256"]
+
+    verify_args = cli._parser().parse_args(
+        [
+            "verify",
+            "--roadmap",
+            str(roadmap_path),
+            "--packet",
+            str(packet_path),
+            "--expected-identities",
+            str(expected_path),
+        ]
+    )
+    assert verify_args.run(verify_args) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["valid"] is True
+    assert report["errors"] == []
+    assert report["authority_granted"] is False
+
+
+def test_cli_main_wrong_requirement_type_returns_bounded_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "packet.json"
+    request = _cli_request()
+    request["requirement_evidence"] = []
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    input_path.write_text(json.dumps(request), encoding="utf-8")
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "build_200m_feasibility_packet.py",
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert "requirement_evidence_not_object" in captured.err
+    assert not output_path.exists()
+
+
+def test_cli_build_path_collision_preserves_authority_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    original = json.dumps(_cli_request(), sort_keys=True)
+    input_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "build_200m_feasibility_packet.py",
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(input_path),
+        ],
+    )
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert "output_path_collides_with_build_input" in captured.err
+    assert input_path.read_text(encoding="utf-8") == original
+
+
+def test_cli_verify_malformed_roadmap_reports_invalid_not_crash(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    good_roadmap_path = tmp_path / "good-roadmap.json"
+    bad_roadmap_path = tmp_path / "bad-roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    good_roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    bad_roadmap_path.write_text(
+        json.dumps({"evidence_state": []}),
+        encoding="utf-8",
+    )
+    input_path.write_text(json.dumps(_cli_request()), encoding="utf-8")
+
+    build_args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(good_roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    assert build_args.run(build_args) == 0
+    capsys.readouterr()
+
+    verify_args = cli._parser().parse_args(
+        [
+            "verify",
+            "--roadmap",
+            str(bad_roadmap_path),
+            "--packet",
+            str(packet_path),
+            "--expected-identities",
+            str(expected_path),
+        ]
+    )
+    assert verify_args.run(verify_args) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["valid"] is False
+    assert "roadmap_not_at_200m_feasibility_boundary" in report["errors"]
