@@ -11,6 +11,8 @@ canonical NEXT100-106 gate unchanged.
 from __future__ import annotations
 
 import argparse
+import json
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Mapping
@@ -46,6 +48,7 @@ GAPS = {"ua": 0, "en": 0, "code": 0}
 MAX_TOTAL = 6_281_700
 MAX_STRATA = {"ua": 2_826_765, "en": 2_198_595, "code": 1_256_340}
 MIX_SHORTFALL = 13_718_300
+RADA_INVENTORY_MAX_INPUT_BYTES = 64 * 1024 * 1024
 
 DEDUP_SCHEMA = "12-6.d03-current-balance-rada-family-dedup-proof.v1"
 COMPOSITION_SCHEMA = "12-6.d03-current-balance-rada-family-composition.v1"
@@ -61,6 +64,47 @@ lowercase_sha = parent.lowercase_sha
 zero_truth = parent.zero_truth
 verify_inventory = parent.verify_inventory
 gate = parent.gate
+
+
+def _rada_reject_constant(value: str) -> None:
+    raise ExecutionError(f"non-finite JSON constant: {value}")
+
+
+def _rada_parse_float(value: str) -> float:
+    parsed = float(value)
+    require(math.isfinite(parsed), "non-finite JSON number")
+    return parsed
+
+
+def _rada_strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in result, f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def load_rada_inventory(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(RADA_INVENTORY_MAX_INPUT_BYTES + 1)
+    except OSError as exc:
+        raise ExecutionError(f"cannot read {path}") from exc
+    require(
+        len(raw) <= RADA_INVENTORY_MAX_INPUT_BYTES,
+        f"{path} exceeds Rada inventory input bound",
+    )
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_rada_strict_object,
+            parse_constant=_rada_reject_constant,
+            parse_float=_rada_parse_float,
+        )
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ExecutionError(f"invalid strict JSON: {path}") from exc
+    require(isinstance(value, dict), f"{path} must contain an object")
+    return value
 
 
 def verify_base(
@@ -547,7 +591,7 @@ def main() -> int:
             base_vector=load(args.base_next100_json),
             base_receipt=load(args.base_receipt_json),
             rada_evidence=load(args.rada_evidence_json),
-            rada_inventory=load(args.rada_inventory_json),
+            rada_inventory=load_rada_inventory(args.rada_inventory_json),
             rada_proof=load(args.rada_proof_json),
             execution_head=args.execution_head,
         )
