@@ -15,7 +15,6 @@ import statistics
 import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
