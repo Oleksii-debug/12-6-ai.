@@ -31,7 +31,7 @@ jobs:
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_HEAD: "a4663e87b010b190343caf1d42784f5dc7984601"
-      RUNNER_BLOB: "677af80399c8ea3193705e2a23d12c7331d9d254"
+      RUNNER_BLOB: "b5b6cbdda3e565584fc85a32ac3b762f3f340536"
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
       RETAINED_OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
@@ -90,7 +90,7 @@ jobs:
           test "$(git hash-object tools/run_d03_rada_current_data232_handoff_v1.py)" = "$RUNNER_BLOB"
           test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
           test "$(git hash-object src/twelve_six/data/current_reserved_decontamination_v1.py)" = "e5c555e3cd27844e98d4ae91af0b746e427f36c9"
-          test "$(git hash-object src/twelve_six/data/_data232_decontamination_matching.py)" = "4893f345972a248a5073bca14f8f0b3070f01bb9"
+          test "$(git hash-object src/twelve_six/data/_data232_decontamination_matching.py)" = "067e8f7424602612610d824ee645d6a61f38a3e4"
           test "$(git hash-object src/twelve_six/data/decontamination_authority_v2.py)" = "5b7a3341b824862379afe248fdc812316a4d3fc3"
           test "$(git hash-object tests/test_data232_bounded_memory_execution.py)" = "c6e598907f4cd40cb99d3ff19a9460afdaabd8ca"
           test "$(git hash-object src/twelve_six/data/eval303_selection_payload_resolver_v1.py)" = "659cb17fdba903d9c50c1dfc5becf046f523e5ee"
