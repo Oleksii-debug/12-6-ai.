@@ -152,6 +152,33 @@ def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
     return result
 
 
+def _load_git_json(root: Path, treeish: str, path: str) -> dict[str, Any]:
+    completed = subprocess.run(
+        ["git", "-C", str(root), "show", f"{treeish}:{path}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_git_subprocess_env(),
+    )
+    if completed.returncode != 0:
+        raise ValueError(f"cannot read accepted predecessor JSON: {path}")
+    try:
+        value = json.loads(
+            completed.stdout,
+            object_pairs_hook=_unique_object,
+            parse_constant=lambda item: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant: {item}")
+            ),
+        )
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(
+            f"accepted predecessor JSON is not strict unambiguous JSON: {path}"
+        ) from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"accepted predecessor JSON root must be an object: {path}")
+    return value
+
+
 def _validate_rule(rule: object) -> dict[str, str]:
     if not isinstance(rule, dict) or set(rule) != {
         "rule_id",
@@ -275,10 +302,6 @@ def validate_repository_surface_coverage(
             raise ValueError(f"{field} must be lowercase 40-hex")
 
     live_main_sha = _resolve_live_main_sha(repo_root)
-    if current_main_sha != live_main_sha:
-        raise ValueError(
-            "current_repository_main_sha does not match the live repository main ref"
-        )
 
     expected_count = inventory["expected_main_surface_count"]
     if not isinstance(expected_count, int) or isinstance(expected_count, bool):
@@ -378,7 +401,24 @@ def validate_repository_surface_coverage(
         )
 
     qualified_surface_blobs = _surface_blob_map(repo_root, main_tree_sha)
-    current_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
+    receipt_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
+    if receipt_surface_blobs != qualified_surface_blobs:
+        qualified_paths = set(qualified_surface_blobs)
+        receipt_paths = set(receipt_surface_blobs)
+        changed = sorted(
+            path
+            for path in qualified_paths & receipt_paths
+            if qualified_surface_blobs[path] != receipt_surface_blobs[path]
+        )
+        raise ValueError(
+            "pinned current-main receipt capability-bearing surface drift from "
+            "qualified baseline: "
+            f"added={sorted(receipt_paths - qualified_paths)}, "
+            f"removed={sorted(qualified_paths - receipt_paths)}, "
+            f"changed={changed}"
+        )
+
+    current_surface_blobs = _surface_blob_map(repo_root, live_main_sha)
     if current_surface_blobs != qualified_surface_blobs:
         qualified_paths = set(qualified_surface_blobs)
         current_paths = set(current_surface_blobs)
@@ -388,7 +428,7 @@ def validate_repository_surface_coverage(
             if qualified_surface_blobs[path] != current_surface_blobs[path]
         )
         raise ValueError(
-            "current main capability-bearing surface drift from qualified baseline: "
+            "live main capability-bearing surface drift from qualified baseline: "
             f"added={sorted(current_paths - qualified_paths)}, "
             f"removed={sorted(qualified_paths - current_paths)}, "
             f"changed={changed}"
@@ -403,6 +443,35 @@ def validate_repository_surface_coverage(
         raise ValueError(
             "accepted-main executable surface count drift: "
             f"expected={expected_count}, actual={len(main_paths)}"
+        )
+
+    baseline_inventory = _load_git_json(
+        repo_root,
+        main_sha,
+        "configs/control/product_repository_executable_surface_rules_v1.json",
+    )
+    if set(baseline_inventory) != _REQUIRED_TOP_LEVEL_FIELDS:
+        raise ValueError(
+            "accepted predecessor executable surface inventory schema is non-canonical"
+        )
+    baseline_raw_rules = baseline_inventory["rules"]
+    if not isinstance(baseline_raw_rules, list) or not baseline_raw_rules:
+        raise ValueError("accepted predecessor surface rules must be a non-empty array")
+    baseline_rules = tuple(_validate_rule(rule) for rule in baseline_raw_rules)
+    baseline_rule_ids = [rule["rule_id"] for rule in baseline_rules]
+    if len(baseline_rule_ids) != len(set(baseline_rule_ids)):
+        raise ValueError("accepted predecessor surface rule ids must be unique")
+
+    mapping_drift = sorted(
+        path
+        for path in main_paths
+        if _classify_main_surface(path, baseline_rules)
+        != _classify_main_surface(path, rules)
+    )
+    if mapping_drift:
+        raise ValueError(
+            "accepted-main executable capability mapping drift from predecessor: "
+            f"{mapping_drift}"
         )
 
     observed_counts = Counter(_classify_main_surface(path, rules) for path in main_paths)
@@ -438,6 +507,14 @@ def validate_repository_surface_coverage(
             raise ValueError(
                 "candidate override capability must remain UNAVAILABLE until integrated"
             )
+        if path in qualified_surface_blobs:
+            predecessor_capability_id = _classify_main_surface(path, baseline_rules)
+            if predecessor_capability_id != capability_id:
+                raise ValueError(
+                    "candidate override cannot remap accepted-main executable capability: "
+                    f"path={path}, predecessor={predecessor_capability_id}, "
+                    f"override={capability_id}"
+                )
         candidate_overrides[path] = capability_id
 
     checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")

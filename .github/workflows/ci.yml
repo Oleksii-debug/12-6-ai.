@@ -664,7 +664,7 @@ jobs:
           "$sil_python" -m pip install --disable-pip-version-check \
             --require-hashes --no-deps -r "$lock_dir/dev.lock.txt"
           "$sil_python" -m pip install --disable-pip-version-check \
-            --no-deps --no-build-isolation -e .
+            --no-deps --no-build-isolation .
           "$sil_python" -m twelve_six.sil_qualification environment-receipt \
             --output "$RUNNER_TEMP/sil-environment.json"
 

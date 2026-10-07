@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "26744c1b2c6dc502c50d6c818b7a6013011fc19e",
-  "observed_main_tree_sha": "21ba29dbac1b39a6a26ca184f9d97448b84843c5",
+  "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
+  "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
   "source_root": "src/twelve_six",
   "source_surface_count": 119,
   "surfaces": [
@@ -518,7 +518,7 @@
     {
       "path": "src/twelve_six/sil_qualification.py",
       "capability_id": "github-sil-qualification",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/split_robustness.py",
@@ -601,6 +601,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 117,
-  "candidate_overlay_surface_count": 2
+  "accepted_main_surface_count": 118,
+  "candidate_overlay_surface_count": 1
 }

@@ -114,6 +114,71 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
     )
 
 
+def test_public_verifier_requires_exact_git_sha_authority(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="expected_git_sha"):
+        verify_sil_evidence(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            expected_package_bytes=b"candidate",
+            expected_environment_receipt={},
+            expected_registry=_registry(),
+            expected_scenario=_scenario(),
+        )
+
+
+def test_environment_receipt_authority_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canonical_authority = canonical_sil_environment_receipt_v1
+    expected = canonical_authority()
+
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT",
+        "f" * 40,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_LOCKS",
+        (("forged", "requirements/forged.lock.txt", "f" * 64),),
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_PACKAGES",
+        (("forged-package", "999"),),
+    )
+    forged = dict(expected)
+    forged["lock_source_commit"] = "f" * 40
+    forged["locks"] = [
+        {
+            "role": "forged",
+            "path": "requirements/forged.lock.txt",
+            "sha256": "f" * 64,
+        }
+    ]
+    forged["packages"] = [{"name": "forged-package", "version": "999"}]
+    unsigned = dict(forged)
+    unsigned.pop("identity_sha256")
+    forged["identity_sha256"] = _canonical_hash(unsigned)
+
+    assert canonical_authority() == expected
+
+    path = tmp_path / "forged-environment.json"
+    path.write_text(
+        json.dumps(
+            forged,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        load_sil_environment_receipt(path)
+
+
 def test_canonical_environment_receipt_binds_pinned_historical_lock_source(
     tmp_path: Path,
 ) -> None:
@@ -161,24 +226,72 @@ def test_environment_receipt_rejects_byte_or_lock_source_reseal(tmp_path: Path) 
 
 
 def test_independent_verifier_requires_exact_clean_checkout() -> None:
-    assert require_exact_clean_git_state(
+    assert sil_qualification._require_exact_clean_git_state_with_probe(
         _ROOT,
         _GIT_SHA,
         git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=True),
     ) == GitState(sha=_GIT_SHA, tracked_clean=True)
 
     with pytest.raises(ValueError, match="exact-head mismatch"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
         )
 
     with pytest.raises(ValueError, match="dirty"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
+        )
+
+
+def test_public_qualify_sil_ignores_rebound_package_manifest_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forged_package = b"forged-package-manifest"
+    monkeypatch.setattr(
+        sil_qualification,
+        "build_package_manifest_bytes",
+        lambda _root: forged_package,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="package_bytes do not match exact tracked package source manifest",
+    ):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=forged_package,
+            environment_receipt=_environment_receipt(),
+        )
+
+
+def test_public_sil_authorities_reject_caller_supplied_execution_backends() -> None:
+    registry = _registry()
+    scenario = _scenario()
+
+    with pytest.raises(TypeError):
+        qualify_sil(  # type: ignore[call-arg]
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=_git_probe,
+        )
+
+    with pytest.raises(TypeError):
+        require_exact_clean_git_state(  # type: ignore[call-arg]
+            _ROOT,
+            _GIT_SHA,
+            git_probe=_git_probe,
         )
 
 
@@ -261,20 +374,31 @@ def test_sil_plan_rejects_missing_or_resealed_end_to_end_policy() -> None:
     plan = build_sil_plan(registry, scenario)
 
     with pytest.raises(ValueError, match="lacks explicit end-to-end contract"):
-        build_sil_plan(
+        sil_qualification._build_sil_plan_with_policy(
             registry,
             scenario,
-            _sealed_e2e_policy=plan.journey_end_to_end_contracts[:-1],
+            e2e_policy=plan.journey_end_to_end_contracts[:-1],
         )
 
     forged = list(plan.journey_end_to_end_contracts)
     journey_id, _vector_ids = forged[0]
     forged[0] = (journey_id, ("model-resource-envelope",))
     with pytest.raises(ValueError, match="do not match"):
-        build_sil_plan(
+        sil_qualification._build_sil_plan_with_policy(
             registry,
             scenario,
-            _sealed_e2e_policy=tuple(forged),
+            e2e_policy=tuple(forged),
+        )
+
+
+def test_public_sil_plan_rejects_caller_supplied_policy_authority() -> None:
+    plan = build_sil_plan(_registry(), _scenario())
+
+    with pytest.raises(TypeError, match="_sealed_e2e_policy"):
+        build_sil_plan(
+            _registry(),
+            _scenario(),
+            _sealed_e2e_policy=plan.journey_end_to_end_contracts,
         )
 
 
@@ -291,6 +415,24 @@ def test_sil_plan_policy_global_rebind_cannot_reseal_loaded_validator(
     rebound = build_sil_plan(_registry(), _scenario())
 
     assert rebound.journey_end_to_end_contracts == original
+
+
+def test_sil_plan_enum_policy_global_rebind_cannot_reseal_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = build_sil_plan(_registry(), _scenario()).to_dict()
+
+    class ForgedStatus:
+        AVAILABLE = object()
+        UNAVAILABLE = object()
+
+    class ForgedLevel:
+        INTEGRATION = object()
+
+    monkeypatch.setattr(sil_qualification, "CapabilityStatus", ForgedStatus)
+    monkeypatch.setattr(sil_qualification, "TestLevel", ForgedLevel)
+
+    assert build_sil_plan(_registry(), _scenario()).to_dict() == baseline
 
 
 def test_component_only_green_cannot_satisfy_available_capability_contract() -> None:
@@ -346,7 +488,7 @@ def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdic
     registry = _registry()
     scenario = _scenario()
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=registry,
@@ -415,7 +557,7 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
             return replace(result, return_code=7, stderr="integration failure")
         return result
 
-    evidence, _ = qualify_sil(
+    evidence, _ = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -450,7 +592,7 @@ def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
             consumed_input_identity_sha256="b" * 64,
         )
 
-    evidence, _ = qualify_sil(
+    evidence, _ = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -479,7 +621,7 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
     )
 
     with pytest.raises(ValueError, match="became dirty during SIL vector execution"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -507,7 +649,7 @@ def test_sil_rejects_checkout_mutation_before_evidence_sealing() -> None:
         )
 
     with pytest.raises(ValueError, match="dirty before SIL evidence sealing"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -623,12 +765,51 @@ def test_sil_subprocess_environment_rejects_host_overrides(
     assert execution.return_code != 0
 
 
+def test_sil_command_runner_never_inherits_stdin_or_enables_shell(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_bytes = b'{"stdin":"sealed"}'
+    input_identity = hashlib.sha256(input_bytes).hexdigest()
+    observed: dict[str, object] = {}
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.update(kwargs)
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=f"SIL_INPUT_VERIFIED_SHA256={input_identity}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(sil_qualification.subprocess, "run", fake_run)
+
+    execution = sil_qualification.run_command(
+        (
+            sil_qualification.sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_must_execute.py",
+        ),
+        tmp_path,
+        30,
+        input_bytes,
+        input_identity,
+    )
+
+    assert observed["stdin"] is subprocess.DEVNULL
+    assert observed["shell"] is False
+    assert execution.return_code == 0
+    assert execution.consumed_input_identity_sha256 == input_identity
+
+
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     registry = _registry()
     scenario = _scenario()
 
     with pytest.raises(ValueError, match="exact-head mismatch"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -640,7 +821,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
         )
 
     with pytest.raises(ValueError, match="dirty"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -666,6 +847,37 @@ def test_unavailable_journeys_are_evidenced_as_blocked_not_simulated() -> None:
     for item in plan.unavailable_journeys:
         assert item.blocking_capability_ids
         assert all(item.reasons)
+
+
+
+def test_sealed_sil_policy_activates_integrated_section3_journey_contracts() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+
+    unavailable_ids = {item.journey_id for item in plan.unavailable_journeys}
+    contract_ids = {journey_id for journey_id, _ in plan.journey_end_to_end_contracts}
+
+    assert "maintainer-project-control" not in unavailable_ids
+    assert "maintainer-sil-qualification" not in unavailable_ids
+    assert "maintainer-project-control" in plan.available_journey_ids
+    assert "maintainer-sil-qualification" in plan.available_journey_ids
+    assert "maintainer-project-control" in contract_ids
+    assert "maintainer-sil-qualification" in contract_ids
+
+def test_sil_policy_rejects_unknown_dormant_journey_contract() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+    forged_policy = (
+        *plan.journey_end_to_end_contracts,
+        ("forged-dormant-journey", ("section3-sil-stack",)),
+    )
+
+    with pytest.raises(ValueError, match="references unknown journey"):
+        sil_qualification._build_sil_plan_with_policy(
+            registry,
+            _scenario(),
+            e2e_policy=forged_policy,
+        )
 
 
 def test_strict_sil_scenario_rejects_duplicate_unknown_and_bool_timeout(tmp_path: Path) -> None:
@@ -694,7 +906,7 @@ def test_strict_sil_scenario_rejects_duplicate_unknown_and_bool_timeout(tmp_path
 
 
 def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -720,14 +932,14 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     resealed = dict(evidence)
     resealed["scenario_id"] = "forged-scenario"
     _write_evidence(evidence_path, resealed)
-    with pytest.raises(ValueError, match="evidence identity"):
+    with pytest.raises(ValueError, match="scenario_id does not match exact scenario"):
         _verify_evidence(evidence_path, log_path)
 
 
 def test_verifier_rejects_resealed_invalid_timings(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -758,7 +970,7 @@ def test_verifier_rejects_resealed_invalid_timings(
 def test_verifier_rejects_total_duration_shorter_than_execution_sum(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -786,7 +998,7 @@ def test_verifier_rejects_total_duration_shorter_than_execution_sum(
 def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -822,7 +1034,7 @@ def test_verifier_rejects_self_consistent_package_authority_reseal(
 ) -> None:
     registry = _registry()
     scenario = _scenario()
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=registry,
@@ -887,7 +1099,8 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
     assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
     assert "--require-hashes --no-deps" in sil_job
-    assert "--no-deps --no-build-isolation -e ." in sil_job
+    assert "--no-deps --no-build-isolation ." in sil_job
+    assert "--no-deps --no-build-isolation -e ." not in sil_job
     assert "python -m pip install --upgrade pip" not in sil_job
     assert "pip install -e .[dev]" not in sil_job
     assert '"$sil_python" -m twelve_six.sil_qualification environment-receipt' in sil_job
@@ -920,7 +1133,7 @@ def test_package_identity_binds_tracked_package_source_manifest() -> None:
 
 def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> None:
     with pytest.raises(ValueError, match="exact tracked package source manifest"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -1124,7 +1337,7 @@ def test_exact_git_state_rejects_behavioral_subclass() -> None:
         pass
 
     with pytest.raises(ValueError, match="git probe must return GitState"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: ForgedGitState(sha=_GIT_SHA, tracked_clean=True),
@@ -1194,12 +1407,137 @@ def test_sil_objects_revalidate_after_post_construction_mutation() -> None:
         plan.to_dict()
 
 
+def test_sil_stored_state_authority_ignores_class_method_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    scenario = _scenario()
+    baseline_evidence, baseline_log = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+
+    for cls in (
+        sil_qualification.SILScenario,
+        sil_qualification.PlannedVector,
+        sil_qualification.UnavailableJourney,
+        sil_qualification.SILPlan,
+    ):
+        monkeypatch.setattr(cls, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        sil_qualification.SILScenario,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.SILScenario,
+        "identity_sha256",
+        lambda _self: "f" * 64,
+    )
+    monkeypatch.setattr(
+        sil_qualification.PlannedVector,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.UnavailableJourney,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.SILPlan,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    invalid_scenario = _scenario()
+    object.__setattr__(invalid_scenario, "timeout_seconds_per_vector", 0)
+    with pytest.raises(ValueError, match="timeout_seconds_per_vector"):
+        build_sil_plan(registry, invalid_scenario)
+
+    rebound_evidence, rebound_log = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+
+    for field in (
+        "capability_registry_identity_sha256",
+        "scenario_identity_sha256",
+        "input_identity_sha256",
+        "output_identity_sha256",
+    ):
+        assert rebound_evidence[field] == baseline_evidence[field]
+    assert rebound_log == baseline_log
+
+    evidence_path = tmp_path / "stored-state-evidence.json"
+    log_path = tmp_path / "stored-state.log"
+    _write_evidence(evidence_path, rebound_evidence)
+    log_path.write_text(rebound_log, encoding="utf-8")
+
+    verified = _verify_evidence(evidence_path, log_path)
+    assert verified["input_identity_sha256"] == baseline_evidence[
+        "input_identity_sha256"
+    ]
+
+
+def test_sil_execution_state_validators_ignore_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sil_qualification,
+        "_require_git_sha",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_require_sha256",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    state = GitState(sha=_GIT_SHA, tracked_clean=True)
+    object.__setattr__(state, "tracked_clean", "yes")
+    with pytest.raises(ValueError, match="tracked_clean must be boolean"):
+        GitState.__post_init__(state)
+
+    execution = CommandExecution(
+        return_code=0,
+        stdout="ok",
+        stderr="",
+        duration_ms=1,
+        consumed_input_identity_sha256="a" * 64,
+    )
+    object.__setattr__(execution, "consumed_input_identity_sha256", "forged")
+    with pytest.raises(
+        ValueError,
+        match="consumed_input_identity_sha256",
+    ):
+        CommandExecution.__post_init__(execution)
+
+
 def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
     state = GitState(sha=_GIT_SHA, tracked_clean=True)
     object.__setattr__(state, "tracked_clean", "yes")
 
     with pytest.raises(ValueError, match="tracked_clean must be boolean"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -1230,7 +1568,7 @@ def test_sil_revalidates_mutated_exact_command_result() -> None:
         return result
 
     with pytest.raises(ValueError, match="return_code must be an integer"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -1240,4 +1578,83 @@ def test_sil_revalidates_mutated_exact_command_result() -> None:
             command_runner=stale_runner,
             git_probe=_git_probe,
         )
+
+def test_public_sil_environment_validation_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    scenario = _scenario()
+    canonical_environment = _environment_receipt()
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=canonical_environment,
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    evidence_path = tmp_path / "environment-authority-evidence.json"
+    log_path = tmp_path / "environment-authority.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        sil_qualification,
+        "_validate_sil_environment_receipt",
+        lambda _payload: canonical_environment,
+    )
+    forged_environment = {"forged": True}
+
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=forged_environment,
+        )
+
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        verify_sil_evidence(
+            evidence_path,
+            log_path,
+            expected_package_bytes=_package_bytes(),
+            expected_environment_receipt=forged_environment,
+            expected_registry=registry,
+            expected_scenario=scenario,
+            expected_git_sha=_GIT_SHA,
+        )
+
+
+def test_parse_vector_command_ignores_pureposixpath_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForgedPath:
+        def __init__(self, value: str) -> None:
+            self.parts = ("tests", "forged.py")
+            self.suffix = ".py"
+            self._value = value
+
+        def is_absolute(self) -> bool:
+            return False
+
+        def as_posix(self) -> str:
+            return self._value
+
+    monkeypatch.setattr(
+        sil_qualification,
+        "PurePosixPath",
+        ForgedPath,
+        raising=False,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="SIL integration test path must stay inside the repository",
+    ):
+        parse_vector_command("pytest -q tests/../forged.py")
 

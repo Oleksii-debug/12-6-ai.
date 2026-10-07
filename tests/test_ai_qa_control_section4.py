@@ -18,7 +18,6 @@ from twelve_six.ai_qa_control import (
     GateVerdict,
     PhysicalScope,
     RepairCandidate,
-    _validate_repair_index_entries,
     build_regression_chain,
     build_repair_candidate,
     classify_failure,
@@ -32,6 +31,7 @@ from twelve_six.ai_qa_control import (
     load_gate_receipt_bundle,
     load_repair_candidate,
     materialize_local_repair_candidate,
+    _validate_repair_index_entries,
     verify_candidate_sil_evidence,
 )
 from twelve_six.capability_map import load_capability_registry

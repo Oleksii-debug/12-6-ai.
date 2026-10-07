@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "26744c1b2c6dc502c50d6c818b7a6013011fc19e",
-  "observed_main_tree_sha": "21ba29dbac1b39a6a26ca184f9d97448b84843c5",
-  "current_repository_main_sha": "a10287066dae4adc9eb78a7a6dc40fcf73ab9161",
-  "current_repository_main_tree_sha": "43c908ba384303e0e1edb721b6bc3675fe4b27da",
+  "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
+  "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
+  "current_repository_main_sha": "14bac89097ba9c1a6ed1b348ed0065afac34859d",
+  "current_repository_main_tree_sha": "2a91aed55fed370e4d17e3022a1bb1809fbd6619",
   "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -86,16 +86,11 @@
       "capability_id": "data-governance-mechanics"
     },
     {
-      "rule_id": "section2-repository-surface-validator",
+      "rule_id": "section2-surface-validator",
       "selector": "exact",
       "pattern": "tools/validate_section2_repository_surface_coverage.py",
       "capability_id": "executable-capability-map"
     }
   ],
-  "candidate_overrides": [
-    {
-      "path": ".github/workflows/ci.yml",
-      "capability_id": "github-sil-qualification"
-    }
-  ]
+  "candidate_overrides": []
 }
