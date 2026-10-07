@@ -734,6 +734,44 @@
       ],
       "integrated_result": null,
       "unavailable_reason": "Section 2 remains IN_PROGRESS until exhaustive capability/source/journey coverage is mechanically demonstrated and predecessors close."
+    },
+    {
+      "capability_id": "github-sil-qualification",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.sil_qualification",
+      "dependencies": [
+        "executable-capability-map"
+      ],
+      "journey_ids": [
+        "maintainer-sil-qualification"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section3-sil-component",
+          "level": "component",
+          "command": "pytest -q tests/test_sil_qualification_section3.py"
+        },
+        {
+          "vector_id": "section3-sil-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_capability_map_section2.py tests/test_sil_qualification_section3.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section3-pr",
+          "target": "pull-request:3079"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 3 candidate is not integrated or terminally exact-head qualified."
     }
   ],
   "journeys": [
@@ -858,6 +896,13 @@
       "title": "Maintainer audits executable capability coverage and acceptance evidence",
       "capability_ids": [
         "executable-capability-map"
+      ]
+    },
+    {
+      "journey_id": "maintainer-sil-qualification",
+      "title": "Maintainer executes and independently verifies exact-head GitHub SIL evidence",
+      "capability_ids": [
+        "github-sil-qualification"
       ]
     }
   ]
