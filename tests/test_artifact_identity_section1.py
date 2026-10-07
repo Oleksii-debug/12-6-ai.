@@ -386,6 +386,7 @@ def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
 
 def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
     generation = _generation("enum-wire")
+    refs = _refs("enum-wire-new")
     corpus = generation.artifact_ref(ArtifactKind.CORPUS)
     original_value = ArtifactKind.CORPUS.value
     object.__setattr__(ArtifactKind.CORPUS, "_value_", "forged_corpus")
@@ -394,6 +395,8 @@ def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
             corpus.to_dict()
         with pytest.raises(ValueError, match="wire value is non-canonical"):
             generation.identity_sha256()
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            build_generation_identity_manifest(refs)
     finally:
         object.__setattr__(ArtifactKind.CORPUS, "_value_", original_value)
 
@@ -745,17 +748,4 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             expected_parents=ForgedDict(parents),
         )
 
-
-def test_artifact_kind_enum_singleton_value_mutation_fails_closed() -> None:
-    generation = _generation("enum-sealed")
-    refs = _refs("enum-sealed-new")
-    original_value = ArtifactKind.MODEL_SPEC.value
-    object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", "forged_model_spec")
-    try:
-        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
-            generation.identity_sha256()
-        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
-            build_generation_identity_manifest(refs)
-    finally:
-        object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", original_value)
 
