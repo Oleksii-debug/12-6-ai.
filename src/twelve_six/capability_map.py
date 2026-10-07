@@ -458,7 +458,11 @@ class Capability:
         if self.status is CapabilityStatus.AVAILABLE:
             if self.unavailable_reason is not None:
                 raise ValueError("AVAILABLE capability cannot have unavailable_reason")
-            _require_text("integrated_result", self.integrated_result)
+            if (
+                type(self.integrated_result) is not str
+                or not self.integrated_result.strip()
+            ):
+                raise ValueError("integrated_result must be non-empty text")
             if not any(item.supported for item in self.environments):
                 raise ValueError("AVAILABLE capability needs a supported environment")
             # The required acceptance levels are part of Section-2 authority.
@@ -476,7 +480,11 @@ class Capability:
             if not self.evidence_targets:
                 raise ValueError("AVAILABLE capability needs an evidence target")
         else:
-            _require_text("unavailable_reason", self.unavailable_reason)
+            if (
+                type(self.unavailable_reason) is not str
+                or not self.unavailable_reason.strip()
+            ):
+                raise ValueError("unavailable_reason must be non-empty text")
             if self.integrated_result is not None:
                 raise ValueError("UNAVAILABLE capability cannot claim an integrated_result")
 
