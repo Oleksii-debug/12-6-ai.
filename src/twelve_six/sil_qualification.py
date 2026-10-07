@@ -993,6 +993,7 @@ def _require_exact_clean_git_state_with_probe(
     expected_git_sha: str,
     *,
     git_probe: GitProbe,
+    _git_state_validator: Callable[[GitState], None] = GitState.__post_init__,
 ) -> GitState:
     """Internal test harness for the canonical exact-git-state authority."""
 
@@ -1000,7 +1001,7 @@ def _require_exact_clean_git_state_with_probe(
     state = git_probe(repo_root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return GitState")
-    git_state_validator(state)
+    _git_state_validator(state)
     if state.sha != expected:
         raise ValueError(
             f"exact-head mismatch: expected {expected}, observed {state.sha}"
@@ -1155,7 +1156,7 @@ def _qualify_sil_with_backends(
     state = git_probe(root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return exact GitState")
-    GitState.__post_init__(state)
+    git_state_validator(state)
     if state.sha != expected_git_sha:
         raise ValueError(
             f"exact-head mismatch: expected {expected_git_sha}, observed {state.sha}"
