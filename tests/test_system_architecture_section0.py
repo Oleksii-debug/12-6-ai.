@@ -917,7 +917,6 @@ def test_identity_hash_helper_rebinding_cannot_reseal_authority(
     assert observed_identities == expected_identities
 
 
-
 def test_system_plane_value_descriptor_rebinding_cannot_reseal_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
