@@ -894,6 +894,20 @@ def validate_source_surface_coverage(
     if unknown:
         raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
 
+    premature_candidate_acceptance = sorted(
+        f"{surface.path}->{surface.capability_id}"
+        for surface in inventory.surfaces
+        if surface.origin == "stacked_candidate"
+        and registry.capability(surface.capability_id).status
+        is not CapabilityStatus.UNAVAILABLE
+    )
+    if premature_candidate_acceptance:
+        raise ValueError(
+            "stacked candidate source surfaces must map to UNAVAILABLE capabilities "
+            "until integrated: "
+            f"{premature_candidate_acceptance}"
+        )
+
     root = Path(repo_root)
     worktree_drift = _worktree_python_source_drift(root, inventory.source_root)
     if worktree_drift:

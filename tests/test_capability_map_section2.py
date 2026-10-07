@@ -625,6 +625,25 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
         assert capability.integrated_result is None
 
 
+def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "stacked_candidate"
+    )
+    target["capability_id"] = "model-spec-identity"
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
 def test_source_surface_inventory_accepts_zero_candidate_overlay_after_integration(
     tmp_path: Path,
 ) -> None:
