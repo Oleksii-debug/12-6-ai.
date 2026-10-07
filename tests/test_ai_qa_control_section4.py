@@ -17,6 +17,7 @@ from twelve_six.ai_qa_control import (
     GateVerdict,
     PhysicalScope,
     RepairCandidate,
+    _validate_repair_index_entries,
     build_regression_chain,
     build_repair_candidate,
     classify_failure,
@@ -660,6 +661,30 @@ def test_regression_chain_rejects_durable_wrong_base_even_if_failure_hash_matche
             candidate,
             adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
         )
+
+
+def test_repair_index_rejects_symlink_and_gitlink_modes() -> None:
+    regular = (
+        ":100644 100755 " + ("a" * 40) + " " + ("b" * 40) + " M\ttools/run.py"
+    )
+    _validate_repair_index_entries(regular)
+
+    for mode, path in (
+        ("120000", "src/twelve_six/forged.py"),
+        ("160000", "vendor/forged-submodule"),
+    ):
+        raw = (
+            ":000000 "
+            + mode
+            + " "
+            + ("0" * 40)
+            + " "
+            + ("c" * 40)
+            + " A\t"
+            + path
+        )
+        with pytest.raises(ValueError, match="regular Git files"):
+            _validate_repair_index_entries(raw)
 
 
 def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
