@@ -762,6 +762,7 @@ def resolve_component_contract(component_contract: str) -> object:
         return resolved
     raise ValueError(f"component contract module does not exist: {contract}")
 
+
 def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
     """Prove every AVAILABLE capability begins at a live repository contract."""
 
