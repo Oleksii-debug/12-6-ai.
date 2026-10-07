@@ -661,6 +661,7 @@ def test_closed_architecture_roots_reject_container_and_product_subclasses() -> 
     with pytest.raises(ValueError, match="assembly must be a ProductAssembly"):
         replace_cognitive_core(forged_assembly, candidate)
 
+
 def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> None:
     assembly = _assembly("closed-evidence", 20_613_440)
     shell = assembly.shell
