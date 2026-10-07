@@ -653,6 +653,9 @@ jobs:
         run: |
           set -euo pipefail
           python -m twelve_six.sil_qualification verify \
+            --repo-root . \
+            --capability-registry configs/control/product_capabilities_v1.json \
+            --scenario configs/control/sil_scenario_v1.json \
             --evidence "$RUNNER_TEMP/sil-evidence.json" \
             --log "$RUNNER_TEMP/sil.log" \
             --expected-git-sha "$SIL_EXPECTED_SHA"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -67,6 +68,28 @@ def _write_evidence(path: Path, evidence: dict[str, object]) -> None:
         )
         + "\n",
         encoding="utf-8",
+    )
+
+
+def _canonical_hash(value: object) -> str:
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
+    return verify_sil_evidence(
+        evidence_path,
+        log_path,
+        expected_package_bytes=b"package",
+        expected_registry=_registry(),
+        expected_scenario=_scenario(),
+        expected_git_sha=_GIT_SHA,
     )
 
 
@@ -313,16 +336,12 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     _write_evidence(evidence_path, evidence)
     log_path.write_text(log_text, encoding="utf-8")
 
-    verified = verify_sil_evidence(
-        evidence_path,
-        log_path,
-        expected_git_sha=_GIT_SHA,
-    )
+    verified = _verify_evidence(evidence_path, log_path)
     assert verified["verdict"] == "PASS"
 
     log_path.write_text(log_text + "forged", encoding="utf-8")
     with pytest.raises(ValueError, match="log identity"):
-        verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
+        _verify_evidence(evidence_path, log_path)
 
     log_path.write_text(log_text, encoding="utf-8")
     resealed = dict(evidence)
@@ -330,6 +349,49 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     _write_evidence(evidence_path, resealed)
     with pytest.raises(ValueError, match="evidence identity"):
         verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
+
+
+def test_verifier_rejects_self_consistent_package_authority_reseal(
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    scenario = _scenario()
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=b"package",
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    plan = build_sil_plan(registry, scenario)
+    evidence["package_identity_sha256"] = "b" * 64
+    evidence["input_identity_sha256"] = _canonical_hash(
+        {
+            "git_sha": evidence["git_sha"],
+            "package_identity_sha256": evidence["package_identity_sha256"],
+            "capability_registry_identity_sha256": evidence[
+                "capability_registry_identity_sha256"
+            ],
+            "model_spec_identity_sha256": evidence["model_spec_identity_sha256"],
+            "init_spec_identity_sha256": evidence["init_spec_identity_sha256"],
+            "data_identity_sha256": evidence["data_identity_sha256"],
+            "scenario_identity_sha256": evidence["scenario_identity_sha256"],
+            "plan": plan.to_dict(),
+        }
+    )
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = _canonical_hash(unsigned)
+
+    evidence_path = tmp_path / "resealed-evidence.json"
+    log_path = tmp_path / "sil.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="package_identity_sha256"):
+        _verify_evidence(evidence_path, log_path)
 
 
 def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:

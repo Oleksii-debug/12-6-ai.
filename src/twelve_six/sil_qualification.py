@@ -525,6 +525,9 @@ def verify_sil_evidence(
     evidence_path: str | Path,
     log_path: str | Path,
     *,
+    expected_package_bytes: bytes,
+    expected_registry: CapabilityRegistry,
+    expected_scenario: SILScenario,
     expected_git_sha: str | None = None,
     require_pass: bool = True,
 ) -> dict[str, Any]:
@@ -556,23 +559,112 @@ def verify_sil_evidence(
     ):
         _require_sha256(field, payload[field])
 
-    if payload["fixture_policy"] != "DETERMINISTIC_SYNTHETIC":
-        raise ValueError("SIL evidence fixture policy is not canonical")
-    if not isinstance(payload["available_journey_ids"], list) or not payload[
-        "available_journey_ids"
-    ]:
-        raise ValueError("SIL evidence needs available journeys")
-    if not isinstance(payload["unavailable_journeys"], list):
-        raise ValueError("SIL evidence unavailable_journeys must be an array")
+    if not isinstance(expected_package_bytes, bytes) or not expected_package_bytes:
+        raise ValueError("expected_package_bytes must be non-empty bytes")
+    if not isinstance(expected_registry, CapabilityRegistry):
+        raise ValueError("expected_registry must be a CapabilityRegistry")
+    if not isinstance(expected_scenario, SILScenario):
+        raise ValueError("expected_scenario must be a SILScenario")
+
+    expected_model_identity, expected_init_identity = _synthetic_model_identities()
+    expected_identities = {
+        "package_identity_sha256": _sha256_bytes(expected_package_bytes),
+        "capability_registry_identity_sha256": expected_registry.identity_sha256(),
+        "model_spec_identity_sha256": expected_model_identity,
+        "init_spec_identity_sha256": expected_init_identity,
+        "data_identity_sha256": _sha256_bytes(
+            expected_scenario.synthetic_data_utf8.encode("utf-8")
+        ),
+        "scenario_identity_sha256": expected_scenario.identity_sha256(),
+    }
+    for field, expected_value in expected_identities.items():
+        if payload[field] != expected_value:
+            raise ValueError(
+                f"SIL evidence {field} does not match exact verifier authority"
+            )
+
+    if payload["scenario_id"] != expected_scenario.scenario_id:
+        raise ValueError("SIL evidence scenario_id does not match exact scenario")
+    if payload["fixture_policy"] != expected_scenario.fixture_policy:
+        raise ValueError("SIL evidence fixture policy does not match exact scenario")
+
+    available_journey_ids = payload["available_journey_ids"]
+    unavailable_journeys = payload["unavailable_journeys"]
     executions = payload["executions"]
+    if not isinstance(available_journey_ids, list) or not available_journey_ids:
+        raise ValueError("SIL evidence needs available journeys")
+    if not isinstance(unavailable_journeys, list):
+        raise ValueError("SIL evidence unavailable_journeys must be an array")
     if not isinstance(executions, list) or not executions:
         raise ValueError("SIL evidence needs executed integration vectors")
-    if payload["verdict"] not in {"PASS", "FAIL"}:
-        raise ValueError("SIL evidence verdict is invalid")
-    if payload["verdict"] == "PASS" and any(
-        type(item) is not dict or item.get("return_code") != 0 for item in executions
-    ):
-        raise ValueError("SIL PASS contains a failed or malformed execution")
+
+    expected_plan = build_sil_plan(expected_registry, expected_scenario)
+    expected_available = list(expected_plan.available_journey_ids)
+    expected_unavailable = [
+        item.to_dict() for item in expected_plan.unavailable_journeys
+    ]
+    if available_journey_ids != expected_available:
+        raise ValueError("SIL evidence available journeys do not match exact registry")
+    if unavailable_journeys != expected_unavailable:
+        raise ValueError("SIL evidence unavailable journeys do not match exact registry")
+    if len(executions) != len(expected_plan.vectors):
+        raise ValueError("SIL evidence execution count does not match exact plan")
+
+    execution_fields = {
+        "journey_id",
+        "capability_id",
+        "vector_id",
+        "argv",
+        "return_code",
+        "stdout_sha256",
+        "stderr_sha256",
+        "duration_ms",
+    }
+    for execution, planned in zip(executions, expected_plan.vectors, strict=True):
+        if type(execution) is not dict or set(execution) != execution_fields:
+            raise ValueError("SIL execution record schema is non-canonical")
+        if (
+            execution["journey_id"] != planned.journey_id
+            or execution["capability_id"] != planned.capability_id
+            or execution["vector_id"] != planned.vector_id
+            or execution["argv"] != list(planned.argv)
+        ):
+            raise ValueError("SIL execution record does not match exact plan")
+        if type(execution["return_code"]) is not int:
+            raise ValueError("SIL execution return_code must be an integer")
+        if type(execution["duration_ms"]) is not int or execution["duration_ms"] < 0:
+            raise ValueError("SIL execution duration_ms must be a non-negative integer")
+        _require_sha256("stdout_sha256", execution["stdout_sha256"])
+        _require_sha256("stderr_sha256", execution["stderr_sha256"])
+
+    expected_input_identity = _canonical_sha256(
+        {
+            "git_sha": payload["git_sha"],
+            "package_identity_sha256": expected_identities[
+                "package_identity_sha256"
+            ],
+            "capability_registry_identity_sha256": expected_identities[
+                "capability_registry_identity_sha256"
+            ],
+            "model_spec_identity_sha256": expected_model_identity,
+            "init_spec_identity_sha256": expected_init_identity,
+            "data_identity_sha256": expected_identities["data_identity_sha256"],
+            "scenario_identity_sha256": expected_identities[
+                "scenario_identity_sha256"
+            ],
+            "plan": expected_plan.to_dict(),
+        }
+    )
+    if payload["input_identity_sha256"] != expected_input_identity:
+        raise ValueError("SIL input identity does not match exact verifier authority")
+
+    expected_verdict = (
+        "PASS"
+        if all(execution["return_code"] == 0 for execution in executions)
+        else "FAIL"
+    )
+    if payload["verdict"] != expected_verdict:
+        raise ValueError("SIL evidence verdict does not match execution results")
     if require_pass and payload["verdict"] != "PASS":
         raise ValueError("SIL evidence is not PASS")
 
@@ -662,9 +754,16 @@ def _run_cli(args: argparse.Namespace) -> int:
 
 
 def _verify_cli(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
+    package_bytes = (root / "pyproject.toml").read_bytes()
     evidence = verify_sil_evidence(
         args.evidence,
         args.log,
+        expected_package_bytes=package_bytes,
+        expected_registry=registry,
+        expected_scenario=scenario,
         expected_git_sha=args.expected_git_sha,
         require_pass=True,
     )
@@ -697,6 +796,9 @@ def main() -> int:
     run_parser.set_defaults(func=_run_cli)
 
     verify_parser = subparsers.add_parser("verify")
+    verify_parser.add_argument("--repo-root", required=True)
+    verify_parser.add_argument("--capability-registry", required=True)
+    verify_parser.add_argument("--scenario", required=True)
     verify_parser.add_argument("--evidence", required=True)
     verify_parser.add_argument("--log", required=True)
     verify_parser.add_argument("--expected-git-sha", required=True)
