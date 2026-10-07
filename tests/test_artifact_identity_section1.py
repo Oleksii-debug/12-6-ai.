@@ -305,7 +305,7 @@ def test_generation_rejects_resealed_parent_lineage_with_same_raw_artifact_ident
     manifests = list(generation.artifacts)
     packing_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.PACKING)
     manifests[packing_index] = resealed_packing
-    with pytest.raises(ValueError, match="parent lineage does not match generation"):
+    with pytest.raises(ValueError, match="parent lineage identity does not match generation"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
 
 
@@ -316,7 +316,7 @@ def test_parent_binding_durable_json_rejects_lineage_hash_reseal() -> None:
     packing = payload["artifacts"][packing_index]
     packing["parents"][0]["parent_manifest_identity_sha256"] = _sha("foreign-lineage")
 
-    with pytest.raises(ValueError, match="parent lineage does not match generation"):
+    with pytest.raises(ValueError, match="parent lineage identity does not match generation"):
         parse_generation_identity_manifest(
             json.dumps(payload, separators=(",", ":")).encode("utf-8")
         )

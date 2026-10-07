@@ -81,13 +81,14 @@
         "implementation_paths": [
           "src/twelve_six/capability_map.py",
           "configs/control/product_capabilities_v1.json",
+          "configs/control/product_source_surface_inventory_v1.json",
           "tests/test_capability_map_section2.py",
           "docs/EXECUTABLE_CAPABILITY_MAP_SECTION2.md"
         ],
         "integrated_main_sha": null,
         "pull_request": null,
         "terminal_ci": null,
-        "coverage_blocker": "Current capability registry is a truthful initial slice, not yet proven exhaustive for all current product capabilities and user/operator journeys required by Section 2.1."
+        "qualification_blocker": "Static source/capability/journey coverage is complete for the current stack, but exact-head shared CI is not terminal PASS and Sections 0-1 remain unfinished predecessors."
       }
     },
     {
@@ -96,7 +97,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/3-github-sil-qualification-v1",
-        "predecessor_candidate_sha": "6d5f671cf7759cb139e63811aede013c0ef55f6d",
+        "predecessor_candidate_sha": "b6c9c8f6d7baf43b095aec6fed83d79a2247a86a",
         "implementation_paths": [
           "src/twelve_six/sil_qualification.py",
           "configs/control/sil_scenario_v1.json",

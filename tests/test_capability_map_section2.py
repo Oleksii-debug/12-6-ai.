@@ -11,11 +11,16 @@ from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
     load_capability_registry,
+    load_source_surface_inventory,
+    validate_source_surface_coverage,
 )
 
 
 _ROOT = Path(__file__).parents[1]
 _REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
+_SURFACE_INVENTORY = (
+    _ROOT / "configs" / "control" / "product_source_surface_inventory_v1.json"
+)
 
 
 def _load() -> CapabilityRegistry:
@@ -204,16 +209,32 @@ def test_registry_rejects_capability_forward_binding_absent_from_journey() -> No
         )
 
 
+def test_capability_rejects_missing_user_operator_journey() -> None:
+    registry = _load()
+    target = registry.capabilities[0]
+
+    with pytest.raises(ValueError, match="must bind at least one user/operator journey"):
+        replace(target, journey_ids=())
+
+
 def test_registry_rejects_journey_without_capability_back_binding() -> None:
     registry = _load()
-    capabilities = list(registry.capabilities)
-    packing_index = next(
+    journeys = list(registry.journeys)
+    target_capability = registry.capability("model-spec-identity")
+    target_index = next(
         index
-        for index, capability in enumerate(capabilities)
-        if capability.capability_id == "deterministic-packing-mechanics"
+        for index, journey in enumerate(journeys)
+        if target_capability.capability_id not in journey.capability_ids
+        and journey.journey_id not in target_capability.journey_ids
     )
-    packing = capabilities[packing_index]
-    capabilities[packing_index] = replace(packing, journey_ids=())
+    target_journey = journeys[target_index]
+    journeys[target_index] = replace(
+        target_journey,
+        capability_ids=(
+            *target_journey.capability_ids,
+            target_capability.capability_id,
+        ),
+    )
 
     with pytest.raises(ValueError, match="is not back-bound"):
         CapabilityRegistry(
@@ -221,9 +242,19 @@ def test_registry_rejects_journey_without_capability_back_binding() -> None:
             observed_main_sha=registry.observed_main_sha,
             observed_main_ci_run_id=registry.observed_main_ci_run_id,
             observed_main_ci_conclusion=registry.observed_main_ci_conclusion,
-            capabilities=tuple(capabilities),
-            journeys=registry.journeys,
+            capabilities=registry.capabilities,
+            journeys=tuple(journeys),
         )
+
+
+def test_registry_loader_rejects_bool_schema_version_alias(tmp_path: Path) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_capability_registry(path)
 
 
 def test_registry_loader_rejects_unknown_top_level_field(tmp_path: Path) -> None:
@@ -285,6 +316,21 @@ def test_available_python_component_contracts_resolve_to_real_symbols() -> None:
         assert _resolve_contract(capability.component_contract) is not None
 
 
+def test_registry_loader_rejects_unresolvable_available_contract(tmp_path: Path) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["component_contract"] = "twelve_six.nonexistent.Contract"
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="component contract"):
+        load_capability_registry(path)
+
+
 def test_registry_loader_rejects_unknown_nested_capability_field(tmp_path: Path) -> None:
     payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     payload["capabilities"][0]["forged_ready"] = True
@@ -321,3 +367,114 @@ def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="strict unambiguous"):
         load_capability_registry(path)
+
+
+def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> None:
+    registry = _load()
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+
+    assert inventory.observed_main_sha == registry.observed_main_sha
+    assert inventory.observed_main_sha == "019944d5fe12334791f05f1232d13de4a12e37d3"
+    assert inventory.observed_main_tree_sha == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
+    assert inventory.accepted_main_surface_count == 114
+    assert inventory.candidate_overlay_surface_count == 3
+    assert inventory.source_surface_count == 117
+    validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> None:
+    registry = _load()
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    capability_ids = {capability.capability_id for capability in registry.capabilities}
+
+    for surface in inventory.surfaces:
+        assert surface.capability_id in capability_ids
+        capability = registry.capability(surface.capability_id)
+        assert capability.journey_ids
+
+
+def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> None:
+    registry = _load()
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+
+    for surface in inventory.surfaces:
+        if surface.origin != "stacked_candidate":
+            continue
+        capability = registry.capability(surface.capability_id)
+        assert capability.status is CapabilityStatus.UNAVAILABLE
+        assert capability.integrated_result is None
+
+
+def test_source_surface_inventory_rejects_bool_schema_version_alias(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_source_surface_inventory(path)
+
+
+def test_source_surface_inventory_rejects_bool_schema_version_alias(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_source_surface_inventory(path)
+
+
+def test_source_surface_inventory_rejects_unknown_nested_field(tmp_path: Path) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["surfaces"][0]["forged"] = True
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="source_surface schema"):
+        load_source_surface_inventory(path)
+
+
+def test_source_surface_inventory_rejects_origin_count_reseal(tmp_path: Path) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["accepted_main_surface_count"] -= 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="accepted_main_surface_count"):
+        load_source_surface_inventory(path)
+
+
+def test_source_surface_coverage_rejects_unknown_capability_mapping(tmp_path: Path) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["surfaces"][0]["capability_id"] = "forged-capability"
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="maps unknown capability ids"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "stacked_candidate"
+    )
+    payload["surfaces"].remove(target)
+    payload["source_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] -= 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="unmapped_checkout"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)

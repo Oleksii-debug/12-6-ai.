@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import re
+import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -179,6 +181,9 @@ class Capability:
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must be unique")
 
+        if not self.journey_ids:
+            raise ValueError("capability must bind at least one user/operator journey")
+
         if not isinstance(self.environments, tuple) or any(
             not isinstance(item, EnvironmentSupport) for item in self.environments
         ):
@@ -261,6 +266,98 @@ class Journey:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceSurface:
+    path: str
+    capability_id: str
+    origin: str
+
+    def __post_init__(self) -> None:
+        _require_text("source surface path", self.path)
+        _require_id("source surface capability_id", self.capability_id)
+        if self.origin not in {"accepted_main", "stacked_candidate"}:
+            raise ValueError("source surface origin is unsupported")
+        if not self.path.startswith("src/twelve_six/") or not self.path.endswith(".py"):
+            raise ValueError("source surface path must be a Python path under src/twelve_six")
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "path": self.path,
+            "capability_id": self.capability_id,
+            "origin": self.origin,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SourceSurfaceInventory:
+    schema_version: int
+    observed_main_sha: str
+    observed_main_tree_sha: str
+    source_root: str
+    source_surface_count: int
+    accepted_main_surface_count: int
+    candidate_overlay_surface_count: int
+    surfaces: tuple[SourceSurface, ...]
+
+    def __post_init__(self) -> None:
+        _require_positive_int("schema_version", self.schema_version)
+        if (
+            not isinstance(self.schema_version, int)
+            or isinstance(self.schema_version, bool)
+            or self.schema_version != 1
+        ):
+            raise ValueError("unsupported SourceSurfaceInventory schema_version")
+        for field_name, value in (
+            ("observed_main_sha", self.observed_main_sha),
+            ("observed_main_tree_sha", self.observed_main_tree_sha),
+        ):
+            if not isinstance(value, str) or _SHA40_RE.fullmatch(value) is None:
+                raise ValueError(f"{field_name} must be a lowercase 40-hex Git SHA")
+        if self.source_root != "src/twelve_six":
+            raise ValueError("source_root must be canonical src/twelve_six")
+        _require_positive_int("source_surface_count", self.source_surface_count)
+        _require_positive_int(
+            "accepted_main_surface_count", self.accepted_main_surface_count
+        )
+        _require_positive_int(
+            "candidate_overlay_surface_count", self.candidate_overlay_surface_count
+        )
+        if not isinstance(self.surfaces, tuple) or not self.surfaces:
+            raise ValueError("surfaces must be a non-empty tuple")
+        if any(not isinstance(item, SourceSurface) for item in self.surfaces):
+            raise ValueError("surfaces must contain only SourceSurface values")
+        if self.source_surface_count != len(self.surfaces):
+            raise ValueError("source_surface_count does not match surfaces")
+        accepted_count = sum(item.origin == "accepted_main" for item in self.surfaces)
+        candidate_count = sum(item.origin == "stacked_candidate" for item in self.surfaces)
+        if accepted_count != self.accepted_main_surface_count:
+            raise ValueError("accepted_main_surface_count does not match surfaces")
+        if candidate_count != self.candidate_overlay_surface_count:
+            raise ValueError("candidate_overlay_surface_count does not match surfaces")
+        if accepted_count + candidate_count != self.source_surface_count:
+            raise ValueError("source surface origin counts do not cover the inventory")
+        paths = [item.path for item in self.surfaces]
+        if paths != sorted(paths):
+            raise ValueError("source surfaces must be in canonical path order")
+        if len(paths) != len(set(paths)):
+            raise ValueError("source surface paths must be unique")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "observed_main_sha": self.observed_main_sha,
+            "observed_main_tree_sha": self.observed_main_tree_sha,
+            "source_root": self.source_root,
+            "source_surface_count": self.source_surface_count,
+            "accepted_main_surface_count": self.accepted_main_surface_count,
+            "candidate_overlay_surface_count": self.candidate_overlay_surface_count,
+            "surfaces": [item.to_dict() for item in self.surfaces],
+        }
+
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self.to_dict())
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityRegistry:
     schema_version: int
     observed_main_sha: str
@@ -270,7 +367,12 @@ class CapabilityRegistry:
     journeys: tuple[Journey, ...]
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        _require_positive_int("schema_version", self.schema_version)
+        if (
+            not isinstance(self.schema_version, int)
+            or isinstance(self.schema_version, bool)
+            or self.schema_version != 1
+        ):
             raise ValueError("unsupported CapabilityRegistry schema_version")
         if not isinstance(self.observed_main_sha, str) or _SHA40_RE.fullmatch(
             self.observed_main_sha
@@ -406,6 +508,46 @@ class CapabilityRegistry:
         return _canonical_sha256(self.to_dict())
 
 
+def resolve_component_contract(component_contract: str) -> object:
+    """Resolve one repository-owned Python module or module attribute fail-closed."""
+
+    contract = _require_text("component_contract", component_contract)
+    if not contract.startswith("twelve_six."):
+        raise ValueError(
+            "AVAILABLE component contract must be repository-owned twelve_six Python"
+        )
+
+    parts = contract.split(".")
+    for index in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:index])
+        try:
+            resolved: object = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if exc.name != module_name:
+                raise ValueError(
+                    f"component contract import failed inside module: {module_name}"
+                ) from exc
+            continue
+        for attribute in parts[index:]:
+            if not hasattr(resolved, attribute):
+                raise ValueError(
+                    f"component contract attribute does not exist: {contract}"
+                )
+            resolved = getattr(resolved, attribute)
+        return resolved
+    raise ValueError(f"component contract module does not exist: {contract}")
+
+
+def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
+    """Prove every AVAILABLE capability begins at a live repository contract."""
+
+    if not isinstance(registry, CapabilityRegistry):
+        raise ValueError("registry must be a CapabilityRegistry")
+    for capability in registry.capabilities:
+        if capability.status is CapabilityStatus.AVAILABLE:
+            resolve_component_contract(capability.component_contract)
+
+
 def load_capability_registry(path: str | Path) -> CapabilityRegistry:
     payload = _strict_json_object(Path(path).read_bytes())
     if set(payload) != {
@@ -522,7 +664,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    return CapabilityRegistry(
+    registry = CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -530,3 +672,157 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
+    validate_available_component_contracts(registry)
+    return registry
+
+
+def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
+    payload = _strict_json_object(Path(path).read_bytes())
+    payload = _require_exact_fields(
+        payload,
+        {
+            "schema_version",
+            "observed_main_sha",
+            "observed_main_tree_sha",
+            "source_root",
+            "source_surface_count",
+            "accepted_main_surface_count",
+            "candidate_overlay_surface_count",
+            "surfaces",
+        },
+        "source_surface_inventory",
+    )
+    raw_surfaces = payload["surfaces"]
+    if not isinstance(raw_surfaces, list):
+        raise ValueError("source_surface_inventory.surfaces must be a JSON array")
+    surfaces = tuple(
+        SourceSurface(
+            **_require_exact_fields(
+                item,
+                {"path", "capability_id", "origin"},
+                "source_surface",
+            )
+        )
+        for item in raw_surfaces
+    )
+    return SourceSurfaceInventory(
+        schema_version=payload["schema_version"],
+        observed_main_sha=payload["observed_main_sha"],
+        observed_main_tree_sha=payload["observed_main_tree_sha"],
+        source_root=payload["source_root"],
+        source_surface_count=payload["source_surface_count"],
+        accepted_main_surface_count=payload["accepted_main_surface_count"],
+        candidate_overlay_surface_count=payload["candidate_overlay_surface_count"],
+        surfaces=surfaces,
+    )
+
+
+def validate_source_surface_coverage(
+    registry: CapabilityRegistry,
+    inventory: SourceSurfaceInventory,
+    *,
+    repo_root: str | Path,
+) -> None:
+    if not isinstance(registry, CapabilityRegistry):
+        raise ValueError("registry must be a CapabilityRegistry")
+    if not isinstance(inventory, SourceSurfaceInventory):
+        raise ValueError("inventory must be a SourceSurfaceInventory")
+    if registry.observed_main_sha != inventory.observed_main_sha:
+        raise ValueError("capability and source inventories observe different main SHAs")
+
+    known_capability_ids = {item.capability_id for item in registry.capabilities}
+    mapped_capability_ids = {item.capability_id for item in inventory.surfaces}
+    unknown = sorted(mapped_capability_ids.difference(known_capability_ids))
+    if unknown:
+        raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
+
+    root = Path(repo_root)
+    tree_check = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "show",
+            "-s",
+            "--format=%T",
+            inventory.observed_main_sha,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if tree_check.returncode != 0:
+        raise ValueError("cannot resolve observed_main_sha in repository checkout")
+    resolved_tree_sha = tree_check.stdout.strip()
+    if resolved_tree_sha != inventory.observed_main_tree_sha:
+        raise ValueError(
+            "source inventory observed_main_tree_sha does not match observed_main_sha"
+        )
+
+    listing = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            inventory.observed_main_tree_sha,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listing.returncode != 0:
+        raise ValueError("cannot enumerate observed main source tree")
+
+    prefix = f"{inventory.source_root}/"
+    accepted_main_actual = sorted(
+        line.strip()
+        for line in listing.stdout.splitlines()
+        if line.strip().startswith(prefix) and line.strip().endswith(".py")
+    )
+    accepted_main_expected = [
+        item.path for item in inventory.surfaces if item.origin == "accepted_main"
+    ]
+    if accepted_main_actual != accepted_main_expected:
+        missing = sorted(set(accepted_main_actual).difference(accepted_main_expected))
+        stale = sorted(set(accepted_main_expected).difference(accepted_main_actual))
+        raise ValueError(
+            "accepted-main source inventory drift: "
+            f"unmapped_main={missing}, stale_main_inventory={stale}"
+        )
+
+    source_root = root / inventory.source_root
+    checkout_actual = sorted(
+        path.relative_to(root).as_posix()
+        for path in source_root.rglob("*.py")
+        if path.is_file()
+    )
+    checkout_expected = [item.path for item in inventory.surfaces]
+    if checkout_actual != checkout_expected:
+        missing = sorted(set(checkout_actual).difference(checkout_expected))
+        stale = sorted(set(checkout_expected).difference(checkout_actual))
+        raise ValueError(
+            "stacked source inventory drift: "
+            f"unmapped_checkout={missing}, stale_checkout_inventory={stale}"
+        )
+
+    overlay_actual = sorted(set(checkout_actual).difference(accepted_main_actual))
+    overlay_expected = [
+        item.path for item in inventory.surfaces if item.origin == "stacked_candidate"
+    ]
+    if overlay_actual != overlay_expected:
+        raise ValueError("stacked candidate surface classification is non-canonical")
+
+    journey_ids = {item.journey_id for item in registry.journeys}
+    for capability_id in mapped_capability_ids:
+        capability = registry.capability(capability_id)
+        if not capability.journey_ids:
+            raise ValueError(
+                f"source-mapped capability lacks a user/operator journey: {capability_id}"
+            )
+        if any(journey_id not in journey_ids for journey_id in capability.journey_ids):
+            raise ValueError(
+                f"source-mapped capability has an unknown journey: {capability_id}"
+            )
