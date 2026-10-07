@@ -22,10 +22,12 @@ The control layer can:
    SHA-256, proposer identity and the exact failure-packet identity;
 6. execute component and adversarial regressions on the exact clean candidate checkout;
 7. ingest a native SIL receipt bound to the exact candidate SHA;
-8. require an explicit physical PASS when physical scope is REQUIRED, or an explicit independent
+8. require an explicit physical PASS when physical scope is REQUIRED, or an explicit
    NOT_APPLICABLE scope receipt when physical scope is NONE; and
-9. allow promotion only when all four gates are represented and an independent certifier, not the
-   repair proposer, makes the final decision.
+9. emit only `READY_FOR_INDEPENDENT_PROMOTION` when all four gates are represented. The local
+   runtime never emits authoritative `PROMOTE`: its actor IDs are provenance labels, not an
+   authenticated proof that a different worker produced the decision. Final promotion therefore
+   remains an external independent evidence/review gate.
 
 The durable command surface supports failure-packet creation, external candidate binding,
 `materialize-candidate` for an actual isolated local Git repair lineage, automated regression
@@ -69,7 +71,7 @@ closure-ready yet. Before READY/DONE, current authority still needs:
   repair commit → component/adversarial retest → SIL → applicable physical decision;
 - at least one live round-trip must exercise the new exact-failing-SHA local mutation adapter and
   preserve its resulting candidate evidence on an accepted lineage; and
-- independent evidence that the final promotion decision was not produced by the repair proposer.
+- external independent evidence/review that converts a locally READY candidate into an actual promotion; self-asserted local actor labels are not sufficient authority.
 
 ## Durable surfaces
 

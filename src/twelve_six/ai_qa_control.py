@@ -850,12 +850,16 @@ class PromotionDecision:
     reasons: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if self.decision not in {"PROMOTE", "BLOCK"}:
-            raise ValueError("promotion decision must be PROMOTE or BLOCK")
+        if self.decision not in {"READY_FOR_INDEPENDENT_PROMOTION", "BLOCK"}:
+            raise ValueError(
+                "promotion decision must be READY_FOR_INDEPENDENT_PROMOTION or BLOCK"
+            )
         _require_sha256("candidate_identity_sha256", self.candidate_identity_sha256)
         _require_id("certifier_actor_id", self.certifier_actor_id)
-        if self.decision == "PROMOTE" and self.reasons:
-            raise ValueError("PROMOTE cannot contain blocker reasons")
+        if self.decision == "READY_FOR_INDEPENDENT_PROMOTION" and self.reasons:
+            raise ValueError(
+                "READY_FOR_INDEPENDENT_PROMOTION cannot contain blocker reasons"
+            )
         if self.decision == "BLOCK" and not self.reasons:
             raise ValueError("BLOCK needs at least one reason")
 
@@ -938,8 +942,11 @@ def evaluate_promotion(
             certifier_actor_id=certifier_actor_id,
             reasons=tuple(reasons),
         )
+    # Actor IDs are provenance labels, not authenticated worker identities.  The local
+    # control plane may prove evidence completeness, but it must not self-authorize the
+    # final promotion that Section 4.2 reserves for independent external evidence.
     return PromotionDecision(
-        decision="PROMOTE",
+        decision="READY_FOR_INDEPENDENT_PROMOTION",
         candidate_identity_sha256=candidate.identity_sha256(),
         certifier_actor_id=certifier_actor_id,
         reasons=(),
@@ -1359,7 +1366,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
     payload["decision_identity_sha256"] = decision.identity_sha256()
     _write_json(args.output, payload)
     print(json.dumps(payload, sort_keys=True))
-    return 0 if decision.decision == "PROMOTE" else 1
+    return 0 if decision.decision == "READY_FOR_INDEPENDENT_PROMOTION" else 1
 
 
 def _sil_failure_cli(args: argparse.Namespace) -> int:

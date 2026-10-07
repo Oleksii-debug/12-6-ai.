@@ -400,7 +400,7 @@ def _pass_receipt(
     )
 
 
-def test_independent_complete_gate_chain_can_promote_software_only_repair() -> None:
+def test_complete_gate_chain_is_only_ready_for_independent_promotion() -> None:
     failure = _failure()
     candidate = _candidate(failure)
     receipts = (
@@ -422,7 +422,8 @@ def test_independent_complete_gate_chain_can_promote_software_only_repair() -> N
         certifier_actor_id="independent-certifier",
         policy=_policy(),
     )
-    assert decision.decision == "PROMOTE"
+    assert decision.decision == "READY_FOR_INDEPENDENT_PROMOTION"
+    assert decision.decision != "PROMOTE"
     assert decision.reasons == ()
     assert len(decision.identity_sha256()) == 64
 
