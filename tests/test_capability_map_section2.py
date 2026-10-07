@@ -89,6 +89,25 @@ def test_registry_loader_rejects_noncanonical_available_test_command(
         load_capability_registry(path)
 
 
+def test_registry_loader_rejects_test_path_escape_from_tests_tree(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["test_vectors"][0]["command"] = (
+        "pytest -q tests/../tools/validate_section2_repository_surface_coverage.py"
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="canonical tests"):
+        load_capability_registry(path)
+
+
 def test_registry_loader_rejects_available_evidence_not_bound_to_main_ci(
     tmp_path: Path,
 ) -> None:
