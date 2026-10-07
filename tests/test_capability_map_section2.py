@@ -1311,6 +1311,44 @@ def test_capability_terminal_text_truth_ignores_require_text_rebinding(
         registry.identity_sha256()
 
 
+def test_stored_canonical_ids_ignore_require_id_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_id",
+        lambda _name, value: value,
+    )
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "capability_id", "FORGED")
+    with pytest.raises(ValueError, match="capability_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.environments)
+    environment = capability.environments[0]
+    object.__setattr__(environment, "environment_id", "FORGED")
+    with pytest.raises(ValueError, match="environment_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "journey_id", "FORGED")
+    with pytest.raises(ValueError, match="journey_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "capability_id", "FORGED")
+    with pytest.raises(
+        ValueError,
+        match="source surface capability_id must be a canonical identifier",
+    ):
+        inventory.identity_sha256()
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
