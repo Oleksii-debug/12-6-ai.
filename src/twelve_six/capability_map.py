@@ -813,6 +813,40 @@ class SourceSurfaceInventory:
         return _source_surface_inventory_identity_from_stored_state(self)
 
 
+def _build_source_inventory_post_init_authority(original_validate: Any) -> Any:
+    # Seal nested source-record validation for direct inventory construction.
+    sealed_surface_type = SourceSurface
+    sealed_surface_validate = SourceSurface.__post_init__
+    sealed_sha40_fullmatch = _SHA40_RE.fullmatch
+
+    def validate(self: Any) -> None:
+        for field_name, value in (
+            ("observed_main_sha", self.observed_main_sha),
+            ("observed_main_tree_sha", self.observed_main_tree_sha),
+        ):
+            if type(value) is not str or sealed_sha40_fullmatch(value) is None:
+                raise ValueError(
+                    f"{field_name} must be a lowercase 40-hex Git SHA"
+                )
+        if type(self.source_root) is not str or not self.source_root.strip():
+            raise ValueError("source_root must be non-empty text")
+        if type(self.surfaces) is not tuple or not self.surfaces:
+            raise ValueError("surfaces must be a non-empty tuple")
+        if any(type(item) is not sealed_surface_type for item in self.surfaces):
+            raise ValueError("surfaces must contain only SourceSurface values")
+        for item in self.surfaces:
+            sealed_surface_validate(item)
+        original_validate(self)
+
+    return validate
+
+
+_SOURCE_INVENTORY_POST_INIT_AUTHORITY = _build_source_inventory_post_init_authority(
+    SourceSurfaceInventory.__post_init__
+)
+SourceSurfaceInventory.__post_init__ = _SOURCE_INVENTORY_POST_INIT_AUTHORITY
+
+
 def _build_capability_registry_post_init() -> Any:
     # The canonical constructor validator closes over authority at definition time.
     # The public dataclass hook therefore exposes no caller-supplied validator

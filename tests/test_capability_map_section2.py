@@ -1842,3 +1842,24 @@ def test_capability_replace_nested_validator_rebinding_cannot_accept_corrupt_sta
     with pytest.raises(ValueError, match="test vector command"):
         replace(capability)
 
+
+def test_source_inventory_replace_nested_validator_rebinding_cannot_accept_bad_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    first = inventory.surfaces[0]
+    assert first.path == "src/twelve_six/__init__.py"
+    object.__setattr__(first, "path", "src/twelve_six/0forged.txt")
+
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "__post_init__",
+        lambda _self: None,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source surface path must be a canonical Python path",
+    ):
+        replace(inventory)
+
