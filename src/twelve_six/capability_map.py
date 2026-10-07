@@ -804,11 +804,13 @@ def _python_source_blob_map(
     for line in completed.stdout.splitlines():
         try:
             metadata, path = line.split("\t", 1)
-            _mode, kind, blob_sha = metadata.split()
+            mode, kind, blob_sha = metadata.split()
         except ValueError as exc:
             raise ValueError("git ls-tree emitted a non-canonical source record") from exc
-        if kind != "blob" or not path.startswith(prefix) or not path.endswith(".py"):
+        if not path.startswith(prefix) or not path.endswith(".py"):
             continue
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError("source surface must be a regular Git blob")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("git ls-tree emitted a malformed source blob SHA")
         blobs[path] = blob_sha
