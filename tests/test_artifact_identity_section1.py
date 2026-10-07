@@ -628,3 +628,33 @@ def test_closed_schema_rejects_tuple_container_subclasses() -> None:
             schema_version=generation.schema_version,
             artifacts=ForgedTuple(generation.artifacts),
         )
+
+def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedInt(int):
+        pass
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass decode must never run")
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        ArtifactRef(ArtifactKind.CORPUS, ForgedInt(1), _sha("scalar-version"))
+
+    with pytest.raises(ValueError, match="identity_sha256 must be an exact lowercase SHA-256"):
+        ArtifactRef(ArtifactKind.CORPUS, 1, ForgedStr(_sha("scalar-hash")))
+
+    parent = _generation("scalar-parent").artifact_manifest(ArtifactKind.CORPUS)
+    with pytest.raises(ValueError, match="parent role must be canonical lower_snake_case"):
+        ParentBinding(
+            role=ForgedStr("corpus"),
+            artifact=parent.artifact,
+            parent_manifest_identity_sha256=parent.identity_sha256(),
+        )
+
+    with pytest.raises(ValueError, match="manifest input must be bytes"):
+        parse_generation_identity_manifest(ForgedBytes(b"{}"))
+
