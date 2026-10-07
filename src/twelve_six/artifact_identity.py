@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -358,8 +358,11 @@ class ArtifactManifest:
             "parents": [parent.to_dict() for parent in self.parents],
         }
 
-    def manifest_identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def manifest_identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
     def parents_by_role(self) -> dict[str, ArtifactRef]:
         ArtifactManifest.__post_init__(self)
@@ -388,10 +391,47 @@ class ArtifactManifest:
         )
 
 
+def _artifact_manifest_identity_from_stored_state(
+    manifest: ArtifactManifest,
+    _sealed_hash_payload=_canonical_json_sha256,
+) -> str:
+    """Hash exact stored manifest state without dispatching mutable manifest view methods."""
+
+    if not _is_exact_type(manifest, ArtifactManifest):
+        raise ValueError("manifest must be an ArtifactManifest")
+    ArtifactManifest.__post_init__(manifest)
+    payload = {
+        "schema_version": manifest.schema_version,
+        "artifact": {
+            "kind": _artifact_kind_wire_value(manifest.artifact.kind),
+            "schema_version": manifest.artifact.schema_version,
+            "identity_sha256": manifest.artifact.identity_sha256,
+        },
+        "parents": [
+            {
+                "role": parent.role,
+                "artifact": {
+                    "kind": _artifact_kind_wire_value(parent.artifact.kind),
+                    "schema_version": parent.artifact.schema_version,
+                    "identity_sha256": parent.artifact.identity_sha256,
+                },
+                "parent_manifest_identity_sha256": (
+                    parent.parent_manifest_identity_sha256
+                ),
+            }
+            for parent in manifest.parents
+        ],
+    }
+    return _sealed_hash_payload(payload)
+
+
 def bind_artifact(
     artifact: ArtifactRef,
     *,
     parents: Mapping[str, ArtifactManifest] | None = None,
+    _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+        _artifact_manifest_identity_from_stored_state
+    ),
 ) -> ArtifactManifest:
     """Create a canonical binding that commits to each parent's bound lineage."""
 
@@ -420,7 +460,7 @@ def bind_artifact(
                 role=role,
                 artifact=normalized[role].artifact,
                 parent_manifest_identity_sha256=(
-                    normalized[role].manifest_identity_sha256()
+                    _sealed_manifest_identity(normalized[role])
                 ),
             )
             for role in sorted(normalized)
@@ -432,6 +472,9 @@ def verify_parent_bindings(
     manifest: ArtifactManifest,
     *,
     expected_parents: Mapping[str, ArtifactManifest],
+    _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+        _artifact_manifest_identity_from_stored_state
+    ),
 ) -> None:
     """Fail closed unless exact parent artifacts and bound lineages both match."""
 
@@ -450,7 +493,7 @@ def verify_parent_bindings(
         ArtifactManifest.__post_init__(parent)
         normalized[role] = parent
 
-    observed = manifest.parent_bindings_by_role()
+    observed = {parent.role: parent for parent in manifest.parents}
     if set(observed) != set(normalized):
         raise ValueError("artifact parent role set mismatch")
     for role in sorted(normalized):
@@ -462,7 +505,7 @@ def verify_parent_bindings(
             raise ValueError(f"artifact parent identity mismatch for role: {role}")
         if (
             binding.parent_manifest_identity_sha256
-            != expected.manifest_identity_sha256()
+            != _sealed_manifest_identity(expected)
         ):
             raise ValueError(f"artifact parent lineage mismatch for role: {role}")
 
@@ -479,6 +522,9 @@ class GenerationIdentityManifest:
         _sealed_artifact_kind_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
         _sealed_parent_policy_values: Mapping[str, Mapping[str, str]] = (
             _GENERATION_PARENT_POLICY_VALUES
+        ),
+        _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+            _artifact_manifest_identity_from_stored_state
         ),
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
@@ -509,7 +555,7 @@ class GenerationIdentityManifest:
         for kind_value in _sealed_artifact_kind_values:
             manifest = by_kind_value[kind_value]
             expected_policy = _sealed_parent_policy_values[kind_value]
-            observed = manifest.parent_bindings_by_role()
+            observed = {parent.role: parent for parent in manifest.parents}
             if tuple(observed) != tuple(sorted(expected_policy)):
                 raise ValueError(f"{kind_value} parent role set is non-canonical")
             for role, parent_kind_value in expected_policy.items():
@@ -527,7 +573,7 @@ class GenerationIdentityManifest:
                     )
                 if (
                     binding.parent_manifest_identity_sha256
-                    != canonical_parent.manifest_identity_sha256()
+                    != _sealed_manifest_identity(canonical_parent)
                 ):
                     raise ValueError(
                         f"{kind_value}.{role} parent lineage identity "
@@ -541,8 +587,11 @@ class GenerationIdentityManifest:
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
     def artifact_ref(
         self,
