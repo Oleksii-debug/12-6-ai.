@@ -1420,6 +1420,27 @@ def test_stored_integer_authority_ignores_helper_rebinding(
         inventory.identity_sha256()
 
 
+def test_capability_status_branch_ignores_module_class_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = next(
+        item
+        for item in _load().capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(capability, "integrated_result", None)
+    object.__setattr__(capability, "unavailable_reason", "forged unavailable state")
+
+    class ForgedStatus:
+        AVAILABLE = object()
+        UNAVAILABLE = object()
+
+    monkeypatch.setattr(capability_map_module, "CapabilityStatus", ForgedStatus)
+
+    with pytest.raises(ValueError, match="AVAILABLE capability cannot have unavailable_reason"):
+        capability_map_module.Capability.__post_init__(capability)
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
