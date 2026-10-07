@@ -165,6 +165,73 @@ def test_sil_plan_executes_every_current_available_journey_with_integration_vect
             }
 
 
+
+def test_sil_plan_binds_explicit_end_to_end_contracts_to_exact_journey_steps() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+
+    contract_ids = tuple(
+        journey_id for journey_id, _vector_ids in plan.journey_end_to_end_contracts
+    )
+    assert contract_ids == plan.available_journey_ids
+
+    serialized = plan.to_dict()["journey_end_to_end_contracts"]
+    assert [item["journey_id"] for item in serialized] == list(
+        plan.available_journey_ids
+    )
+    assert all(
+        item["execution_mode"] == "SEQUENTIAL_SHARED_INPUT_ENVELOPE"
+        and item["completion_rule"] == "ALL_DECLARED_STEPS_PASS_IN_ORDER"
+        for item in serialized
+    )
+
+    for journey_id, declared_vector_ids in plan.journey_end_to_end_contracts:
+        observed = tuple(
+            vector.vector_id
+            for vector in plan.vectors
+            if vector.journey_id == journey_id
+        )
+        assert observed == declared_vector_ids
+
+
+def test_sil_plan_rejects_missing_or_resealed_end_to_end_policy() -> None:
+    registry = _registry()
+    scenario = _scenario()
+    plan = build_sil_plan(registry, scenario)
+
+    with pytest.raises(ValueError, match="exactly match"):
+        build_sil_plan(
+            registry,
+            scenario,
+            _sealed_e2e_policy=plan.journey_end_to_end_contracts[:-1],
+        )
+
+    forged = list(plan.journey_end_to_end_contracts)
+    journey_id, _vector_ids = forged[0]
+    forged[0] = (journey_id, ("model-resource-envelope",))
+    with pytest.raises(ValueError, match="do not match"):
+        build_sil_plan(
+            registry,
+            scenario,
+            _sealed_e2e_policy=tuple(forged),
+        )
+
+
+def test_sil_plan_policy_global_rebind_cannot_reseal_loaded_validator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = build_sil_plan(_registry(), _scenario()).journey_end_to_end_contracts
+    monkeypatch.setattr(
+        sil_qualification,
+        "_CANONICAL_JOURNEY_E2E_VECTOR_POLICY",
+        (("developer-model-contract", ("forged-vector",)),),
+    )
+
+    rebound = build_sil_plan(_registry(), _scenario())
+
+    assert rebound.journey_end_to_end_contracts == original
+
+
 def test_component_only_green_cannot_satisfy_available_capability_contract() -> None:
     registry = _registry()
     capabilities = list(registry.capabilities)
