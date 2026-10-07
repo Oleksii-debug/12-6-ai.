@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Dataclass post-init defaults below deliberately freeze authority snapshots against rebinding.
+# ruff: noqa: RUF033
+
 import hashlib
 import json
 import math
@@ -81,7 +84,7 @@ def _require_sha256(name: str, value: object) -> str:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # Closed manifest schemas reject behavioral subclasses that can override serialization.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_exact_object_fields(
