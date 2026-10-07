@@ -1047,6 +1047,7 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     assert component.evidence_identity_sha256 != adversarial.evidence_identity_sha256
     assert payload.read_text(encoding="utf-8") == "repaired\n"
 
+
 def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
     protected = (
         ".gitignore",
@@ -1143,5 +1144,175 @@ def test_materializer_rejects_patch_that_rewrites_reproducer_test(
             patch_bytes=patch,
             proposer_actor_id="repair-agent",
             policy=_policy(),
+        )
+
+
+def test_closed_ai_qa_schema_rejects_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedBytes(bytes):
+        pass
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("behavioral tuple must not be iterated")
+
+    policy = _policy()
+    with pytest.raises(ValueError, match="exact lowercase SHA-256"):
+        ai_qa_control._require_sha256("identity", ForgedStr("a" * 64))
+
+    with pytest.raises(ValueError, match="automated gate order is non-canonical"):
+        ai_qa_control.AIQAPolicy(
+            policy.schema_version,
+            ForgedTuple(policy.automated_gate_order),
+            policy.promotion_gate_order,
+            policy.require_independent_certifier,
+            policy.require_exact_candidate_sha,
+            policy.physical_not_applicable_requires_explicit_scope,
+            policy.max_failure_summary_bytes,
+            policy.max_patch_bytes,
+        )
+
+    observation = _ci_observation()
+    with pytest.raises(ValueError, match="external observation schema"):
+        ExternalObservation(
+            ForgedStr(observation.schema_version),
+            observation.source,
+            observation.git_sha,
+            observation.evidence_identity_sha256,
+            observation.failure_summary,
+            observation.reproducer_command,
+            observation.physical_gate_id,
+        )
+
+    failure = _failure()
+    with pytest.raises(ValueError, match="patch must be non-empty bytes"):
+        build_repair_candidate(
+            failure,
+            base_git_sha=_FAIL_SHA,
+            candidate_git_sha=_CANDIDATE_SHA,
+            patch_bytes=ForgedBytes(b"diff --git a/x b/x\n+repair\n"),
+            proposer_actor_id="repair-agent",
+            policy=policy,
+        )
+
+    with pytest.raises(ValueError, match="gate receipt reason must be text"):
+        GateReceipt(
+            GateKind.PHYSICAL,
+            GateVerdict.NOT_APPLICABLE,
+            _CANDIDATE_SHA,
+            "d" * 64,
+            "physical-certifier",
+            ForgedStr("not required"),
+        )
+
+    with pytest.raises(ValueError, match="promotion decision"):
+        ai_qa_control.PromotionDecision(
+            ForgedStr("BLOCK"),
+            "e" * 64,
+            "independent-certifier",
+            ("blocked",),
+        )
+
+    component = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "f" * 64,
+        "independent-certifier",
+    )
+    with pytest.raises(ValueError, match="receipts must contain exact GateReceipt values"):
+        evaluate_promotion(
+            failure,
+            _candidate(failure),
+            ForgedTuple((component,)),
+            certifier_actor_id="independent-certifier",
+            policy=policy,
+        )
+
+def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) -> None:
+    class ForgedStr(str):
+        pass
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("behavioral tuple must not be iterated")
+
+    policy = _policy()
+    registry = load_capability_registry(_CAPABILITIES)
+    scenario = load_sil_scenario(_SCENARIO)
+
+    class ForgedPolicy(ai_qa_control.AIQAPolicy):
+        pass
+
+    forged_policy = ForgedPolicy(
+        policy.schema_version,
+        policy.automated_gate_order,
+        policy.promotion_gate_order,
+        policy.require_independent_certifier,
+        policy.require_exact_candidate_sha,
+        policy.physical_not_applicable_requires_explicit_scope,
+        policy.max_failure_summary_bytes,
+        policy.max_patch_bytes,
+    )
+    with pytest.raises(ValueError, match="policy must be an AIQAPolicy"):
+        failure_packet_from_sil(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            defect_id="closed-policy",
+            policy=forged_policy,
+            expected_package_bytes=b"package",
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=registry,
+            expected_scenario=scenario,
+        )
+
+    with pytest.raises(ValueError, match="physical_scope must be a PhysicalScope"):
+        failure_packet_from_sil(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            defect_id="closed-scope",
+            policy=policy,
+            expected_package_bytes=b"package",
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=registry,
+            expected_scenario=scenario,
+            physical_scope="NONE",
+        )
+
+    failure = _failure()
+    candidate = _candidate(failure)
+    with pytest.raises(ValueError, match="adversarial_command must be text"):
+        build_regression_chain(
+            failure,
+            candidate,
+            adversarial_command=ForgedStr("pytest -q tests/test_payload.py"),
+        )
+
+    receipt = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "a" * 64,
+        "independent-certifier",
+    )
+    candidate_identity = candidate.identity_sha256()
+    bundle = {
+        "schema_version": "12-6.aiqa-gate-receipts.v1",
+        "candidate_identity_sha256": candidate_identity,
+        "receipts": [receipt.to_dict()],
+    }
+    path = tmp_path / "receipts.json"
+    path.write_text(
+        json.dumps(bundle, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="trusted_receipts must be an immutable tuple"):
+        load_gate_receipt_bundle(
+            path,
+            expected_candidate_identity_sha256=candidate_identity,
+            trusted_receipts=ForgedTuple((receipt,)),
         )
 
