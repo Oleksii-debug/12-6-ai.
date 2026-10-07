@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "0e1f301c5123b4e52c111cb94264cfd61b60bf4b",
-  "observed_main_tree_sha": "4fd06e8836450e61ab47e39657c96c6b6f76792e",
+  "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
+  "observed_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
   "source_root": "src/twelve_six",
   "source_surface_count": 117,
   "surfaces": [
@@ -23,7 +23,7 @@
     {
       "path": "src/twelve_six/capability_map.py",
       "capability_id": "executable-capability-map",
-      "origin": "modified_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/checkpoint/__init__.py",
@@ -591,6 +591,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 116,
-  "candidate_overlay_surface_count": 1
+  "accepted_main_surface_count": 117,
+  "candidate_overlay_surface_count": 0
 }
