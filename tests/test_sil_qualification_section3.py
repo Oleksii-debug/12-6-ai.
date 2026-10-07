@@ -217,6 +217,15 @@ def test_sil_plan_executes_every_current_available_journey_with_integration_vect
             }
 
 
+def test_sil_policy_predeclares_closed_predecessor_journey_contract() -> None:
+    policy = dict(sil_qualification._CANONICAL_JOURNEY_E2E_VECTOR_POLICY)
+
+    assert policy["developer-replace-cognitive-core"] == (
+        "section0-product-stack",
+        "section1-stack",
+    )
+
+
 def test_sil_plan_binds_explicit_end_to_end_contracts_to_exact_journey_steps() -> None:
     registry = _registry()
     plan = build_sil_plan(registry, _scenario())
