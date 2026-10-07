@@ -96,6 +96,18 @@ def test_candidate_surface_paths_include_changed_existing_surface() -> None:
     }
 
 
+def test_repository_surface_coverage_rejects_available_candidate_override(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must remain UNAVAILABLE"):
+        _validate(inventory)
+
+
 def test_repository_surface_coverage_rejects_missing_candidate_override(
     tmp_path: Path,
 ) -> None:

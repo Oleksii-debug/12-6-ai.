@@ -411,9 +411,17 @@ def validate_repository_surface_coverage(
             raise ValueError("candidate override maps unknown capability")
         if path in candidate_overrides:
             raise ValueError("candidate override paths must be unique")
-        journey_ids = capabilities[capability_id].get("journey_ids")
+        capability = capabilities[capability_id]
+        journey_ids = capability.get("journey_ids")
         if not isinstance(journey_ids, list) or not journey_ids:
             raise ValueError("candidate override capability lacks journey")
+        if (
+            capability.get("status") != "UNAVAILABLE"
+            or capability.get("integrated_result") is not None
+        ):
+            raise ValueError(
+                "candidate override capability must remain UNAVAILABLE until integrated"
+            )
         candidate_overrides[path] = capability_id
 
     checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
