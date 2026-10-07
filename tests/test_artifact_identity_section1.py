@@ -392,7 +392,9 @@ def test_generation_parent_policy_is_runtime_immutable() -> None:
         release_policy["evaluation"] = ArtifactKind.EXPORT  # type: ignore[index]
 
     with pytest.raises(TypeError):
-        artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE] = {}  # type: ignore[index]
+        artifact_identity_module._GENERATION_PARENT_POLICY[
+            ArtifactKind.RELEASE
+        ] = {}  # type: ignore[index]
 
 
 def test_generation_validation_fails_closed_after_policy_global_rebind(
