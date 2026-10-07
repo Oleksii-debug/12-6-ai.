@@ -850,6 +850,7 @@ def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
     with pytest.raises(ValueError, match="must not require a runtime-shell rewrite"):
         receipt.identity_sha256()
 
+
 def test_system_plane_enum_singleton_value_mutation_fails_closed() -> None:
     architecture = canonical_system_architecture_v1()
     original_value = SystemPlane.BASE_MODEL.value
