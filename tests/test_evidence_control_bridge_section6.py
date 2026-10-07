@@ -443,3 +443,14 @@ def test_verification_entrypoints_expose_no_verifier_override_bypass() -> None:
 
     assert "qualification_verifier" not in physical_parameters
     assert "sil_verifier" not in requalification_parameters
+
+    for schema in (
+        HostDispatch,
+        PhysicalExecutionReceipt,
+        CanonicalEvidenceRecord,
+        bridge_module.RequalificationRequirement,
+        RequalificationReceipt,
+    ):
+        assert tuple(inspect.signature(schema.identity_sha256).parameters) == (
+            "instance",
+        )

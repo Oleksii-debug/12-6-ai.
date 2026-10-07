@@ -46,6 +46,15 @@ def _canonical_identity(value: Any) -> str:
     return _sha256_bytes(_canonical_json_bytes(value))
 
 
+def _sealed_identity_method(
+    identity_func: Callable[[Any], str],
+) -> Callable[[Any], str]:
+    def identity_sha256(instance: Any) -> str:
+        return identity_func(instance.to_dict())
+
+    return identity_sha256
+
+
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     return type(value) is expected  # noqa: E721
 
@@ -115,11 +124,7 @@ class HostDispatch:
             "physical_gate_id": self.physical_gate_id,
         }
 
-    def identity_sha256(
-        self,
-        _sealed_identity: Callable[[Any], str] = _canonical_identity,
-    ) -> str:
-        return _sealed_identity(self.to_dict())
+    identity_sha256 = _sealed_identity_method(_canonical_identity)
 
 
 def build_host_dispatch(
@@ -235,11 +240,7 @@ class PhysicalExecutionReceipt:
             "reproducer_command": self.reproducer_command,
         }
 
-    def identity_sha256(
-        self,
-        _sealed_identity: Callable[[Any], str] = _canonical_identity,
-    ) -> str:
-        return _sealed_identity(self.to_dict())
+    identity_sha256 = _sealed_identity_method(_canonical_identity)
 
 
 def _physical_failure_reproducer(evidence: dict[str, Any]) -> str | None:
@@ -432,11 +433,7 @@ class CanonicalEvidenceRecord:
             "physical_gate_id": self.physical_gate_id,
         }
 
-    def identity_sha256(
-        self,
-        _sealed_identity: Callable[[Any], str] = _canonical_identity,
-    ) -> str:
-        return _sealed_identity(self.to_dict())
+    identity_sha256 = _sealed_identity_method(_canonical_identity)
 
 
 def build_canonical_evidence_record(
@@ -563,11 +560,7 @@ class RequalificationRequirement:
             "physical_gate_id": self.physical_gate_id,
         }
 
-    def identity_sha256(
-        self,
-        _sealed_identity: Callable[[Any], str] = _canonical_identity,
-    ) -> str:
-        return _sealed_identity(self.to_dict())
+    identity_sha256 = _sealed_identity_method(_canonical_identity)
 
 
 def build_requalification_requirement(
@@ -675,11 +668,7 @@ class RequalificationReceipt:
             "physical_gate_id": self.physical_gate_id,
         }
 
-    def identity_sha256(
-        self,
-        _sealed_identity: Callable[[Any], str] = _canonical_identity,
-    ) -> str:
-        return _sealed_identity(self.to_dict())
+    identity_sha256 = _sealed_identity_method(_canonical_identity)
 
 
 def _require_requalification_bindings(
