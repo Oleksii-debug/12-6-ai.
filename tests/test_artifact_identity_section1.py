@@ -899,6 +899,7 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             expected_parents=ForgedDict(parents),
         )
 
+
 def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
