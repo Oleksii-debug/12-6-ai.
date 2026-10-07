@@ -23,7 +23,7 @@
     {
       "path": "src/twelve_six/capability_map.py",
       "capability_id": "executable-capability-map",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/__init__.py",
@@ -591,6 +591,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 116,
-  "candidate_overlay_surface_count": 1
+  "accepted_main_surface_count": 115,
+  "candidate_overlay_surface_count": 2
 }
