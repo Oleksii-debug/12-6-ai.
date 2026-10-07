@@ -496,3 +496,81 @@ def test_generation_builder_rejects_missing_kind_and_key_ref_mismatch() -> None:
     refs[ArtifactKind.EXPORT] = _ref(ArtifactKind.CHECKPOINT, "wrong")
     with pytest.raises(ValueError, match="ref kind mismatch"):
         build_generation_identity_manifest(refs)
+
+
+def test_closed_schema_rejects_artifact_ref_subclass_serialization_resealing() -> None:
+    class ForgedArtifactRef(ArtifactRef):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["identity_sha256"] = _sha("forged-serialized-artifact")
+            return payload
+
+    forged = ForgedArtifactRef(
+        ArtifactKind.CORPUS,
+        1,
+        _sha("validated-artifact"),
+    )
+
+    with pytest.raises(ValueError, match="artifact must be an ArtifactRef"):
+        ArtifactManifest(schema_version=1, artifact=forged, parents=())
+
+
+def test_closed_schema_rejects_parent_binding_subclass_serialization_resealing() -> None:
+    generation = _generation("a")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    checkpoint = release.parent_bindings_by_role()["checkpoint"]
+
+    class ForgedParentBinding(ParentBinding):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            artifact = dict(payload["artifact"])  # type: ignore[arg-type]
+            artifact["identity_sha256"] = _sha("forged-serialized-checkpoint")
+            payload["artifact"] = artifact
+            return payload
+
+    forged = ForgedParentBinding(
+        role=checkpoint.role,
+        artifact=checkpoint.artifact,
+        parent_manifest_identity_sha256=checkpoint.parent_manifest_identity_sha256,
+    )
+    parents = tuple(
+        forged if parent.role == "checkpoint" else parent
+        for parent in release.parents
+    )
+
+    with pytest.raises(ValueError, match="only ParentBinding"):
+        ArtifactManifest(
+            schema_version=1,
+            artifact=release.artifact,
+            parents=parents,
+        )
+
+
+def test_closed_schema_rejects_artifact_manifest_subclass_validation_view_resealing() -> None:
+    generation = _generation("a")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+
+    class ForgedArtifactManifest(ArtifactManifest):
+        def parent_bindings_by_role(self) -> dict[str, ParentBinding]:
+            return release.parent_bindings_by_role()
+
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["parents"] = []
+            return payload
+
+        def manifest_identity_sha256(self) -> str:
+            return release.manifest_identity_sha256()
+
+    forged = ForgedArtifactManifest(
+        schema_version=release.schema_version,
+        artifact=release.artifact,
+        parents=release.parents,
+    )
+    artifacts = tuple(
+        forged if item.artifact.kind is ArtifactKind.RELEASE else item
+        for item in generation.artifacts
+    )
+
+    with pytest.raises(ValueError, match="only ArtifactManifest"):
+        GenerationIdentityManifest(schema_version=1, artifacts=artifacts)
