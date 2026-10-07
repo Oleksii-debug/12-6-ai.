@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "0e1f301c5123b4e52c111cb94264cfd61b60bf4b",
-  "observed_main_tree_sha": "4fd06e8836450e61ab47e39657c96c6b6f76792e",
-  "current_repository_main_sha": "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21",
-  "current_repository_main_tree_sha": "17edf21d66709f6e8a7c217e138b33c0bf9a0217",
+  "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
+  "observed_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
+  "current_repository_main_sha": "ee7ade7e80e9e4e6fe7ffd5ebd5012a61bbc5fb6",
+  "current_repository_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
   "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -92,10 +92,5 @@
       "capability_id": "executable-capability-map"
     }
   ],
-  "candidate_overrides": [
-    {
-      "path": "tools/validate_section2_repository_surface_coverage.py",
-      "capability_id": "executable-capability-map"
-    }
-  ]
+  "candidate_overrides": []
 }
