@@ -14,6 +14,7 @@ A qualification authority supplies a canonical
 - allowed Windows/Linux host families;
 - a bounded validity window;
 - canonical, no-shell pytest actions with per-action timeout/output limits;
+- exact host Python executable identity in host inventory/evidence;
 - the real resource kinds each action requires;
 - exact artifact paths whose bytes must be hashed.
 
@@ -41,9 +42,11 @@ SIMULATION_PASS and the independent verifier rejects it when real physical PASS 
 
 ## Bounded execution and exact-tree binding
 
-Only checked-in \`tests/...\` pytest targets are accepted. Shell command strings, parent traversal
-and arbitrary executables are outside the v1 packet language. Action count, timeout, captured
-stdout/stderr and artifact count/bytes are capped.
+Only exact Git-index-tracked regular \`tests/...\` pytest files are accepted. The default runner
+rejects untracked lookalikes, symlinks and repository escapes before launching pytest. Shell command
+strings, parent traversal and arbitrary executables are outside the v1 packet language. Evidence
+binds the exact host \`sys.executable\` from host inventory rather than a generic \`python\` alias.
+Action count, timeout, captured stdout/stderr and artifact count/bytes are capped.
 
 The agent probes the exact Git SHA and tracked/index cleanliness before the run and before/after
 every action. A dirty checkout, changed HEAD, output overflow, non-zero test exit, missing required
@@ -85,7 +88,7 @@ states, JSONL output hashes and artifact bytes.
 
 Section 5 stays IN_PROGRESS. No real Windows/Linux/server device has been qualified by this draft.
 Closure still needs predecessor Sections 0–4, exact-head shared CI, production ED25519 trust-store
-integration, hardened host-service process bounds, real Windows/Linux/server runs, and authoritative
+integration, hardened host-service memory/disk quotas, real Windows/Linux/server runs, and authoritative
 NETWORK/MODEL/PROVIDER adapters where those resources are required.
 
 This code creates no corpus/tokenizer/training/final-test/paid-compute/scale-promotion authority and
