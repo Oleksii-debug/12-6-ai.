@@ -629,6 +629,7 @@ def test_closed_schema_rejects_tuple_container_subclasses() -> None:
             artifacts=ForgedTuple(generation.artifacts),
         )
 
+
 def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None:
     class ForgedStr(str):
         def strip(self) -> str:
@@ -657,4 +658,3 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
 
     with pytest.raises(ValueError, match="manifest input must be bytes"):
         parse_generation_identity_manifest(ForgedBytes(b"{}"))
-
