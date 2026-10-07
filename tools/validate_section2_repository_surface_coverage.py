@@ -112,7 +112,7 @@ def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
             raise ValueError("capability surface must be a regular Git blob")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("git ls-tree emitted a malformed blob SHA")
-        result[path] = blob_sha
+        result[path] = f"{mode}:{blob_sha}"
     return result
 
 

@@ -207,6 +207,29 @@ def test_repository_surface_coverage_rejects_nonterminal_capability_ci(
         _validate(capabilities=capabilities)
 
 
+def test_surface_blob_map_identity_includes_regular_file_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    blob_sha = "a" * 40
+
+    def fake_run_git(_root: Path, *args: str) -> list[str]:
+        treeish = args[2]
+        mode = "100644" if treeish == "main-tree" else "100755"
+        return [f"{mode} blob {blob_sha}\ttools/mode_sensitive.py"]
+
+    monkeypatch.setattr(surface_validator, "_run_git", fake_run_git)
+    main_blobs = surface_validator._surface_blob_map(tmp_path, "main-tree")
+    checkout_blobs = surface_validator._surface_blob_map(tmp_path, "checkout-tree")
+
+    assert main_blobs["tools/mode_sensitive.py"] != checkout_blobs[
+        "tools/mode_sensitive.py"
+    ]
+    assert _candidate_surface_paths(main_blobs, checkout_blobs) == {
+        "tools/mode_sensitive.py"
+    }
+
+
 def test_surface_blob_map_rejects_symlink_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
