@@ -970,3 +970,62 @@ def test_package_manifest_rejects_symlink_git_mode(
     with pytest.raises(ValueError, match="regular Git file"):
         build_package_manifest_bytes(tmp_path)
 
+
+
+def test_sil_plan_rejects_actual_vector_resealing() -> None:
+    plan = build_sil_plan(_registry(), _scenario())
+    first = plan.vectors[0]
+    forged = sil_qualification.PlannedVector(
+        first.journey_id,
+        first.capability_id,
+        "forged-vector",
+        first.argv,
+    )
+
+    with pytest.raises(ValueError, match="actual vectors do not match declared"):
+        sil_qualification.SILPlan(
+            plan.available_journey_ids,
+            plan.unavailable_journeys,
+            plan.journey_end_to_end_contracts,
+            (forged, *plan.vectors[1:]),
+        )
+
+
+def test_sil_builder_rejects_scenario_behavioral_subclass_resealing() -> None:
+    scenario = _scenario()
+
+    class ForgedScenario(SILScenario):
+        def identity_sha256(self) -> str:
+            return "f" * 64
+
+    forged = ForgedScenario(
+        scenario.schema_version,
+        scenario.scenario_id,
+        scenario.journey_selector,
+        scenario.fixture_policy,
+        scenario.synthetic_data_utf8,
+        scenario.timeout_seconds_per_vector,
+    )
+
+    with pytest.raises(ValueError, match="scenario must be a SILScenario"):
+        build_sil_plan(_registry(), forged)
+
+
+def test_exact_git_state_rejects_behavioral_subclass() -> None:
+    class ForgedGitState(GitState):
+        pass
+
+    with pytest.raises(ValueError, match="git probe must return GitState"):
+        require_exact_clean_git_state(
+            _ROOT,
+            _GIT_SHA,
+            git_probe=lambda _: ForgedGitState(sha=_GIT_SHA, tracked_clean=True),
+        )
+
+
+def test_command_execution_contract_rejects_bool_return_code_and_bad_consumed_hash() -> None:
+    with pytest.raises(ValueError, match="return_code"):
+        CommandExecution(True, "", "", 0, None)
+
+    with pytest.raises(ValueError, match="consumed_input_identity_sha256"):
+        CommandExecution(0, "", "", 0, "not-a-sha")
