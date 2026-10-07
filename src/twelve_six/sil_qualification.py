@@ -55,6 +55,7 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
         [
             "git",
             "ls-files",
+            "--stage",
             "--",
             "pyproject.toml",
             "src/twelve_six",
@@ -67,7 +68,23 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
     )
     if listed.returncode != 0:
         raise ValueError("cannot enumerate tracked package source files")
-    paths = sorted(line.strip() for line in listed.stdout.splitlines() if line.strip())
+    paths = []
+    for line in listed.stdout.splitlines():
+        if not line:
+            continue
+        try:
+            metadata, relative_path = line.split("\t", 1)
+            mode, blob_sha, stage = metadata.split()
+        except ValueError as exc:
+            raise ValueError("tracked package source record is non-canonical") from exc
+        if stage != "0":
+            raise ValueError("tracked package source has a non-zero Git index stage")
+        if mode not in {"100644", "100755"}:
+            raise ValueError("tracked package source must be a regular Git file")
+        if _SHA40_RE.fullmatch(blob_sha) is None:
+            raise ValueError("tracked package source has a malformed Git blob SHA")
+        paths.append(relative_path)
+    paths.sort()
     if "pyproject.toml" not in paths:
         raise ValueError("tracked package manifest is missing pyproject.toml")
     if not any(path.startswith("src/twelve_six/") for path in paths):
