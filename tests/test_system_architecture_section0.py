@@ -233,7 +233,7 @@ def test_architecture_and_shell_identities_are_deterministic() -> None:
 def test_product_assembly_cross_binds_shell_gateway_to_architecture() -> None:
     shell = canonical_runtime_shell_v1()
     incompatible_shell = RuntimeShellContract(
-        gateway_api=InterfaceContract("twelve_six.other_gateway", 1),
+        gateway_api=InterfaceContract("twelve_six.model_gateway", 2),
         memory_api=shell.memory_api,
         tools_api=shell.tools_api,
         voice_api=shell.voice_api,
