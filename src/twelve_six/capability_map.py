@@ -598,7 +598,7 @@ class SourceSurfaceInventory:
         return _source_surface_inventory_identity_from_stored_state(self)
 
 
-def _build_capability_registry_post_init():
+def _build_capability_registry_post_init() -> Any:
     # The canonical constructor validator closes over authority at definition time.
     # The public dataclass hook therefore exposes no caller-supplied validator
     # parameter and later module-global resolver rebinding cannot replace it.
@@ -702,7 +702,6 @@ def _build_capability_registry_post_init():
 
         for capability_id in by_capability:
             visit(capability_id)
-
 
     return validate
 
