@@ -713,6 +713,7 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
         duration_ms=int(duration_ms),
     )
 
+
 def _collect_artifacts(repo_root: Path, paths: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
     collected: list[dict[str, Any]] = []
     total_bytes = 0
