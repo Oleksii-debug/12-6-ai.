@@ -401,6 +401,8 @@ def test_agent_source_and_exact_clean_checkout_are_fail_closed(tmp_path: Path) -
             action_runner=_pass_runner,
             git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
             agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
         )
 
 
