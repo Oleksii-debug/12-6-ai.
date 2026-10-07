@@ -482,6 +482,36 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
         )
 
 
+def test_sil_rejects_checkout_mutation_before_evidence_sealing() -> None:
+    registry = _registry()
+    scenario = _scenario()
+    plan = build_sil_plan(registry, scenario)
+    final_probe_call = 2 * len(plan.vectors) + 2
+    calls = 0
+
+    def mutate_only_at_final_seal(_: str | Path) -> GitState:
+        nonlocal calls
+        calls += 1
+        return GitState(
+            sha=_GIT_SHA,
+            tracked_clean=calls != final_probe_call,
+        )
+
+    with pytest.raises(ValueError, match="dirty before SIL evidence sealing"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=mutate_only_at_final_seal,
+        )
+
+    assert calls == final_probe_call
+
+
 def test_probe_git_state_rejects_untracked_nonignored_checkout_drift(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     tracked = tmp_path / "tracked.txt"
