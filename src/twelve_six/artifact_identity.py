@@ -79,6 +79,11 @@ def _require_sha256(name: str, value: object) -> str:
     return value
 
 
+def _is_exact_type(value: object, expected: type[object]) -> bool:
+    # Closed manifest schemas reject behavioral subclasses that can override serialization.
+    return type(value) is expected  # noqa: E721
+
+
 class ArtifactKind(str, Enum):
     MODEL_SPEC = "model_spec"
     INIT_SPEC = "init_spec"
@@ -200,7 +205,7 @@ class ParentBinding:
     def __post_init__(self) -> None:
         if not isinstance(self.role, str) or _ROLE_RE.fullmatch(self.role) is None:
             raise ValueError("parent role must be canonical lower_snake_case")
-        if not isinstance(self.artifact, ArtifactRef):
+        if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("parent artifact must be an ArtifactRef")
         _require_sha256(
             "parent_manifest_identity_sha256",
@@ -241,11 +246,11 @@ class ArtifactManifest:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported ArtifactManifest schema_version")
-        if not isinstance(self.artifact, ArtifactRef):
+        if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("artifact must be an ArtifactRef")
         if not isinstance(self.parents, tuple):
             raise ValueError("parents must be an immutable tuple")
-        if any(not isinstance(parent, ParentBinding) for parent in self.parents):
+        if any(not _is_exact_type(parent, ParentBinding) for parent in self.parents):
             raise ValueError("parents must contain only ParentBinding values")
 
         roles = tuple(parent.role for parent in self.parents)
@@ -301,7 +306,7 @@ def bind_artifact(
 ) -> ArtifactManifest:
     """Create a canonical binding that commits to each parent's bound lineage."""
 
-    if not isinstance(artifact, ArtifactRef):
+    if not _is_exact_type(artifact, ArtifactRef):
         raise ValueError("artifact must be an ArtifactRef")
     if parents is None:
         normalized: dict[str, ArtifactManifest] = {}
@@ -312,7 +317,7 @@ def bind_artifact(
         for role, parent in parents.items():
             if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
                 raise ValueError("parent role must be canonical lower_snake_case")
-            if not isinstance(parent, ArtifactManifest):
+            if not _is_exact_type(parent, ArtifactManifest):
                 raise ValueError("parent mapping values must be ArtifactManifest values")
             normalized[role] = parent
 
@@ -339,7 +344,7 @@ def verify_parent_bindings(
 ) -> None:
     """Fail closed unless exact parent artifacts and bound lineages both match."""
 
-    if not isinstance(manifest, ArtifactManifest):
+    if not _is_exact_type(manifest, ArtifactManifest):
         raise ValueError("manifest must be an ArtifactManifest")
     if not isinstance(expected_parents, Mapping):
         raise ValueError("expected_parents must be a mapping")
@@ -348,7 +353,7 @@ def verify_parent_bindings(
     for role, parent in expected_parents.items():
         if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
             raise ValueError("expected parent role must be canonical lower_snake_case")
-        if not isinstance(parent, ArtifactManifest):
+        if not _is_exact_type(parent, ArtifactManifest):
             raise ValueError("expected parent values must be ArtifactManifest values")
         normalized[role] = parent
 
@@ -388,7 +393,7 @@ class GenerationIdentityManifest:
             raise ValueError("artifacts must be an immutable tuple")
         if len(self.artifacts) != len(_sealed_artifact_kinds):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")
-        if any(not isinstance(item, ArtifactManifest) for item in self.artifacts):
+        if any(not _is_exact_type(item, ArtifactManifest) for item in self.artifacts):
             raise ValueError("generation artifacts must contain only ArtifactManifest values")
 
         kinds = tuple(item.artifact.kind for item in self.artifacts)
@@ -498,7 +503,7 @@ def build_generation_identity_manifest(
     normalized: dict[ArtifactKind, ArtifactRef] = {}
     for kind in CANONICAL_ARTIFACT_KINDS:
         ref = refs[kind]
-        if not isinstance(ref, ArtifactRef):
+        if not _is_exact_type(ref, ArtifactRef):
             raise ValueError("refs values must be ArtifactRef values")
         if ref.kind is not kind:
             raise ValueError(f"ref kind mismatch for key: {kind.value}")
