@@ -32,9 +32,11 @@ The control layer can:
 The durable command surface supports failure-packet creation, external candidate binding,
 `materialize-candidate` for an actual isolated local Git repair lineage, automated regression
 execution, native SIL receipt creation, software-only physical-scope receipt creation, and
-independent promotion assessment. Materialization never pushes a remote or reads credentials; it
-atomically creates only a deterministic local `aiqa/repair/*` ref, so publication remains an
-explicit authorized operation.
+independent promotion assessment. Materialization never pushes a remote or reads credentials. It uses a private temporary
+Git index plus plumbing (`read-tree`, `apply --cached`, `write-tree`, `commit-tree`) rather
+than checkout/worktree mutation, disables replacement-object resolution for exact-SHA semantics,
+and suppresses repository hooks for the atomic ref creation. It creates only a deterministic local
+`aiqa/repair/*` ref, so publication remains an explicit authorized operation.
 
 ## Gate chain
 
