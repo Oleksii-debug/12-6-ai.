@@ -307,6 +307,27 @@ def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
     )
 
 
+def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None:
+    states = iter(
+        (
+            GitState(sha=_GIT_SHA, tracked_clean=True),
+            GitState(sha=_GIT_SHA, tracked_clean=True),
+            GitState(sha=_GIT_SHA, tracked_clean=False),
+        )
+    )
+
+    with pytest.raises(ValueError, match="became dirty during SIL vector execution"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=b"package",
+            command_runner=_pass_runner,
+            git_probe=lambda _: next(states),
+        )
+
+
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     registry = _registry()
     scenario = _scenario()

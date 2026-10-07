@@ -462,6 +462,15 @@ def qualify_sil(
     log_records: list[dict[str, Any]] = []
 
     for vector in plan.vectors:
+        pre_vector_state = git_probe(root)
+        if pre_vector_state.sha != expected_git_sha:
+            raise ValueError(
+                "exact-head changed before SIL vector execution: "
+                f"expected {expected_git_sha}, observed {pre_vector_state.sha}"
+            )
+        if not pre_vector_state.tracked_clean:
+            raise ValueError("tracked checkout is dirty before SIL vector execution")
+
         result = command_runner(
             vector.argv,
             root,
@@ -469,6 +478,16 @@ def qualify_sil(
             input_envelope_bytes,
             input_identity,
         )
+
+        post_vector_state = git_probe(root)
+        if post_vector_state.sha != expected_git_sha:
+            raise ValueError(
+                "exact-head changed during SIL vector execution: "
+                f"expected {expected_git_sha}, observed {post_vector_state.sha}"
+            )
+        if not post_vector_state.tracked_clean:
+            raise ValueError("tracked checkout became dirty during SIL vector execution")
+
         execution = {
             "journey_id": vector.journey_id,
             "capability_id": vector.capability_id,

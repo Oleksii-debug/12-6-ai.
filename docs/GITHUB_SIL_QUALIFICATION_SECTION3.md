@@ -55,6 +55,11 @@ access, or a substitute for later physical/device qualification.
 PASS is impossible without at least one AVAILABLE journey and at least one executed integration
 vector, and every executed vector must return zero. Component/unit green alone is not SIL PASS.
 
+Before and after every integration vector, the runner re-probes the exact Git SHA and
+tracked/index cleanliness. A vector that mutates tracked source or advances HEAD invalidates
+the run immediately, so later vectors cannot silently execute a different tree under the
+original SHA receipt.
+
 The verifier reloads the exact-head package metadata, capability registry and SIL scenario,
 recomputes package/registry/model/init/data/scenario identities, reconstructs the complete SIL
 plan and input identity, requires every execution record to match that plan exactly, parses
