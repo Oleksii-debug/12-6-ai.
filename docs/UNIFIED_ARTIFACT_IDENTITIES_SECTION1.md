@@ -62,6 +62,10 @@ exactly one selected artifact of every canonical identity family and requires ev
 artifact to point to the exact selected parent artifact and transitive parent-manifest
 identity for that generation.
 
+The canonical parent policy is runtime-immutable: both the outer kind map and every nested
+role map are sealed after module initialization, so validation/build semantics cannot be
+silently rewritten in-process before an identity is built or checked.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;
@@ -97,9 +101,11 @@ All fail closed before a generation identity can be accepted.
 `GenerationIdentityManifest.canonical_json_bytes()` provides one canonical UTF-8 JSON
 serialization. `parse_generation_identity_manifest()` decodes that durable form with a
 bounded input size, duplicate-member rejection, standards-strict finite JSON handling and
-exact closed field sets at every nested manifest/reference level. The parsed object must
-re-satisfy the complete generation graph before it is accepted. The generation identity is
-the SHA-256 of those exact canonical bytes.
+exact closed field sets at every nested manifest/reference level. It then requires the input
+bytes to equal the manifest's canonical serialization exactly, rejecting semantically equal
+but differently ordered/whitespace-encoded JSON. The parsed object must re-satisfy the
+complete generation graph before it is accepted. The generation identity is the SHA-256 of
+those exact canonical bytes.
 
 ## Truth boundary
 
