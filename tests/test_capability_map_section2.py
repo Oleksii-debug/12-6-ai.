@@ -950,6 +950,35 @@ def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> Non
         object.__setattr__(level, "_value_", original_level_value)
 
 
+def test_registry_enum_value_descriptor_rebinding_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    expected_identity = registry.identity_sha256()
+
+    def dispatching_status(_: capability_map_module.CapabilityStatus) -> str:
+        raise AssertionError("CapabilityStatus.value descriptor must not be dispatched")
+
+    def dispatching_level(_: capability_map_module.TestLevel) -> str:
+        raise AssertionError("TestLevel.value descriptor must not be dispatched")
+
+    monkeypatch.setattr(
+        capability_map_module.CapabilityStatus,
+        "value",
+        property(dispatching_status),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        capability_map_module.TestLevel,
+        "value",
+        property(dispatching_level),
+        raising=False,
+    )
+
+    assert registry.identity_sha256() == expected_identity
+    assert _load().identity_sha256() == expected_identity
+
+
 def test_registry_loader_ignores_poisoned_enum_value_lookup_tables(
     tmp_path: Path,
 ) -> None:
