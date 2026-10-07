@@ -386,7 +386,8 @@ class EvidenceTarget:
 
     def __post_init__(self) -> None:
         _require_id("evidence_id", self.evidence_id)
-        _require_text("target", self.target)
+        if type(self.target) is not str or not self.target.strip():
+            raise ValueError("target must be non-empty text")
 
     def to_dict(self) -> dict[str, str]:
         return _evidence_target_payload_from_stored_state(self)
@@ -410,7 +411,11 @@ class Capability:
         _require_id("capability_id", self.capability_id)
         _require_positive_int("schema_version", self.schema_version)
         _require_capability_status(self.status)
-        _require_text("component_contract", self.component_contract)
+        if (
+            type(self.component_contract) is not str
+            or not self.component_contract.strip()
+        ):
+            raise ValueError("component_contract must be non-empty text")
 
         for name, values in (
             ("dependencies", self.dependencies),
@@ -500,7 +505,8 @@ class Journey:
 
     def __post_init__(self) -> None:
         _require_id("journey_id", self.journey_id)
-        _require_text("title", self.title)
+        if type(self.title) is not str or not self.title.strip():
+            raise ValueError("title must be non-empty text")
         if not _is_exact_type(self.capability_ids, tuple) or not self.capability_ids:
             raise ValueError("journey capability_ids must be a non-empty tuple")
         for capability_id in self.capability_ids:
