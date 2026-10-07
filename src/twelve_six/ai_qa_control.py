@@ -44,6 +44,7 @@ _PROTECTED_REPAIR_EXACT_PATHS = frozenset(
         "SEQUENTIAL_CLOSURE_STATE.md",
         "conftest.py",
         "pyproject.toml",
+        "src/twelve_six/__init__.py",
         "pytest.ini",
         "setup.cfg",
         "tox.ini",

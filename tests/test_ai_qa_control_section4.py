@@ -1180,6 +1180,7 @@ def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
         "requirements/locks/linux-x86_64/toolchain.lock.txt",
         "tools/validate_section2_repository_surface_coverage.py",
         "pyproject.toml",
+        "src/twelve_six/__init__.py",
         "SEQUENTIAL_CLOSURE_STATE.md",
         "src/twelve_six/ai_qa_control.py",
         "src/twelve_six/capability_map.py",
