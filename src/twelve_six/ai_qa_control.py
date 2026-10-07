@@ -531,6 +531,33 @@ def _git_command(
     )
 
 
+CandidateParentProbe = Callable[[Path, str], tuple[str, ...]]
+
+
+def probe_candidate_parents(
+    repo_root: Path,
+    candidate_git_sha: str,
+) -> tuple[str, ...]:
+    candidate_git_sha = _require_git_sha("candidate_git_sha", candidate_git_sha)
+    env = os.environ.copy()
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    result = _git_command(
+        repo_root,
+        "show",
+        "-s",
+        "--format=%P",
+        candidate_git_sha,
+        check=False,
+        env=env,
+    )
+    if result.returncode != 0:
+        raise ValueError("cannot resolve repair candidate parents")
+    parents = tuple(part for part in result.stdout.strip().split() if part)
+    for parent in parents:
+        _require_git_sha("repair candidate parent Git SHA", parent)
+    return parents
+
+
 def materialize_local_repair_candidate(
     failure: FailurePacket,
     *,
@@ -714,6 +741,7 @@ class RegressionChain:
     schema_version: int
     defect_id: str
     candidate_identity_sha256: str
+    base_git_sha: str
     candidate_git_sha: str
     component_argv: tuple[str, ...]
     adversarial_argv: tuple[str, ...]
@@ -725,6 +753,7 @@ class RegressionChain:
             raise ValueError("unsupported RegressionChain schema_version")
         _require_id("defect_id", self.defect_id)
         _require_sha256("candidate_identity_sha256", self.candidate_identity_sha256)
+        _require_git_sha("base_git_sha", self.base_git_sha)
         _require_git_sha("candidate_git_sha", self.candidate_git_sha)
         for argv in (self.component_argv, self.adversarial_argv):
             if not argv or argv[1:4] != ("-m", "pytest", "-q"):
@@ -752,6 +781,7 @@ def build_regression_chain(
         schema_version=1,
         defect_id=failure.defect_id,
         candidate_identity_sha256=candidate.identity_sha256(),
+        base_git_sha=candidate.base_git_sha,
         candidate_git_sha=candidate.candidate_git_sha,
         component_argv=failure.reproducer_argv,
         adversarial_argv=parse_vector_command(adversarial_command),
@@ -804,6 +834,7 @@ def execute_automated_regressions(
     timeout_seconds: int = 300,
     command_runner: CommandRunner = run_command,
     git_probe: GitProbe = probe_git_state,
+    candidate_parent_probe: CandidateParentProbe = probe_candidate_parents,
 ) -> tuple[GateReceipt, GateReceipt]:
     _require_id("actor_id", actor_id)
     if type(timeout_seconds) is not int or timeout_seconds <= 0:
@@ -814,6 +845,11 @@ def execute_automated_regressions(
         raise ValueError("regression chain exact candidate SHA mismatch")
     if not state.tracked_clean:
         raise ValueError("regression candidate checkout is dirty")
+    parents = candidate_parent_probe(root, chain.candidate_git_sha)
+    if parents != (chain.base_git_sha,):
+        raise ValueError(
+            "repair candidate must be a direct child of the exact failing Git SHA"
+        )
 
     receipts: list[GateReceipt] = []
     for gate, argv in (
