@@ -695,16 +695,11 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
         assert capability.journey_ids
 
 
-def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> None:
-    registry = _load()
+def test_integrated_source_inventory_has_no_candidate_overlay() -> None:
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
-    for surface in inventory.surfaces:
-        if surface.origin == "accepted_main":
-            continue
-        capability = registry.capability(surface.capability_id)
-        assert capability.status is CapabilityStatus.UNAVAILABLE
-        assert capability.integrated_result is None
+    assert inventory.candidate_overlay_surface_count == 0
+    assert all(surface.origin == "accepted_main" for surface in inventory.surfaces)
 
 
 def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(
@@ -715,9 +710,12 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] != "accepted_main"
+        if surface["path"] == "src/twelve_six/artifact_identity.py"
     )
+    target["origin"] = "modified_candidate"
     target["capability_id"] = "model-spec-identity"
+    payload["accepted_main_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] += 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
@@ -803,14 +801,10 @@ def test_source_surface_coverage_rejects_unknown_capability_mapping(tmp_path: Pa
 def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) -> None:
     registry = _load()
     payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
-    target = next(
-        surface
-        for surface in payload["surfaces"]
-        if surface["origin"] != "accepted_main"
-    )
-    payload["surfaces"].remove(target)
+    target = payload["surfaces"].pop(0)
+    assert target["origin"] == "accepted_main"
     payload["source_surface_count"] -= 1
-    payload["candidate_overlay_surface_count"] -= 1
+    payload["accepted_main_surface_count"] -= 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
@@ -827,11 +821,12 @@ def test_modified_candidate_requires_exact_changed_source_set(
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "modified_candidate"
+        if surface["path"] == "src/twelve_six/__init__.py"
     )
-    target["origin"] = "accepted_main"
-    payload["accepted_main_surface_count"] += 1
-    payload["candidate_overlay_surface_count"] -= 1
+    target["origin"] = "modified_candidate"
+    target["capability_id"] = "learned-20m-base"
+    payload["accepted_main_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] += 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
