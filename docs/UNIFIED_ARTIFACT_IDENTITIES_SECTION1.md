@@ -97,6 +97,10 @@ comparison use a sealed stored-state manifest hasher, so rebinding
 cannot forge a bound lineage or hide a post-validation parent/lineage mutation while different
 stored state is serialized.
 
+Identity-bearing serializers and generation accessors capture their original validators and
+serializers at class definition. Rebinding `__post_init__` or `to_dict` therefore cannot turn
+malformed stored state into a newly accepted or differently hashed identity after construction.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;
