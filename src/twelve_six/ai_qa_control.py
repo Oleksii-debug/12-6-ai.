@@ -489,6 +489,10 @@ def failure_packet_from_sil(
     physical_scope: PhysicalScope = PhysicalScope.NONE,
     physical_gate_id: str | None = None,
 ) -> FailurePacket:
+    if not _is_exact_type(policy, AIQAPolicy):
+        raise ValueError("policy must be an AIQAPolicy")
+    if not _is_exact_type(physical_scope, PhysicalScope):
+        raise ValueError("physical_scope must be a PhysicalScope")
     evidence = verify_sil_evidence(
         evidence_path,
         log_path,
@@ -967,6 +971,8 @@ def build_regression_chain(
         raise ValueError("failure must be a FailurePacket")
     if not _is_exact_type(candidate, RepairCandidate):
         raise ValueError("candidate must be a RepairCandidate")
+    if not _is_exact_type(adversarial_command, str):
+        raise ValueError("adversarial_command must be text")
     if candidate.defect_id != failure.defect_id:
         raise ValueError("repair candidate defect identity does not match failure packet")
     if candidate.failure_packet_identity_sha256 != failure.identity_sha256():
@@ -1378,6 +1384,8 @@ def load_gate_receipt_bundle(
     receipts = payload["receipts"]
     if not _is_exact_type(receipts, list) or not receipts:
         raise ValueError("gate receipt bundle must contain receipts")
+    if not _is_exact_type(trusted_receipts, tuple):
+        raise ValueError("trusted_receipts must be an immutable tuple")
 
     trusted_by_gate: dict[GateKind, GateReceipt] = {}
     for trusted in trusted_receipts:
