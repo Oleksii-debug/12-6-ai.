@@ -377,6 +377,7 @@ class GenerationIdentityManifest:
 
     def __post_init__(
         self,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
         _sealed_parent_policy: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = (
             _GENERATION_PARENT_POLICY
         ),
@@ -386,20 +387,20 @@ class GenerationIdentityManifest:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
         if not isinstance(self.artifacts, tuple):
             raise ValueError("artifacts must be an immutable tuple")
-        if len(self.artifacts) != len(CANONICAL_ARTIFACT_KINDS):
+        if len(self.artifacts) != len(_sealed_artifact_kinds):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")
         if any(not isinstance(item, ArtifactManifest) for item in self.artifacts):
             raise ValueError("generation artifacts must contain only ArtifactManifest values")
 
         kinds = tuple(item.artifact.kind for item in self.artifacts)
-        if kinds != CANONICAL_ARTIFACT_KINDS:
+        if kinds != _sealed_artifact_kinds:
             raise ValueError("generation artifact kind order or set is non-canonical")
 
         by_kind = {item.artifact.kind: item for item in self.artifacts}
-        if len(by_kind) != len(CANONICAL_ARTIFACT_KINDS):
+        if len(by_kind) != len(_sealed_artifact_kinds):
             raise ValueError("generation artifact kinds must be unique")
 
-        for kind in CANONICAL_ARTIFACT_KINDS:
+        for kind in _sealed_artifact_kinds:
             manifest = by_kind[kind]
             expected_policy = _sealed_parent_policy[kind]
             observed = manifest.parent_bindings_by_role()
@@ -434,15 +435,23 @@ class GenerationIdentityManifest:
     def identity_sha256(self) -> str:
         return _canonical_json_sha256(self.to_dict())
 
-    def artifact_ref(self, kind: ArtifactKind) -> ArtifactRef:
+    def artifact_ref(
+        self,
+        kind: ArtifactKind,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    ) -> ArtifactRef:
         if not isinstance(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[CANONICAL_ARTIFACT_KINDS.index(kind)].artifact
+        return self.artifacts[_sealed_artifact_kinds.index(kind)].artifact
 
-    def artifact_manifest(self, kind: ArtifactKind) -> ArtifactManifest:
+    def artifact_manifest(
+        self,
+        kind: ArtifactKind,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    ) -> ArtifactManifest:
         if not isinstance(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[CANONICAL_ARTIFACT_KINDS.index(kind)]
+        return self.artifacts[_sealed_artifact_kinds.index(kind)]
 
     def canonical_json_bytes(self) -> bytes:
         return json.dumps(

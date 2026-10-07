@@ -25,6 +25,10 @@ It does not introduce a second hashing algorithm for the underlying artifact. Ea
 - the artifact's own schema version;
 - the exact existing lowercase SHA-256 identity.
 
+The unified identity vocabulary is pinned to the original twelve-kind tuple by the
+generation validator and its typed accessors. Rebinding the public module-level tuple therefore
+cannot shrink or reorder what an already loaded validator accepts as a complete generation.
+
 The unified identity vocabulary covers exactly:
 
 1. ModelSpec
