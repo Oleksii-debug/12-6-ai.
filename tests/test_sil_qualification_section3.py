@@ -773,6 +773,8 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
         'SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"'
         in sil_job
     )
+    assert "git fetch --no-tags origin refs/pull/402/head" in sil_job
+    assert 'test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"' in sil_job
     assert "requirements/locks/linux-x86_64/toolchain.lock.txt" in sil_job
     assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
     assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
