@@ -74,7 +74,7 @@ authority resealing, a widened scientific boundary and FAIL evidence when PASS i
 - `src/twelve_six/sil_qualification.py`
 - `tests/test_sil_qualification_section3.py`
 - shared `.github/workflows/ci.yml`
-- `coordination/SECTION_CLOSURE_REGISTRY.json`
+- `SEQUENTIAL_CLOSURE_STATE.md`
 
 ## Truth boundary
 
