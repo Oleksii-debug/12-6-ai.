@@ -534,12 +534,17 @@ class RequalificationRequirement:
         )
         _require_id("scenario_id", self.scenario_id)
         _require_id("physical_gate_id", self.physical_gate_id)
+        if self.prior_candidate_git_sha == self.repaired_candidate_git_sha:
+            raise ValueError(
+                "AI repair requalification requires a new candidate Git SHA"
+            )
         if (
-            self.prior_candidate_git_sha == self.repaired_candidate_git_sha
-            and self.prior_package_identity_sha256
+            self.prior_package_identity_sha256
             == self.repaired_package_identity_sha256
         ):
-            raise ValueError("requalification requires a changed candidate or package")
+            raise ValueError(
+                "AI repair requalification requires a changed package identity"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         RequalificationRequirement.__post_init__(self)

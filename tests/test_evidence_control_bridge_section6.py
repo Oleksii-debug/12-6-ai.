@@ -194,7 +194,7 @@ def test_requalification_requires_changed_candidate_or_package() -> None:
         reproducer="pytest -q tests/test_bridge.py",
     )
 
-    with pytest.raises(ValueError, match="changed candidate or package"):
+    with pytest.raises(ValueError, match="new candidate Git SHA"):
         build_requalification_requirement(
             failed_same,
             repaired_candidate_git_sha=same_dispatch.target_git_sha,
@@ -207,6 +207,83 @@ def test_requalification_requires_changed_candidate_or_package() -> None:
         repaired_package_manifest_bytes=b"repaired-package",
     )
     assert requirement.repaired_candidate_git_sha == _git("b")
+
+
+def test_requalification_rejects_unchanged_package_even_on_new_sha() -> None:
+    package_bytes = b"same-package"
+    old_dispatch = _dispatch(
+        package=hashlib.sha256(package_bytes).hexdigest(),
+    )
+    failed = _receipt(
+        old_dispatch,
+        verdict="FAIL",
+        evidence="old-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+
+    with pytest.raises(ValueError, match="changed package identity"):
+        build_requalification_requirement(
+            failed,
+            repaired_candidate_git_sha=_git("b"),
+            repaired_package_manifest_bytes=package_bytes,
+        )
+
+
+def test_physical_failure_reproducer_is_derived_from_verified_action_argv() -> None:
+    evidence = {
+        "actions": [
+            {
+                "verdict": "FAIL",
+                "argv": [
+                    "/usr/bin/python3",
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_alpha.py",
+                    "tests/test_beta.py",
+                ],
+            }
+        ]
+    }
+
+    assert bridge_module._physical_failure_reproducer(evidence) == (
+        "pytest -q tests/test_alpha.py tests/test_beta.py"
+    )
+
+
+def test_physical_failure_reproducer_rejects_noncanonical_argv() -> None:
+    evidence = {
+        "actions": [
+            {
+                "verdict": "FAIL",
+                "argv": [
+                    "/usr/bin/python3",
+                    "-m",
+                    "pytest",
+                    "--maxfail=1",
+                    "tests/test_alpha.py",
+                ],
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="canonical pytest argv"):
+        bridge_module._physical_failure_reproducer(evidence)
+
+
+def test_requalification_receipt_cannot_be_forged_without_fresh_verification() -> None:
+    with pytest.raises(ValueError, match="requires fresh verification"):
+        RequalificationReceipt(
+            schema_version="12-6.requalification-receipt.v1",
+            requirement_identity_sha256=_sha("requirement"),
+            repaired_candidate_git_sha=_git("b"),
+            repaired_package_identity_sha256=_sha("package-b"),
+            sil_evidence_identity_sha256=_sha("sil"),
+            physical_evidence_identity_sha256=_sha("physical"),
+            repaired_dispatch_identity_sha256=_sha("dispatch"),
+            scenario_id="host-smoke",
+            physical_gate_id="windows-host",
+        )
 
 
 def test_requalification_starts_only_from_physical_failure() -> None:
