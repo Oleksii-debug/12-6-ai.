@@ -1547,3 +1547,53 @@ def test_sil_revalidates_mutated_exact_command_result() -> None:
             git_probe=_git_probe,
         )
 
+def test_public_sil_environment_validation_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    scenario = _scenario()
+    canonical_environment = _environment_receipt()
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=canonical_environment,
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    evidence_path = tmp_path / "environment-authority-evidence.json"
+    log_path = tmp_path / "environment-authority.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        sil_qualification,
+        "_validate_sil_environment_receipt",
+        lambda _payload: canonical_environment,
+    )
+    forged_environment = {"forged": True}
+
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=forged_environment,
+        )
+
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        verify_sil_evidence(
+            evidence_path,
+            log_path,
+            expected_package_bytes=_package_bytes(),
+            expected_environment_receipt=forged_environment,
+            expected_registry=registry,
+            expected_scenario=scenario,
+            expected_git_sha=_GIT_SHA,
+        )
+
