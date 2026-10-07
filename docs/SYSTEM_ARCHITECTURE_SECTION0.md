@@ -58,6 +58,11 @@ binds stable contracts for:
 - UI;
 - orchestration.
 
+Each surface role is fail-closed to its canonical contract name, so a caller cannot silently
+reseal the memory/tools/voice/UI/orchestration fields to one another or to an unrelated
+interface while retaining a superficially valid shell identity. Contract schema versions
+remain independently versioned.
+
 `replace_cognitive_core()` accepts a new checkpoint or scale only when its gateway contract
 is exactly compatible with the shell. The replacement receipt binds the old and new core
 identities and the unchanged shell/surface identities. It also carries the immutable preserved

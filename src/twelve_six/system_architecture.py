@@ -254,16 +254,22 @@ class RuntimeShellContract:
     orchestration_api: InterfaceContract
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("gateway_api", self.gateway_api),
-            ("memory_api", self.memory_api),
-            ("tools_api", self.tools_api),
-            ("voice_api", self.voice_api),
-            ("ui_api", self.ui_api),
-            ("orchestration_api", self.orchestration_api),
-        ):
+        contracts = (
+            ("gateway_api", self.gateway_api, "twelve_six.model_gateway"),
+            ("memory_api", self.memory_api, "twelve_six.memory"),
+            ("tools_api", self.tools_api, "twelve_six.tools"),
+            ("voice_api", self.voice_api, "twelve_six.voice"),
+            ("ui_api", self.ui_api, "twelve_six.ui"),
+            ("orchestration_api", self.orchestration_api, "twelve_six.orchestration"),
+        )
+        for name, value, expected_contract_name in contracts:
             if not isinstance(value, InterfaceContract):
                 raise ValueError(f"{name} must be an InterfaceContract")
+            if value.name != expected_contract_name:
+                raise ValueError(
+                    f"{name} contract role semantics are non-canonical: "
+                    f"expected {expected_contract_name}"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
