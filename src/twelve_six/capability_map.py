@@ -8,7 +8,8 @@ import re
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import ModuleType
 from typing import Any
 
 
@@ -128,13 +129,26 @@ class TestVector:
             raise ValueError("level must be a TestLevel")
         _require_text("command", self.command)
         tokens = self.command.split()
-        if tokens[:2] != ["pytest", "-q"] or len(tokens) < 3:
-            raise ValueError("test vector command must be canonical pytest -q test paths")
-        if any(
-            not token.startswith("tests/") or not token.endswith(".py")
-            for token in tokens[2:]
+        if (
+            tokens[:2] != ["pytest", "-q"]
+            or len(tokens) < 3
+            or self.command != " ".join(tokens)
         ):
-            raise ValueError("test vector command may reference only tests/*.py paths")
+            raise ValueError("test vector command must be canonical pytest -q test paths")
+        for token in tokens[2:]:
+            path = PurePosixPath(token)
+            if (
+                "\\" in token
+                or path.is_absolute()
+                or len(path.parts) < 2
+                or path.parts[0] != "tests"
+                or ".." in path.parts
+                or path.as_posix() != token
+                or path.suffix != ".py"
+            ):
+                raise ValueError(
+                    "test vector command may reference only canonical tests/*.py paths"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -284,8 +298,19 @@ class SourceSurface:
         _require_id("source surface capability_id", self.capability_id)
         if self.origin not in {"accepted_main", "stacked_candidate"}:
             raise ValueError("source surface origin is unsupported")
-        if not self.path.startswith("src/twelve_six/") or not self.path.endswith(".py"):
-            raise ValueError("source surface path must be a Python path under src/twelve_six")
+        path = PurePosixPath(self.path)
+        if (
+            "\\" in self.path
+            or path.is_absolute()
+            or len(path.parts) < 3
+            or path.parts[:2] != ("src", "twelve_six")
+            or ".." in path.parts
+            or path.as_posix() != self.path
+            or path.suffix != ".py"
+        ):
+            raise ValueError(
+                "source surface path must be a canonical Python path under src/twelve_six"
+            )
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -409,6 +434,7 @@ class CapabilityRegistry:
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
             if capability.status is CapabilityStatus.AVAILABLE:
+                resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
@@ -553,6 +579,16 @@ def resolve_component_contract(component_contract: str) -> object:
                     f"component contract attribute does not exist: {contract}"
                 )
             resolved = getattr(resolved, attribute)
+        if isinstance(resolved, ModuleType):
+            owner_module = resolved.__name__
+        else:
+            owner_module = getattr(resolved, "__module__", None)
+        if not isinstance(owner_module, str) or not (
+            owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
+        ):
+            raise ValueError(
+                "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+            )
         return resolved
     raise ValueError(f"component contract module does not exist: {contract}")
 
@@ -683,7 +719,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    registry = CapabilityRegistry(
+    return CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -691,8 +727,6 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
-    validate_available_component_contracts(registry)
-    return registry
 
 
 def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:

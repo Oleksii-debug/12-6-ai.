@@ -852,6 +852,19 @@ def verify_sil_evidence(
     if payload["input_identity_sha256"] != expected_input_identity:
         raise ValueError("SIL input identity does not match exact verifier authority")
 
+    timings = payload["timings"]
+    if type(timings) is not dict or set(timings) != {
+        "started_unix_ns",
+        "finished_unix_ns",
+        "duration_ms",
+    }:
+        raise ValueError("SIL evidence timings schema is non-canonical")
+    for field in ("started_unix_ns", "finished_unix_ns", "duration_ms"):
+        if type(timings[field]) is not int or timings[field] < 0:
+            raise ValueError(f"SIL evidence timing {field} must be a non-negative integer")
+    if timings["finished_unix_ns"] < timings["started_unix_ns"]:
+        raise ValueError("SIL evidence wall-clock timings are inverted")
+
     expected_verdict = (
         "PASS"
         if all(

@@ -89,6 +89,25 @@ def test_registry_loader_rejects_noncanonical_available_test_command(
         load_capability_registry(path)
 
 
+def test_registry_loader_rejects_test_path_escape_from_tests_tree(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["test_vectors"][0]["command"] = (
+        "pytest -q tests/../tools/validate_section2_repository_surface_coverage.py"
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="canonical tests"):
+        load_capability_registry(path)
+
+
 def test_registry_loader_rejects_available_evidence_not_bound_to_main_ci(
     tmp_path: Path,
 ) -> None:
@@ -355,6 +374,30 @@ def test_available_python_component_contracts_resolve_to_real_symbols() -> None:
         assert _resolve_contract(capability.component_contract) is not None
 
 
+def test_registry_constructor_rejects_unresolvable_available_contract() -> None:
+    registry = _load()
+    capabilities = list(registry.capabilities)
+    target_index = next(
+        index
+        for index, capability in enumerate(capabilities)
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    capabilities[target_index] = replace(
+        capabilities[target_index],
+        component_contract="twelve_six.nonexistent.Contract",
+    )
+
+    with pytest.raises(ValueError, match="component contract"):
+        CapabilityRegistry(
+            schema_version=registry.schema_version,
+            observed_main_sha=registry.observed_main_sha,
+            observed_main_ci_run_id=registry.observed_main_ci_run_id,
+            observed_main_ci_conclusion=registry.observed_main_ci_conclusion,
+            capabilities=tuple(capabilities),
+            journeys=registry.journeys,
+        )
+
+
 def test_registry_loader_rejects_unresolvable_available_contract(tmp_path: Path) -> None:
     payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     target = next(
@@ -367,6 +410,23 @@ def test_registry_loader_rejects_unresolvable_available_contract(tmp_path: Path)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="component contract"):
+        load_capability_registry(path)
+
+
+def test_registry_loader_rejects_external_symbol_reexport_as_component_contract(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["component_contract"] = "twelve_six.model.torch.nn.Module"
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="repository-owned"):
         load_capability_registry(path)
 
 
@@ -453,6 +513,16 @@ def test_source_surface_inventory_rejects_bool_schema_version_alias(
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="schema_version"):
+        load_source_surface_inventory(path)
+
+
+def test_source_surface_inventory_rejects_path_escape(tmp_path: Path) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["surfaces"][0]["path"] = "src/twelve_six/../tools/escape.py"
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="canonical Python path"):
         load_source_surface_inventory(path)
 
 

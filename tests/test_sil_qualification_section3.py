@@ -465,6 +465,36 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
         _verify_evidence(evidence_path, log_path)
 
 
+def test_verifier_rejects_resealed_invalid_timings(
+    tmp_path: Path,
+) -> None:
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=_package_bytes(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    evidence["timings"] = {
+        "started_unix_ns": 2,
+        "finished_unix_ns": 1,
+        "duration_ms": -1,
+    }
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = _canonical_hash(unsigned)
+
+    evidence_path = tmp_path / "resealed-invalid-timings.json"
+    log_path = tmp_path / "sil.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="timing"):
+        _verify_evidence(evidence_path, log_path)
+
+
 def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
     tmp_path: Path,
 ) -> None:
