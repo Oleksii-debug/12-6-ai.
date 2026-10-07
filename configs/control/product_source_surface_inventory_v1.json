@@ -87,235 +87,235 @@
     },
     {
       "path": "src/twelve_six/common_pile_arxiv_abstracts_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/common_pile_foodista_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/common_pile_loc_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/common_pile_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/culturax_bounded_acquisition.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/d03_arxiv_execution_receipt.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/d03_arxiv_postrights_admission.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/d03_cpython_stdlib_postrights_admission.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/d03_languk_postexecution_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/d03_loc_postrights_admission.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/_data232_decontamination_matching.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/_expanded_global_dedup_v9_impl.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/balanced_split_application_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/caselaw_source_admitted_dedup_intake.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/clean_g05_g06_successor_authority_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/common_pile_loc_intake.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/current_clean_execution_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/current_reserved_decontamination_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/data526_v8_reserved_decontamination_terminal_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/data526_v8_reserved_decontamination_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/decontamination_authority_v2.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/deterministic_double_pack.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/deterministic_exposure_order.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/document_quality.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/eval233_final_test_resolver_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/eval303_selection_payload_resolver_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/eval647_current_corpus_overlap_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/eval647_future_training_exclusion_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/eval647_reserved_decontamination_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/expanded_global_dedup_v10.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/expanded_global_dedup_v9.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/final_g05_g06_coverage_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/franko1901_dedup_intake.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/identity_safe_exposure_guard.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/incumbent_dedup_indexed_execution.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/loss_bearing_content_binding_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/ordered_exposure_resume.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/pep_intake.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/post_admission_dedup_intake_v2.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/post_g05_g06_materialization_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/post_g05_g06_materialization_v2.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postdecontam_balance_projection_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postdecontam_next100_adapter_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postdedup_decontam_handoff_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postdedup_inventory_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postdedup_survivor_binding_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/privacy_execution_authority.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/privacy_filter_v3.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/quality_execution_authority.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/quality_granularity.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/rada_laws_qp_dedup_adapter.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/rada_two_clean_dedup_execution.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/split_postpack_binding_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/trusted_family_authority_v1.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/data/unique_loss_ledger_v2.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/learned20m_capacity_sufficiency_v1.py",
@@ -447,11 +447,11 @@
     },
     {
       "path": "src/twelve_six/ubuntu_irc_execution_rights_crossbind.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/ubuntu_irc_rights.py",
-      "capability_id": "data-governance-pipeline"
+      "capability_id": "data-governance-mechanics"
     },
     {
       "path": "src/twelve_six/windows_operator_cli.py",
