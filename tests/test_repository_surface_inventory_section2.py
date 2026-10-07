@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from tools.validate_section2_repository_surface_coverage import (
+    _load_strict_json,
+    validate_repository_surface_coverage,
+)
+
+
+_ROOT = Path(__file__).parents[1]
+_INVENTORY = (
+    _ROOT
+    / "configs"
+    / "control"
+    / "product_repository_executable_surface_rules_v1.json"
+)
+_CAPABILITIES = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
+
+
+def _validate(inventory: Path = _INVENTORY) -> dict[str, object]:
+    return validate_repository_surface_coverage(
+        repo_root=_ROOT,
+        inventory_path=inventory,
+        capability_registry_path=_CAPABILITIES,
+    )
+
+
+def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
+    result = _validate()
+
+    assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
+    assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
+    assert result["accepted_main_surface_count"] == 119
+    assert result["candidate_overlay_surface_count"] == 1
+    assert result["checkout_surface_count"] == 120
+
+
+def test_repository_executable_surface_distribution_is_pinned() -> None:
+    result = _validate()
+
+    assert result["main_capability_counts"] == {
+        "accelerated-scaling-research": 2,
+        "byte-tokenizer-runtime": 1,
+        "checkpoint-integrity-mechanics": 1,
+        "data-governance-mechanics": 102,
+        "deterministic-packing-mechanics": 2,
+        "learned20m-control-plane": 5,
+        "model-spec-identity": 2,
+        "package-runtime": 1,
+        "portable-run-authority": 2,
+        "project-control-plane": 1,
+    }
+
+
+def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
+    payload = _load_strict_json(_INVENTORY)
+
+    assert payload["candidate_overrides"] == [
+        {
+            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "capability_id": "executable-capability-map",
+        }
+    ]
+
+
+def test_repository_surface_coverage_rejects_missing_candidate_override(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["candidate_overrides"] = []
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unmapped_checkout"):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_unknown_rule_capability(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["rules"][0]["capability_id"] = "forged-capability"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unknown classified capability"):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_count_reseal(tmp_path: Path) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["expected_main_surface_count"] -= 1
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="do not sum"):
+        _validate(inventory)
+
+
+def test_repository_surface_inventory_rejects_duplicate_json_members(
+    tmp_path: Path,
+) -> None:
+    text = _INVENTORY.read_text(encoding="utf-8")
+    tampered = text.replace(
+        '"schema_version": 1,',
+        '"schema_version": 1,\n  "schema_version": 1,',
+        1,
+    )
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(tampered, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="strict unambiguous"):
+        _load_strict_json(inventory)
+
+
+def test_repository_surface_rules_are_nonambiguous_on_exact_main() -> None:
+    # Full validation classifies every accepted-main surface through exactly one rule.
+    _validate()
