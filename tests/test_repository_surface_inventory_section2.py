@@ -220,6 +220,51 @@ def test_repository_surface_coverage_rejects_nonterminal_capability_ci(
         _validate(capabilities=capabilities)
 
 
+def test_git_probes_strip_ambient_git_redirection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "forged.git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "forged-worktree"))
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "core.worktree=/forged")
+    observed_envs: list[dict[str, str]] = []
+    sha = "a" * 40
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+        env: dict[str, str],
+    ) -> object:
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        observed_envs.append(dict(env))
+        stdout = f"{sha}\\n" if "rev-parse" in command else ""
+        if command[-1] == "HEAD":
+            stdout = "ok\\n"
+        return surface_validator.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=stdout,
+            stderr="",
+        )
+
+    monkeypatch.setattr(surface_validator.subprocess, "run", fake_run)
+
+    assert surface_validator._run_git(tmp_path, "show", "HEAD") == ["ok"]
+    assert surface_validator._run_git_z(tmp_path, "ls-files", "-z") == []
+    assert surface_validator._resolve_live_main_sha(tmp_path) == sha
+    assert len(observed_envs) == 3
+    for env in observed_envs:
+        assert "GIT_DIR" not in env
+        assert "GIT_WORK_TREE" not in env
+        assert "GIT_CONFIG_PARAMETERS" not in env
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
+
+
 def test_worktree_capability_surface_drift_detects_tracked_and_untracked(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
