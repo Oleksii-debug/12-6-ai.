@@ -386,6 +386,7 @@ def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
 
 def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
     generation = _generation("enum-wire")
+    refs = _refs("enum-wire-new")
     corpus = generation.artifact_ref(ArtifactKind.CORPUS)
     original_value = ArtifactKind.CORPUS.value
     object.__setattr__(ArtifactKind.CORPUS, "_value_", "forged_corpus")
@@ -394,6 +395,8 @@ def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
             corpus.to_dict()
         with pytest.raises(ValueError, match="wire value is non-canonical"):
             generation.identity_sha256()
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            build_generation_identity_manifest(refs)
     finally:
         object.__setattr__(ArtifactKind.CORPUS, "_value_", original_value)
 
@@ -674,6 +677,23 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
         parse_generation_identity_manifest(ForgedBytes(b"{}"))
 
 
+def test_artifact_ref_from_dict_rejects_behavioral_kind_string_before_enum_lookup() -> None:
+    class ForgedKind(str):
+        def __hash__(self) -> int:
+            raise AssertionError("behavioral kind hash must not run")
+
+        def __eq__(self, other: object) -> bool:
+            raise AssertionError("behavioral kind equality must not run")
+
+    payload = {
+        "kind": ForgedKind("model_spec"),
+        "schema_version": 1,
+        "identity_sha256": _sha("kind-discriminator"),
+    }
+    with pytest.raises(ValueError, match="kind must be an exact string"):
+        ArtifactRef.from_dict(payload)
+
+
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
     object.__setattr__(ref, "schema_version", 0)
@@ -728,17 +748,4 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             expected_parents=ForgedDict(parents),
         )
 
-
-def test_artifact_kind_enum_singleton_value_mutation_fails_closed() -> None:
-    generation = _generation("enum-sealed")
-    refs = _refs("enum-sealed-new")
-    original_value = ArtifactKind.MODEL_SPEC.value
-    object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", "forged_model_spec")
-    try:
-        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
-            generation.identity_sha256()
-        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
-            build_generation_identity_manifest(refs)
-    finally:
-        object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", original_value)
 
