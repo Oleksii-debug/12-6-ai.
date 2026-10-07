@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.sil_qualification as sil_qualification
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
@@ -667,4 +668,27 @@ def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> Non
             command_runner=_pass_runner,
             git_probe=_git_probe,
         )
+
+def test_package_manifest_rejects_symlink_git_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stdout = (
+        "100644 " + ("a" * 40) + " 0\tpyproject.toml\n"
+        "120000 " + ("b" * 40) + " 0\tsrc/twelve_six/forged.py\n"
+    )
+    result = subprocess.CompletedProcess(
+        args=["git", "ls-files", "--stage"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+    monkeypatch.setattr(
+        sil_qualification.subprocess,
+        "run",
+        lambda *_args, **_kwargs: result,
+    )
+
+    with pytest.raises(ValueError, match="regular Git file"):
+        build_package_manifest_bytes(tmp_path)
 
