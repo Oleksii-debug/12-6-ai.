@@ -267,6 +267,44 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
     assert any(item["return_code"] != 0 for item in evidence["executions"])
 
 
+def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
+    def consume_wrong_identity(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+        return replace(
+            result,
+            consumed_input_identity_sha256="b" * 64,
+        )
+
+    evidence, _ = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=b"package",
+        command_runner=consume_wrong_identity,
+        git_probe=_git_probe,
+    )
+
+    assert evidence["verdict"] == "FAIL"
+    assert any(
+        item["consumed_input_identity_sha256"]
+        != item["expected_input_identity_sha256"]
+        for item in evidence["executions"]
+    )
+
+
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     registry = _registry()
     scenario = _scenario()
