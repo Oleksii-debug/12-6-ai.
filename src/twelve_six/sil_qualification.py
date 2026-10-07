@@ -1372,6 +1372,7 @@ def _qualify_sil_with_backends(
             "finished_unix_ns": finished_unix_ns,
             "duration_ms": max(
                 0,
+                sum(item["duration_ms"] for item in executions),
                 (finished_monotonic_ns - started_monotonic_ns) // 1_000_000,
             ),
         },
