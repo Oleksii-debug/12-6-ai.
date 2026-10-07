@@ -899,4 +899,46 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             expected_parents=ForgedDict(parents),
         )
 
+def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_parent = bind_artifact(
+        ArtifactRef(ArtifactKind.CORPUS, 1, _sha("expected-parent"))
+    )
+    wrong_parent = bind_artifact(
+        ArtifactRef(ArtifactKind.CORPUS, 1, _sha("wrong-parent"))
+    )
+    child = ArtifactManifest(
+        schema_version=1,
+        artifact=ArtifactRef(ArtifactKind.TOKENIZER, 1, _sha("child-tokenizer")),
+        parents=(
+            ParentBinding(
+                role="corpus",
+                artifact=wrong_parent.artifact,
+                parent_manifest_identity_sha256=expected_parent.manifest_identity_sha256(),
+            ),
+        ),
+    )
+
+    def equal_by_kind(left: ArtifactRef, right: object) -> bool:
+        return isinstance(right, ArtifactRef) and left.kind is right.kind
+
+    monkeypatch.setattr(ArtifactRef, "__eq__", equal_by_kind)
+
+    with pytest.raises(ValueError, match="parent identity mismatch"):
+        verify_parent_bindings(child, expected_parents={"corpus": expected_parent})
+
+    duplicate_a = ArtifactRef(ArtifactKind.CORPUS, 1, _sha("duplicate-parent"))
+    duplicate_b = ArtifactRef(ArtifactKind.CORPUS, 1, _sha("duplicate-parent"))
+    monkeypatch.setattr(ArtifactRef, "__eq__", lambda _left, _right: False)
+
+    with pytest.raises(ValueError, match="same exact parent artifact"):
+        ArtifactManifest(
+            schema_version=1,
+            artifact=ArtifactRef(ArtifactKind.TOKENIZER, 1, _sha("duplicate-child")),
+            parents=(
+                ParentBinding("a", duplicate_a, _sha("lineage-a")),
+                ParentBinding("b", duplicate_b, _sha("lineage-b")),
+            ),
+        )
 

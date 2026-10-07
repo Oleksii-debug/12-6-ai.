@@ -260,6 +260,17 @@ class ArtifactRef:
         )
 
 
+def _artifact_ref_signature(value: object) -> tuple[str, int, str]:
+    if not _is_exact_type(value, ArtifactRef):
+        raise ValueError("artifact identity must be an ArtifactRef")
+    ArtifactRef.__post_init__(value)
+    return (
+        _artifact_kind_wire_value(value.kind),
+        value.schema_version,
+        value.identity_sha256,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ParentBinding:
     """Named exact parent reference plus its transitive manifest identity."""
@@ -331,10 +342,12 @@ class ArtifactManifest:
         if len(set(roles)) != len(roles):
             raise ValueError("parent binding roles must be unique")
 
-        refs = tuple(parent.artifact for parent in self.parents)
-        if len(set(refs)) != len(refs):
+        ref_signatures = tuple(
+            _artifact_ref_signature(parent.artifact) for parent in self.parents
+        )
+        if len(set(ref_signatures)) != len(ref_signatures):
             raise ValueError("the same exact parent artifact cannot be bound twice")
-        if self.artifact in refs:
+        if _artifact_ref_signature(self.artifact) in ref_signatures:
             raise ValueError("artifact cannot bind itself as a parent")
 
     def to_dict(self) -> dict[str, Any]:
@@ -443,7 +456,9 @@ def verify_parent_bindings(
     for role in sorted(normalized):
         expected = normalized[role]
         binding = observed[role]
-        if binding.artifact != expected.artifact:
+        if _artifact_ref_signature(binding.artifact) != _artifact_ref_signature(
+            expected.artifact
+        ):
             raise ValueError(f"artifact parent identity mismatch for role: {role}")
         if (
             binding.parent_manifest_identity_sha256
@@ -504,7 +519,9 @@ class GenerationIdentityManifest:
                         f"{kind_value}.{role} must reference {parent_kind_value}"
                     )
                 canonical_parent = by_kind_value[parent_kind_value]
-                if binding.artifact != canonical_parent.artifact:
+                if _artifact_ref_signature(binding.artifact) != _artifact_ref_signature(
+                    canonical_parent.artifact
+                ):
                     raise ValueError(
                         f"{kind_value}.{role} parent identity does not match generation"
                     )
