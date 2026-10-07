@@ -1349,6 +1349,35 @@ def test_stored_canonical_ids_ignore_require_id_rebinding(
         inventory.identity_sha256()
 
 
+def test_stored_exact_type_boundaries_ignore_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.environments)
+    environment = capability.environments[0]
+    object.__setattr__(environment, "supported", "yes")
+    with pytest.raises(ValueError, match="supported must be boolean"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "dependencies", list(capability.dependencies))
+    with pytest.raises(ValueError, match="dependencies must be an immutable tuple"):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", 1)
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
