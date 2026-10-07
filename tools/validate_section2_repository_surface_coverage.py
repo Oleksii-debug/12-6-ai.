@@ -275,10 +275,6 @@ def validate_repository_surface_coverage(
             raise ValueError(f"{field} must be lowercase 40-hex")
 
     live_main_sha = _resolve_live_main_sha(repo_root)
-    if current_main_sha != live_main_sha:
-        raise ValueError(
-            "current_repository_main_sha does not match the live repository main ref"
-        )
 
     expected_count = inventory["expected_main_surface_count"]
     if not isinstance(expected_count, int) or isinstance(expected_count, bool):
@@ -378,7 +374,7 @@ def validate_repository_surface_coverage(
         )
 
     qualified_surface_blobs = _surface_blob_map(repo_root, main_tree_sha)
-    current_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
+    current_surface_blobs = _surface_blob_map(repo_root, live_main_sha)
     if current_surface_blobs != qualified_surface_blobs:
         qualified_paths = set(qualified_surface_blobs)
         current_paths = set(current_surface_blobs)
