@@ -87,6 +87,11 @@ def _require_nonnegative_int(name: str, value: object) -> int:
     return value
 
 
+def _is_exact_type(value: object, expected: type[object]) -> bool:
+    # Registry identity schemas reject behavioral subclasses that can reseal serialization.
+    return type(value) is expected  # noqa: E721
+
+
 def _canonical_sha256(value: Any) -> str:
     raw = json.dumps(
         value,
@@ -213,15 +218,15 @@ class Capability:
             raise ValueError("capability must bind at least one user/operator journey")
 
         if not isinstance(self.environments, tuple) or any(
-            not isinstance(item, EnvironmentSupport) for item in self.environments
+            not _is_exact_type(item, EnvironmentSupport) for item in self.environments
         ):
             raise ValueError("environments must contain EnvironmentSupport values")
         if not isinstance(self.test_vectors, tuple) or any(
-            not isinstance(item, TestVector) for item in self.test_vectors
+            not _is_exact_type(item, TestVector) for item in self.test_vectors
         ):
             raise ValueError("test_vectors must contain TestVector values")
         if not isinstance(self.evidence_targets, tuple) or any(
-            not isinstance(item, EvidenceTarget) for item in self.evidence_targets
+            not _is_exact_type(item, EvidenceTarget) for item in self.evidence_targets
         ):
             raise ValueError("evidence_targets must contain EvidenceTarget values")
 
@@ -362,7 +367,7 @@ class SourceSurfaceInventory:
         )
         if not isinstance(self.surfaces, tuple) or not self.surfaces:
             raise ValueError("surfaces must be a non-empty tuple")
-        if any(not isinstance(item, SourceSurface) for item in self.surfaces):
+        if any(not _is_exact_type(item, SourceSurface) for item in self.surfaces):
             raise ValueError("surfaces must contain only SourceSurface values")
         if self.source_surface_count != len(self.surfaces):
             raise ValueError("source_surface_count does not match surfaces")
@@ -423,11 +428,11 @@ class CapabilityRegistry:
 
         if not isinstance(self.capabilities, tuple) or not self.capabilities:
             raise ValueError("capabilities must be a non-empty tuple")
-        if any(not isinstance(item, Capability) for item in self.capabilities):
+        if any(not _is_exact_type(item, Capability) for item in self.capabilities):
             raise ValueError("capabilities must contain only Capability values")
         if not isinstance(self.journeys, tuple) or not self.journeys:
             raise ValueError("journeys must be a non-empty tuple")
-        if any(not isinstance(item, Journey) for item in self.journeys):
+        if any(not _is_exact_type(item, Journey) for item in self.journeys):
             raise ValueError("journeys must contain only Journey values")
 
         by_capability = {item.capability_id: item for item in self.capabilities}
@@ -602,7 +607,7 @@ def resolve_component_contract(component_contract: str) -> object:
 def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
     """Prove every AVAILABLE capability begins at a live repository contract."""
 
-    if not isinstance(registry, CapabilityRegistry):
+    if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
     for capability in registry.capabilities:
         if capability.status is CapabilityStatus.AVAILABLE:
@@ -881,9 +886,9 @@ def validate_source_surface_coverage(
     *,
     repo_root: str | Path,
 ) -> None:
-    if not isinstance(registry, CapabilityRegistry):
+    if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
-    if not isinstance(inventory, SourceSurfaceInventory):
+    if not _is_exact_type(inventory, SourceSurfaceInventory):
         raise ValueError("inventory must be a SourceSurfaceInventory")
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
