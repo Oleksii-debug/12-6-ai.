@@ -52,12 +52,15 @@ Permanent tests explicitly project the existing `ModelSpec.identity_sha256()` an
 ## 1.2 — cryptographic parent cross-binding
 
 `ArtifactManifest` wraps one exact artifact identity with canonically ordered named parent
-references. A parent binding includes the parent's kind, schema version and exact SHA-256,
-not only a human-readable label.
+bindings. Each parent binding includes the parent's kind, schema version and exact SHA-256
+plus the SHA-256 identity of that parent's own `ArtifactManifest`. The latter commits to
+the parent's parents recursively, so changing an ancestor changes every descendant binding
+even if an intermediate raw artifact identity is deliberately held constant.
 
 `GenerationIdentityManifest` is a closed-world selected-generation graph. It contains
 exactly one selected artifact of every canonical identity family and requires every derived
-artifact to point to the exact selected parent identity for that generation.
+artifact to point to the exact selected parent artifact and transitive parent-manifest
+identity for that generation.
 
 The canonical graph is:
 
@@ -79,6 +82,8 @@ their physical artifacts.
 The regression suite attempts caller-coherent generation mixing, including:
 
 - packing from generation A bound to split B;
+- generation-A packing bound to a tokenizer with the same raw tokenizer SHA-256 but a
+  generation-B corpus lineage;
 - training-run A bound to ModelSpec B;
 - export bound to the wrong parent kind;
 - parent role deletion;

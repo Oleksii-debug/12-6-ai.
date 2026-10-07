@@ -72,7 +72,7 @@
       "status": "READY_AFTER_PREDECESSOR",
       "evidence": {
         "candidate_branch": "section/2-executable-capability-map-v1",
-        "predecessor_candidate_sha": "fe2ecf55feb027ce2d3644b35eb764c1fafa660e",
+        "predecessor_candidate_sha": "1a50bbbf75567d331d613b6f598883e461ca5bf8",
         "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
         "observed_main_ci": {
           "run_id": 37248299503,
