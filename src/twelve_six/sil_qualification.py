@@ -83,15 +83,15 @@ _DIST_NAME_RE = re.compile(r"[-_.]+")
 _CANONICAL_JOURNEY_E2E_VECTOR_POLICY = (
     ("developer-model-contract", ("model-resource-receipt",)),
     (
-        "developer-replace-cognitive-core",
-        ("section0-product-stack", "section1-stack"),
-    ),
-    (
         "researcher-prepare-training-inputs",
         ("tokenizer-migration", "packing-stream"),
     ),
     ("operator-resume-checkpoint", ("checkpoint-roundtrip",)),
     ("operator-windows-cli", ("windows-cli-packaging",)),
+    (
+        "developer-replace-cognitive-core",
+        ("section0-product-stack", "section1-stack"),
+    ),
     ("researcher-training-mechanics", ("trainer-preflight",)),
     ("data-curator-governance", ("data-clean-dedup-decontam",)),
     ("operator-learned20m-readiness", ("learned20m-lease-control",)),
