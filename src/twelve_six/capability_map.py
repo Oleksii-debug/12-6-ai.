@@ -1235,7 +1235,7 @@ def validate_source_surface_coverage(
     premature_candidate_acceptance = sorted(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
-        if surface.origin != "accepted_main"
+        if surface.origin == "stacked_candidate"
         and registry.capability(surface.capability_id).status
         is not CapabilityStatus.UNAVAILABLE
     )
