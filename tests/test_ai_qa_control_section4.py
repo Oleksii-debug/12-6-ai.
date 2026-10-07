@@ -44,7 +44,6 @@ from twelve_six.sil_qualification import (
     qualify_sil,
 )
 
-
 _ROOT = Path(__file__).parents[1]
 _POLICY = _ROOT / "configs" / "control" / "ai_qa_policy_v1.json"
 _CAPABILITIES = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
