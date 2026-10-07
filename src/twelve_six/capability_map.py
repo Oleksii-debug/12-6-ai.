@@ -144,6 +144,26 @@ def _require_test_level(value: object) -> TestLevel:
     raise ValueError("level must be a canonical TestLevel")
 
 
+def _capability_status_from_wire_value(value: object) -> CapabilityStatus:
+    if not _is_exact_type(value, str):
+        raise ValueError("status must be an exact string")
+    try:
+        index = _CANONICAL_CAPABILITY_STATUS_VALUES.index(value)
+    except ValueError as exc:
+        raise ValueError("status wire value is unsupported") from exc
+    return _require_capability_status(_CANONICAL_CAPABILITY_STATUSES[index])
+
+
+def _test_level_from_wire_value(value: object) -> TestLevel:
+    if not _is_exact_type(value, str):
+        raise ValueError("level must be an exact string")
+    try:
+        index = _CANONICAL_TEST_LEVEL_VALUES.index(value)
+    except ValueError as exc:
+        raise ValueError("level wire value is unsupported") from exc
+    return _require_test_level(_CANONICAL_TEST_LEVELS[index])
+
+
 @dataclass(frozen=True, slots=True)
 class EnvironmentSupport:
     environment_id: str
@@ -730,7 +750,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         test_vectors = tuple(
             TestVector(
                 vector_id=vector["vector_id"],
-                level=TestLevel(vector["level"]),
+                level=_test_level_from_wire_value(vector["level"]),
                 command=vector["command"],
             )
             for raw_vector in item["test_vectors"]
@@ -756,7 +776,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             Capability(
                 capability_id=item["capability_id"],
                 schema_version=item["schema_version"],
-                status=CapabilityStatus(item["status"]),
+                status=_capability_status_from_wire_value(item["status"]),
                 component_contract=item["component_contract"],
                 dependencies=tuple(item["dependencies"]),
                 journey_ids=tuple(item["journey_ids"]),
