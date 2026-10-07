@@ -739,19 +739,42 @@ def build_repair_candidate(
     )
 
 
+def _aiqa_git_subprocess_env() -> dict[str, str]:
+    """Return a bounded local-Git environment immune to ambient repository redirects."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("GIT_")
+    }
+    env.update(
+        {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+    )
+    return env
+
+
 def _git_command(
     repo_root: Path,
     *args: str,
     check: bool = True,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    effective_env = _aiqa_git_subprocess_env() if env is None else env
     return subprocess.run(
         ["git", *args],
         cwd=repo_root,
         check=check,
         capture_output=True,
         text=True,
-        env=env,
+        env=effective_env,
+        stdin=subprocess.DEVNULL,
+        shell=False,
     )
 
 
@@ -827,8 +850,7 @@ def probe_candidate_parents(
     candidate_git_sha: str,
 ) -> tuple[str, ...]:
     candidate_git_sha = _require_git_sha("candidate_git_sha", candidate_git_sha)
-    env = os.environ.copy()
-    env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    env = _aiqa_git_subprocess_env()
     result = _git_command(
         repo_root,
         "show",
@@ -870,8 +892,7 @@ def materialize_local_repair_candidate(
 
     root = Path(repo_root).resolve()
     base_sha = failure.failing_git_sha
-    exact_object_env = os.environ.copy()
-    exact_object_env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    exact_object_env = _aiqa_git_subprocess_env()
     base_probe = _git_command(
         root,
         "cat-file",

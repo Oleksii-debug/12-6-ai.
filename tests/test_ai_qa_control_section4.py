@@ -913,6 +913,44 @@ def test_repair_index_rejects_symlink_and_gitlink_modes() -> None:
             _validate_repair_index_entries(raw)
 
 
+def test_candidate_parent_probe_ignores_hostile_ambient_git_redirects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Section 4 env test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "env-test@example.invalid"], cwd=repo, check=True)
+    target = repo / "payload.txt"
+    target.write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "add", "payload.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    target.write_text("two\n", encoding="utf-8")
+    subprocess.run(["git", "add", "payload.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "child"], cwd=repo, check=True, capture_output=True)
+    child_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "forged.git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "forged-worktree"))
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(tmp_path / "forged-objects"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "forged-index"))
+
+    assert ai_qa_control.probe_candidate_parents(repo, child_sha) == (base_sha,)
+    child_env = ai_qa_control._aiqa_git_subprocess_env()
+    assert "GIT_DIR" not in child_env
+    assert "GIT_WORK_TREE" not in child_env
+    assert "GIT_OBJECT_DIRECTORY" not in child_env
+    assert "GIT_INDEX_FILE" not in child_env
+    assert child_env["GIT_NO_REPLACE_OBJECTS"] == "1"
+    assert child_env["GIT_TERMINAL_PROMPT"] == "0"
+
+
 def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
     tmp_path: Path,
 ) -> None:
