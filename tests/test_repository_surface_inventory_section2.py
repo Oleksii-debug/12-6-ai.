@@ -195,6 +195,7 @@ def test_repository_surface_coverage_rejects_duplicate_capability_ids(
     with pytest.raises(ValueError, match="capability ids must be unique"):
         _validate(capabilities=capabilities)
 
+
 def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal(
     tmp_path: Path,
 ) -> None:
