@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from twelve_six.capability_map import CapabilityRegistry, load_capability_registry
@@ -32,6 +32,31 @@ _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _MAX_JSON_BYTES = 4 * 1024 * 1024
+
+# Autonomous repair must not be allowed to rewrite the machinery that judges
+# whether the repair is acceptable.  These paths are qualification/control
+# trust roots; changing them requires a separate reviewed lineage.
+_PROTECTED_REPAIR_EXACT_PATHS = frozenset(
+    {
+        "AGENTS.md",
+        "SEQUENTIAL_CLOSURE_STATE.md",
+        "conftest.py",
+        "pyproject.toml",
+        "pytest.ini",
+        "setup.cfg",
+        "tox.ini",
+        "src/twelve_six/ai_qa_control.py",
+        "src/twelve_six/capability_map.py",
+        "src/twelve_six/sil_qualification.py",
+    }
+)
+_PROTECTED_REPAIR_PREFIXES = (
+    ".github/",
+    "configs/control/",
+    "requirements/",
+    "tests/",
+    "tools/",
+)
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -591,6 +616,37 @@ def _validate_repair_index_entries(raw_diff: str) -> None:
             raise ValueError("repair candidate may materialize only regular Git files")
 
 
+def _validate_repair_paths(raw_names: str) -> None:
+    """Reject repair deltas that can rewrite their own qualification trust roots."""
+
+    if not isinstance(raw_names, str):
+        raise ValueError("repair path listing must be text")
+    if raw_names and not raw_names.endswith("\0"):
+        raise ValueError("repair path listing is missing its NUL delimiter")
+    paths = raw_names[:-1].split("\0") if raw_names else []
+    if not paths:
+        raise ValueError("repair candidate path set must not be empty")
+
+    for path in paths:
+        candidate = PurePosixPath(path)
+        if (
+            not path
+            or "\\" in path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or candidate.as_posix() != path
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)
+        ):
+            raise ValueError("repair candidate path is non-canonical")
+        if path in _PROTECTED_REPAIR_EXACT_PATHS or any(
+            path.startswith(prefix) for prefix in _PROTECTED_REPAIR_PREFIXES
+        ):
+            raise ValueError(
+                "repair candidate may not modify qualification trust-root path: "
+                f"{path}"
+            )
+
+
 def probe_candidate_parents(
     repo_root: Path,
     candidate_git_sha: str,
@@ -714,6 +770,22 @@ def materialize_local_repair_candidate(
         if raw_diff.returncode != 0:
             raise ValueError("cannot inspect isolated repair Git entry modes")
         _validate_repair_index_entries(raw_diff.stdout)
+
+        path_diff = _git_command(
+            root,
+            "diff",
+            "--cached",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            base_sha,
+            "--",
+            check=False,
+            env=index_env,
+        )
+        if path_diff.returncode != 0:
+            raise ValueError("cannot inspect isolated repair paths")
+        _validate_repair_paths(path_diff.stdout)
 
         tree_result = _git_command(root, "write-tree", check=False, env=index_env)
         if tree_result.returncode != 0:

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.ai_qa_control as ai_qa_control
+
 from twelve_six.ai_qa_control import (
     ExternalObservation,
     FailureClass,
@@ -1029,4 +1031,100 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     assert adversarial.git_sha == candidate.candidate_git_sha
     assert component.evidence_identity_sha256 != adversarial.evidence_identity_sha256
     assert payload.read_text(encoding="utf-8") == "repaired\n"
+
+def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
+    protected = (
+        "tests/test_payload.py",
+        ".github/workflows/ci.yml",
+        "configs/control/ai_qa_policy_v1.json",
+        "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "tools/validate_section2_repository_surface_coverage.py",
+        "pyproject.toml",
+        "SEQUENTIAL_CLOSURE_STATE.md",
+        "src/twelve_six/ai_qa_control.py",
+        "src/twelve_six/capability_map.py",
+        "src/twelve_six/sil_qualification.py",
+    )
+    for path in protected:
+        with pytest.raises(ValueError, match="qualification trust-root"):
+            ai_qa_control._validate_repair_paths(path + "\0")
+
+    ai_qa_control._validate_repair_paths("src/twelve_six/model.py\0")
+
+    with pytest.raises(ValueError, match="NUL delimiter"):
+        ai_qa_control._validate_repair_paths("src/twelve_six/model.py")
+    with pytest.raises(ValueError, match="non-canonical"):
+        ai_qa_control._validate_repair_paths("src/twelve_six/../tests/test_payload.py\0")
+
+
+def test_materializer_rejects_patch_that_rewrites_reproducer_test(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "trust-root-repair"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Section 4 trust-root"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "section4-trust-root@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    tests_dir = repo / "tests"
+    tests_dir.mkdir()
+    target = tests_dir / "test_payload.py"
+    target.write_text(
+        "def test_payload() -> None:\n"
+        "    assert False, 'original failure'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "failing test authority"], cwd=repo, check=True)
+    failing_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    observation = ExternalObservation(
+        schema_version="12-6.aiqa-observation.v1",
+        source=FailureSource.CI,
+        git_sha=failing_sha,
+        evidence_identity_sha256="a" * 64,
+        failure_summary="AssertionError: original failure",
+        reproducer_command="pytest -q tests/test_payload.py",
+        physical_gate_id=None,
+    )
+    failure = failure_packet_from_observation(
+        observation,
+        defect_id="trust-root-rewrite",
+        policy=_policy(),
+    )
+
+    target.write_text(
+        "def test_payload() -> None:\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "--", "tests/test_payload.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    subprocess.run(
+        ["git", "checkout", "--", "tests/test_payload.py"],
+        cwd=repo,
+        check=True,
+    )
+
+    with pytest.raises(ValueError, match="qualification trust-root"):
+        materialize_local_repair_candidate(
+            failure,
+            repo_root=repo,
+            patch_bytes=patch,
+            proposer_actor_id="repair-agent",
+            policy=_policy(),
+        )
 
