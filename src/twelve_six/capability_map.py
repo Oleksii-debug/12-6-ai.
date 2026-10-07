@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -11,6 +12,52 @@ from typing import Any
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
+_MAX_REGISTRY_BYTES = 1024 * 1024
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object member")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant is not allowed: {value}")
+
+
+def _finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number is not allowed")
+    return parsed
+
+
+def _strict_json_object(data: bytes) -> dict[str, Any]:
+    if not isinstance(data, bytes):
+        raise ValueError("capability registry input must be bytes")
+    if len(data) > _MAX_REGISTRY_BYTES:
+        raise ValueError("capability registry exceeds maximum encoded size")
+    try:
+        value = json.loads(
+            data.decode("utf-8", errors="strict"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+            parse_float=_finite_json_float,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError("capability registry is not strict unambiguous UTF-8 JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError("capability registry root must be an object")
+    return value
+
+
+def _require_exact_fields(value: object, expected: set[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError(f"{label} schema is non-canonical")
+    return value
 
 
 def _require_id(name: str, value: object) -> str:
@@ -356,9 +403,7 @@ class CapabilityRegistry:
 
 
 def load_capability_registry(path: str | Path) -> CapabilityRegistry:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("capability registry root must be an object")
+    payload = _strict_json_object(Path(path).read_bytes())
     if set(payload) != {
         "schema_version",
         "observed_main_sha",
@@ -368,12 +413,78 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
     }:
         raise ValueError("capability registry top-level schema is non-canonical")
 
-    ci = payload["observed_main_ci"]
-    if not isinstance(ci, dict) or set(ci) != {"run_id", "conclusion"}:
-        raise ValueError("observed_main_ci schema is non-canonical")
+    ci = _require_exact_fields(
+        payload["observed_main_ci"],
+        {"run_id", "conclusion"},
+        "observed_main_ci",
+    )
+    raw_capabilities = payload["capabilities"]
+    raw_journeys = payload["journeys"]
+    if not isinstance(raw_capabilities, list):
+        raise ValueError("capabilities must be a JSON array")
+    if not isinstance(raw_journeys, list):
+        raise ValueError("journeys must be a JSON array")
 
     capabilities = []
-    for item in payload["capabilities"]:
+    capability_fields = {
+        "capability_id",
+        "schema_version",
+        "status",
+        "component_contract",
+        "dependencies",
+        "journey_ids",
+        "environments",
+        "test_vectors",
+        "evidence_targets",
+        "integrated_result",
+        "unavailable_reason",
+    }
+    for raw_item in raw_capabilities:
+        item = _require_exact_fields(raw_item, capability_fields, "capability")
+        for list_field in (
+            "dependencies",
+            "journey_ids",
+            "environments",
+            "test_vectors",
+            "evidence_targets",
+        ):
+            if not isinstance(item[list_field], list):
+                raise ValueError(f"capability.{list_field} must be a JSON array")
+        environments = tuple(
+            EnvironmentSupport(
+                **_require_exact_fields(
+                    environment,
+                    {"environment_id", "supported"},
+                    "environment",
+                )
+            )
+            for environment in item["environments"]
+        )
+        test_vectors = tuple(
+            TestVector(
+                vector_id=vector["vector_id"],
+                level=TestLevel(vector["level"]),
+                command=vector["command"],
+            )
+            for raw_vector in item["test_vectors"]
+            for vector in [
+                _require_exact_fields(
+                    raw_vector,
+                    {"vector_id", "level", "command"},
+                    "test_vector",
+                )
+            ]
+        )
+        evidence_targets = tuple(
+            EvidenceTarget(
+                **_require_exact_fields(
+                    target,
+                    {"evidence_id", "target"},
+                    "evidence_target",
+                )
+            )
+            for target in item["evidence_targets"]
+        )
         capabilities.append(
             Capability(
                 capability_id=item["capability_id"],
@@ -382,34 +493,31 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
                 component_contract=item["component_contract"],
                 dependencies=tuple(item["dependencies"]),
                 journey_ids=tuple(item["journey_ids"]),
-                environments=tuple(
-                    EnvironmentSupport(**environment)
-                    for environment in item["environments"]
-                ),
-                test_vectors=tuple(
-                    TestVector(
-                        vector_id=vector["vector_id"],
-                        level=TestLevel(vector["level"]),
-                        command=vector["command"],
-                    )
-                    for vector in item["test_vectors"]
-                ),
-                evidence_targets=tuple(
-                    EvidenceTarget(**target) for target in item["evidence_targets"]
-                ),
+                environments=environments,
+                test_vectors=test_vectors,
+                evidence_targets=evidence_targets,
                 integrated_result=item["integrated_result"],
                 unavailable_reason=item["unavailable_reason"],
             )
         )
 
-    journeys = tuple(
-        Journey(
-            journey_id=item["journey_id"],
-            title=item["title"],
-            capability_ids=tuple(item["capability_ids"]),
+    journeys_list = []
+    for raw_item in raw_journeys:
+        item = _require_exact_fields(
+            raw_item,
+            {"journey_id", "title", "capability_ids"},
+            "journey",
         )
-        for item in payload["journeys"]
-    )
+        if not isinstance(item["capability_ids"], list):
+            raise ValueError("journey.capability_ids must be a JSON array")
+        journeys_list.append(
+            Journey(
+                journey_id=item["journey_id"],
+                title=item["title"],
+                capability_ids=tuple(item["capability_ids"]),
+            )
+        )
+    journeys = tuple(journeys_list)
     return CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
