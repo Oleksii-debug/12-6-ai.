@@ -811,6 +811,7 @@ def test_closed_schema_rejects_source_surface_subclass_resealing() -> None:
     with pytest.raises(ValueError, match="surfaces must contain only SourceSurface values"):
         replace(inventory, surfaces=surfaces)
 
+
 def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclasses() -> None:
     class ForgedStr(str):
         def strip(self) -> str:
@@ -844,4 +845,3 @@ def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclas
     surface = inventory.surfaces[0]
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         replace(surface, origin=ForgedStr(surface.origin))
-
