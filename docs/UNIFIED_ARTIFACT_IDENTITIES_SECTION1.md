@@ -28,9 +28,12 @@ It does not introduce a second hashing algorithm for the underlying artifact. Ea
 The unified identity vocabulary is pinned to the original twelve-kind tuple by the
 generation validator and its typed accessors. Rebinding the public module-level tuple therefore
 cannot shrink or reorder what an already loaded validator accepts as a complete generation.
-The twelve canonical `ArtifactKind` wire strings are sealed independently at module load; a
-low-level mutation of an enum singleton value is rejected before that kind can be serialized,
-hashed or accepted by generation validation.
+The twelve canonical `ArtifactKind` wire strings are sealed independently at module load.
+Canonical wire reads use the immutable underlying `str` payload and cross-check the Enum
+member's stored `_value_` without dispatching the mutable `.value` descriptor. Class-level
+descriptor rebinding therefore cannot split validation from canonical serialization, while a
+low-level mutation of an enum singleton value is still rejected before that kind can be
+serialized, hashed or accepted by generation validation.
 
 The unified identity vocabulary covers exactly:
 
@@ -81,6 +84,11 @@ bound, verified or assembled into a generation. Constructor-time validation is n
 after object creation, so low-level post-validation mutation cannot turn a once-valid exact
 dataclass into a new accepted identity. Identity-bearing builder inputs use exact built-in
 `dict` mappings rather than arbitrary behavioral `Mapping` implementations.
+
+Artifact-reference equality is not an authority boundary. Duplicate/self-parent checks and
+cross-generation parent matching compare revalidated canonical scalar signatures instead of
+dispatching `ArtifactRef.__eq__` or `__hash__`, so class-level dunder rebinding cannot reseal
+an incompatible parent as the selected generation identity.
 
 The canonical graph is:
 

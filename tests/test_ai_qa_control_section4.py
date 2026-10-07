@@ -293,6 +293,91 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         )
 
 
+def test_sil_failure_packet_uses_exact_failed_log_record_and_utf8_byte_bound(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    def fail_first(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return CommandExecution(
+                return_code=9,
+                stdout="",
+                stderr=("é" * 200) + "-target-failure-marker",
+                duration_ms=2,
+                consumed_input_identity_sha256=expected_input_identity_sha256,
+            )
+        return _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_FAIL_SHA,
+        registry=load_capability_registry(_CAPABILITIES),
+        scenario=load_sil_scenario(_SCENARIO),
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=fail_first,
+        git_probe=lambda _: GitState(sha=_FAIL_SHA, tracked_clean=True),
+    )
+    evidence_path = tmp_path / "sil-evidence.json"
+    log_path = tmp_path / "sil.log"
+    evidence_path.write_text(
+        json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    log_path.write_text(log_text, encoding="utf-8")
+
+    policy = _policy()
+    object.__setattr__(policy, "max_failure_summary_bytes", 96)
+    packet = failure_packet_from_sil(
+        evidence_path,
+        log_path,
+        defect_id="sil-byte-bounded-defect",
+        policy=policy,
+        expected_package_bytes=_package_bytes(),
+        expected_environment_receipt=_environment_receipt(),
+        expected_registry=load_capability_registry(_CAPABILITIES),
+        expected_scenario=load_sil_scenario(_SCENARIO),
+        expected_git_sha=_FAIL_SHA,
+    )
+
+    assert packet.failure_summary.endswith("-target-failure-marker")
+    assert len(packet.failure_summary.encode("utf-8")) <= 96
+
+
+def test_external_observation_preserves_quoted_test_path_as_one_argv_token() -> None:
+    observation = ExternalObservation(
+        schema_version="12-6.aiqa-observation.v1",
+        source=FailureSource.CI,
+        git_sha=_FAIL_SHA,
+        evidence_identity_sha256="c" * 64,
+        failure_summary="AssertionError: quoted path failed",
+        reproducer_command="pytest -q 'tests/test spaced.py'",
+        physical_gate_id=None,
+    )
+    packet = failure_packet_from_observation(
+        observation,
+        defect_id="quoted-test-path-defect",
+        policy=_policy(),
+    )
+
+    assert packet.reproducer_argv[-1] == "tests/test spaced.py"
+
+
 def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -828,6 +913,44 @@ def test_repair_index_rejects_symlink_and_gitlink_modes() -> None:
             _validate_repair_index_entries(raw)
 
 
+def test_candidate_parent_probe_ignores_hostile_ambient_git_redirects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Section 4 env test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "env-test@example.invalid"], cwd=repo, check=True)
+    target = repo / "payload.txt"
+    target.write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "add", "payload.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    target.write_text("two\n", encoding="utf-8")
+    subprocess.run(["git", "add", "payload.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "child"], cwd=repo, check=True, capture_output=True)
+    child_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "forged.git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "forged-worktree"))
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(tmp_path / "forged-objects"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "forged-index"))
+
+    assert ai_qa_control.probe_candidate_parents(repo, child_sha) == (base_sha,)
+    child_env = ai_qa_control._aiqa_git_subprocess_env()
+    assert "GIT_DIR" not in child_env
+    assert "GIT_WORK_TREE" not in child_env
+    assert "GIT_OBJECT_DIRECTORY" not in child_env
+    assert "GIT_INDEX_FILE" not in child_env
+    assert child_env["GIT_NO_REPLACE_OBJECTS"] == "1"
+    assert child_env["GIT_TERMINAL_PROMPT"] == "0"
+
+
 def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
     tmp_path: Path,
 ) -> None:
@@ -1342,6 +1465,27 @@ def test_aiqa_enum_wire_value_mutation_fails_closed() -> None:
             receipt.to_dict()
     finally:
         object.__setattr__(GateVerdict.PASS, "_value_", original_verdict_value)
+
+
+def test_aiqa_enum_policy_global_rebind_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = _failure()
+    baseline_identity = failure.identity_sha256()
+    original_source_value = object.__getattribute__(FailureSource.CI, "_value_")
+    monkeypatch.setattr(
+        ai_qa_control,
+        "_SEALED_FAILURE_SOURCES",
+        ((FailureSource.CI, "FORGED_CI"),),
+    )
+    object.__setattr__(FailureSource.CI, "_value_", "FORGED_CI")
+    try:
+        with pytest.raises(ValueError, match="failure source wire value is non-canonical"):
+            failure.identity_sha256()
+    finally:
+        object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+
+    assert failure.identity_sha256() == baseline_identity
 
 
 def test_aiqa_identity_objects_revalidate_after_post_construction_mutation() -> None:

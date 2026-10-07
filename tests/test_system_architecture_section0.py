@@ -851,6 +851,55 @@ def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
         receipt.identity_sha256()
 
 
+def test_interface_authority_rebinding_cannot_bypass_gateway_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assembly = _assembly("eq-rebind", 20_613_440)
+    incompatible_gateway = InterfaceContract("twelve_six.incompatible_gateway", 1)
+    incompatible_binding = CognitiveCoreBinding(
+        core=_core("eq-rebind-candidate", 200_000_000),
+        gateway_api=incompatible_gateway,
+    )
+
+    monkeypatch.setattr(InterfaceContract, "__eq__", lambda _self, _other: True)
+    monkeypatch.setattr(
+        system_architecture_module,
+        "_same_interface_contract",
+        lambda _left, _right: True,
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="incompatible with runtime shell"):
+        ProductAssembly(
+            architecture=assembly.architecture,
+            shell=assembly.shell,
+            core_binding=incompatible_binding,
+        )
+
+    with pytest.raises(ValueError, match="incompatible with runtime shell gateway"):
+        replace_cognitive_core(assembly, incompatible_binding)
+
+
+def test_system_plane_value_descriptor_rebinding_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    architecture = canonical_system_architecture_v1()
+    expected_identity = architecture.identity_sha256()
+
+    def dispatching_value(_: SystemPlane) -> str:
+        raise AssertionError("SystemPlane.value descriptor must not be dispatched")
+
+    monkeypatch.setattr(
+        SystemPlane,
+        "value",
+        property(dispatching_value),
+        raising=False,
+    )
+
+    assert architecture.identity_sha256() == expected_identity
+    assert canonical_system_architecture_v1().identity_sha256() == expected_identity
+
+
 def test_system_plane_enum_singleton_value_mutation_fails_closed() -> None:
     architecture = canonical_system_architecture_v1()
     original_value = SystemPlane.BASE_MODEL.value
