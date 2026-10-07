@@ -354,3 +354,14 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             preserved_surface_identities=(),
             shell_rewrite_required=True,
         )
+
+def test_manifest_rejects_mutable_boundary_container() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="boundaries must be an immutable tuple"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=list(canonical.boundaries),  # type: ignore[arg-type]
+        )
+
