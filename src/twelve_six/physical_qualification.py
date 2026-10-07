@@ -194,6 +194,22 @@ class QualificationVerdict(str, Enum):
     SIMULATION_PASS = "SIMULATION_PASS"
 
 
+_SEALED_ENUM_WIRES = (
+    ("ExecutionMode", tuple((item, item.value) for item in ExecutionMode)),
+    ("ResourceKind", tuple((item, item.value) for item in ResourceKind)),
+    ("ResourceObservation", tuple((item, item.value) for item in ResourceObservation)),
+    ("ActionVerdict", tuple((item, item.value) for item in ActionVerdict)),
+    ("QualificationVerdict", tuple((item, item.value) for item in QualificationVerdict)),
+)
+
+
+def _require_enum_wire_integrity() -> None:
+    for family, members in _SEALED_ENUM_WIRES:
+        for member, wire_value in members:
+            if member.value != wire_value:
+                raise ValueError(f"{family} wire value is non-canonical")
+
+
 @dataclass(frozen=True, slots=True)
 class QualificationAction:
     action_id: str
@@ -203,6 +219,7 @@ class QualificationAction:
     required_resources: tuple[ResourceKind, ...]
 
     def __post_init__(self) -> None:
+        _require_enum_wire_integrity()
         _require_id("action_id", self.action_id)
         if (
             not _is_exact_type(self.pytest_targets, tuple)
@@ -247,6 +264,7 @@ class QualificationAction:
         return (python_executable, "-m", "pytest", "-q", *self.pytest_targets)
 
     def to_dict(self) -> dict[str, Any]:
+        QualificationAction.__post_init__(self)
         return {
             "action_id": self.action_id,
             "pytest_targets": list(self.pytest_targets),
@@ -270,6 +288,7 @@ class QualificationPacket:
     artifact_paths: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        _require_enum_wire_integrity()
         if (
             not _is_exact_type(self.schema_version, str)
             or self.schema_version != "12-6.physical-qualification-packet.v1"
@@ -298,6 +317,8 @@ class QualificationPacket:
             or any(not _is_exact_type(item, str) for item in self.artifact_paths)
         ):
             raise ValueError("artifact_paths must be an immutable string tuple")
+        for action in self.actions:
+            QualificationAction.__post_init__(action)
         _require_id("packet_id", self.packet_id)
         _require_git_sha("target_git_sha", self.target_git_sha)
         _require_sha256("agent_source_sha256", self.agent_source_sha256)
@@ -331,6 +352,7 @@ class QualificationPacket:
             raise ValueError("artifact_paths must be canonical unique lexical order")
 
     def to_dict(self) -> dict[str, Any]:
+        QualificationPacket.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "packet_id": self.packet_id,
@@ -365,6 +387,7 @@ class VerifiedSignedPacket:
             raise ValueError("verified packet must be created by signature verification")
         if not _is_exact_type(self.packet, QualificationPacket):
             raise ValueError("verified packet must contain an exact QualificationPacket")
+        QualificationPacket.__post_init__(self.packet)
         _require_id("signing_key_id", self.signing_key_id)
         _require_sha256("signature_sha256", self.signature_sha256)
         _require_sha256(
@@ -380,6 +403,7 @@ class ExternalResourceEvidence:
     evidence: bytes
 
     def __post_init__(self) -> None:
+        _require_enum_wire_integrity()
         if (
             not _is_exact_type(self.resource, ResourceKind)
             or self.resource not in _EXTERNAL_RESOURCE_KINDS
@@ -392,6 +416,7 @@ class ExternalResourceEvidence:
             raise ValueError("external resource evidence size is invalid or unbounded")
 
     def to_dict(self) -> dict[str, Any]:
+        ExternalResourceEvidence.__post_init__(self)
         return {
             "resource": self.resource.value,
             "adapter_id": self.adapter_id,
@@ -582,6 +607,7 @@ class HostInventory:
             raise ValueError("CUDA device names require cuda_available=true")
 
     def to_dict(self) -> dict[str, Any]:
+        HostInventory.__post_init__(self)
         return {
             "os_family": self.os_family,
             "platform_system": self.platform_system,
@@ -779,6 +805,8 @@ def resource_observations(
     execution_mode: ExecutionMode,
     external_verified: frozenset[ResourceKind] = frozenset(),
 ) -> dict[ResourceKind, ResourceObservation]:
+    _require_enum_wire_integrity()
+    HostInventory.__post_init__(inventory)
     if not external_verified.issubset(_EXTERNAL_RESOURCE_KINDS):
         raise ValueError("external_verified contains a non-external resource")
     if execution_mode is ExecutionMode.SIMULATION:
@@ -1058,10 +1086,14 @@ def execute_qualification(
     resource_probes: dict[ResourceKind, ExternalResourceProbe] | None = None,
     resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
+    _require_enum_wire_integrity()
     if not _is_exact_type(verified, VerifiedSignedPacket):
         raise ValueError("verified must be an exact VerifiedSignedPacket")
+    VerifiedSignedPacket.__post_init__(verified)
     if host_inventory is not None and not _is_exact_type(host_inventory, HostInventory):
         raise ValueError("host_inventory must be an exact HostInventory")
+    if host_inventory is not None:
+        HostInventory.__post_init__(host_inventory)
     if agent_source_bytes is not None and not _is_exact_type(agent_source_bytes, bytes):
         raise ValueError("agent_source_bytes must be exact bytes")
     packet = verified.packet
@@ -1255,8 +1287,10 @@ def verify_qualification_evidence(
     evidence_signature_verifier: SignatureVerifier,
     resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> dict[str, Any]:
+    _require_enum_wire_integrity()
     if not _is_exact_type(verified_packet, VerifiedSignedPacket):
         raise ValueError("verified_packet must be an exact VerifiedSignedPacket")
+    VerifiedSignedPacket.__post_init__(verified_packet)
     if not _is_exact_type(agent_source_bytes, bytes):
         raise ValueError("agent_source_bytes must be exact bytes")
     if type(require_real_pass) is not bool:

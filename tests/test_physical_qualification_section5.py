@@ -893,6 +893,38 @@ def test_evidence_verifier_streams_bounded_files_without_path_read_bytes(
     )
     assert checked["verdict"] == QualificationVerdict.PASS.value
 
+
+def test_physical_identity_objects_revalidate_stale_state_and_enum_wires() -> None:
+    packet = _packet()
+    action = packet.actions[0]
+    object.__setattr__(action, "timeout_seconds", 0)
+    with pytest.raises(ValueError, match="action timeout exceeds"):
+        packet.identity_sha256()
+
+    inventory = _inventory()
+    object.__setattr__(inventory, "disk_free_bytes", -1)
+    with pytest.raises(ValueError, match="disk_free_bytes must be a non-negative integer"):
+        inventory.identity_sha256()
+
+    evidence = ExternalResourceEvidence(
+        ResourceKind.NETWORK,
+        "network-adapter",
+        b"proof",
+    )
+    object.__setattr__(evidence, "evidence", b"")
+    with pytest.raises(ValueError, match="evidence size is invalid"):
+        evidence.to_dict()
+
+    clean_packet = _packet()
+    original_mode_value = ExecutionMode.REAL_HOST.value
+    object.__setattr__(ExecutionMode.REAL_HOST, "_value_", "FORGED_REAL_HOST")
+    try:
+        with pytest.raises(ValueError, match="ExecutionMode wire value is non-canonical"):
+            clean_packet.identity_sha256()
+    finally:
+        object.__setattr__(ExecutionMode.REAL_HOST, "_value_", original_mode_value)
+
+
 def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_path: Path) -> None:
     class ForgedStr(str):
         pass
@@ -973,6 +1005,7 @@ def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_pa
             evidence_signing_key_id=_HOST_KEY_ID,
             evidence_signer=_fake_evidence_signer,
         )
+
 
 def test_verifier_callbacks_require_exact_boolean_decisions(tmp_path: Path) -> None:
     packet = _packet()
