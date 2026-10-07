@@ -14,4 +14,4 @@ This file is the durable GitHub mirror for ordered Section/Subsection closure.
 
 | Section / Subsection | State | Canonical evidence / lineage | Accepted source / build | Notes |
 | --- | --- | --- | --- | --- |
-| Section 0 — Цільова архітектура 12-6 як повної AI-системи | IN_PROGRESS | PR #3074; branch `section/0-system-architecture-contract-v1`; converged from `main@03296d2d33bdeec9167649067af94ef392bdebe3` | — | Candidate architecture implementation exists; Section 0 is not DONE until accepted integration and terminal exact-head CI on the integrated candidate. |
+| Section 0 — Цільова архітектура 12-6 як повної AI-системи | DONE | PR #3074 merged; candidate `4a1486798d8da3ac59bf1a1e6a7673dcb490afaa`; exact-head CI `37606263374` terminal SUCCESS | `main@d74c5c4f6dee7027ca713b3e6579bb66a5fefaf0` | Current 96-Section plan acceptance 0.1/0.2 is integrated: typed seven-plane architecture boundaries and replaceable cognitive-core/runtime-shell contract. Ruff + full pytest passed on the exact candidate head; merge preserved the qualified candidate tree. No training/data/paid-compute/release authority was widened. |
