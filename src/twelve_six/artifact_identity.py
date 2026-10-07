@@ -1,7 +1,7 @@
-from __future__ import annotations
-
 # Dataclass post-init defaults below deliberately freeze authority snapshots against rebinding.
 # ruff: noqa: RUF033
+
+from __future__ import annotations
 
 import hashlib
 import json
@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 from typing import Any
-
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
