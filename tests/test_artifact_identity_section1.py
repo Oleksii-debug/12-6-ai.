@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+import twelve_six.artifact_identity as artifact_identity_module
 from twelve_six.artifact_identity import (
     CANONICAL_ARTIFACT_KINDS,
     ArtifactKind,
@@ -371,6 +372,68 @@ def test_generation_manifest_strict_json_round_trip_preserves_identity() -> None
     assert hashlib.sha256(encoded).hexdigest() == generation.identity_sha256()
 
 
+def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
+    generation = _generation("a")
+    noncanonical = json.dumps(
+        generation.to_dict(),
+        ensure_ascii=False,
+        indent=2,
+    ).encode("utf-8")
+
+    assert noncanonical != generation.canonical_json_bytes()
+    with pytest.raises(ValueError, match="canonical JSON encoding"):
+        parse_generation_identity_manifest(noncanonical)
+
+
+def test_generation_parent_policy_is_runtime_immutable() -> None:
+    release_policy = artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE]
+
+    with pytest.raises(TypeError):
+        release_policy["evaluation"] = ArtifactKind.EXPORT  # type: ignore[index]
+
+    with pytest.raises(TypeError):
+        artifact_identity_module._GENERATION_PARENT_POLICY[
+            ArtifactKind.RELEASE
+        ] = {}  # type: ignore[index]
+
+
+def test_generation_validation_fails_closed_after_policy_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical = artifact_identity_module._GENERATION_PARENT_POLICY
+    forged = dict(canonical)
+    forged_release = dict(canonical[ArtifactKind.RELEASE])
+    forged_release["evaluation"] = ArtifactKind.EXPORT
+    forged[ArtifactKind.RELEASE] = forged_release
+    monkeypatch.setattr(artifact_identity_module, "_GENERATION_PARENT_POLICY", forged)
+
+    with pytest.raises(ValueError, match=r"release\.evaluation must reference evaluation"):
+        _generation("a")
+
+
+def test_generation_vocabulary_fails_closed_after_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("a")
+    monkeypatch.setattr(
+        artifact_identity_module,
+        "CANONICAL_ARTIFACT_KINDS",
+        tuple(ArtifactKind)[:3],
+    )
+
+    with pytest.raises(ValueError, match="exactly one artifact of every canonical kind"):
+        GenerationIdentityManifest(
+            schema_version=1,
+            artifacts=generation.artifacts[:3],
+        )
+
+    assert generation.artifact_ref(ArtifactKind.RELEASE).kind is ArtifactKind.RELEASE
+    assert (
+        generation.artifact_manifest(ArtifactKind.RELEASE).artifact.kind
+        is ArtifactKind.RELEASE
+    )
+
+
 def test_generation_manifest_strict_json_rejects_duplicate_members() -> None:
     payload = b'{"schema_version":1,"schema_version":1,"artifacts":[]}'
 
@@ -414,6 +477,14 @@ def test_generation_manifest_is_deterministic_and_generation_sensitive() -> None
 
     assert a1.identity_sha256() == a2.identity_sha256()
     assert a1.identity_sha256() != b.identity_sha256()
+
+
+def test_generation_builder_rejects_raw_string_kind_key_aliases() -> None:
+    refs = _refs("a")
+    raw_key_refs = {kind.value: ref for kind, ref in refs.items()}
+
+    with pytest.raises(ValueError, match="ArtifactKind"):
+        build_generation_identity_manifest(raw_key_refs)  # type: ignore[arg-type]
 
 
 def test_generation_builder_rejects_missing_kind_and_key_ref_mismatch() -> None:

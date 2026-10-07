@@ -4,6 +4,7 @@ import hashlib
 
 import pytest
 
+import twelve_six.system_architecture as system_architecture_module
 from twelve_six.system_architecture import (
     CognitiveCoreBinding,
     CognitiveCoreIdentity,
@@ -61,6 +62,18 @@ def test_section0_manifest_contains_exact_required_planes() -> None:
         "live_agent_plane",
         "evolution_plane",
     }
+
+
+def test_manifest_rejects_raw_string_plane_type_aliases() -> None:
+    canonical = canonical_system_architecture_v1()
+    raw_string_planes = tuple(plane.value for plane in canonical.planes)
+
+    with pytest.raises(ValueError, match="SystemPlane"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=raw_string_planes,  # type: ignore[arg-type]
+            boundaries=canonical.boundaries,
+        )
 
 
 def test_section0_manifest_contains_exact_typed_boundary_set() -> None:
@@ -129,7 +142,55 @@ def test_manifest_rejects_identity_ambiguous_reordering() -> None:
         SystemArchitectureManifest(
             schema_version=1,
             planes=canonical.planes,
-            boundaries=(canonical.boundaries[1], canonical.boundaries[0], *canonical.boundaries[2:]),
+            boundaries=(
+                canonical.boundaries[1],
+                canonical.boundaries[0],
+                *canonical.boundaries[2:],
+            ),
+        )
+
+
+def test_architecture_boundary_policy_is_runtime_immutable() -> None:
+    with pytest.raises(TypeError):
+        system_architecture_module._REQUIRED_BOUNDARY_SPECS[
+            "base_to_gateway"
+        ] = (  # type: ignore[index]
+            SystemPlane.BASE_MODEL,
+            SystemPlane.PERSISTENT_COGNITION,
+            "twelve_six.model_gateway",
+            1,
+        )
+
+
+def test_manifest_validation_fails_closed_after_boundary_policy_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical = canonical_system_architecture_v1()
+    first = canonical.boundaries[0]
+    forged_policy = dict(system_architecture_module._REQUIRED_BOUNDARY_SPECS)
+    forged_policy[first.name] = (
+        SystemPlane.BASE_MODEL,
+        SystemPlane.PERSISTENT_COGNITION,
+        first.interface.name,
+        first.interface.schema_version,
+    )
+    monkeypatch.setattr(
+        system_architecture_module,
+        "_REQUIRED_BOUNDARY_SPECS",
+        forged_policy,
+    )
+    resealed = TypedBoundary(
+        first.name,
+        SystemPlane.BASE_MODEL,
+        SystemPlane.PERSISTENT_COGNITION,
+        first.interface,
+    )
+
+    with pytest.raises(ValueError, match="semantics are non-canonical"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(resealed, *canonical.boundaries[1:]),
         )
 
 
@@ -221,7 +282,7 @@ def test_architecture_and_shell_identities_are_deterministic() -> None:
 def test_product_assembly_cross_binds_shell_gateway_to_architecture() -> None:
     shell = canonical_runtime_shell_v1()
     incompatible_shell = RuntimeShellContract(
-        gateway_api=InterfaceContract("twelve_six.other_gateway", 1),
+        gateway_api=InterfaceContract("twelve_six.model_gateway", 2),
         memory_api=shell.memory_api,
         tools_api=shell.tools_api,
         voice_api=shell.voice_api,
@@ -272,6 +333,7 @@ def test_core_replacement_preserves_all_persistent_shell_contracts() -> None:
     assert replacement.shell.surface_identities() == current.shell.surface_identities()
     assert receipt.shell_identity_sha256_before == receipt.shell_identity_sha256_after
     assert receipt.preserved_surface_identities == current.shell.surface_identities()
+    assert receipt.preserved_shell == current.shell
     assert receipt.shell_rewrite_required is False
     assert replacement.identity_sha256() != assembly_before_identity
 
@@ -285,7 +347,10 @@ def test_core_replacement_accepts_new_checkpoint_same_scale_without_shell_rewrit
 
     replacement, receipt = replace_cognitive_core(current, candidate)
 
-    assert replacement.core_binding.core.parameter_count == current.core_binding.core.parameter_count
+    assert (
+        replacement.core_binding.core.parameter_count
+        == current.core_binding.core.parameter_count
+    )
     assert (
         replacement.core_binding.core.checkpoint_sha256
         != current.core_binding.core.checkpoint_sha256
@@ -322,7 +387,23 @@ def test_runtime_shell_identity_changes_when_a_surface_contract_changes() -> Non
     assert changed.identity_sha256() != shell.identity_sha256()
 
 
+def test_runtime_shell_rejects_role_resealing() -> None:
+    shell = canonical_runtime_shell_v1()
+
+    with pytest.raises(ValueError, match="memory_api contract role semantics are non-canonical"):
+        RuntimeShellContract(
+            gateway_api=shell.gateway_api,
+            memory_api=shell.tools_api,
+            tools_api=shell.tools_api,
+            voice_api=shell.voice_api,
+            ui_api=shell.ui_api,
+            orchestration_api=shell.orchestration_api,
+        )
+
+
 def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None:
+    shell = canonical_runtime_shell_v1()
+
     with pytest.raises(ValueError, match="changed runtime shell"):
         CoreReplacementReceipt(
             previous_core_identity_sha256=_sha("previous"),
@@ -330,6 +411,7 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             shell_identity_sha256_before=_sha("shell-a"),
             shell_identity_sha256_after=_sha("shell-b"),
             preserved_surface_identities=(),
+            preserved_shell=shell,
             shell_rewrite_required=False,
         )
 
@@ -340,5 +422,84 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             shell_identity_sha256_before=_sha("shell"),
             shell_identity_sha256_after=_sha("shell"),
             preserved_surface_identities=(),
+            preserved_shell=shell,
             shell_rewrite_required=True,
+        )
+
+def test_manifest_rejects_mutable_boundary_container() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="boundaries must be an immutable tuple"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=list(canonical.boundaries),  # type: ignore[arg-type]
+        )
+
+def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="only TypedBoundary"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(*canonical.boundaries[:-1], None),  # type: ignore[arg-type]
+        )
+
+def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() -> None:
+    surfaces = canonical_runtime_shell_v1().surface_identities()
+    common = {
+        "previous_core_identity_sha256": _sha("previous"),
+        "candidate_core_identity_sha256": _sha("candidate"),
+        "shell_identity_sha256_before": _sha("shell"),
+        "shell_identity_sha256_after": _sha("shell"),
+        "preserved_shell": canonical_runtime_shell_v1(),
+        "shell_rewrite_required": False,
+    }
+
+    with pytest.raises(ValueError, match="immutable tuple of 2-tuples"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=list(surfaces),  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(ValueError, match="immutable tuple of 2-tuples"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=(*surfaces[:-1], ("ui-only",)),  # type: ignore[arg-type]
+        )
+
+
+
+def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> None:
+    shell = canonical_runtime_shell_v1()
+    common = {
+        "previous_core_identity_sha256": _sha("previous"),
+        "candidate_core_identity_sha256": _sha("candidate"),
+        "shell_identity_sha256_before": shell.identity_sha256(),
+        "shell_identity_sha256_after": shell.identity_sha256(),
+        "preserved_shell": shell,
+        "shell_rewrite_required": False,
+    }
+    tampered_surfaces = list(shell.surface_identities())
+    tampered_surfaces[1] = ("memory", _sha("tampered-memory"))
+
+    with pytest.raises(ValueError, match="surface identities do not match preserved shell"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=tuple(tampered_surfaces),
+        )
+
+    changed_shell = RuntimeShellContract(
+        gateway_api=shell.gateway_api,
+        memory_api=InterfaceContract("twelve_six.memory", 2),
+        tools_api=shell.tools_api,
+        voice_api=shell.voice_api,
+        ui_api=shell.ui_api,
+        orchestration_api=shell.orchestration_api,
+    )
+    with pytest.raises(ValueError, match="shell identity does not match preserved shell"):
+        CoreReplacementReceipt(
+            **{**common, "preserved_shell": changed_shell},
+            preserved_surface_identities=changed_shell.surface_identities(),
         )

@@ -5,7 +5,8 @@ import json
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -50,7 +51,7 @@ class SystemPlane(str, Enum):
 
 
 _REQUIRED_PLANES = tuple(SystemPlane)
-_REQUIRED_BOUNDARY_SPECS = {
+_BOUNDARY_SPECS_SOURCE: dict[str, tuple[SystemPlane, SystemPlane, str, int]] = {
     "base_to_gateway": (
         SystemPlane.BASE_MODEL,
         SystemPlane.MODEL_GATEWAY,
@@ -94,6 +95,11 @@ _REQUIRED_BOUNDARY_SPECS = {
         1,
     ),
 }
+
+_REQUIRED_BOUNDARY_SPECS: Mapping[
+    str, tuple[SystemPlane, SystemPlane, str, int]
+] = MappingProxyType(dict(_BOUNDARY_SPECS_SOURCE))
+del _BOUNDARY_SPECS_SOURCE
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,30 +160,45 @@ class SystemArchitectureManifest:
     planes: tuple[SystemPlane, ...]
     boundaries: tuple[TypedBoundary, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_planes: tuple[SystemPlane, ...] = _REQUIRED_PLANES,
+        _sealed_boundary_specs: Mapping[
+            str, tuple[SystemPlane, SystemPlane, str, int]
+        ] = _REQUIRED_BOUNDARY_SPECS,
+    ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported system architecture schema_version")
 
-        if len(self.planes) != len(_REQUIRED_PLANES):
+        if not isinstance(self.planes, tuple) or any(
+            not isinstance(plane, SystemPlane) for plane in self.planes
+        ):
+            raise ValueError(
+                "system architecture planes must be an immutable tuple of SystemPlane values"
+            )
+        if not isinstance(self.boundaries, tuple):
+            raise ValueError("system architecture boundaries must be an immutable tuple")
+
+        if len(self.planes) != len(_sealed_planes):
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):
             raise ValueError("system architecture planes must be unique")
-        if self.planes != _REQUIRED_PLANES:
+        if self.planes != _sealed_planes:
             raise ValueError("system architecture plane order or set is non-canonical")
 
+        if any(not isinstance(boundary, TypedBoundary) for boundary in self.boundaries):
+            raise ValueError("boundaries must contain only TypedBoundary values")
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
             raise ValueError("typed boundary names must be unique")
 
         plane_set = set(self.planes)
         for boundary in self.boundaries:
-            if not isinstance(boundary, TypedBoundary):
-                raise ValueError("boundaries must contain only TypedBoundary values")
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 
-        if names != list(_REQUIRED_BOUNDARY_SPECS):
+        if names != list(_sealed_boundary_specs):
             raise ValueError("system architecture typed-boundary order or set is non-canonical")
 
         observed_specs = {
@@ -189,7 +210,7 @@ class SystemArchitectureManifest:
             )
             for boundary in self.boundaries
         }
-        if observed_specs != _REQUIRED_BOUNDARY_SPECS:
+        if observed_specs != _sealed_boundary_specs:
             raise ValueError("system architecture typed-boundary semantics are non-canonical")
 
     def to_dict(self) -> dict[str, Any]:
@@ -245,16 +266,22 @@ class RuntimeShellContract:
     orchestration_api: InterfaceContract
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("gateway_api", self.gateway_api),
-            ("memory_api", self.memory_api),
-            ("tools_api", self.tools_api),
-            ("voice_api", self.voice_api),
-            ("ui_api", self.ui_api),
-            ("orchestration_api", self.orchestration_api),
-        ):
+        contracts = (
+            ("gateway_api", self.gateway_api, "twelve_six.model_gateway"),
+            ("memory_api", self.memory_api, "twelve_six.memory"),
+            ("tools_api", self.tools_api, "twelve_six.tools"),
+            ("voice_api", self.voice_api, "twelve_six.voice"),
+            ("ui_api", self.ui_api, "twelve_six.ui"),
+            ("orchestration_api", self.orchestration_api, "twelve_six.orchestration"),
+        )
+        for name, value, expected_contract_name in contracts:
             if not isinstance(value, InterfaceContract):
                 raise ValueError(f"{name} must be an InterfaceContract")
+            if value.name != expected_contract_name:
+                raise ValueError(
+                    f"{name} contract role semantics are non-canonical: "
+                    f"expected {expected_contract_name}"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -344,6 +371,7 @@ class CoreReplacementReceipt:
     shell_identity_sha256_before: str
     shell_identity_sha256_after: str
     preserved_surface_identities: tuple[tuple[str, str], ...]
+    preserved_shell: RuntimeShellContract
     shell_rewrite_required: bool
 
     def __post_init__(self) -> None:
@@ -354,10 +382,19 @@ class CoreReplacementReceipt:
             ("shell_identity_sha256_after", self.shell_identity_sha256_after),
         ):
             _require_sha256(name, value)
+        if not isinstance(self.preserved_surface_identities, tuple) or any(
+            not isinstance(item, tuple) or len(item) != 2
+            for item in self.preserved_surface_identities
+        ):
+            raise ValueError(
+                "preserved_surface_identities must be an immutable tuple of 2-tuples"
+            )
         if self.shell_identity_sha256_before != self.shell_identity_sha256_after:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:
             raise ValueError("canonical core replacement must not require a runtime-shell rewrite")
+        if not isinstance(self.preserved_shell, RuntimeShellContract):
+            raise ValueError("preserved_shell must be a RuntimeShellContract")
         expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
         observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
         if observed_surfaces != expected_surfaces:
@@ -365,6 +402,11 @@ class CoreReplacementReceipt:
         for surface, identity in self.preserved_surface_identities:
             _require_nonempty_text("surface", surface)
             _require_sha256(f"{surface}_identity_sha256", identity)
+        preserved_shell_identity = self.preserved_shell.identity_sha256()
+        if self.shell_identity_sha256_before != preserved_shell_identity:
+            raise ValueError("replacement receipt shell identity does not match preserved shell")
+        if self.preserved_surface_identities != self.preserved_shell.surface_identities():
+            raise ValueError("replacement receipt surface identities do not match preserved shell")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -376,6 +418,7 @@ class CoreReplacementReceipt:
                 {"surface": surface, "identity_sha256": identity}
                 for surface, identity in self.preserved_surface_identities
             ],
+            "preserved_shell": self.preserved_shell.to_dict(),
             "shell_rewrite_required": self.shell_rewrite_required,
         }
 
@@ -475,6 +518,7 @@ def replace_cognitive_core(
         shell_identity_sha256_before=shell_before,
         shell_identity_sha256_after=shell_after,
         preserved_surface_identities=assembly.shell.surface_identities(),
+        preserved_shell=assembly.shell,
         shell_rewrite_required=False,
     )
     return replacement, receipt

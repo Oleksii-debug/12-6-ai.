@@ -7,6 +7,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
 
 
@@ -96,7 +97,7 @@ class ArtifactKind(str, Enum):
 CANONICAL_ARTIFACT_KINDS = tuple(ArtifactKind)
 
 
-_GENERATION_PARENT_POLICY: dict[ArtifactKind, dict[str, ArtifactKind]] = {
+_GENERATION_PARENT_POLICY_SOURCE: dict[ArtifactKind, dict[str, ArtifactKind]] = {
     ArtifactKind.MODEL_SPEC: {},
     ArtifactKind.INIT_SPEC: {},
     ArtifactKind.CORPUS: {},
@@ -138,6 +139,15 @@ _GENERATION_PARENT_POLICY: dict[ArtifactKind, dict[str, ArtifactKind]] = {
         "export": ArtifactKind.EXPORT,
     },
 }
+
+_GENERATION_PARENT_POLICY: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = MappingProxyType(
+    {
+        kind: MappingProxyType(dict(parents))
+        for kind, parents in _GENERATION_PARENT_POLICY_SOURCE.items()
+    }
+)
+del _GENERATION_PARENT_POLICY_SOURCE
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,28 +375,34 @@ class GenerationIdentityManifest:
     schema_version: int
     artifacts: tuple[ArtifactManifest, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+        _sealed_parent_policy: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = (
+            _GENERATION_PARENT_POLICY
+        ),
+    ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
         if not isinstance(self.artifacts, tuple):
             raise ValueError("artifacts must be an immutable tuple")
-        if len(self.artifacts) != len(CANONICAL_ARTIFACT_KINDS):
+        if len(self.artifacts) != len(_sealed_artifact_kinds):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")
         if any(not isinstance(item, ArtifactManifest) for item in self.artifacts):
             raise ValueError("generation artifacts must contain only ArtifactManifest values")
 
         kinds = tuple(item.artifact.kind for item in self.artifacts)
-        if kinds != CANONICAL_ARTIFACT_KINDS:
+        if kinds != _sealed_artifact_kinds:
             raise ValueError("generation artifact kind order or set is non-canonical")
 
         by_kind = {item.artifact.kind: item for item in self.artifacts}
-        if len(by_kind) != len(CANONICAL_ARTIFACT_KINDS):
+        if len(by_kind) != len(_sealed_artifact_kinds):
             raise ValueError("generation artifact kinds must be unique")
 
-        for kind in CANONICAL_ARTIFACT_KINDS:
+        for kind in _sealed_artifact_kinds:
             manifest = by_kind[kind]
-            expected_policy = _GENERATION_PARENT_POLICY[kind]
+            expected_policy = _sealed_parent_policy[kind]
             observed = manifest.parent_bindings_by_role()
             if tuple(observed) != tuple(sorted(expected_policy)):
                 raise ValueError(f"{kind.value} parent role set is non-canonical")
@@ -419,15 +435,23 @@ class GenerationIdentityManifest:
     def identity_sha256(self) -> str:
         return _canonical_json_sha256(self.to_dict())
 
-    def artifact_ref(self, kind: ArtifactKind) -> ArtifactRef:
+    def artifact_ref(
+        self,
+        kind: ArtifactKind,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    ) -> ArtifactRef:
         if not isinstance(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[CANONICAL_ARTIFACT_KINDS.index(kind)].artifact
+        return self.artifacts[_sealed_artifact_kinds.index(kind)].artifact
 
-    def artifact_manifest(self, kind: ArtifactKind) -> ArtifactManifest:
+    def artifact_manifest(
+        self,
+        kind: ArtifactKind,
+        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    ) -> ArtifactManifest:
         if not isinstance(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[CANONICAL_ARTIFACT_KINDS.index(kind)]
+        return self.artifacts[_sealed_artifact_kinds.index(kind)]
 
     def canonical_json_bytes(self) -> bytes:
         return json.dumps(
@@ -452,9 +476,12 @@ class GenerationIdentityManifest:
 
 
 def parse_generation_identity_manifest(data: bytes) -> GenerationIdentityManifest:
-    """Decode and validate one durable closed-world generation manifest."""
+    """Decode one exact canonical durable closed-world generation manifest."""
 
-    return GenerationIdentityManifest.from_dict(_strict_json_object(data))
+    manifest = GenerationIdentityManifest.from_dict(_strict_json_object(data))
+    if data != manifest.canonical_json_bytes():
+        raise ValueError("manifest must use canonical JSON encoding")
+    return manifest
 
 
 def build_generation_identity_manifest(
@@ -464,6 +491,8 @@ def build_generation_identity_manifest(
 
     if not isinstance(refs, Mapping):
         raise ValueError("refs must be a mapping")
+    if any(not isinstance(kind, ArtifactKind) for kind in refs):
+        raise ValueError("refs keys must be ArtifactKind values")
     if set(refs) != set(CANONICAL_ARTIFACT_KINDS):
         raise ValueError("refs must contain exactly every canonical artifact kind")
 

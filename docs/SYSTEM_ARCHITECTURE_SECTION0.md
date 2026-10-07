@@ -31,6 +31,10 @@ The canonical manifest is machine-checkable. It rejects missing/duplicate planes
 missing/duplicate required boundary contracts, self-edges, invalid contract versions and
 boundaries whose endpoints are not part of the manifest.
 
+The canonical boundary policy is sealed after module initialization, and the manifest
+validator captures that sealed policy. Callers therefore cannot mutate or rebind the
+module-level policy and make a different producer/consumer/interface tuple become canonical.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`
@@ -58,10 +62,17 @@ binds stable contracts for:
 - UI;
 - orchestration.
 
+Each surface role is fail-closed to its canonical contract name, so a caller cannot silently
+reseal the memory/tools/voice/UI/orchestration fields to one another or to an unrelated
+interface while retaining a superficially valid shell identity. Contract schema versions
+remain independently versioned.
+
 `replace_cognitive_core()` accepts a new checkpoint or scale only when its gateway contract
 is exactly compatible with the shell. The replacement receipt binds the old and new core
-identities and the unchanged shell/surface identities. A gateway generation mismatch fails
-closed before the assembly is changed.
+identities and the unchanged shell/surface identities. It also carries the immutable preserved
+shell contract and cross-checks the shell hash plus every surface hash against that snapshot, so
+a resealed receipt cannot claim unrelated surface identities. A gateway generation mismatch
+fails closed before the assembly is changed.
 
 The regression suite proves both important replacement classes:
 

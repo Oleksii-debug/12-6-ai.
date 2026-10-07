@@ -25,6 +25,10 @@ It does not introduce a second hashing algorithm for the underlying artifact. Ea
 - the artifact's own schema version;
 - the exact existing lowercase SHA-256 identity.
 
+The unified identity vocabulary is pinned to the original twelve-kind tuple by the
+generation validator and its typed accessors. Rebinding the public module-level tuple therefore
+cannot shrink or reorder what an already loaded validator accepts as a complete generation.
+
 The unified identity vocabulary covers exactly:
 
 1. ModelSpec
@@ -62,6 +66,11 @@ exactly one selected artifact of every canonical identity family and requires ev
 artifact to point to the exact selected parent artifact and transitive parent-manifest
 identity for that generation.
 
+The canonical parent policy is runtime-immutable: both the outer kind map and every nested
+role map are sealed after module initialization. The validator also captures that sealed
+mapping at class definition, so later rebinding of the module-global policy cannot silently
+change acceptance semantics; a builder influenced by such a rebind fails closed at validation.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;
@@ -97,9 +106,11 @@ All fail closed before a generation identity can be accepted.
 `GenerationIdentityManifest.canonical_json_bytes()` provides one canonical UTF-8 JSON
 serialization. `parse_generation_identity_manifest()` decodes that durable form with a
 bounded input size, duplicate-member rejection, standards-strict finite JSON handling and
-exact closed field sets at every nested manifest/reference level. The parsed object must
-re-satisfy the complete generation graph before it is accepted. The generation identity is
-the SHA-256 of those exact canonical bytes.
+exact closed field sets at every nested manifest/reference level. It then requires the input
+bytes to equal the manifest's canonical serialization exactly, rejecting semantically equal
+but differently ordered/whitespace-encoded JSON. The parsed object must re-satisfy the
+complete generation graph before it is accepted. The generation identity is the SHA-256 of
+those exact canonical bytes.
 
 ## Truth boundary
 

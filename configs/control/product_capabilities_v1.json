@@ -772,44 +772,6 @@
       ],
       "integrated_result": null,
       "unavailable_reason": "Section 3 candidate is not integrated or terminally exact-head qualified."
-    },
-    {
-      "capability_id": "ai-qa-repair-control",
-      "schema_version": 1,
-      "status": "UNAVAILABLE",
-      "component_contract": "twelve_six.ai_qa_control",
-      "dependencies": [
-        "github-sil-qualification"
-      ],
-      "journey_ids": [
-        "maintainer-defect-repair-cycle"
-      ],
-      "environments": [
-        {
-          "environment_id": "github-actions-ubuntu",
-          "supported": false
-        }
-      ],
-      "test_vectors": [
-        {
-          "vector_id": "section4-aiqa-component",
-          "level": "component",
-          "command": "pytest -q tests/test_ai_qa_control_section4.py"
-        },
-        {
-          "vector_id": "section4-aiqa-stack",
-          "level": "integration",
-          "command": "pytest -q tests/test_sil_qualification_section3.py tests/test_ai_qa_control_section4.py"
-        }
-      ],
-      "evidence_targets": [
-        {
-          "evidence_id": "section4-pr",
-          "target": "pull-request:3080"
-        }
-      ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 4 candidate is not integrated or independently terminally qualified; repair control cannot be advertised as available."
     }
   ],
   "journeys": [
@@ -941,13 +903,6 @@
       "title": "Maintainer executes and independently verifies exact-head GitHub SIL evidence",
       "capability_ids": [
         "github-sil-qualification"
-      ]
-    },
-    {
-      "journey_id": "maintainer-defect-repair-cycle",
-      "title": "Maintainer turns qualified failure evidence into an isolated repair candidate and independently gates promotion",
-      "capability_ids": [
-        "ai-qa-repair-control"
       ]
     }
   ]
