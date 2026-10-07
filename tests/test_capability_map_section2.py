@@ -521,10 +521,10 @@ def test_library_git_evidence_probes_strip_ambient_git_redirection(
     tmp_path: Path,
 ) -> None:
     hostile = {
-        "GIT_DIR": str(tmp_path / "forged.git"),
-        "GIT_WORK_TREE": str(tmp_path / "forged-worktree"),
-        "GIT_CONFIG_PARAMETERS": "'core.hooksPath=/forged'",
-        "GIT_INDEX_FILE": str(tmp_path / "forged-index"),
+        "Git_Dir": str(tmp_path / "forged.git"),
+        "git_work_tree": str(tmp_path / "forged-worktree"),
+        "gIt_CoNfIg_PaRaMeTeRs": "'core.hooksPath=/forged'",
+        "Git_Index_File": str(tmp_path / "forged-index"),
     }
     for key, value in hostile.items():
         monkeypatch.setenv(key, value)
@@ -537,8 +537,10 @@ def test_library_git_evidence_probes_strip_ambient_git_redirection(
         if command and command[0] == "git":
             env = kwargs.get("env")
             assert isinstance(env, dict)
-            for key in hostile:
-                assert key not in env
+            assert all(
+                not key.upper().startswith("GIT_") or key == "GIT_OPTIONAL_LOCKS"
+                for key in env
+            )
             assert env["GIT_OPTIONAL_LOCKS"] == "0"
             observed_commands.append(tuple(command))
         return original_run(command, *args, **kwargs)
