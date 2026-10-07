@@ -553,9 +553,18 @@ def materialize_local_repair_candidate(
 
     root = Path(repo_root).resolve()
     base_sha = failure.failing_git_sha
-    base_probe = _git_command(root, "cat-file", "-e", f"{base_sha}^{{commit}}", check=False)
+    exact_object_env = os.environ.copy()
+    exact_object_env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    base_probe = _git_command(
+        root,
+        "cat-file",
+        "-e",
+        f"{base_sha}^{{commit}}",
+        check=False,
+        env=exact_object_env,
+    )
     if base_probe.returncode != 0:
-        raise ValueError("failing Git SHA is not an available local commit")
+        raise ValueError("failing Git SHA is not an available exact local commit")
 
     patch_sha = _sha256_bytes(patch_bytes)
     branch_name = f"aiqa/repair/{base_sha[:12]}-{patch_sha[:12]}"
@@ -566,90 +575,127 @@ def materialize_local_repair_candidate(
 
     with tempfile.TemporaryDirectory(prefix="twelve-six-aiqa-") as temp_root:
         temp_path = Path(temp_root)
-        worktree = temp_path / "worktree"
         patch_path = temp_path / "repair.patch"
+        message_path = temp_path / "commit-message.txt"
+        index_path = temp_path / "index"
+        empty_hooks = temp_path / "empty-hooks"
+        empty_hooks.mkdir()
         patch_path.write_bytes(patch_bytes)
-        added = False
-        try:
-            add_result = _git_command(
+
+        index_env = exact_object_env.copy()
+        index_env["GIT_INDEX_FILE"] = str(index_path)
+        read_tree = _git_command(root, "read-tree", base_sha, check=False, env=index_env)
+        if read_tree.returncode != 0:
+            raise ValueError("cannot initialize isolated repair index from failing SHA")
+
+        apply_result = _git_command(
+            root,
+            "apply",
+            "--cached",
+            "--whitespace=nowarn",
+            str(patch_path),
+            check=False,
+            env=index_env,
+        )
+        if apply_result.returncode != 0:
+            raise ValueError("isolated repair patch does not apply cleanly to failing SHA")
+
+        staged = _git_command(
+            root,
+            "diff",
+            "--cached",
+            "--quiet",
+            base_sha,
+            "--",
+            check=False,
+            env=index_env,
+        )
+        if staged.returncode == 0:
+            raise ValueError("isolated repair patch produces no staged change")
+        if staged.returncode != 1:
+            raise ValueError("cannot verify isolated repair staged delta")
+
+        tree_result = _git_command(root, "write-tree", check=False, env=index_env)
+        if tree_result.returncode != 0:
+            raise ValueError("cannot materialize isolated repair tree")
+        tree_sha = tree_result.stdout.strip()
+        _require_git_sha("materialized repair tree SHA", tree_sha)
+
+        message = (
+            f"AI QA repair {failure.defect_id}\n\n"
+            f"Failure-SHA: {base_sha}\n"
+            f"Patch-SHA256: {patch_sha}\n"
+        )
+        message_path.write_text(message, encoding="utf-8")
+        commit_env = exact_object_env.copy()
+        commit_env.update(
+            {
+                "GIT_AUTHOR_NAME": "12-6 AI QA",
+                "GIT_AUTHOR_EMAIL": "aiqa@localhost",
+                "GIT_COMMITTER_NAME": "12-6 AI QA",
+                "GIT_COMMITTER_EMAIL": "aiqa@localhost",
+                "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+0000",
+                "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+0000",
+            }
+        )
+        commit_result = _git_command(
+            root,
+            "-c",
+            "commit.gpgSign=false",
+            "commit-tree",
+            tree_sha,
+            "-p",
+            base_sha,
+            "-F",
+            str(message_path),
+            env=commit_env,
+            check=False,
+        )
+        if commit_result.returncode != 0:
+            raise ValueError("cannot create isolated repair candidate commit")
+        candidate_sha = commit_result.stdout.strip()
+        _require_git_sha("materialized candidate Git SHA", candidate_sha)
+
+        parent = _git_command(
+            root,
+            "show",
+            "-s",
+            "--format=%P",
+            candidate_sha,
+            check=False,
+            env=exact_object_env,
+        )
+        if parent.returncode != 0 or parent.stdout.strip() != base_sha:
+            raise ValueError("materialized repair candidate parent is not exact failing SHA")
+
+        existing = _git_command(
+            root,
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            ref_name,
+            check=False,
+            env=exact_object_env,
+        )
+        if existing.returncode == 0:
+            if existing.stdout.strip() != candidate_sha:
+                raise ValueError("repair branch already exists with a different candidate")
+        elif existing.returncode == 1:
+            created = _git_command(
                 root,
-                "worktree",
-                "add",
-                "--detach",
-                str(worktree),
-                base_sha,
+                "-c",
+                f"core.hooksPath={empty_hooks}",
+                "update-ref",
+                ref_name,
+                candidate_sha,
+                "0" * 40,
                 check=False,
+                env=exact_object_env,
             )
-            if add_result.returncode != 0:
-                raise ValueError("cannot create isolated repair worktree from failing SHA")
-            added = True
-
-            apply_result = _git_command(
-                worktree,
-                "apply",
-                "--index",
-                "--whitespace=nowarn",
-                str(patch_path),
-                check=False,
-            )
-            if apply_result.returncode != 0:
-                raise ValueError("isolated repair patch does not apply cleanly to failing SHA")
-            staged = _git_command(worktree, "diff", "--cached", "--quiet", check=False)
-            if staged.returncode == 0:
-                raise ValueError("isolated repair patch produces no staged change")
-            if staged.returncode != 1:
-                raise ValueError("cannot verify isolated repair staged delta")
-
-            commit_env = os.environ.copy()
-            commit_env.update(
-                {
-                    "GIT_AUTHOR_NAME": "12-6 AI QA",
-                    "GIT_AUTHOR_EMAIL": "aiqa@localhost",
-                    "GIT_COMMITTER_NAME": "12-6 AI QA",
-                    "GIT_COMMITTER_EMAIL": "aiqa@localhost",
-                    "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+0000",
-                    "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+0000",
-                }
-            )
-            message = (
-                f"AI QA repair {failure.defect_id}\n\n"
-                f"Failure-SHA: {base_sha}\n"
-                f"Patch-SHA256: {patch_sha}"
-            )
-            commit_result = _git_command(
-                worktree,
-                "commit",
-                "--no-gpg-sign",
-                "-m",
-                message,
-                env=commit_env,
-                check=False,
-            )
-            if commit_result.returncode != 0:
-                raise ValueError("cannot commit isolated repair candidate")
-            candidate_sha = _git_command(worktree, "rev-parse", "HEAD").stdout.strip()
-            _require_git_sha("materialized candidate Git SHA", candidate_sha)
-
-            existing = _git_command(root, "rev-parse", "--verify", "--quiet", ref_name, check=False)
-            if existing.returncode == 0:
-                if existing.stdout.strip() != candidate_sha:
-                    raise ValueError("repair branch already exists with a different candidate")
-            elif existing.returncode == 1:
-                created = _git_command(
-                    root,
-                    "update-ref",
-                    ref_name,
-                    candidate_sha,
-                    "0" * 40,
-                    check=False,
-                )
-                if created.returncode != 0:
-                    raise ValueError("cannot atomically create isolated repair branch")
-            else:
-                raise ValueError("cannot inspect isolated repair branch state")
-        finally:
-            if added:
-                _git_command(root, "worktree", "remove", "--force", str(worktree), check=False)
+            if created.returncode != 0:
+                raise ValueError("cannot atomically create isolated repair branch")
+        else:
+            raise ValueError("cannot inspect isolated repair branch state")
 
     return (
         build_repair_candidate(
@@ -662,7 +708,6 @@ def materialize_local_repair_candidate(
         ),
         branch_name,
     )
-
 
 @dataclass(frozen=True, slots=True)
 class RegressionChain:
