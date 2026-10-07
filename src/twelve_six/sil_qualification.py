@@ -756,6 +756,7 @@ def _qualification_subprocess_env() -> dict[str, str]:
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONHASHSEED": "0",
             "PYTHONNOUSERSITE": "1",
+            "PYTHONSAFEPATH": "1",
             "PYTHONUTF8": "1",
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
         }
