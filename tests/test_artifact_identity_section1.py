@@ -782,6 +782,38 @@ def test_artifact_ref_from_dict_ignores_poisoned_enum_value_lookup_table() -> No
         value_map["model_spec"] = original
 
 
+
+def test_closed_schema_from_dict_rejects_inherited_subclass_decoder() -> None:
+    generation = _generation("decoder-class")
+    corpus = generation.artifact_manifest(ArtifactKind.CORPUS)
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    release_parent = release.parents[0]
+
+    class ForgedArtifactRef(ArtifactRef):
+        pass
+
+    class ForgedParentBinding(ParentBinding):
+        pass
+
+    class ForgedArtifactManifest(ArtifactManifest):
+        pass
+
+    class ForgedGenerationIdentityManifest(GenerationIdentityManifest):
+        pass
+
+    with pytest.raises(ValueError, match="ArtifactRef decoder class must be exact"):
+        ForgedArtifactRef.from_dict(corpus.artifact.to_dict())
+    with pytest.raises(ValueError, match="ParentBinding decoder class must be exact"):
+        ForgedParentBinding.from_dict(release_parent.to_dict())
+    with pytest.raises(ValueError, match="ArtifactManifest decoder class must be exact"):
+        ForgedArtifactManifest.from_dict(release.to_dict())
+    with pytest.raises(
+        ValueError,
+        match="GenerationIdentityManifest decoder class must be exact",
+    ):
+        ForgedGenerationIdentityManifest.from_dict(generation.to_dict())
+
+
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
     object.__setattr__(ref, "schema_version", 0)

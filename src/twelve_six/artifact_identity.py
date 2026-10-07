@@ -230,6 +230,8 @@ class ArtifactRef:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactRef:
+        if cls is not ArtifactRef:
+            raise ValueError("ArtifactRef decoder class must be exact")
         value = _require_exact_object_fields(
             "ArtifactRef",
             value,
@@ -272,6 +274,8 @@ class ParentBinding:
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
+        if cls is not ParentBinding:
+            raise ValueError("ParentBinding decoder class must be exact")
         value = _require_exact_object_fields(
             "ParentBinding",
             value,
@@ -339,6 +343,8 @@ class ArtifactManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
+        if cls is not ArtifactManifest:
+            raise ValueError("ArtifactManifest decoder class must be exact")
         value = _require_exact_object_fields(
             "ArtifactManifest",
             value,
@@ -532,6 +538,8 @@ class GenerationIdentityManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> GenerationIdentityManifest:
+        if cls is not GenerationIdentityManifest:
+            raise ValueError("GenerationIdentityManifest decoder class must be exact")
         value = _require_exact_object_fields(
             "GenerationIdentityManifest",
             value,
