@@ -413,7 +413,9 @@ def _action_from_dict(value: object) -> QualificationAction:
     resources = value["required_resources"]
     if not _is_exact_type(targets, list) or not all(_is_exact_type(item, str) for item in targets):
         raise ValueError("pytest_targets must be a string array")
-    if not _is_exact_type(resources, list) or not all(_is_exact_type(item, str) for item in resources):
+    if not _is_exact_type(resources, list) or not all(
+        _is_exact_type(item, str) for item in resources
+    ):
         raise ValueError("required_resources must be a string array")
     return QualificationAction(
         action_id=value["action_id"],
@@ -446,7 +448,9 @@ def _packet_from_dict(value: object) -> QualificationPacket:
         raise ValueError("allowed_os_families must be a string array")
     if not _is_exact_type(actions, list):
         raise ValueError("actions must be an array")
-    if not _is_exact_type(artifacts, list) or not all(_is_exact_type(item, str) for item in artifacts):
+    if not _is_exact_type(artifacts, list) or not all(
+        _is_exact_type(item, str) for item in artifacts
+    ):
         raise ValueError("artifact_paths must be a string array")
     return QualificationPacket(
         schema_version=value["schema_version"],
