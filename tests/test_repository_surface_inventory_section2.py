@@ -36,13 +36,13 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "0e1f301c5123b4e52c111cb94264cfd61b60bf4b"
-    assert result["observed_main_tree_sha"] == "4fd06e8836450e61ab47e39657c96c6b6f76792e"
-    assert result["current_repository_main_sha"] == "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21"
-    assert result["current_repository_main_tree_sha"] == "17edf21d66709f6e8a7c217e138b33c0bf9a0217"
+    assert result["observed_main_sha"] == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
+    assert result["observed_main_tree_sha"] == "f1717c60acf917cf5c6a59336b00a223342529c2"
+    assert result["current_repository_main_sha"] == "ee7ade7e80e9e4e6fe7ffd5ebd5012a61bbc5fb6"
+    assert result["current_repository_main_tree_sha"] == "f1717c60acf917cf5c6a59336b00a223342529c2"
     assert result["qualified_current_equivalent_surface_count"] == 237
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 1
+    assert result["candidate_overlay_surface_count"] == 0
     assert result["checkout_surface_count"] == 120
 
 
@@ -67,12 +67,7 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
 def test_section2_validator_is_integrated_into_qualified_baseline() -> None:
     payload = _load_strict_json(_INVENTORY)
 
-    assert payload["candidate_overrides"] == [
-        {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
-            "capability_id": "executable-capability-map",
-        }
-    ]
+    assert payload["candidate_overrides"] == []
     assert {
         "rule_id": "section2-surface-validator",
         "selector": "exact",
@@ -238,7 +233,7 @@ def test_repository_surface_coverage_accepts_equivalent_historical_main_receipt(
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["current_repository_main_sha"] = payload["observed_main_sha"]
-    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
+    payload["current_repository_main_tree_sha"] = "17edf21d66709f6e8a7c217e138b33c0bf9a0217"
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
