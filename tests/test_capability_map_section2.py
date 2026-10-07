@@ -495,11 +495,13 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
         check: bool,
         capture_output: bool,
         text: bool,
+        env: dict[str, str],
     ) -> subprocess.CompletedProcess[str]:
         assert command == expected_command
         assert check is False
         assert capture_output is True
         assert text is True
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -512,6 +514,46 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
     assert _worktree_python_source_drift(tmp_path, "src/twelve_six") == {
         "src/twelve_six/model.py"
     }
+
+
+def test_library_git_evidence_probes_strip_ambient_git_redirection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hostile = {
+        "GIT_DIR": str(tmp_path / "forged.git"),
+        "GIT_WORK_TREE": str(tmp_path / "forged-worktree"),
+        "GIT_CONFIG_PARAMETERS": "'core.hooksPath=/forged'",
+        "GIT_INDEX_FILE": str(tmp_path / "forged-index"),
+    }
+    for key, value in hostile.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+
+    original_run = capability_map_module.subprocess.run
+    observed_commands: list[tuple[str, ...]] = []
+
+    def recording_run(command: list[str], *args: object, **kwargs: object):
+        if command and command[0] == "git":
+            env = kwargs.get("env")
+            assert isinstance(env, dict)
+            for key in hostile:
+                assert key not in env
+            assert env["GIT_OPTIONAL_LOCKS"] == "0"
+            observed_commands.append(tuple(command))
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(capability_map_module.subprocess, "run", recording_run)
+
+    validate_source_surface_coverage(
+        _load(),
+        load_source_surface_inventory(_SURFACE_INVENTORY),
+        repo_root=_ROOT,
+    )
+
+    assert any("diff" in command for command in observed_commands)
+    assert any("show" in command for command in observed_commands)
+    assert any("ls-tree" in command for command in observed_commands)
 
 
 def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
@@ -871,6 +913,50 @@ def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> Non
             vector.to_dict()
     finally:
         object.__setattr__(level, "_value_", original_level_value)
+
+
+def test_registry_loader_ignores_poisoned_enum_value_lookup_tables(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+        and any(vector["level"] == "component" for vector in capability["test_vectors"])
+    )
+    component_vector = next(
+        vector for vector in target["test_vectors"] if vector["level"] == "component"
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    level_map = capability_map_module.TestLevel._value2member_map_
+    status_map = capability_map_module.CapabilityStatus._value2member_map_
+    original_component = level_map["component"]
+    original_integration = level_map["integration"]
+    original_available = status_map["AVAILABLE"]
+    original_unavailable = status_map["UNAVAILABLE"]
+    level_map["component"] = capability_map_module.TestLevel.INTEGRATION
+    level_map["integration"] = capability_map_module.TestLevel.COMPONENT
+    status_map["AVAILABLE"] = capability_map_module.CapabilityStatus.UNAVAILABLE
+    status_map["UNAVAILABLE"] = capability_map_module.CapabilityStatus.AVAILABLE
+    try:
+        registry = load_capability_registry(path)
+    finally:
+        level_map["component"] = original_component
+        level_map["integration"] = original_integration
+        status_map["AVAILABLE"] = original_available
+        status_map["UNAVAILABLE"] = original_unavailable
+
+    loaded = registry.capability(target["capability_id"])
+    loaded_vector = next(
+        vector
+        for vector in loaded.test_vectors
+        if vector.vector_id == component_vector["vector_id"]
+    )
+    assert loaded.status is capability_map_module.CapabilityStatus.AVAILABLE
+    assert loaded_vector.level is capability_map_module.TestLevel.COMPONENT
 
 
 def test_registry_revalidates_post_construction_nested_mutation() -> None:
