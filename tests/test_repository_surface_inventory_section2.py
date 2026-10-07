@@ -36,13 +36,13 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
-    assert result["observed_main_tree_sha"] == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
-    assert result["current_repository_main_sha"] == "213fe5c41fe9310e325b9c38c863d75eb6a5bb47"
-    assert result["current_repository_main_tree_sha"] == "30ebc206bc2064f622bf0a7a106356366e54a7c4"
+    assert result["observed_main_sha"] == "0e1f301c5123b4e52c111cb94264cfd61b60bf4b"
+    assert result["observed_main_tree_sha"] == "4fd06e8836450e61ab47e39657c96c6b6f76792e"
+    assert result["current_repository_main_sha"] == "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21"
+    assert result["current_repository_main_tree_sha"] == "17edf21d66709f6e8a7c217e138b33c0bf9a0217"
     assert result["qualified_current_equivalent_surface_count"] == 237
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 1
+    assert result["candidate_overlay_surface_count"] == 0
     assert result["checkout_surface_count"] == 120
 
 
@@ -64,15 +64,10 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
     }
 
 
-def test_section2_validator_is_integrated_and_explicit_repair_overlay() -> None:
+def test_section2_validator_is_integrated_into_qualified_baseline() -> None:
     payload = _load_strict_json(_INVENTORY)
 
-    assert payload["candidate_overrides"] == [
-        {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
-            "capability_id": "executable-capability-map",
-        }
-    ]
+    assert payload["candidate_overrides"] == []
     assert {
         "rule_id": "section2-surface-validator",
         "selector": "exact",
@@ -245,7 +240,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "213fe5c41fe9310e325b9c38c863d75eb6a5bb47"
+    payload["observed_main_sha"] = "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 
