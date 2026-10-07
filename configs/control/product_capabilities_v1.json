@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "0e1f301c5123b4e52c111cb94264cfd61b60bf4b",
+  "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
   "observed_main_ci": {
-    "run_id": 37615156740,
+    "run_id": 37625412078,
     "conclusion": "success"
   },
   "capabilities": [
@@ -709,7 +709,7 @@
     {
       "capability_id": "executable-capability-map",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.capability_map.CapabilityRegistry",
       "dependencies": [
         "replaceable-cognitive-core-shell",
@@ -721,7 +721,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -740,10 +740,14 @@
         {
           "evidence_id": "section2-pr",
           "target": "pull-request:3092"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37625412078"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 2 is REOPENED for canonical capability-authority repair; PR #3092 contains a modified capability_map source surface and requires fresh exact-head CI plus integration before this capability returns to AVAILABLE."
+      "integrated_result": "integrated executable capability registry and acceptance graph with exhaustive source/journey coverage, fail-closed AVAILABLE/UNAVAILABLE truth, and sealed component/source authority",
+      "unavailable_reason": null
     }
   ],
   "journeys": [
