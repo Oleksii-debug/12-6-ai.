@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import importlib
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import twelve_six.capability_map as capability_map_module
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
     _changed_existing_source_paths,
+    _worktree_python_source_drift,
+    _python_source_blob_map,
     load_capability_registry,
     load_source_surface_inventory,
     validate_source_surface_coverage,
@@ -469,6 +473,47 @@ def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
         load_capability_registry(path)
 
 
+def test_worktree_python_source_drift_detects_dirty_tracked_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected_command = [
+        "git",
+        "-C",
+        str(tmp_path),
+        "diff",
+        "--name-only",
+        "-z",
+        "HEAD",
+        "--",
+        "src/twelve_six",
+    ]
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        assert command == expected_command
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="src/twelve_six/model.py\0README.md\0",
+            stderr="",
+        )
+
+    monkeypatch.setattr(capability_map_module.subprocess, "run", fake_run)
+
+    assert _worktree_python_source_drift(tmp_path, "src/twelve_six") == {
+        "src/twelve_six/model.py"
+    }
+
+
 def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
     accepted_main_blobs = {
         "src/twelve_six/model.py": "a" * 40,
@@ -484,6 +529,64 @@ def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
         accepted_main_blobs,
         checkout_blobs,
     ) == {"src/twelve_six/model.py"}
+
+
+def test_python_source_blob_map_preserves_unicode_path_and_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = "src/twelve_six/перевірка.py"
+
+    class GitResult:
+        returncode = 0
+        stdout = "100755 blob " + "a" * 40 + f"\t{path}\0"
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    blobs = _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
+
+    assert blobs == {path: "100755:" + "a" * 40}
+
+
+def test_python_source_blob_map_rejects_missing_nul_delimiter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class GitResult:
+        returncode = 0
+        stdout = "100644 blob " + "a" * 40 + "\tsrc/twelve_six/model.py"
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    with pytest.raises(ValueError, match="NUL delimiter"):
+        _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
+
+
+def test_python_source_blob_map_rejects_symlink_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class GitResult:
+        returncode = 0
+        stdout = (
+            "120000 blob "
+            + "a" * 40
+            + "\tsrc/twelve_six/symlinked_module.py\0"
+        )
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    with pytest.raises(ValueError, match="regular Git blob"):
+        _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
 
 
 def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> None:

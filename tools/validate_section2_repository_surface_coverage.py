@@ -82,6 +82,26 @@ def _run_git(root: Path, *args: str) -> list[str]:
     return completed.stdout.splitlines()
 
 
+def _run_git_z(root: Path, *args: str) -> list[str]:
+    """Run Git and parse path-bearing output without quote/line ambiguity."""
+
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError(
+            f"git {' '.join(args)} failed: {completed.stderr.strip()}"
+        )
+    if not completed.stdout:
+        return []
+    if not completed.stdout.endswith("\0"):
+        raise ValueError("git NUL-delimited output is missing its terminal delimiter")
+    return completed.stdout[:-1].split("\0")
+
+
 def _resolve_live_main_sha(root: Path) -> str:
     for ref in ("refs/remotes/origin/main", "refs/heads/main"):
         completed = subprocess.run(
@@ -100,17 +120,19 @@ def _resolve_live_main_sha(root: Path) -> str:
 
 def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
     result: dict[str, str] = {}
-    for line in _run_git(root, "ls-tree", "-r", treeish):
+    for line in _run_git_z(root, "ls-tree", "-rz", treeish):
         try:
             metadata, path = line.split("\t", 1)
-            _mode, kind, blob_sha = metadata.split()
+            mode, kind, blob_sha = metadata.split()
         except ValueError as exc:
             raise ValueError("git ls-tree emitted a non-canonical record") from exc
-        if kind != "blob" or not _is_capability_surface(path):
+        if not _is_capability_surface(path):
             continue
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError("capability surface must be a regular Git blob")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("git ls-tree emitted a malformed blob SHA")
-        result[path] = blob_sha
+        result[path] = f"{mode}:{blob_sha}"
     return result
 
 
@@ -158,6 +180,39 @@ def _candidate_surface_paths(
         for path, blob_sha in checkout_blobs.items()
         if current_main_blobs.get(path) != blob_sha
     }
+
+
+def _worktree_capability_surface_drift(
+    root: Path,
+) -> tuple[set[str], set[str]]:
+    """Return tracked and untracked capability-bearing worktree drift from HEAD."""
+
+    tracked = {
+        path
+        for path in _run_git_z(root, "diff", "--name-only", "-z", "HEAD", "--")
+        if path and _is_capability_surface(path)
+    }
+    untracked = {
+        path
+        for path in _run_git_z(
+            root,
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+        )
+        if path and _is_capability_surface(path)
+    }
+    return tracked, untracked
+
+
+def _require_clean_capability_worktree(root: Path) -> None:
+    tracked, untracked = _worktree_capability_surface_drift(root)
+    if tracked or untracked:
+        raise ValueError(
+            "working tree capability surface drift: "
+            f"dirty_tracked={sorted(tracked)}, untracked={sorted(untracked)}"
+        )
 
 
 def _classify_main_surface(
@@ -237,6 +292,37 @@ def validate_repository_surface_coverage(
         raise ValueError("surface rule ids must be unique")
 
     capability_registry = _load_strict_json(capability_registry_path)
+    if set(capability_registry) != {
+        "schema_version",
+        "observed_main_sha",
+        "observed_main_ci",
+        "capabilities",
+        "journeys",
+    }:
+        raise ValueError("capability registry schema is non-canonical")
+    registry_schema_version = capability_registry["schema_version"]
+    if (
+        not isinstance(registry_schema_version, int)
+        or isinstance(registry_schema_version, bool)
+        or registry_schema_version != 1
+    ):
+        raise ValueError("capability registry schema_version must equal integer 1")
+    if capability_registry["observed_main_sha"] != main_sha:
+        raise ValueError(
+            "capability registry observed_main_sha does not match coverage baseline"
+        )
+    observed_main_ci = capability_registry["observed_main_ci"]
+    if not isinstance(observed_main_ci, dict) or set(observed_main_ci) != {
+        "run_id",
+        "conclusion",
+    }:
+        raise ValueError("capability registry observed_main_ci schema is non-canonical")
+    run_id = observed_main_ci["run_id"]
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+        raise ValueError("capability registry observed main CI run_id must be positive")
+    if observed_main_ci["conclusion"] != "success":
+        raise ValueError("capability registry observed main CI must be terminal success")
+
     raw_capabilities = capability_registry.get("capabilities")
     if not isinstance(raw_capabilities, list):
         raise ValueError("capability registry capabilities must be an array")
@@ -292,16 +378,10 @@ def validate_repository_surface_coverage(
             f"changed={changed}"
         )
 
+    _require_clean_capability_worktree(repo_root)
+
     main_paths = sorted(
-        path.strip()
-        for path in _run_git(
-            repo_root,
-            "ls-tree",
-            "-r",
-            "--name-only",
-            main_tree_sha,
-        )
-        if _is_surface(path.strip())
+        path for path in qualified_surface_blobs if _is_surface(path)
     )
     if len(main_paths) != expected_count:
         raise ValueError(
@@ -336,10 +416,9 @@ def validate_repository_surface_coverage(
             raise ValueError("candidate override capability lacks journey")
         candidate_overrides[path] = capability_id
 
+    checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
     checkout_paths = sorted(
-        path.strip()
-        for path in _run_git(repo_root, "ls-files")
-        if _is_surface(path.strip())
+        path for path in checkout_surface_blobs if _is_surface(path)
     )
     main_set = set(main_paths)
     checkout_set = set(checkout_paths)
@@ -351,7 +430,7 @@ def validate_repository_surface_coverage(
     }
     checkout_executable_blobs = {
         path: blob_sha
-        for path, blob_sha in _surface_blob_map(repo_root, "HEAD").items()
+        for path, blob_sha in checkout_surface_blobs.items()
         if _is_surface(path)
     }
     candidate_actual = _candidate_surface_paths(

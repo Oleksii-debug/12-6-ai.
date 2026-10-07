@@ -787,7 +787,7 @@ def _python_source_blob_map(
             "-C",
             str(repo_root),
             "ls-tree",
-            "-r",
+            "-rz",
             treeish,
             "--",
             source_root,
@@ -798,20 +798,25 @@ def _python_source_blob_map(
     )
     if completed.returncode != 0:
         raise ValueError(f"cannot enumerate source blobs for {treeish}")
+    if completed.stdout and not completed.stdout.endswith("\0"):
+        raise ValueError("git ls-tree source output is missing its NUL delimiter")
 
     blobs: dict[str, str] = {}
     prefix = f"{source_root}/"
-    for line in completed.stdout.splitlines():
+    records = completed.stdout[:-1].split("\0") if completed.stdout else []
+    for line in records:
         try:
             metadata, path = line.split("\t", 1)
-            _mode, kind, blob_sha = metadata.split()
+            mode, kind, blob_sha = metadata.split()
         except ValueError as exc:
             raise ValueError("git ls-tree emitted a non-canonical source record") from exc
-        if kind != "blob" or not path.startswith(prefix) or not path.endswith(".py"):
+        if not path.startswith(prefix) or not path.endswith(".py"):
             continue
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError("source surface must be a regular Git blob")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("git ls-tree emitted a malformed source blob SHA")
-        blobs[path] = blob_sha
+        blobs[path] = f"{mode}:{blob_sha}"
     return blobs
 
 
@@ -824,6 +829,50 @@ def _changed_existing_source_paths(
         for path, blob_sha in accepted_main_blobs.items()
         if path in checkout_blobs and checkout_blobs[path] != blob_sha
     }
+
+
+def _worktree_python_source_drift(
+    repo_root: Path,
+    source_root: str,
+) -> set[str]:
+    """Return tracked Python-source paths whose worktree bytes/mode differ from HEAD."""
+
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "diff",
+            "--name-only",
+            "-z",
+            "HEAD",
+            "--",
+            source_root,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError("cannot inspect Python source worktree drift")
+    if completed.stdout and not completed.stdout.endswith("\0"):
+        raise ValueError("git diff source output is missing its NUL delimiter")
+
+    prefix = f"{source_root}/"
+    changed: set[str] = set()
+    paths = completed.stdout[:-1].split("\0") if completed.stdout else []
+    for path in paths:
+        candidate = PurePosixPath(path)
+        if (
+            "\\" in path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or candidate.as_posix() != path
+        ):
+            raise ValueError("git diff emitted a non-canonical source path")
+        if path.startswith(prefix) and path.endswith(".py"):
+            changed.add(path)
+    return changed
 
 
 def validate_source_surface_coverage(
@@ -846,6 +895,13 @@ def validate_source_surface_coverage(
         raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
 
     root = Path(repo_root)
+    worktree_drift = _worktree_python_source_drift(root, inventory.source_root)
+    if worktree_drift:
+        raise ValueError(
+            "source worktree differs from committed candidate HEAD: "
+            f"{sorted(worktree_drift)}"
+        )
+
     tree_check = subprocess.run(
         [
             "git",
@@ -868,29 +924,12 @@ def validate_source_surface_coverage(
             "source inventory observed_main_tree_sha does not match observed_main_sha"
         )
 
-    listing = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "ls-tree",
-            "-r",
-            "--name-only",
-            inventory.observed_main_tree_sha,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
+    accepted_main_blobs = _python_source_blob_map(
+        root,
+        inventory.observed_main_tree_sha,
+        inventory.source_root,
     )
-    if listing.returncode != 0:
-        raise ValueError("cannot enumerate observed main source tree")
-
-    prefix = f"{inventory.source_root}/"
-    accepted_main_actual = sorted(
-        line.strip()
-        for line in listing.stdout.splitlines()
-        if line.strip().startswith(prefix) and line.strip().endswith(".py")
-    )
+    accepted_main_actual = sorted(accepted_main_blobs)
     accepted_main_expected = [
         item.path for item in inventory.surfaces if item.origin == "accepted_main"
     ]
@@ -902,11 +941,6 @@ def validate_source_surface_coverage(
             f"unmapped_main={missing}, stale_main_inventory={stale}"
         )
 
-    accepted_main_blobs = _python_source_blob_map(
-        root,
-        inventory.observed_main_tree_sha,
-        inventory.source_root,
-    )
     checkout_blobs = _python_source_blob_map(root, "HEAD", inventory.source_root)
     changed_existing = _changed_existing_source_paths(
         accepted_main_blobs,
