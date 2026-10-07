@@ -35,7 +35,7 @@ Each capability binds:
 The registry's AVAILABLE evidence remains bound to the terminally qualified product baseline
 `main@019944d5fe12334791f05f1232d13de4a12e37d3` and CI run `37248299503`.
 That evidence is not reassigned to a newer SHA. A separate machine-checkable repository-main
-equivalence gate pins live `main@330fb46aa3199e26d8b7e49968ee93fb12447560` and proves all 233 capability-bearing
+equivalence gate pins live `main@e5dbb7107d5b54f09a26d07d59f093ac05ede9c7` and proves all 233 capability-bearing
 `src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are byte-identical to
 the qualified baseline. Current-main coordination-only changes therefore do not silently create
 or remove Product capabilities. Candidate Section-0/1 behavior is still not resealed as accepted

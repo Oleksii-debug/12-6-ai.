@@ -34,8 +34,8 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
 
     assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
     assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
-    assert result["current_repository_main_sha"] == "330fb46aa3199e26d8b7e49968ee93fb12447560"
-    assert result["current_repository_main_tree_sha"] == "20559f951b6e2c744832ce0cd1cb324e2e1c2eea"
+    assert result["current_repository_main_sha"] == "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
+    assert result["current_repository_main_tree_sha"] == "429a9933512f3d0c17f42d80193365e5df3f195a"
     assert result["qualified_current_equivalent_surface_count"] == 233
     assert result["accepted_main_surface_count"] == 119
     assert result["candidate_overlay_surface_count"] == 1
