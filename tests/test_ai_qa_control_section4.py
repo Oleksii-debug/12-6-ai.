@@ -14,6 +14,7 @@ from twelve_six.ai_qa_control import (
     GateReceipt,
     GateVerdict,
     PhysicalScope,
+    RepairCandidate,
     build_regression_chain,
     build_repair_candidate,
     classify_failure,
@@ -270,6 +271,16 @@ def test_repair_candidate_is_bound_to_failure_patch_and_exact_candidate_sha() ->
     assert first.candidate_git_sha == _CANDIDATE_SHA
     assert first.identity_sha256() != second.identity_sha256()
 
+    with pytest.raises(ValueError, match="base Git SHA must equal failing Git SHA"):
+        build_repair_candidate(
+            failure,
+            base_git_sha="d" * 40,
+            candidate_git_sha=_CANDIDATE_SHA,
+            patch_bytes=b"wrong-base repair",
+            proposer_actor_id="repair-agent",
+            policy=_policy(),
+        )
+
 
 def test_regression_chain_runs_component_then_adversarial_on_exact_candidate() -> None:
     failure = _failure()
@@ -483,6 +494,7 @@ def test_durable_failure_candidate_and_receipt_bundles_reject_resealing(
     assert load_gate_receipt_bundle(
         bundle_path,
         expected_candidate_identity_sha256=candidate.identity_sha256(),
+        trusted_receipts=(receipt,),
     ) == (receipt,)
 
     resealed = dict(candidate_payload)
@@ -498,4 +510,56 @@ def test_durable_failure_candidate_and_receipt_bundles_reject_resealing(
         load_gate_receipt_bundle(
             bundle_path,
             expected_candidate_identity_sha256=candidate.identity_sha256(),
+            trusted_receipts=(receipt,),
+        )
+
+
+def test_receipt_bundle_cannot_promote_hand_authored_pass_hash(tmp_path: Path) -> None:
+    candidate = _candidate(_failure())
+    trusted = _pass_receipt(GateKind.SIL, actor_id="independent-sil")
+    forged = GateReceipt(
+        gate=GateKind.SIL,
+        verdict=GateVerdict.PASS,
+        git_sha=_CANDIDATE_SHA,
+        evidence_identity_sha256="f" * 64,
+        actor_id="independent-sil",
+    )
+    bundle_path = tmp_path / "forged-receipt.json"
+    bundle_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "12-6.aiqa-gate-receipts.v1",
+                "candidate_identity_sha256": candidate.identity_sha256(),
+                "receipts": [forged.to_dict()],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="does not match live trusted evidence"):
+        load_gate_receipt_bundle(
+            bundle_path,
+            expected_candidate_identity_sha256=candidate.identity_sha256(),
+            trusted_receipts=(trusted,),
+        )
+
+
+def test_regression_chain_rejects_durable_wrong_base_even_if_failure_hash_matches() -> None:
+    failure = _failure()
+    candidate = RepairCandidate(
+        schema_version=1,
+        defect_id=failure.defect_id,
+        base_git_sha="d" * 40,
+        candidate_git_sha=_CANDIDATE_SHA,
+        patch_sha256="e" * 64,
+        proposer_actor_id="repair-agent",
+        failure_packet_identity_sha256=failure.identity_sha256(),
+    )
+    with pytest.raises(ValueError, match="base Git SHA does not match failing Git SHA"):
+        build_regression_chain(
+            failure,
+            candidate,
+            adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
         )

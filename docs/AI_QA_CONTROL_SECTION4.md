@@ -45,9 +45,14 @@ canonical AI-QA regression input envelope bound to defect/candidate/gate/argv; P
 subprocess to report consumption of that exact envelope identity. Exact candidate SHA and
 tracked-clean state are mandatory before execution.
 
-A gate receipt is bound to candidate SHA, evidence identity and actor identity. Missing, duplicate,
-wrong-SHA or FAIL receipts block promotion. SIL/physical evidence produced by the same repair
-proposer also blocks promotion.
+A gate receipt is bound to candidate SHA, evidence identity and actor identity. Imported receipt
+JSON is never itself promotion authority. The `assess` path re-runs component/adversarial tests on
+the exact clean candidate, independently re-verifies the raw SIL evidence+log against package,
+capability-registry and scenario authority, and accepts durable receipt bundles only when every
+field exactly matches those live-verified receipts. Missing, duplicate, stale, wrong-SHA, forged-hash
+or FAIL receipts block promotion. SIL/physical evidence produced by the same repair proposer also
+blocks promotion. Software-only physical `NOT_APPLICABLE` is recomputed from the exact failure and
+candidate; a required physical PASS remains blocked until a trusted physical verifier is integrated.
 
 ## Current closure boundary
 
@@ -60,7 +65,7 @@ closure-ready yet. Before READY/DONE, current authority still needs:
   repair commit → component/adversarial retest → SIL → applicable physical decision;
 - an authorized GitHub mutation adapter or equivalent current project mechanism that actually
   creates/updates the isolated repair lineage instead of merely binding an already-created
-  candidate SHA; and
+  candidate SHA; a repair candidate is now also required to start from the exact failing SHA; and
 - independent evidence that the final promotion decision was not produced by the repair proposer.
 
 ## Durable surfaces

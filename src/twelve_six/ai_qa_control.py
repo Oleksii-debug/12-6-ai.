@@ -494,6 +494,8 @@ def build_repair_candidate(
     proposer_actor_id: str,
     policy: AIQAPolicy,
 ) -> RepairCandidate:
+    if base_git_sha != failure.failing_git_sha:
+        raise ValueError("repair candidate base Git SHA must equal failing Git SHA")
     if not isinstance(patch_bytes, bytes) or not patch_bytes:
         raise ValueError("isolated repair patch must be non-empty bytes")
     if len(patch_bytes) > policy.max_patch_bytes:
@@ -546,6 +548,8 @@ def build_regression_chain(
         raise ValueError("repair candidate defect identity does not match failure packet")
     if candidate.failure_packet_identity_sha256 != failure.identity_sha256():
         raise ValueError("repair candidate is not bound to this failure packet")
+    if candidate.base_git_sha != failure.failing_git_sha:
+        raise ValueError("repair candidate base Git SHA does not match failing Git SHA")
     return RegressionChain(
         schema_version=1,
         defect_id=failure.defect_id,
@@ -706,6 +710,8 @@ def evaluate_promotion(
         raise ValueError("candidate/failure defect mismatch")
     if candidate.failure_packet_identity_sha256 != failure.identity_sha256():
         raise ValueError("candidate/failure packet binding mismatch")
+    if candidate.base_git_sha != failure.failing_git_sha:
+        raise ValueError("candidate base Git SHA does not match failing Git SHA")
 
     reasons: list[str] = []
     if (
@@ -866,7 +872,10 @@ def load_gate_receipt_bundle(
     path: str | Path,
     *,
     expected_candidate_identity_sha256: str,
+    trusted_receipts: tuple[GateReceipt, ...],
 ) -> tuple[GateReceipt, ...]:
+    """Accept durable receipts only when they exactly match live-verified gate evidence."""
+
     payload = _strict_json_object(path, label="AI QA gate receipt bundle")
     if set(payload) != {
         "schema_version",
@@ -885,7 +894,31 @@ def load_gate_receipt_bundle(
     receipts = payload["receipts"]
     if not isinstance(receipts, list) or not receipts:
         raise ValueError("gate receipt bundle must contain receipts")
-    return tuple(_receipt_from_dict(item) for item in receipts)
+
+    trusted_by_gate: dict[GateKind, GateReceipt] = {}
+    for trusted in trusted_receipts:
+        if not isinstance(trusted, GateReceipt):
+            raise ValueError("trusted_receipts must contain GateReceipt values")
+        if trusted.gate in trusted_by_gate:
+            raise ValueError(f"duplicate trusted gate receipt: {trusted.gate.value}")
+        trusted_by_gate[trusted.gate] = trusted
+
+    parsed = tuple(_receipt_from_dict(item) for item in receipts)
+    seen: set[GateKind] = set()
+    for receipt in parsed:
+        if receipt.gate in seen:
+            raise ValueError(f"duplicate bundled gate receipt: {receipt.gate.value}")
+        seen.add(receipt.gate)
+        trusted = trusted_by_gate.get(receipt.gate)
+        if trusted is None:
+            raise ValueError(
+                f"{receipt.gate.value} gate receipt has no live trusted verifier result"
+            )
+        if receipt != trusted:
+            raise ValueError(
+                f"{receipt.gate.value} gate receipt does not match live trusted evidence"
+            )
+    return parsed
 
 
 def _write_receipt_bundle(
@@ -1020,18 +1053,103 @@ def _assess_cli(args: argparse.Namespace) -> int:
     policy = load_ai_qa_policy(args.policy)
     failure = load_failure_packet(args.failure)
     candidate = load_repair_candidate(args.candidate)
-    receipts: list[GateReceipt] = []
+    root = Path(args.repo_root).resolve()
+
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command=args.adversarial_command,
+    )
+    component, adversarial = execute_automated_regressions(
+        chain,
+        repo_root=root,
+        actor_id=args.regression_actor_id,
+        timeout_seconds=args.timeout_seconds,
+    )
+
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
+    sil_evidence = verify_sil_evidence(
+        args.sil_evidence,
+        args.sil_log,
+        expected_package_bytes=(root / "pyproject.toml").read_bytes(),
+        expected_registry=registry,
+        expected_scenario=scenario,
+        expected_git_sha=candidate.candidate_git_sha,
+        require_pass=False,
+    )
+    sil_receipt = GateReceipt(
+        gate=GateKind.SIL,
+        verdict=(
+            GateVerdict.PASS
+            if sil_evidence["verdict"] == "PASS"
+            else GateVerdict.FAIL
+        ),
+        git_sha=candidate.candidate_git_sha,
+        evidence_identity_sha256=sil_evidence["evidence_identity_sha256"],
+        actor_id=args.sil_actor_id,
+        reason=(
+            None
+            if sil_evidence["verdict"] == "PASS"
+            else "SIL evidence verdict is FAIL"
+        ),
+    )
+
+    trusted: list[GateReceipt] = [component, adversarial, sil_receipt]
+    if failure.physical_scope is PhysicalScope.NONE:
+        if not args.physical_actor_id or not args.physical_not_applicable_reason:
+            raise ValueError(
+                "software-only promotion requires physical actor and explicit "
+                "NOT_APPLICABLE reason"
+            )
+        physical_payload = {
+            "candidate_identity_sha256": candidate.identity_sha256(),
+            "candidate_git_sha": candidate.candidate_git_sha,
+            "failure_packet_identity_sha256": failure.identity_sha256(),
+            "physical_scope": failure.physical_scope.value,
+            "reason": args.physical_not_applicable_reason,
+            "actor_id": args.physical_actor_id,
+        }
+        trusted.append(
+            GateReceipt(
+                gate=GateKind.PHYSICAL,
+                verdict=GateVerdict.NOT_APPLICABLE,
+                git_sha=candidate.candidate_git_sha,
+                evidence_identity_sha256=_canonical_sha256(physical_payload),
+                actor_id=args.physical_actor_id,
+                reason=args.physical_not_applicable_reason,
+            )
+        )
+    else:
+        raise ValueError(
+            "required physical PASS has no Section-4 trusted verifier; "
+            "promotion stays blocked until an authoritative physical verifier is integrated"
+        )
+
+    trusted_receipts = tuple(trusted)
+    durable_receipts: list[GateReceipt] = []
     for bundle in args.receipt_bundle:
-        receipts.extend(
+        durable_receipts.extend(
             load_gate_receipt_bundle(
                 bundle,
                 expected_candidate_identity_sha256=candidate.identity_sha256(),
+                trusted_receipts=trusted_receipts,
             )
         )
+
+    expected_by_gate = {receipt.gate: receipt for receipt in trusted_receipts}
+    durable_by_gate: dict[GateKind, GateReceipt] = {}
+    for receipt in durable_receipts:
+        if receipt.gate in durable_by_gate:
+            raise ValueError(f"duplicate durable gate receipt: {receipt.gate.value}")
+        durable_by_gate[receipt.gate] = receipt
+    if durable_by_gate != expected_by_gate:
+        raise ValueError("durable receipt bundles do not cover the exact live-verified gate set")
+
     decision = evaluate_promotion(
         failure,
         candidate,
-        tuple(receipts),
+        tuple(durable_by_gate[gate] for gate in policy.promotion_gate_order),
         certifier_actor_id=args.certifier_actor_id,
         policy=policy,
     )
@@ -1148,6 +1266,17 @@ def main() -> int:
     assess.add_argument("--failure", required=True)
     assess.add_argument("--candidate", required=True)
     assess.add_argument("--policy", required=True)
+    assess.add_argument("--repo-root", required=True)
+    assess.add_argument("--capability-registry", required=True)
+    assess.add_argument("--scenario", required=True)
+    assess.add_argument("--sil-evidence", required=True)
+    assess.add_argument("--sil-log", required=True)
+    assess.add_argument("--sil-actor-id", required=True)
+    assess.add_argument("--adversarial-command", required=True)
+    assess.add_argument("--regression-actor-id", required=True)
+    assess.add_argument("--timeout-seconds", type=int, default=300)
+    assess.add_argument("--physical-actor-id")
+    assess.add_argument("--physical-not-applicable-reason")
     assess.add_argument("--receipt-bundle", action="append", required=True)
     assess.add_argument("--certifier-actor-id", required=True)
     assess.add_argument("--output", required=True)
