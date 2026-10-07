@@ -83,7 +83,7 @@ UNAVAILABLE capability. Journeys are bidirectionally bound to their capabilities
 Permanent regressions in `tests/test_capability_map_section2.py` cover:
 
 - exact accepted-main/CI binding;
-- executable test paths that must exist in the checkout;
+- executable test paths that must exist in the checkout and remain canonical POSIX paths strictly beneath `tests/` (no traversal or alternate-separator escape);
 - required component+integration acceptance vectors;
 - unavailable-result fail-closed behavior;
 - mechanics-versus-physical-Windows separation;
