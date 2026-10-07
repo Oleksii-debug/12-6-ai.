@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import importlib
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import twelve_six.capability_map as capability_map_module
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
     _changed_existing_source_paths,
+    _worktree_python_source_drift,
     _python_source_blob_map,
     load_capability_registry,
     load_source_surface_inventory,
@@ -468,6 +471,46 @@ def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="strict unambiguous"):
         load_capability_registry(path)
+
+
+def test_worktree_python_source_drift_detects_dirty_tracked_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected_command = [
+        "git",
+        "-C",
+        str(tmp_path),
+        "diff",
+        "--name-only",
+        "HEAD",
+        "--",
+        "src/twelve_six",
+    ]
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        assert command == expected_command
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="src/twelve_six/model.py\nREADME.md\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(capability_map_module.subprocess, "run", fake_run)
+
+    assert _worktree_python_source_drift(tmp_path, "src/twelve_six") == {
+        "src/twelve_six/model.py"
+    }
 
 
 def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:

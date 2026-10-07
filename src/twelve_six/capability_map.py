@@ -828,6 +828,49 @@ def _changed_existing_source_paths(
     }
 
 
+def _worktree_python_source_drift(
+    repo_root: Path,
+    source_root: str,
+) -> set[str]:
+    """Return tracked Python-source paths whose worktree bytes/mode differ from HEAD."""
+
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "diff",
+            "--name-only",
+            "HEAD",
+            "--",
+            source_root,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError("cannot inspect Python source worktree drift")
+
+    prefix = f"{source_root}/"
+    changed: set[str] = set()
+    for raw_path in completed.stdout.splitlines():
+        path = raw_path.strip()
+        if not path:
+            continue
+        candidate = PurePosixPath(path)
+        if (
+            "\\" in path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or candidate.as_posix() != path
+        ):
+            raise ValueError("git diff emitted a non-canonical source path")
+        if path.startswith(prefix) and path.endswith(".py"):
+            changed.add(path)
+    return changed
+
+
 def validate_source_surface_coverage(
     registry: CapabilityRegistry,
     inventory: SourceSurfaceInventory,
@@ -848,6 +891,13 @@ def validate_source_surface_coverage(
         raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
 
     root = Path(repo_root)
+    worktree_drift = _worktree_python_source_drift(root, inventory.source_root)
+    if worktree_drift:
+        raise ValueError(
+            "source worktree differs from committed candidate HEAD: "
+            f"{sorted(worktree_drift)}"
+        )
+
     tree_check = subprocess.run(
         [
             "git",
