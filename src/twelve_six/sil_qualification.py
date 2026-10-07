@@ -31,7 +31,7 @@ _MAX_SCENARIO_BYTES = 64 * 1024
 _MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
 _MAX_ENVIRONMENT_RECEIPT_BYTES = 256 * 1024
 
-_SIL_ENVIRONMENT_AUTHORITY_COMMIT = "029514654829cebc149cff6fc1fea2a8ba4fa566"
+_SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT = "029514654829cebc149cff6fc1fea2a8ba4fa566"
 _SIL_ENVIRONMENT_LOCKS = (
     (
         "toolchain",
@@ -260,7 +260,7 @@ def canonical_sil_environment_receipt_v1() -> dict[str, Any]:
             "implementation": "cpython",
             "version": "3.11.16",
         },
-        "authority_commit": _SIL_ENVIRONMENT_AUTHORITY_COMMIT,
+        "lock_source_commit": _SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT,
         "locks": [
             {
                 "role": role,
@@ -281,7 +281,7 @@ def canonical_sil_environment_receipt_v1() -> dict[str, Any]:
 def _validate_sil_environment_receipt(payload: dict[str, Any]) -> dict[str, Any]:
     expected = canonical_sil_environment_receipt_v1()
     if payload != expected:
-        raise ValueError("SIL environment receipt does not match exact accepted authority")
+        raise ValueError("SIL environment receipt does not match exact pinned lock-source contract")
     return payload
 
 
@@ -1303,7 +1303,7 @@ def _environment_receipt_cli(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "identity_sha256": receipt["identity_sha256"],
-                "authority_commit": receipt["authority_commit"],
+                "lock_source_commit": receipt["lock_source_commit"],
                 "package_count": len(receipt["packages"]),
             },
             sort_keys=True,
