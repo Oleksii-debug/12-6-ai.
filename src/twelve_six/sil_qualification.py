@@ -13,7 +13,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from twelve_six.capability_map import (
