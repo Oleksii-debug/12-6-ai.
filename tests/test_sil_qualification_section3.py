@@ -24,6 +24,7 @@ from twelve_six.sil_qualification import (
     parse_vector_command,
     probe_git_state,
     qualify_sil,
+    require_exact_clean_git_state,
     verify_sil_evidence,
 )
 
@@ -104,6 +105,28 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
         expected_scenario=_scenario(),
         expected_git_sha=_GIT_SHA,
     )
+
+
+def test_independent_verifier_requires_exact_clean_checkout() -> None:
+    assert require_exact_clean_git_state(
+        _ROOT,
+        _GIT_SHA,
+        git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=True),
+    ) == GitState(sha=_GIT_SHA, tracked_clean=True)
+
+    with pytest.raises(ValueError, match="exact-head mismatch"):
+        require_exact_clean_git_state(
+            _ROOT,
+            _GIT_SHA,
+            git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
+        )
+
+    with pytest.raises(ValueError, match="dirty"):
+        require_exact_clean_git_state(
+            _ROOT,
+            _GIT_SHA,
+            git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
+        )
 
 
 def test_sil_plan_executes_every_current_available_journey_with_integration_vectors() -> None:
@@ -492,6 +515,33 @@ def test_verifier_rejects_resealed_invalid_timings(
     log_path.write_text(log_text, encoding="utf-8")
 
     with pytest.raises(ValueError, match="timing"):
+        _verify_evidence(evidence_path, log_path)
+
+
+def test_verifier_rejects_total_duration_shorter_than_execution_sum(
+    tmp_path: Path,
+) -> None:
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=_package_bytes(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    assert sum(item["duration_ms"] for item in evidence["executions"]) > 0
+    evidence["timings"]["duration_ms"] = 0
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = _canonical_hash(unsigned)
+
+    evidence_path = tmp_path / "resealed-short-total-duration.json"
+    log_path = tmp_path / "sil.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="shorter than sequential"):
         _verify_evidence(evidence_path, log_path)
 
 

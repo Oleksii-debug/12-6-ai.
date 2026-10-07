@@ -388,6 +388,26 @@ CommandRunner = Callable[
 GitProbe = Callable[[str | Path], GitState]
 
 
+def require_exact_clean_git_state(
+    repo_root: str | Path,
+    expected_git_sha: str,
+    *,
+    git_probe: GitProbe | None = None,
+) -> GitState:
+    expected = _require_git_sha("expected_git_sha", expected_git_sha)
+    probe = probe_git_state if git_probe is None else git_probe
+    state = probe(repo_root)
+    if not isinstance(state, GitState):
+        raise ValueError("git probe must return GitState")
+    if state.sha != expected:
+        raise ValueError(
+            f"exact-head mismatch: expected {expected}, observed {state.sha}"
+        )
+    if not state.tracked_clean:
+        raise ValueError("SIL checkout is dirty")
+    return state
+
+
 def run_command(
     argv: tuple[str, ...],
     cwd: Path,
@@ -864,6 +884,13 @@ def verify_sil_evidence(
             raise ValueError(f"SIL evidence timing {field} must be a non-negative integer")
     if timings["finished_unix_ns"] < timings["started_unix_ns"]:
         raise ValueError("SIL evidence wall-clock timings are inverted")
+    execution_duration_sum = sum(
+        execution["duration_ms"] for execution in executions
+    )
+    if timings["duration_ms"] < execution_duration_sum:
+        raise ValueError(
+            "SIL evidence total duration is shorter than sequential execution durations"
+        )
 
     expected_verdict = (
         "PASS"
@@ -997,6 +1024,7 @@ def _run_cli(args: argparse.Namespace) -> int:
 
 def _verify_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
+    require_exact_clean_git_state(root, args.expected_git_sha)
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
     package_bytes = build_package_manifest_bytes(root)
@@ -1009,6 +1037,7 @@ def _verify_cli(args: argparse.Namespace) -> int:
         expected_git_sha=args.expected_git_sha,
         require_pass=True,
     )
+    require_exact_clean_git_state(root, args.expected_git_sha)
     print(
         json.dumps(
             {
