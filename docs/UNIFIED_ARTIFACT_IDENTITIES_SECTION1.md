@@ -90,6 +90,12 @@ cross-generation parent matching compare revalidated canonical scalar signatures
 dispatching `ArtifactRef.__eq__` or `__hash__`, so class-level dunder rebinding cannot reseal
 an incompatible parent as the selected generation identity.
 
+Generation acceptance also reads each exact manifest's stored parent tuple directly rather than
+dispatching a mutable parent-view method. Parent-lineage comparison uses a sealed stored-state
+manifest hasher, so rebinding `ArtifactManifest.parent_bindings_by_role` or
+`ArtifactManifest.manifest_identity_sha256` cannot hide a post-validation parent/lineage
+mutation while a different tuple is serialized.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;

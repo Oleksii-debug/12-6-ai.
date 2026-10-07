@@ -916,6 +916,61 @@ def test_manifest_hash_helper_rebinding_cannot_reseal_identity(
     assert _generation("hash-helper-rebind").identity_sha256() == expected_generation_identity
 
 
+def test_generation_parent_view_rebinding_cannot_hide_mutated_parent_tuple(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("parent-view-rebind")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    original_parents = release.parents
+    original_view = ArtifactManifest.parent_bindings_by_role
+    object.__setattr__(
+        release,
+        "parents",
+        tuple(parent for parent in original_parents if parent.role != "evaluation"),
+    )
+
+    def forged_view(manifest: ArtifactManifest) -> dict[str, ParentBinding]:
+        if manifest is release:
+            return {parent.role: parent for parent in original_parents}
+        return original_view(manifest)
+
+    monkeypatch.setattr(ArtifactManifest, "parent_bindings_by_role", forged_view)
+
+    with pytest.raises(ValueError, match="release parent role set is non-canonical"):
+        generation.identity_sha256()
+
+
+def test_generation_parent_identity_rebinding_cannot_hide_mutated_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("parent-lineage-rebind")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    evaluation = generation.artifact_manifest(ArtifactKind.EVALUATION)
+    evaluation_binding = next(
+        parent for parent in release.parents if parent.role == "evaluation"
+    )
+    forged_lineage = "0" * 64
+    object.__setattr__(
+        evaluation_binding,
+        "parent_manifest_identity_sha256",
+        forged_lineage,
+    )
+    original_identity = ArtifactManifest.manifest_identity_sha256
+
+    def forged_identity(manifest: ArtifactManifest, *args: object, **kwargs: object) -> str:
+        if manifest is evaluation:
+            return forged_lineage
+        return original_identity(manifest, *args, **kwargs)
+
+    monkeypatch.setattr(ArtifactManifest, "manifest_identity_sha256", forged_identity)
+
+    with pytest.raises(
+        ValueError,
+        match="release.evaluation parent lineage identity does not match generation",
+    ):
+        generation.identity_sha256()
+
+
 def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -391,6 +391,40 @@ class ArtifactManifest:
         )
 
 
+def _artifact_manifest_identity_from_stored_state(
+    manifest: ArtifactManifest,
+    _sealed_hash_payload=_canonical_json_sha256,
+) -> str:
+    """Hash exact stored manifest state without dispatching mutable manifest view methods."""
+
+    if not _is_exact_type(manifest, ArtifactManifest):
+        raise ValueError("manifest must be an ArtifactManifest")
+    ArtifactManifest.__post_init__(manifest)
+    payload = {
+        "schema_version": manifest.schema_version,
+        "artifact": {
+            "kind": _artifact_kind_wire_value(manifest.artifact.kind),
+            "schema_version": manifest.artifact.schema_version,
+            "identity_sha256": manifest.artifact.identity_sha256,
+        },
+        "parents": [
+            {
+                "role": parent.role,
+                "artifact": {
+                    "kind": _artifact_kind_wire_value(parent.artifact.kind),
+                    "schema_version": parent.artifact.schema_version,
+                    "identity_sha256": parent.artifact.identity_sha256,
+                },
+                "parent_manifest_identity_sha256": (
+                    parent.parent_manifest_identity_sha256
+                ),
+            }
+            for parent in manifest.parents
+        ],
+    }
+    return _sealed_hash_payload(payload)
+
+
 def bind_artifact(
     artifact: ArtifactRef,
     *,
@@ -483,6 +517,9 @@ class GenerationIdentityManifest:
         _sealed_parent_policy_values: Mapping[str, Mapping[str, str]] = (
             _GENERATION_PARENT_POLICY_VALUES
         ),
+        _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+            _artifact_manifest_identity_from_stored_state
+        ),
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
@@ -512,7 +549,7 @@ class GenerationIdentityManifest:
         for kind_value in _sealed_artifact_kind_values:
             manifest = by_kind_value[kind_value]
             expected_policy = _sealed_parent_policy_values[kind_value]
-            observed = manifest.parent_bindings_by_role()
+            observed = {parent.role: parent for parent in manifest.parents}
             if tuple(observed) != tuple(sorted(expected_policy)):
                 raise ValueError(f"{kind_value} parent role set is non-canonical")
             for role, parent_kind_value in expected_policy.items():
@@ -530,7 +567,7 @@ class GenerationIdentityManifest:
                     )
                 if (
                     binding.parent_manifest_identity_sha256
-                    != canonical_parent.manifest_identity_sha256()
+                    != _sealed_manifest_identity(canonical_parent)
                 ):
                     raise ValueError(
                         f"{kind_value}.{role} parent lineage identity "
