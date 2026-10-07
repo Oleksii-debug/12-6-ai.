@@ -1655,3 +1655,44 @@ def test_component_resolver_ignores_import_authority_rebinding(
     ):
         with pytest.raises(ValueError, match="component contract attribute does not exist"):
             operation()
+
+
+def test_component_resolver_rejects_runtime_injected_repository_attribute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_runtime_contract__",
+    )
+
+    real_package = importlib.import_module("twelve_six")
+
+    def forged_contract() -> None:
+        return None
+
+    forged_contract.__module__ = "twelve_six"
+    monkeypatch.setattr(
+        real_package,
+        "__forged_runtime_contract__",
+        forged_contract,
+        raising=False,
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(
+            ValueError,
+            match="component contract object source does not match owner module",
+        ):
+            operation()
