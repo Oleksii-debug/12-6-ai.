@@ -1197,3 +1197,25 @@ def test_capability_validator_rejects_public_authority_override_arguments() -> N
         capability.__post_init__(  # type: ignore[call-arg]
             _sealed_test_level_wire=lambda _value: "component"
         )
+
+
+def test_registry_cycle_checker_rebinding_cannot_hide_dependency_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    available = [
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    ]
+    first, second = available[:2]
+    object.__setattr__(first, "dependencies", (second.capability_id,))
+    object.__setattr__(second, "dependencies", (first.capability_id,))
+    monkeypatch.setattr(
+        CapabilityRegistry,
+        "_reject_dependency_cycles",
+        staticmethod(lambda _by_capability: None),
+    )
+
+    with pytest.raises(ValueError, match="capability dependency cycle"):
+        registry.identity_sha256()
