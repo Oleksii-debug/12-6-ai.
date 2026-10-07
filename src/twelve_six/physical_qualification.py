@@ -30,6 +30,7 @@ _MAX_OUTPUT_BYTES = 1024 * 1024
 _MAX_ARTIFACTS = 64
 _MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 _MAX_PACKET_LIFETIME_SECONDS = 24 * 60 * 60
+_MAX_RESOURCE_PROBE_BYTES = 64 * 1024
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -114,6 +115,11 @@ class ResourceKind(str, Enum):
     NETWORK = "NETWORK"
     MODEL = "MODEL"
     PROVIDER = "PROVIDER"
+
+
+_EXTERNAL_RESOURCE_KINDS = frozenset(
+    {ResourceKind.NETWORK, ResourceKind.MODEL, ResourceKind.PROVIDER}
+)
 
 
 class ResourceObservation(str, Enum):
@@ -258,8 +264,35 @@ class VerifiedSignedPacket:
     signed_bundle_identity_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class ExternalResourceEvidence:
+    resource: ResourceKind
+    adapter_id: str
+    evidence: bytes
+
+    def __post_init__(self) -> None:
+        if self.resource not in _EXTERNAL_RESOURCE_KINDS:
+            raise ValueError("external evidence is only valid for NETWORK/MODEL/PROVIDER")
+        _require_id("external resource adapter id", self.adapter_id)
+        if not isinstance(self.evidence, bytes):
+            raise ValueError("external resource evidence must be bytes")
+        if not self.evidence or len(self.evidence) > _MAX_RESOURCE_PROBE_BYTES:
+            raise ValueError("external resource evidence size is invalid or unbounded")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resource": self.resource.value,
+            "adapter_id": self.adapter_id,
+            "evidence_b64": base64.b64encode(self.evidence).decode("ascii"),
+            "evidence_bytes": len(self.evidence),
+            "evidence_sha256": _sha256_bytes(self.evidence),
+        }
+
+
 SignatureVerifier = Callable[[str, bytes, bytes], bool]
 EvidenceSigner = Callable[[str, bytes], bytes]
+ExternalResourceProbe = Callable[[Path], ExternalResourceEvidence]
+ExternalResourceVerifier = Callable[[str, bytes], bool]
 
 
 def _action_from_dict(value: object) -> QualificationAction:
@@ -550,12 +583,70 @@ def inventory_host(repo_root: str | Path) -> HostInventory:
     )
 
 
+def _validate_external_resource_maps(
+    resource_probes: dict[ResourceKind, ExternalResourceProbe] | None,
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None,
+) -> tuple[
+    dict[ResourceKind, ExternalResourceProbe],
+    dict[ResourceKind, ExternalResourceVerifier],
+]:
+    probes = {} if resource_probes is None else resource_probes
+    verifiers = {} if resource_probe_verifiers is None else resource_probe_verifiers
+    if not isinstance(probes, dict) or not isinstance(verifiers, dict):
+        raise ValueError("external resource probe registries must be dictionaries")
+    for registry_name, registry in (("probe", probes), ("verifier", verifiers)):
+        for resource in registry:
+            if not isinstance(resource, ResourceKind) or resource not in _EXTERNAL_RESOURCE_KINDS:
+                raise ValueError(
+                    f"external resource {registry_name} key must be NETWORK/MODEL/PROVIDER"
+                )
+    return probes, verifiers
+
+
+def _collect_external_resource_evidence(
+    *,
+    required: set[ResourceKind],
+    repo_root: Path,
+    execution_mode: ExecutionMode,
+    resource_probes: dict[ResourceKind, ExternalResourceProbe] | None,
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None,
+) -> tuple[ExternalResourceEvidence, ...]:
+    probes, verifiers = _validate_external_resource_maps(
+        resource_probes,
+        resource_probe_verifiers,
+    )
+    if execution_mode is ExecutionMode.SIMULATION:
+        return ()
+    collected: list[ExternalResourceEvidence] = []
+    for resource in sorted(required & _EXTERNAL_RESOURCE_KINDS, key=lambda item: item.value):
+        probe = probes.get(resource)
+        if probe is None:
+            continue
+        verifier = verifiers.get(resource)
+        if verifier is None:
+            raise ValueError(f"external resource verifier is missing: {resource.value}")
+        evidence = probe(repo_root)
+        if not isinstance(evidence, ExternalResourceEvidence):
+            raise ValueError("external resource probe returned a non-evidence object")
+        if evidence.resource is not resource:
+            raise ValueError("external resource probe returned evidence for the wrong resource")
+        if not verifier(evidence.adapter_id, evidence.evidence):
+            raise ValueError(f"external resource evidence verification failed: {resource.value}")
+        collected.append(evidence)
+    return tuple(collected)
+
+
 def resource_observations(
     inventory: HostInventory,
     *,
     execution_mode: ExecutionMode,
+    external_verified: frozenset[ResourceKind] = frozenset(),
 ) -> dict[ResourceKind, ResourceObservation]:
+    if not external_verified.issubset(_EXTERNAL_RESOURCE_KINDS):
+        raise ValueError("external_verified contains a non-external resource")
     if execution_mode is ExecutionMode.SIMULATION:
+        if external_verified:
+            raise ValueError("simulation cannot carry verified real external resources")
         return {item: ResourceObservation.SIMULATED for item in ResourceKind}
     return {
         ResourceKind.CPU: (
@@ -574,9 +665,21 @@ def resource_observations(
             else ResourceObservation.NOT_PRESENT
         ),
         ResourceKind.DISK: ResourceObservation.REAL_PROBED,
-        ResourceKind.NETWORK: ResourceObservation.NOT_PROBED,
-        ResourceKind.MODEL: ResourceObservation.NOT_PROBED,
-        ResourceKind.PROVIDER: ResourceObservation.NOT_PROBED,
+        ResourceKind.NETWORK: (
+            ResourceObservation.REAL_PROBED
+            if ResourceKind.NETWORK in external_verified
+            else ResourceObservation.NOT_PROBED
+        ),
+        ResourceKind.MODEL: (
+            ResourceObservation.REAL_PROBED
+            if ResourceKind.MODEL in external_verified
+            else ResourceObservation.NOT_PROBED
+        ),
+        ResourceKind.PROVIDER: (
+            ResourceObservation.REAL_PROBED
+            if ResourceKind.PROVIDER in external_verified
+            else ResourceObservation.NOT_PROBED
+        ),
     }
 
 
@@ -795,6 +898,8 @@ def execute_qualification(
     agent_source_bytes: bytes | None = None,
     evidence_signing_key_id: str,
     evidence_signer: EvidenceSigner,
+    resource_probes: dict[ResourceKind, ExternalResourceProbe] | None = None,
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
     packet = verified.packet
     signing_key_id = _require_id("evidence signing key id", evidence_signing_key_id)
@@ -807,16 +912,28 @@ def execute_qualification(
     inventory = inventory_host(root) if host_inventory is None else host_inventory
     if action_runner is run_bounded_pytest and inventory.python_executable != sys.executable:
         raise ValueError("default physical runner executable does not match host inventory")
-    resources = resource_observations(inventory, execution_mode=packet.execution_mode)
-    reasons: list[str] = []
-    if inventory.os_family not in packet.allowed_os_families:
-        reasons.append("host OS family is not allowed by the signed packet")
-
     required = {
         resource
         for action in packet.actions
         for resource in action.required_resources
     }
+    external_evidence = _collect_external_resource_evidence(
+        required=required,
+        repo_root=root,
+        execution_mode=packet.execution_mode,
+        resource_probes=resource_probes,
+        resource_probe_verifiers=resource_probe_verifiers,
+    )
+    external_verified = frozenset(item.resource for item in external_evidence)
+    resources = resource_observations(
+        inventory,
+        execution_mode=packet.execution_mode,
+        external_verified=external_verified,
+    )
+    reasons: list[str] = []
+    if inventory.os_family not in packet.allowed_os_families:
+        reasons.append("host OS family is not allowed by the signed packet")
+
     if packet.execution_mode is ExecutionMode.REAL_HOST:
         for resource in sorted(required, key=lambda item: item.value):
             if resources[resource] is not ResourceObservation.REAL_PROBED:
@@ -908,6 +1025,7 @@ def execute_qualification(
             item.value: resources[item].value
             for item in sorted(ResourceKind, key=lambda item: item.value)
         },
+        "external_resource_evidence": [item.to_dict() for item in external_evidence],
         "actions": action_evidence,
         "artifacts": list(artifacts),
         "log_sha256": _sha256_bytes(log_bytes),
@@ -960,6 +1078,7 @@ def verify_qualification_evidence(
     artifact_root: str | Path,
     require_real_pass: bool,
     evidence_signature_verifier: SignatureVerifier,
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> dict[str, Any]:
     evidence = _strict_json_object(evidence_path, label="physical qualification evidence")
     expected_fields = {
@@ -974,6 +1093,7 @@ def verify_qualification_evidence(
         "host_inventory",
         "host_inventory_identity_sha256",
         "resource_observations",
+        "external_resource_evidence",
         "actions",
         "artifacts",
         "log_sha256",
@@ -1059,6 +1179,57 @@ def verify_qualification_evidence(
     ):
         raise ValueError("real physical PASS is required")
 
+    required = {
+        resource
+        for action in packet.actions
+        for resource in action.required_resources
+    }
+    external_payload = evidence["external_resource_evidence"]
+    if not isinstance(external_payload, list):
+        raise ValueError("external resource evidence must be an array")
+    _, external_verifiers = _validate_external_resource_maps(
+        None,
+        resource_probe_verifiers,
+    )
+    external_verified_items: list[ResourceKind] = []
+    previous_resource = ""
+    for item in external_payload:
+        expected_external_fields = {
+            "resource",
+            "adapter_id",
+            "evidence_b64",
+            "evidence_bytes",
+            "evidence_sha256",
+        }
+        if not isinstance(item, dict) or set(item) != expected_external_fields:
+            raise ValueError("external resource evidence fields are non-canonical")
+        resource = ResourceKind(item["resource"])
+        if resource not in _EXTERNAL_RESOURCE_KINDS or resource not in required:
+            raise ValueError("external resource evidence is outside required scope")
+        if resource.value <= previous_resource:
+            raise ValueError("external resource evidence must use canonical unique order")
+        previous_resource = resource.value
+        adapter_id = _require_id("external resource adapter id", item["adapter_id"])
+        try:
+            raw = base64.b64decode(item["evidence_b64"], validate=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("external resource evidence is not strict base64") from exc
+        if not raw or len(raw) > _MAX_RESOURCE_PROBE_BYTES:
+            raise ValueError("external resource evidence size is invalid or unbounded")
+        if item["evidence_bytes"] != len(raw):
+            raise ValueError("external resource evidence byte count mismatch")
+        if item["evidence_sha256"] != _sha256_bytes(raw):
+            raise ValueError("external resource evidence hash mismatch")
+        verifier = external_verifiers.get(resource)
+        if verifier is None:
+            raise ValueError(f"external resource verifier is missing: {resource.value}")
+        if not verifier(adapter_id, raw):
+            raise ValueError(f"external resource evidence verification failed: {resource.value}")
+        external_verified_items.append(resource)
+    if mode is ExecutionMode.SIMULATION and external_verified_items:
+        raise ValueError("simulation evidence cannot contain real external resource proof")
+    external_verified = frozenset(external_verified_items)
+
     resource_payload = evidence["resource_observations"]
     if not isinstance(resource_payload, dict) or set(resource_payload) != {
         item.value for item in ResourceKind
@@ -1068,14 +1239,13 @@ def verify_qualification_evidence(
         ResourceKind(key): ResourceObservation(value)
         for key, value in resource_payload.items()
     }
-    expected_resources = resource_observations(inventory, execution_mode=mode)
+    expected_resources = resource_observations(
+        inventory,
+        execution_mode=mode,
+        external_verified=external_verified,
+    )
     if resource_values != expected_resources:
         raise ValueError("resource observations do not match host inventory/mode")
-    required = {
-        resource
-        for action in packet.actions
-        for resource in action.required_resources
-    }
     expected_reasons: list[str] = []
     if inventory.os_family not in packet.allowed_os_families:
         expected_reasons.append("host OS family is not allowed by the signed packet")
