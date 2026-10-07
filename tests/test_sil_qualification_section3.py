@@ -374,20 +374,31 @@ def test_sil_plan_rejects_missing_or_resealed_end_to_end_policy() -> None:
     plan = build_sil_plan(registry, scenario)
 
     with pytest.raises(ValueError, match="lacks explicit end-to-end contract"):
-        build_sil_plan(
+        sil_qualification._build_sil_plan_with_policy(
             registry,
             scenario,
-            _sealed_e2e_policy=plan.journey_end_to_end_contracts[:-1],
+            e2e_policy=plan.journey_end_to_end_contracts[:-1],
         )
 
     forged = list(plan.journey_end_to_end_contracts)
     journey_id, _vector_ids = forged[0]
     forged[0] = (journey_id, ("model-resource-envelope",))
     with pytest.raises(ValueError, match="do not match"):
-        build_sil_plan(
+        sil_qualification._build_sil_plan_with_policy(
             registry,
             scenario,
-            _sealed_e2e_policy=tuple(forged),
+            e2e_policy=tuple(forged),
+        )
+
+
+def test_public_sil_plan_rejects_caller_supplied_policy_authority() -> None:
+    plan = build_sil_plan(_registry(), _scenario())
+
+    with pytest.raises(TypeError, match="_sealed_e2e_policy"):
+        build_sil_plan(
+            _registry(),
+            _scenario(),
+            _sealed_e2e_policy=plan.journey_end_to_end_contracts,
         )
 
 
