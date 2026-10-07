@@ -115,6 +115,28 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
         _validate(inventory)
 
 
+def test_repository_surface_coverage_rejects_candidate_override_capability_remap(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        item
+        for item in payload["candidate_overrides"]
+        if item["path"] == "tools/validate_section2_repository_surface_coverage.py"
+    )
+    assert target["capability_id"] == "executable-capability-map"
+    target["capability_id"] = "learned-20m-base"
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="cannot remap accepted-main executable capability",
+    ):
+        _validate(inventory)
+
+
 def test_repository_surface_coverage_rejects_missing_candidate_override(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
