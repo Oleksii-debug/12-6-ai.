@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -231,3 +232,65 @@ def test_registry_identity_changes_on_availability_reseal() -> None:
     )
 
     assert changed.identity_sha256() != registry.identity_sha256()
+
+
+def _resolve_contract(path: str) -> object:
+    parts = path.split(".")
+    for index in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:index])
+        try:
+            value: object = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+        for attribute in parts[index:]:
+            value = getattr(value, attribute)
+        return value
+    raise AssertionError(f"cannot import component contract: {path}")
+
+
+def test_available_python_component_contracts_resolve_to_real_symbols() -> None:
+    registry = _load()
+
+    for capability in registry.capabilities:
+        if capability.status is not CapabilityStatus.AVAILABLE:
+            continue
+        assert capability.component_contract.startswith("twelve_six.")
+        assert _resolve_contract(capability.component_contract) is not None
+
+
+def test_registry_loader_rejects_unknown_nested_capability_field(tmp_path: Path) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    payload["capabilities"][0]["forged_ready"] = True
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="capability schema"):
+        load_capability_registry(path)
+
+
+def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
+    text = _REGISTRY.read_text(encoding="utf-8")
+    tampered = text.replace(
+        '"schema_version": 1,',
+        '"schema_version": 1,\n  "schema_version": 1,',
+        1,
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(tampered, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="strict unambiguous"):
+        load_capability_registry(path)
+
+
+def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
+    text = _REGISTRY.read_text(encoding="utf-8")
+    tampered = text.replace(
+        '"run_id": 37248299503',
+        '"run_id": NaN',
+        1,
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(tampered, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="strict unambiguous"):
+        load_capability_registry(path)
