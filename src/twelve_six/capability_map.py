@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
+from types import ModuleType
 from typing import Any
 
 
@@ -578,6 +579,16 @@ def resolve_component_contract(component_contract: str) -> object:
                     f"component contract attribute does not exist: {contract}"
                 )
             resolved = getattr(resolved, attribute)
+        if isinstance(resolved, ModuleType):
+            owner_module = resolved.__name__
+        else:
+            owner_module = getattr(resolved, "__module__", None)
+        if not isinstance(owner_module, str) or not (
+            owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
+        ):
+            raise ValueError(
+                "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+            )
         return resolved
     raise ValueError(f"component contract module does not exist: {contract}")
 
