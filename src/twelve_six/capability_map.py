@@ -181,6 +181,9 @@ class Capability:
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must be unique")
 
+        if not self.journey_ids:
+            raise ValueError("capability must bind at least one user/operator journey")
+
         if not isinstance(self.environments, tuple) or any(
             not isinstance(item, EnvironmentSupport) for item in self.environments
         ):
