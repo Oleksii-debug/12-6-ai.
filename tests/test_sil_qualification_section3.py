@@ -161,24 +161,48 @@ def test_environment_receipt_rejects_byte_or_lock_source_reseal(tmp_path: Path) 
 
 
 def test_independent_verifier_requires_exact_clean_checkout() -> None:
-    assert require_exact_clean_git_state(
+    assert sil_qualification._require_exact_clean_git_state_with_probe(
         _ROOT,
         _GIT_SHA,
         git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=True),
     ) == GitState(sha=_GIT_SHA, tracked_clean=True)
 
     with pytest.raises(ValueError, match="exact-head mismatch"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
         )
 
     with pytest.raises(ValueError, match="dirty"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
+        )
+
+
+def test_public_sil_authorities_reject_caller_supplied_execution_backends() -> None:
+    registry = _registry()
+    scenario = _scenario()
+
+    with pytest.raises(TypeError):
+        qualify_sil(  # type: ignore[call-arg]
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=_git_probe,
+        )
+
+    with pytest.raises(TypeError):
+        require_exact_clean_git_state(  # type: ignore[call-arg]
+            _ROOT,
+            _GIT_SHA,
+            git_probe=_git_probe,
         )
 
 
@@ -346,7 +370,7 @@ def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdic
     registry = _registry()
     scenario = _scenario()
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=registry,
@@ -415,7 +439,7 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
             return replace(result, return_code=7, stderr="integration failure")
         return result
 
-    evidence, _ = qualify_sil(
+    evidence, _ = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -450,7 +474,7 @@ def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
             consumed_input_identity_sha256="b" * 64,
         )
 
-    evidence, _ = qualify_sil(
+    evidence, _ = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -479,7 +503,7 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
     )
 
     with pytest.raises(ValueError, match="became dirty during SIL vector execution"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -507,7 +531,7 @@ def test_sil_rejects_checkout_mutation_before_evidence_sealing() -> None:
         )
 
     with pytest.raises(ValueError, match="dirty before SIL evidence sealing"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -628,7 +652,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     scenario = _scenario()
 
     with pytest.raises(ValueError, match="exact-head mismatch"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -640,7 +664,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
         )
 
     with pytest.raises(ValueError, match="dirty"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=registry,
@@ -694,7 +718,7 @@ def test_strict_sil_scenario_rejects_duplicate_unknown_and_bool_timeout(tmp_path
 
 
 def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -727,7 +751,7 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
 def test_verifier_rejects_resealed_invalid_timings(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -758,7 +782,7 @@ def test_verifier_rejects_resealed_invalid_timings(
 def test_verifier_rejects_total_duration_shorter_than_execution_sum(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -786,7 +810,7 @@ def test_verifier_rejects_total_duration_shorter_than_execution_sum(
 def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
     tmp_path: Path,
 ) -> None:
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
@@ -822,7 +846,7 @@ def test_verifier_rejects_self_consistent_package_authority_reseal(
 ) -> None:
     registry = _registry()
     scenario = _scenario()
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_GIT_SHA,
         registry=registry,
@@ -920,7 +944,7 @@ def test_package_identity_binds_tracked_package_source_manifest() -> None:
 
 def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> None:
     with pytest.raises(ValueError, match="exact tracked package source manifest"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -1124,7 +1148,7 @@ def test_exact_git_state_rejects_behavioral_subclass() -> None:
         pass
 
     with pytest.raises(ValueError, match="git probe must return GitState"):
-        require_exact_clean_git_state(
+        sil_qualification._require_exact_clean_git_state_with_probe(
             _ROOT,
             _GIT_SHA,
             git_probe=lambda _: ForgedGitState(sha=_GIT_SHA, tracked_clean=True),
@@ -1199,7 +1223,7 @@ def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
     object.__setattr__(state, "tracked_clean", "yes")
 
     with pytest.raises(ValueError, match="tracked_clean must be boolean"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
@@ -1230,7 +1254,7 @@ def test_sil_revalidates_mutated_exact_command_result() -> None:
         return result
 
     with pytest.raises(ValueError, match="return_code must be an integer"):
-        qualify_sil(
+        sil_qualification._qualify_sil_with_backends(
             repo_root=_ROOT,
             expected_git_sha=_GIT_SHA,
             registry=_registry(),

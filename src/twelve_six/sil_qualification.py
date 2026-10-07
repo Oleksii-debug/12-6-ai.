@@ -842,15 +842,16 @@ CommandRunner = Callable[
 GitProbe = Callable[[str | Path], GitState]
 
 
-def require_exact_clean_git_state(
+def _require_exact_clean_git_state_with_probe(
     repo_root: str | Path,
     expected_git_sha: str,
     *,
-    git_probe: GitProbe | None = None,
+    git_probe: GitProbe,
 ) -> GitState:
+    """Internal test harness for the canonical exact-git-state authority."""
+
     expected = _require_git_sha("expected_git_sha", expected_git_sha)
-    probe = probe_git_state if git_probe is None else git_probe
-    state = probe(repo_root)
+    state = git_probe(repo_root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return GitState")
     GitState.__post_init__(state)
@@ -861,6 +862,29 @@ def require_exact_clean_git_state(
     if not state.tracked_clean:
         raise ValueError("SIL checkout is dirty")
     return state
+
+
+def _build_exact_git_state_authority():
+    # Capture the real probe and validator in a closure.  Later module-global
+    # rebinding cannot replace the canonical production authority, and callers
+    # cannot supply their own probe through the public function signature.
+    sealed_probe = probe_git_state
+    sealed_impl = _require_exact_clean_git_state_with_probe
+
+    def canonical(
+        repo_root: str | Path,
+        expected_git_sha: str,
+    ) -> GitState:
+        return sealed_impl(
+            repo_root,
+            expected_git_sha,
+            git_probe=sealed_probe,
+        )
+
+    return canonical
+
+
+require_exact_clean_git_state = _build_exact_git_state_authority()
 
 
 def run_command(
@@ -941,7 +965,7 @@ def _synthetic_model_identities() -> tuple[str, str]:
     return model.identity_sha256(), init.identity_sha256()
 
 
-def qualify_sil(
+def _qualify_sil_with_backends(
     *,
     repo_root: str | Path,
     expected_git_sha: str,
@@ -949,9 +973,10 @@ def qualify_sil(
     scenario: SILScenario,
     package_bytes: bytes,
     environment_receipt: dict[str, Any],
-    command_runner: CommandRunner = run_command,
-    git_probe: GitProbe = probe_git_state,
+    command_runner: CommandRunner,
+    git_probe: GitProbe,
 ) -> tuple[dict[str, Any], str]:
+    """Internal deterministic harness; not a canonical evidence authority."""
     expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
     if not _is_exact_type(package_bytes, bytes) or not package_bytes:
         raise ValueError("package_bytes must be non-empty bytes")
@@ -1147,6 +1172,40 @@ def qualify_sil(
     }
     evidence["evidence_identity_sha256"] = _canonical_sha256(evidence)
     return evidence, log_text
+
+
+def _build_qualify_sil_authority():
+    # Production SIL evidence must always use the repository-owned execution
+    # and Git probes.  Capture all three callables so neither caller-supplied
+    # callbacks nor later module-global rebinding can fabricate a canonical PASS.
+    sealed_impl = _qualify_sil_with_backends
+    sealed_runner = run_command
+    sealed_probe = probe_git_state
+
+    def canonical(
+        *,
+        repo_root: str | Path,
+        expected_git_sha: str,
+        registry: CapabilityRegistry,
+        scenario: SILScenario,
+        package_bytes: bytes,
+        environment_receipt: dict[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        return sealed_impl(
+            repo_root=repo_root,
+            expected_git_sha=expected_git_sha,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=package_bytes,
+            environment_receipt=environment_receipt,
+            command_runner=sealed_runner,
+            git_probe=sealed_probe,
+        )
+
+    return canonical
+
+
+qualify_sil = _build_qualify_sil_authority()
 
 
 _EVIDENCE_FIELDS = {
