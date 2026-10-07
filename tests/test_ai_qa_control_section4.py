@@ -1344,6 +1344,27 @@ def test_aiqa_enum_wire_value_mutation_fails_closed() -> None:
         object.__setattr__(GateVerdict.PASS, "_value_", original_verdict_value)
 
 
+def test_aiqa_enum_policy_global_rebind_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = _failure()
+    baseline_identity = failure.identity_sha256()
+    original_source_value = object.__getattribute__(FailureSource.CI, "_value_")
+    monkeypatch.setattr(
+        ai_qa_control,
+        "_SEALED_FAILURE_SOURCES",
+        ((FailureSource.CI, "FORGED_CI"),),
+    )
+    object.__setattr__(FailureSource.CI, "_value_", "FORGED_CI")
+    try:
+        with pytest.raises(ValueError, match="failure source wire value is non-canonical"):
+            failure.identity_sha256()
+    finally:
+        object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+
+    assert failure.identity_sha256() == baseline_identity
+
+
 def test_aiqa_identity_objects_revalidate_after_post_construction_mutation() -> None:
     failure = _failure()
     object.__setattr__(failure, "failure_summary_sha256", "0" * 64)

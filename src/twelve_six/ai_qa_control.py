@@ -168,11 +168,18 @@ class PhysicalScope(str, Enum):
     NONE = "NONE"
 
 
-_SEALED_FAILURE_SOURCES = tuple((item, item.value) for item in FailureSource)
-_SEALED_FAILURE_CLASSES = tuple((item, item.value) for item in FailureClass)
-_SEALED_GATE_KINDS = tuple((item, item.value) for item in GateKind)
-_SEALED_GATE_VERDICTS = tuple((item, item.value) for item in GateVerdict)
-_SEALED_PHYSICAL_SCOPES = tuple((item, item.value) for item in PhysicalScope)
+_SEALED_FAILURE_SOURCES = tuple((item, str.__str__(item)) for item in FailureSource)
+_SEALED_FAILURE_CLASSES = tuple((item, str.__str__(item)) for item in FailureClass)
+_SEALED_GATE_KINDS = tuple((item, str.__str__(item)) for item in GateKind)
+_SEALED_GATE_VERDICTS = tuple((item, str.__str__(item)) for item in GateVerdict)
+_SEALED_PHYSICAL_SCOPES = tuple((item, str.__str__(item)) for item in PhysicalScope)
+_SEALED_ENUM_POLICIES = (
+    (FailureSource, _SEALED_FAILURE_SOURCES),
+    (FailureClass, _SEALED_FAILURE_CLASSES),
+    (GateKind, _SEALED_GATE_KINDS),
+    (GateVerdict, _SEALED_GATE_VERDICTS),
+    (PhysicalScope, _SEALED_PHYSICAL_SCOPES),
+)
 
 
 def _require_sealed_enum(
@@ -182,12 +189,31 @@ def _require_sealed_enum(
     *,
     type_error: str,
     wire_error: str,
+    _sealed_policies: tuple[
+        tuple[type[Enum], tuple[tuple[Enum, str], ...]], ...
+    ] = _SEALED_ENUM_POLICIES,
 ) -> Enum:
+    canonical_members = next(
+        (
+            members
+            for policy_type, members in _sealed_policies
+            if enum_type is policy_type
+        ),
+        None,
+    )
+    if canonical_members is None or sealed_members is not canonical_members:
+        raise ValueError(wire_error)
     if type(value) is not enum_type:  # noqa: E721
         raise ValueError(type_error)
-    for member, wire_value in sealed_members:
+    for member, wire_value in canonical_members:
         if value is member:
-            if member.value != wire_value:
+            raw_value = str.__str__(member)
+            stored_value = object.__getattribute__(member, "_value_")
+            if (
+                not _is_exact_type(stored_value, str)
+                or stored_value != raw_value
+                or raw_value != wire_value
+            ):
                 raise ValueError(wire_error)
             return member
     raise ValueError(type_error)
@@ -422,14 +448,14 @@ class FailurePacket:
         return {
             "schema_version": self.schema_version,
             "defect_id": self.defect_id,
-            "source": self.source.value,
-            "failure_class": self.failure_class.value,
+            "source": str.__str__(self.source),
+            "failure_class": str.__str__(self.failure_class),
             "failing_git_sha": self.failing_git_sha,
             "source_evidence_identity_sha256": self.source_evidence_identity_sha256,
             "failure_summary": self.failure_summary,
             "failure_summary_sha256": self.failure_summary_sha256,
             "reproducer_argv": list(self.reproducer_argv),
-            "physical_scope": self.physical_scope.value,
+            "physical_scope": str.__str__(self.physical_scope),
             "physical_gate_id": self.physical_gate_id,
         }
 
@@ -1108,8 +1134,8 @@ class GateReceipt:
     def to_dict(self) -> dict[str, Any]:
         GateReceipt.__post_init__(self)
         return {
-            "gate": self.gate.value,
-            "verdict": self.verdict.value,
+            "gate": str.__str__(self.gate),
+            "verdict": str.__str__(self.verdict),
             "git_sha": self.git_sha,
             "evidence_identity_sha256": self.evidence_identity_sha256,
             "actor_id": self.actor_id,
@@ -1169,11 +1195,11 @@ def execute_automated_regressions(
         GitState.__post_init__(pre_gate_state)
         if pre_gate_state.sha != chain.candidate_git_sha:
             raise ValueError(
-                f"regression candidate SHA changed before {gate.value} gate"
+                f"regression candidate SHA changed before {str.__str__(gate)} gate"
             )
         if not pre_gate_state.tracked_clean:
             raise ValueError(
-                f"regression candidate checkout is dirty before {gate.value} gate"
+                f"regression candidate checkout is dirty before {str.__str__(gate)} gate"
             )
 
         input_envelope = {
@@ -1181,7 +1207,7 @@ def execute_automated_regressions(
             "defect_id": chain.defect_id,
             "candidate_identity_sha256": chain.candidate_identity_sha256,
             "candidate_git_sha": chain.candidate_git_sha,
-            "gate": gate.value,
+            "gate": str.__str__(gate),
             "argv": list(argv),
         }
         input_envelope_bytes = _canonical_json_bytes(input_envelope)
@@ -1203,15 +1229,15 @@ def execute_automated_regressions(
         GitState.__post_init__(post_gate_state)
         if post_gate_state.sha != chain.candidate_git_sha:
             raise ValueError(
-                f"regression candidate SHA changed during {gate.value} gate"
+                f"regression candidate SHA changed during {str.__str__(gate)} gate"
             )
         if not post_gate_state.tracked_clean:
             raise ValueError(
-                f"regression candidate checkout became dirty during {gate.value} gate"
+                f"regression candidate checkout became dirty during {str.__str__(gate)} gate"
             )
 
         evidence = {
-            "gate": gate.value,
+            "gate": str.__str__(gate),
             "git_sha": chain.candidate_git_sha,
             "argv": list(argv),
             "expected_input_identity_sha256": input_identity,
@@ -1323,19 +1349,19 @@ def evaluate_promotion(
     by_gate: dict[GateKind, GateReceipt] = {}
     for receipt in receipts:
         if receipt.gate in by_gate:
-            raise ValueError(f"duplicate gate receipt: {receipt.gate.value}")
+            raise ValueError(f"duplicate gate receipt: {receipt.str.__str__(gate)}")
         by_gate[receipt.gate] = receipt
         if policy.require_exact_candidate_sha and receipt.git_sha != candidate.candidate_git_sha:
-            reasons.append(f"{receipt.gate.value} receipt is bound to a different Git SHA")
+            reasons.append(f"{receipt.str.__str__(gate)} receipt is bound to a different Git SHA")
 
     for gate in policy.promotion_gate_order:
         if gate not in by_gate:
-            reasons.append(f"missing {gate.value} gate receipt")
+            reasons.append(f"missing {str.__str__(gate)} gate receipt")
 
     for gate in (GateKind.COMPONENT, GateKind.ADVERSARIAL, GateKind.SIL):
         receipt = by_gate.get(gate)
         if receipt is not None and receipt.verdict is not GateVerdict.PASS:
-            reasons.append(f"{gate.value} gate is not PASS")
+            reasons.append(f"{str.__str__(gate)} gate is not PASS")
 
     physical = by_gate.get(GateKind.PHYSICAL)
     if physical is not None:
@@ -1355,7 +1381,7 @@ def evaluate_promotion(
     for gate in (GateKind.SIL, GateKind.PHYSICAL):
         receipt = by_gate.get(gate)
         if receipt is not None and receipt.actor_id == candidate.proposer_actor_id:
-            reasons.append(f"{gate.value} evidence is not independent of repair proposer")
+            reasons.append(f"{str.__str__(gate)} evidence is not independent of repair proposer")
 
     if reasons:
         return PromotionDecision(
@@ -1504,23 +1530,23 @@ def load_gate_receipt_bundle(
         if not _is_exact_type(trusted, GateReceipt):
             raise ValueError("trusted_receipts must contain GateReceipt values")
         if trusted.gate in trusted_by_gate:
-            raise ValueError(f"duplicate trusted gate receipt: {trusted.gate.value}")
+            raise ValueError(f"duplicate trusted gate receipt: {trusted.str.__str__(gate)}")
         trusted_by_gate[trusted.gate] = trusted
 
     parsed = tuple(_receipt_from_dict(item) for item in receipts)
     seen: set[GateKind] = set()
     for receipt in parsed:
         if receipt.gate in seen:
-            raise ValueError(f"duplicate bundled gate receipt: {receipt.gate.value}")
+            raise ValueError(f"duplicate bundled gate receipt: {receipt.str.__str__(gate)}")
         seen.add(receipt.gate)
         trusted = trusted_by_gate.get(receipt.gate)
         if trusted is None:
             raise ValueError(
-                f"{receipt.gate.value} gate receipt has no live trusted verifier result"
+                f"{receipt.str.__str__(gate)} gate receipt has no live trusted verifier result"
             )
         if receipt != trusted:
             raise ValueError(
-                f"{receipt.gate.value} gate receipt does not match live trusted evidence"
+                f"{receipt.str.__str__(gate)} gate receipt does not match live trusted evidence"
             )
     return parsed
 
@@ -1617,8 +1643,8 @@ def _regression_cli(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "candidate_git_sha": candidate.candidate_git_sha,
-                "component": receipts[0].verdict.value,
-                "adversarial": receipts[1].verdict.value,
+                "component": str.__str__(receipts[0].verdict),
+                "adversarial": str.__str__(receipts[1].verdict),
             },
             sort_keys=True,
         )
@@ -1701,7 +1727,7 @@ def _physical_scope_receipt_cli(args: argparse.Namespace) -> int:
         "candidate_identity_sha256": candidate.identity_sha256(),
         "candidate_git_sha": candidate.candidate_git_sha,
         "failure_packet_identity_sha256": failure.identity_sha256(),
-        "physical_scope": failure.physical_scope.value,
+        "physical_scope": str.__str__(failure.physical_scope),
         "reason": args.reason,
         "actor_id": args.actor_id,
     }
@@ -1775,7 +1801,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
             "candidate_identity_sha256": candidate.identity_sha256(),
             "candidate_git_sha": candidate.candidate_git_sha,
             "failure_packet_identity_sha256": failure.identity_sha256(),
-            "physical_scope": failure.physical_scope.value,
+            "physical_scope": str.__str__(failure.physical_scope),
             "reason": args.physical_not_applicable_reason,
             "actor_id": args.physical_actor_id,
         }
@@ -1810,7 +1836,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
     durable_by_gate: dict[GateKind, GateReceipt] = {}
     for receipt in durable_receipts:
         if receipt.gate in durable_by_gate:
-            raise ValueError(f"duplicate durable gate receipt: {receipt.gate.value}")
+            raise ValueError(f"duplicate durable gate receipt: {receipt.str.__str__(gate)}")
         durable_by_gate[receipt.gate] = receipt
     if durable_by_gate != expected_by_gate:
         raise ValueError("durable receipt bundles do not cover the exact live-verified gate set")
@@ -1854,7 +1880,7 @@ def _sil_failure_cli(args: argparse.Namespace) -> int:
     payload = packet.to_dict()
     payload["failure_packet_identity_sha256"] = packet.identity_sha256()
     _write_json(args.output, payload)
-    print(json.dumps({"defect_id": packet.defect_id, "failure_class": packet.failure_class.value}))
+    print(json.dumps({"defect_id": packet.defect_id, "failure_class": str.__str__(packet.failure_class)}))
     return 0
 
 
@@ -1868,7 +1894,7 @@ def _observation_cli(args: argparse.Namespace) -> int:
     payload = packet.to_dict()
     payload["failure_packet_identity_sha256"] = packet.identity_sha256()
     _write_json(args.output, payload)
-    print(json.dumps({"defect_id": packet.defect_id, "failure_class": packet.failure_class.value}))
+    print(json.dumps({"defect_id": packet.defect_id, "failure_class": str.__str__(packet.failure_class)}))
     return 0
 
 
