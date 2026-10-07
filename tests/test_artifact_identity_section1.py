@@ -916,6 +916,78 @@ def test_manifest_hash_helper_rebinding_cannot_reseal_identity(
     assert _generation("hash-helper-rebind").identity_sha256() == expected_generation_identity
 
 
+def test_bind_artifact_identity_rebinding_cannot_forge_parent_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = bind_artifact(_ref(ArtifactKind.CORPUS, "bind-identity-rebind"))
+    expected_identity = parent.manifest_identity_sha256()
+    forged_identity = _sha("forged-bind-parent-lineage")
+
+    monkeypatch.setattr(
+        ArtifactManifest,
+        "manifest_identity_sha256",
+        lambda _manifest, *args, **kwargs: forged_identity,
+    )
+
+    child = bind_artifact(
+        _ref(ArtifactKind.TOKENIZER, "bind-identity-rebind"),
+        parents={"corpus": parent},
+    )
+    assert child.parents[0].parent_manifest_identity_sha256 == expected_identity
+
+
+def test_verify_parent_bindings_view_rebinding_cannot_hide_wrong_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_parent = bind_artifact(_ref(ArtifactKind.CORPUS, "verify-view-parent"))
+    binding = ParentBinding(
+        role="wrong_role",
+        artifact=expected_parent.artifact,
+        parent_manifest_identity_sha256=expected_parent.manifest_identity_sha256(),
+    )
+    child = ArtifactManifest(
+        schema_version=1,
+        artifact=_ref(ArtifactKind.TOKENIZER, "verify-view-child"),
+        parents=(binding,),
+    )
+
+    monkeypatch.setattr(
+        ArtifactManifest,
+        "parent_bindings_by_role",
+        lambda _manifest: {"corpus": binding},
+    )
+
+    with pytest.raises(ValueError, match="artifact parent role set mismatch"):
+        verify_parent_bindings(child, expected_parents={"corpus": expected_parent})
+
+
+def test_verify_parent_bindings_identity_rebinding_cannot_hide_wrong_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_parent = bind_artifact(_ref(ArtifactKind.CORPUS, "verify-lineage-parent"))
+    forged_identity = _sha("forged-verify-parent-lineage")
+    child = ArtifactManifest(
+        schema_version=1,
+        artifact=_ref(ArtifactKind.TOKENIZER, "verify-lineage-child"),
+        parents=(
+            ParentBinding(
+                role="corpus",
+                artifact=expected_parent.artifact,
+                parent_manifest_identity_sha256=forged_identity,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        ArtifactManifest,
+        "manifest_identity_sha256",
+        lambda _manifest, *args, **kwargs: forged_identity,
+    )
+
+    with pytest.raises(ValueError, match="artifact parent lineage mismatch for role: corpus"):
+        verify_parent_bindings(child, expected_parents={"corpus": expected_parent})
+
+
 def test_generation_parent_view_rebinding_cannot_hide_mutated_parent_tuple(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

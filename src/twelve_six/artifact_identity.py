@@ -429,6 +429,9 @@ def bind_artifact(
     artifact: ArtifactRef,
     *,
     parents: Mapping[str, ArtifactManifest] | None = None,
+    _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+        _artifact_manifest_identity_from_stored_state
+    ),
 ) -> ArtifactManifest:
     """Create a canonical binding that commits to each parent's bound lineage."""
 
@@ -457,7 +460,7 @@ def bind_artifact(
                 role=role,
                 artifact=normalized[role].artifact,
                 parent_manifest_identity_sha256=(
-                    normalized[role].manifest_identity_sha256()
+                    _sealed_manifest_identity(normalized[role])
                 ),
             )
             for role in sorted(normalized)
@@ -469,6 +472,9 @@ def verify_parent_bindings(
     manifest: ArtifactManifest,
     *,
     expected_parents: Mapping[str, ArtifactManifest],
+    _sealed_manifest_identity: Callable[[ArtifactManifest], str] = (
+        _artifact_manifest_identity_from_stored_state
+    ),
 ) -> None:
     """Fail closed unless exact parent artifacts and bound lineages both match."""
 
@@ -487,7 +493,7 @@ def verify_parent_bindings(
         ArtifactManifest.__post_init__(parent)
         normalized[role] = parent
 
-    observed = manifest.parent_bindings_by_role()
+    observed = {parent.role: parent for parent in manifest.parents}
     if set(observed) != set(normalized):
         raise ValueError("artifact parent role set mismatch")
     for role in sorted(normalized):
@@ -499,7 +505,7 @@ def verify_parent_bindings(
             raise ValueError(f"artifact parent identity mismatch for role: {role}")
         if (
             binding.parent_manifest_identity_sha256
-            != expected.manifest_identity_sha256()
+            != _sealed_manifest_identity(expected)
         ):
             raise ValueError(f"artifact parent lineage mismatch for role: {role}")
 
