@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -590,6 +591,49 @@ class ActionExecution:
 ActionRunner = Callable[[QualificationAction, Path], ActionExecution]
 
 
+def _popen_process_group_kwargs() -> dict[str, Any]:
+    if sys.platform == "win32":
+        creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", None)
+        if creation_flag is None:
+            raise RuntimeError("Windows process-group support is unavailable")
+        return {"creationflags": int(creation_flag)}
+    return {"start_new_session": True}
+
+
+def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        system_root = os.environ.get("SystemRoot")
+        if system_root:
+            taskkill = Path(system_root) / "System32" / "taskkill.exe"
+            try:
+                subprocess.run(
+                    (str(taskkill), "/PID", str(process.pid), "/T", "/F"),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    check=True,
+                    shell=False,
+                )
+                return
+            except (OSError, subprocess.SubprocessError):
+                pass
+        try:
+            process.kill()
+        except OSError:
+            pass
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
 def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionExecution:
     """Execute one pytest action while enforcing the signed capture bound in flight."""
 
@@ -603,9 +647,10 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         shell=False,
+        **_popen_process_group_kwargs(),
     )
     if process.stdout is None or process.stderr is None:
-        process.kill()
+        _terminate_process_tree(process)
         raise ValueError("physical qualification subprocess pipes are unavailable")
 
     capture_limit = action.max_output_bytes + 1
@@ -623,13 +668,13 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
                     buffers[name].extend(chunk[:remaining])
                 if len(buffers[name]) > action.max_output_bytes:
                     try:
-                        process.kill()
+                        _terminate_process_tree(process)
                     except OSError:
                         pass
         except BaseException as exc:  # pragma: no cover - defensive pipe failure
             read_errors.append(exc)
             try:
-                process.kill()
+                _terminate_process_tree(process)
             except OSError:
                 pass
         finally:
@@ -647,7 +692,7 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
         return_code = int(process.wait(timeout=action.timeout_seconds))
     except subprocess.TimeoutExpired:
         timed_out = True
-        process.kill()
+        _terminate_process_tree(process)
         process.wait()
         return_code = 124
 
