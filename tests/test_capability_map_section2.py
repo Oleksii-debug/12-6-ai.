@@ -959,6 +959,40 @@ def test_registry_loader_ignores_poisoned_enum_value_lookup_tables(
     assert loaded_vector.level is capability_map_module.TestLevel.COMPONENT
 
 
+def test_registry_enum_policy_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    baseline_identity = registry.identity_sha256()
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_CAPABILITY_STATUSES",
+        (
+            capability_map_module.CapabilityStatus.UNAVAILABLE,
+            capability_map_module.CapabilityStatus.AVAILABLE,
+        ),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_CAPABILITY_STATUS_VALUES",
+        ("FORGED_UNAVAILABLE", "FORGED_AVAILABLE"),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_TEST_LEVELS",
+        tuple(reversed(tuple(capability_map_module.TestLevel))),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_TEST_LEVEL_VALUES",
+        ("forged_end_to_end", "forged_integration", "forged_component"),
+    )
+
+    assert registry.identity_sha256() == baseline_identity
+    assert _load().identity_sha256() == baseline_identity
+
+
 def test_registry_revalidates_post_construction_nested_mutation() -> None:
     registry = _load()
     capability = next(item for item in registry.capabilities if item.test_vectors)
