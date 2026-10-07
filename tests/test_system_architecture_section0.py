@@ -403,11 +403,15 @@ def test_runtime_shell_rejects_role_resealing() -> None:
 
 def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None:
     shell = canonical_runtime_shell_v1()
+    previous_core = _core("previous", 20_000_000)
+    candidate_core = _core("candidate", 200_000_000)
 
     with pytest.raises(ValueError, match="changed runtime shell"):
         CoreReplacementReceipt(
-            previous_core_identity_sha256=_sha("previous"),
-            candidate_core_identity_sha256=_sha("candidate"),
+            previous_core_identity_sha256=previous_core.identity_sha256(),
+            candidate_core_identity_sha256=candidate_core.identity_sha256(),
+            previous_core=previous_core,
+            candidate_core=candidate_core,
             shell_identity_sha256_before=_sha("shell-a"),
             shell_identity_sha256_after=_sha("shell-b"),
             preserved_surface_identities=(),
@@ -417,8 +421,10 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
 
     with pytest.raises(ValueError, match="must not require"):
         CoreReplacementReceipt(
-            previous_core_identity_sha256=_sha("previous"),
-            candidate_core_identity_sha256=_sha("candidate"),
+            previous_core_identity_sha256=previous_core.identity_sha256(),
+            candidate_core_identity_sha256=candidate_core.identity_sha256(),
+            previous_core=previous_core,
+            candidate_core=candidate_core,
             shell_identity_sha256_before=_sha("shell"),
             shell_identity_sha256_after=_sha("shell"),
             preserved_surface_identities=(),
@@ -451,9 +457,13 @@ def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
 
 def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() -> None:
     surfaces = canonical_runtime_shell_v1().surface_identities()
+    previous_core = _core("previous", 20_000_000)
+    candidate_core = _core("candidate", 200_000_000)
     common = {
-        "previous_core_identity_sha256": _sha("previous"),
-        "candidate_core_identity_sha256": _sha("candidate"),
+        "previous_core_identity_sha256": previous_core.identity_sha256(),
+        "candidate_core_identity_sha256": candidate_core.identity_sha256(),
+        "previous_core": previous_core,
+        "candidate_core": candidate_core,
         "shell_identity_sha256_before": _sha("shell"),
         "shell_identity_sha256_after": _sha("shell"),
         "preserved_shell": canonical_runtime_shell_v1(),
@@ -475,9 +485,13 @@ def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() ->
 
 def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> None:
     shell = canonical_runtime_shell_v1()
+    previous_core = _core("previous", 20_000_000)
+    candidate_core = _core("candidate", 200_000_000)
     common = {
-        "previous_core_identity_sha256": _sha("previous"),
-        "candidate_core_identity_sha256": _sha("candidate"),
+        "previous_core_identity_sha256": previous_core.identity_sha256(),
+        "candidate_core_identity_sha256": candidate_core.identity_sha256(),
+        "previous_core": previous_core,
+        "candidate_core": candidate_core,
         "shell_identity_sha256_before": shell.identity_sha256(),
         "shell_identity_sha256_after": shell.identity_sha256(),
         "preserved_shell": shell,
@@ -504,4 +518,32 @@ def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> 
         CoreReplacementReceipt(
             **{**common, "preserved_shell": changed_shell},
             preserved_surface_identities=changed_shell.surface_identities(),
+        )
+
+def test_replacement_receipt_cross_binds_core_snapshots() -> None:
+    shell = canonical_runtime_shell_v1()
+    previous_core = _core("previous-bound", 20_613_440)
+    candidate_core = _core("candidate-bound", 200_000_000)
+    common = {
+        "previous_core_identity_sha256": previous_core.identity_sha256(),
+        "candidate_core_identity_sha256": candidate_core.identity_sha256(),
+        "previous_core": previous_core,
+        "candidate_core": candidate_core,
+        "shell_identity_sha256_before": shell.identity_sha256(),
+        "shell_identity_sha256_after": shell.identity_sha256(),
+        "preserved_surface_identities": shell.surface_identities(),
+        "preserved_shell": shell,
+        "shell_rewrite_required": False,
+    }
+
+    CoreReplacementReceipt(**common)
+
+    with pytest.raises(ValueError, match="previous core identity does not match snapshot"):
+        CoreReplacementReceipt(
+            **{**common, "previous_core_identity_sha256": _sha("forged-previous")}
+        )
+
+    with pytest.raises(ValueError, match="candidate core identity does not match snapshot"):
+        CoreReplacementReceipt(
+            **{**common, "candidate_core_identity_sha256": _sha("forged-candidate")}
         )
