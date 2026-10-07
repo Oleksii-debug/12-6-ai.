@@ -89,3 +89,5 @@ This control plane does not grant corpus admission, tokenizer-fit, optimizer/tra
 learned-weight, final-test, paid-compute, physical-device, release or scale-promotion authority.
 A repair candidate is not promoted merely because its proposer reports confidence or local green
 tests.
+
+Every automated regression chain now re-resolves the candidate commit with replacement objects disabled and requires exactly one parent equal to the failure packet's failing Git SHA. A hand-authored candidate manifest cannot substitute an unrelated passing commit merely by claiming the correct base SHA.
