@@ -103,11 +103,13 @@ def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
     for line in _run_git(root, "ls-tree", "-r", treeish):
         try:
             metadata, path = line.split("\t", 1)
-            _mode, kind, blob_sha = metadata.split()
+            mode, kind, blob_sha = metadata.split()
         except ValueError as exc:
             raise ValueError("git ls-tree emitted a non-canonical record") from exc
-        if kind != "blob" or not _is_capability_surface(path):
+        if not _is_capability_surface(path):
             continue
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError("capability surface must be a regular Git blob")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("git ls-tree emitted a malformed blob SHA")
         result[path] = blob_sha
@@ -237,6 +239,37 @@ def validate_repository_surface_coverage(
         raise ValueError("surface rule ids must be unique")
 
     capability_registry = _load_strict_json(capability_registry_path)
+    if set(capability_registry) != {
+        "schema_version",
+        "observed_main_sha",
+        "observed_main_ci",
+        "capabilities",
+        "journeys",
+    }:
+        raise ValueError("capability registry schema is non-canonical")
+    registry_schema_version = capability_registry["schema_version"]
+    if (
+        not isinstance(registry_schema_version, int)
+        or isinstance(registry_schema_version, bool)
+        or registry_schema_version != 1
+    ):
+        raise ValueError("capability registry schema_version must equal integer 1")
+    if capability_registry["observed_main_sha"] != main_sha:
+        raise ValueError(
+            "capability registry observed_main_sha does not match coverage baseline"
+        )
+    observed_main_ci = capability_registry["observed_main_ci"]
+    if not isinstance(observed_main_ci, dict) or set(observed_main_ci) != {
+        "run_id",
+        "conclusion",
+    }:
+        raise ValueError("capability registry observed_main_ci schema is non-canonical")
+    run_id = observed_main_ci["run_id"]
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+        raise ValueError("capability registry observed main CI run_id must be positive")
+    if observed_main_ci["conclusion"] != "success":
+        raise ValueError("capability registry observed main CI must be terminal success")
+
     raw_capabilities = capability_registry.get("capabilities")
     if not isinstance(raw_capabilities, list):
         raise ValueError("capability registry capabilities must be an array")
