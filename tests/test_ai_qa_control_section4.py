@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.ai_qa_control as ai_qa_control
+from twelve_six import ai_qa_control
 from twelve_six.ai_qa_control import (
     ExternalObservation,
     FailureClass,

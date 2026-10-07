@@ -18,6 +18,7 @@ from twelve_six.capability_map import CapabilityRegistry, load_capability_regist
 from twelve_six.sil_qualification import (
     CommandExecution,
     GitProbe,
+    GitState,
     SILScenario,
     build_package_manifest_bytes,
     load_sil_environment_receipt,
