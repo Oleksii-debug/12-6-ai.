@@ -802,6 +802,12 @@ def _source_surface_inventory_payload_from_stored_state(
     _sealed_validate=SourceSurfaceInventory.__post_init__,
     _sealed_surface_payload=_source_surface_payload_from_stored_state,
 ) -> dict[str, Any]:
+    # Validate nested authority-bearing records through the sealed stored-state
+    # path before the aggregate validator.  The aggregate dataclass validator
+    # intentionally performs count checks too, but its nested method lookup can
+    # be monkeypatched after construction; ordering the sealed payload checks
+    # first prevents such rebinding from masking the actual invalid surface.
+    surfaces = [_sealed_surface_payload(item) for item in value.surfaces]
     _sealed_validate(value)
     return {
         "schema_version": value.schema_version,
@@ -811,7 +817,7 @@ def _source_surface_inventory_payload_from_stored_state(
         "source_surface_count": value.source_surface_count,
         "accepted_main_surface_count": value.accepted_main_surface_count,
         "candidate_overlay_surface_count": value.candidate_overlay_surface_count,
-        "surfaces": [_sealed_surface_payload(item) for item in value.surfaces],
+        "surfaces": surfaces,
     }
 
 
