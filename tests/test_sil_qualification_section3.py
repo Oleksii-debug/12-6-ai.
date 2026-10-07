@@ -237,10 +237,18 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
         argv: tuple[str, ...],
         cwd: Path,
         timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
     ) -> CommandExecution:
         nonlocal calls
         calls += 1
-        result = _pass_runner(argv, cwd, timeout_seconds)
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
         if calls == 1:
             return replace(result, return_code=7, stderr="integration failure")
         return result
