@@ -507,6 +507,14 @@ def validate_repository_surface_coverage(
             raise ValueError(
                 "candidate override capability must remain UNAVAILABLE until integrated"
             )
+        if path in qualified_surface_blobs:
+            predecessor_capability_id = _classify_main_surface(path, baseline_rules)
+            if predecessor_capability_id != capability_id:
+                raise ValueError(
+                    "candidate override cannot remap accepted-main executable capability: "
+                    f"path={path}, predecessor={predecessor_capability_id}, "
+                    f"override={capability_id}"
+                )
         candidate_overrides[path] = capability_id
 
     checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
