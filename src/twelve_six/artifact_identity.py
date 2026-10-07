@@ -149,7 +149,6 @@ _GENERATION_PARENT_POLICY: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = M
 del _GENERATION_PARENT_POLICY_SOURCE
 
 
-
 @dataclass(frozen=True, slots=True)
 class ArtifactRef:
     """Versioned reference to one existing domain artifact identity."""
