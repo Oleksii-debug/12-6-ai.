@@ -207,6 +207,39 @@ def test_repository_surface_coverage_rejects_nonterminal_capability_ci(
         _validate(capabilities=capabilities)
 
 
+def test_worktree_capability_surface_drift_detects_tracked_and_untracked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fake_run_git(_root: Path, *args: str) -> list[str]:
+        if args == ("diff", "--name-only", "HEAD", "--"):
+            return ["src/twelve_six/model.py", "README.md"]
+        if args == ("ls-files", "--others", "--exclude-standard"):
+            return ["tools/forged.py", "notes.txt"]
+        raise AssertionError(args)
+
+    monkeypatch.setattr(surface_validator, "_run_git", fake_run_git)
+
+    tracked, untracked = surface_validator._worktree_capability_surface_drift(tmp_path)
+
+    assert tracked == {"src/twelve_six/model.py"}
+    assert untracked == {"tools/forged.py"}
+
+
+def test_clean_capability_worktree_guard_rejects_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        surface_validator,
+        "_worktree_capability_surface_drift",
+        lambda _root: ({"pyproject.toml"}, {"tools/forged.sh"}),
+    )
+
+    with pytest.raises(ValueError, match="working tree capability surface drift"):
+        surface_validator._require_clean_capability_worktree(tmp_path)
+
+
 def test_surface_blob_map_identity_includes_regular_file_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

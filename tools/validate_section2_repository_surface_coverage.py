@@ -162,6 +162,33 @@ def _candidate_surface_paths(
     }
 
 
+def _worktree_capability_surface_drift(
+    root: Path,
+) -> tuple[set[str], set[str]]:
+    """Return tracked and untracked capability-bearing worktree drift from HEAD."""
+
+    tracked = {
+        path.strip()
+        for path in _run_git(root, "diff", "--name-only", "HEAD", "--")
+        if path.strip() and _is_capability_surface(path.strip())
+    }
+    untracked = {
+        path.strip()
+        for path in _run_git(root, "ls-files", "--others", "--exclude-standard")
+        if path.strip() and _is_capability_surface(path.strip())
+    }
+    return tracked, untracked
+
+
+def _require_clean_capability_worktree(root: Path) -> None:
+    tracked, untracked = _worktree_capability_surface_drift(root)
+    if tracked or untracked:
+        raise ValueError(
+            "working tree capability surface drift: "
+            f"dirty_tracked={sorted(tracked)}, untracked={sorted(untracked)}"
+        )
+
+
 def _classify_main_surface(
     path: str,
     rules: tuple[dict[str, str], ...],
@@ -324,6 +351,8 @@ def validate_repository_surface_coverage(
             f"removed={sorted(qualified_paths - current_paths)}, "
             f"changed={changed}"
         )
+
+    _require_clean_capability_worktree(repo_root)
 
     main_paths = sorted(
         path.strip()
