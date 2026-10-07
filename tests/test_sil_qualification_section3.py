@@ -115,12 +115,12 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
     )
 
 
-def test_canonical_environment_receipt_binds_accepted_historical_locks(
+def test_canonical_environment_receipt_binds_pinned_historical_lock_source(
     tmp_path: Path,
 ) -> None:
     receipt = _environment_receipt()
 
-    assert receipt["authority_commit"] == "029514654829cebc149cff6fc1fea2a8ba4fa566"
+    assert receipt["lock_source_commit"] == "029514654829cebc149cff6fc1fea2a8ba4fa566"
     assert receipt["python"] == {
         "implementation": "cpython",
         "version": "3.11.16",
@@ -140,7 +140,7 @@ def test_canonical_environment_receipt_binds_accepted_historical_locks(
     assert load_sil_environment_receipt(path) == receipt
 
 
-def test_environment_receipt_rejects_byte_or_authority_reseal(tmp_path: Path) -> None:
+def test_environment_receipt_rejects_byte_or_lock_source_reseal(tmp_path: Path) -> None:
     receipt = _environment_receipt()
     path = tmp_path / "environment.json"
 
@@ -149,7 +149,7 @@ def test_environment_receipt_rejects_byte_or_authority_reseal(tmp_path: Path) ->
         load_sil_environment_receipt(path)
 
     forged = dict(receipt)
-    forged["authority_commit"] = "b" * 40
+    forged["lock_source_commit"] = "b" * 40
     unsigned = dict(forged)
     unsigned.pop("identity_sha256")
     forged["identity_sha256"] = _canonical_hash(unsigned)
@@ -157,7 +157,7 @@ def test_environment_receipt_rejects_byte_or_authority_reseal(tmp_path: Path) ->
         json.dumps(forged, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="exact accepted authority"):
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
         load_sil_environment_receipt(path)
 
 
@@ -770,11 +770,11 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in sil_job
     assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in sil_job
     assert (
-        'SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"'
+        'SIL_ENV_LOCK_SOURCE_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"'
         in sil_job
     )
     assert "git fetch --no-tags origin refs/pull/402/head" in sil_job
-    assert 'test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"' in sil_job
+    assert 'test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_LOCK_SOURCE_COMMIT"' in sil_job
     assert "requirements/locks/linux-x86_64/toolchain.lock.txt" in sil_job
     assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
     assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
