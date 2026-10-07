@@ -1245,6 +1245,37 @@ def test_available_level_gate_ignores_module_global_policy_rebinding(
         registry.identity_sha256()
 
 
+def test_capability_terminal_text_truth_ignores_require_text_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    available = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(available, "integrated_result", "")
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_text",
+        lambda _name, value: value,
+    )
+
+    with pytest.raises(ValueError, match="integrated_result must be non-empty text"):
+        registry.identity_sha256()
+
+    unavailable = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+    )
+    object.__setattr__(unavailable, "unavailable_reason", "")
+
+    with pytest.raises(ValueError, match="unavailable_reason must be non-empty text"):
+        registry.identity_sha256()
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
