@@ -554,6 +554,9 @@ def test_sil_subprocess_environment_rejects_host_overrides(
         "def test_must_execute() -> None:\n    assert False\n",
         encoding="utf-8",
     )
+    # A tracked repo-root pytest.py would shadow the real test runner unless the
+    # child interpreter is started with Python safe-path semantics.
+    (tmp_path / "pytest.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(
@@ -585,6 +588,7 @@ def test_sil_subprocess_environment_rejects_host_overrides(
     assert child_env["GIT_OPTIONAL_LOCKS"] == "0"
     assert child_env["PYTHONHASHSEED"] == "0"
     assert child_env["PYTHONNOUSERSITE"] == "1"
+    assert child_env["PYTHONSAFEPATH"] == "1"
     assert child_env["PYTHONUTF8"] == "1"
     assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
