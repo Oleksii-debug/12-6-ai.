@@ -22,6 +22,9 @@ from twelve_six.ai_qa_control import (
     failure_packet_from_sil,
     load_ai_qa_policy,
     load_external_observation,
+    load_failure_packet,
+    load_gate_receipt_bundle,
+    load_repair_candidate,
 )
 from twelve_six.capability_map import load_capability_registry
 from twelve_six.sil_qualification import (
@@ -417,3 +420,63 @@ def test_required_physical_gate_cannot_be_resealed_not_applicable() -> None:
     )
     assert decision.decision == "BLOCK"
     assert "required physical gate is not PASS" in decision.reasons
+
+
+def test_durable_failure_candidate_and_receipt_bundles_reject_resealing(
+    tmp_path: Path,
+) -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+
+    failure_payload = failure.to_dict()
+    failure_payload["failure_packet_identity_sha256"] = failure.identity_sha256()
+    failure_path = tmp_path / "failure.json"
+    failure_path.write_text(
+        json.dumps(failure_payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    assert load_failure_packet(failure_path) == failure
+
+    candidate_payload = candidate.to_dict()
+    candidate_payload["candidate_identity_sha256"] = candidate.identity_sha256()
+    candidate_path = tmp_path / "candidate.json"
+    candidate_path.write_text(
+        json.dumps(candidate_payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    assert load_repair_candidate(candidate_path) == candidate
+
+    receipt = _pass_receipt(GateKind.SIL, actor_id="independent-sil")
+    bundle_path = tmp_path / "receipts.json"
+    bundle_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "12-6.aiqa-gate-receipts.v1",
+                "candidate_identity_sha256": candidate.identity_sha256(),
+                "receipts": [receipt.to_dict()],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert load_gate_receipt_bundle(
+        bundle_path,
+        expected_candidate_identity_sha256=candidate.identity_sha256(),
+    ) == (receipt,)
+
+    resealed = dict(candidate_payload)
+    resealed["patch_sha256"] = "f" * 64
+    candidate_path.write_text(json.dumps(resealed), encoding="utf-8")
+    with pytest.raises(ValueError, match="identity mismatch"):
+        load_repair_candidate(candidate_path)
+
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle["candidate_identity_sha256"] = "e" * 64
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    with pytest.raises(ValueError, match="candidate identity mismatch"):
+        load_gate_receipt_bundle(
+            bundle_path,
+            expected_candidate_identity_sha256=candidate.identity_sha256(),
+        )
