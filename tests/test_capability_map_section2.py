@@ -483,6 +483,7 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
         str(tmp_path),
         "diff",
         "--name-only",
+        "-z",
         "HEAD",
         "--",
         "src/twelve_six",
@@ -502,7 +503,7 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout="src/twelve_six/model.py\nREADME.md\n",
+            stdout="src/twelve_six/model.py\0README.md\0",
             stderr="",
         )
 
@@ -530,6 +531,43 @@ def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
     ) == {"src/twelve_six/model.py"}
 
 
+def test_python_source_blob_map_preserves_unicode_path_and_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = "src/twelve_six/перевірка.py"
+
+    class GitResult:
+        returncode = 0
+        stdout = "100755 blob " + "a" * 40 + f"\t{path}\0"
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    blobs = _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
+
+    assert blobs == {path: "100755:" + "a" * 40}
+
+
+def test_python_source_blob_map_rejects_missing_nul_delimiter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class GitResult:
+        returncode = 0
+        stdout = "100644 blob " + "a" * 40 + "\tsrc/twelve_six/model.py"
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    with pytest.raises(ValueError, match="NUL delimiter"):
+        _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
+
+
 def test_python_source_blob_map_rejects_symlink_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -539,7 +577,7 @@ def test_python_source_blob_map_rejects_symlink_mode(
         stdout = (
             "120000 blob "
             + "a" * 40
-            + "\tsrc/twelve_six/symlinked_module.py\n"
+            + "\tsrc/twelve_six/symlinked_module.py\0"
         )
 
     monkeypatch.setattr(
