@@ -151,6 +151,30 @@ def test_repository_surface_coverage_rejects_unknown_rule_capability(
         _validate(inventory)
 
 
+def test_repository_surface_coverage_rejects_accepted_main_capability_remap(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        rule
+        for rule in payload["rules"]
+        if rule["rule_id"] == "section2-surface-validator"
+    )
+    assert target["capability_id"] == "executable-capability-map"
+    target["capability_id"] = "model-spec-identity"
+    payload["expected_main_capability_counts"]["model-spec-identity"] += 1
+    del payload["expected_main_capability_counts"]["executable-capability-map"]
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="accepted-main executable capability mapping drift",
+    ):
+        _validate(inventory)
+
+
 def test_repository_surface_coverage_rejects_count_reseal(tmp_path: Path) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["expected_main_surface_count"] -= 1
