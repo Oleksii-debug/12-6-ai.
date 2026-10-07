@@ -126,6 +126,59 @@ def test_public_verifier_requires_exact_git_sha_authority(tmp_path: Path) -> Non
         )
 
 
+def test_environment_receipt_authority_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canonical_authority = canonical_sil_environment_receipt_v1
+    expected = canonical_authority()
+
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT",
+        "f" * 40,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_LOCKS",
+        (("forged", "requirements/forged.lock.txt", "f" * 64),),
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_SIL_ENVIRONMENT_PACKAGES",
+        (("forged-package", "999"),),
+    )
+    forged = dict(expected)
+    forged["lock_source_commit"] = "f" * 40
+    forged["locks"] = [
+        {
+            "role": "forged",
+            "path": "requirements/forged.lock.txt",
+            "sha256": "f" * 64,
+        }
+    ]
+    forged["packages"] = [{"name": "forged-package", "version": "999"}]
+    unsigned = dict(forged)
+    unsigned.pop("identity_sha256")
+    forged["identity_sha256"] = _canonical_hash(unsigned)
+
+    assert canonical_authority() == expected
+
+    path = tmp_path / "forged-environment.json"
+    path.write_text(
+        json.dumps(
+            forged,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="exact pinned lock-source contract"):
+        load_sil_environment_receipt(path)
+
+
 def test_canonical_environment_receipt_binds_pinned_historical_lock_source(
     tmp_path: Path,
 ) -> None:
