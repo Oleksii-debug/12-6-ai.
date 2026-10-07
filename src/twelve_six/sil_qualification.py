@@ -620,6 +620,102 @@ class SILPlan:
         }
 
 
+def _build_sil_object_stored_state_authority():
+    scenario_validator = SILScenario.__post_init__
+    planned_vector_validator = PlannedVector.__post_init__
+    unavailable_journey_validator = UnavailableJourney.__post_init__
+    plan_validator = SILPlan.__post_init__
+
+    def validate_scenario(value: SILScenario) -> None:
+        if not _is_exact_type(value, SILScenario):
+            raise ValueError("scenario must be a SILScenario")
+        scenario_validator(value)
+
+    def scenario_payload(value: SILScenario) -> dict[str, Any]:
+        validate_scenario(value)
+        return {
+            "schema_version": value.schema_version,
+            "scenario_id": value.scenario_id,
+            "journey_selector": value.journey_selector,
+            "fixture_policy": value.fixture_policy,
+            "synthetic_data_utf8": value.synthetic_data_utf8,
+            "timeout_seconds_per_vector": value.timeout_seconds_per_vector,
+        }
+
+    def scenario_identity(value: SILScenario) -> str:
+        return _canonical_sha256(scenario_payload(value))
+
+    def validate_planned_vector(value: PlannedVector) -> None:
+        if not _is_exact_type(value, PlannedVector):
+            raise ValueError("SIL plan vectors must be exact PlannedVector values")
+        planned_vector_validator(value)
+
+    def planned_vector_payload(value: PlannedVector) -> dict[str, Any]:
+        validate_planned_vector(value)
+        return {
+            "journey_id": value.journey_id,
+            "capability_id": value.capability_id,
+            "vector_id": value.vector_id,
+            "argv": list(value.argv),
+        }
+
+    def validate_unavailable_journey(value: UnavailableJourney) -> None:
+        if not _is_exact_type(value, UnavailableJourney):
+            raise ValueError(
+                "SIL plan unavailable journeys must be exact UnavailableJourney values"
+            )
+        unavailable_journey_validator(value)
+
+    def unavailable_journey_payload(
+        value: UnavailableJourney,
+    ) -> dict[str, Any]:
+        validate_unavailable_journey(value)
+        return {
+            "journey_id": value.journey_id,
+            "blocking_capability_ids": list(value.blocking_capability_ids),
+            "reasons": list(value.reasons),
+        }
+
+    def validate_plan(value: SILPlan) -> None:
+        if not _is_exact_type(value, SILPlan):
+            raise ValueError("plan must be a SILPlan")
+        plan_validator(value)
+        for item in value.unavailable_journeys:
+            validate_unavailable_journey(item)
+        for item in value.vectors:
+            validate_planned_vector(item)
+
+    def plan_payload(value: SILPlan) -> dict[str, Any]:
+        validate_plan(value)
+        return {
+            "available_journey_ids": list(value.available_journey_ids),
+            "unavailable_journeys": [
+                unavailable_journey_payload(item)
+                for item in value.unavailable_journeys
+            ],
+            "journey_end_to_end_contracts": [
+                {
+                    "journey_id": journey_id,
+                    "execution_mode": "SEQUENTIAL_SHARED_INPUT_ENVELOPE",
+                    "completion_rule": "ALL_DECLARED_STEPS_PASS_IN_ORDER",
+                    "vector_ids": list(vector_ids),
+                }
+                for journey_id, vector_ids in value.journey_end_to_end_contracts
+            ],
+            "vectors": [planned_vector_payload(item) for item in value.vectors],
+        }
+
+    return validate_scenario, scenario_identity, validate_plan, plan_payload
+
+
+(
+    _validate_sil_scenario_stored,
+    _sil_scenario_identity_from_stored_state,
+    _validate_sil_plan_stored,
+    _sil_plan_payload_from_stored_state,
+) = _build_sil_object_stored_state_authority()
+
+
 def parse_vector_command(command: str) -> tuple[str, ...]:
     if not _is_exact_type(command, str) or not command.strip():
         raise ValueError("integration vector command must be non-empty")
@@ -646,13 +742,19 @@ def _build_sil_plan_with_policy(
     scenario: SILScenario,
     *,
     e2e_policy: tuple[tuple[str, tuple[str, ...]], ...],
+    _registry_validator: Callable[[CapabilityRegistry], None] = (
+        CapabilityRegistry.__post_init__
+    ),
+    _scenario_validator: Callable[[SILScenario], None] = (
+        _validate_sil_scenario_stored
+    ),
 ) -> SILPlan:
     if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
     if not _is_exact_type(scenario, SILScenario):
         raise ValueError("scenario must be a SILScenario")
-    CapabilityRegistry.__post_init__(registry)
-    SILScenario.__post_init__(scenario)
+    _registry_validator(registry)
+    _scenario_validator(scenario)
     if scenario.journey_selector != "ALL_AVAILABLE":
         raise ValueError("unsupported journey selection")
 
@@ -757,16 +859,21 @@ def _build_sil_plan_authority():
     # alternate policies, but production callers cannot inject plan authority.
     sealed_impl = _build_sil_plan_with_policy
     sealed_policy = _CANONICAL_JOURNEY_E2E_VECTOR_POLICY
+    sealed_validate_scenario = _validate_sil_scenario_stored
+    sealed_validate_plan = _validate_sil_plan_stored
 
     def canonical(
         registry: CapabilityRegistry,
         scenario: SILScenario,
     ) -> SILPlan:
-        return sealed_impl(
+        sealed_validate_scenario(scenario)
+        plan = sealed_impl(
             registry,
             scenario,
             e2e_policy=sealed_policy,
         )
+        sealed_validate_plan(plan)
+        return plan
 
     return canonical
 
@@ -893,7 +1000,7 @@ def _require_exact_clean_git_state_with_probe(
     state = git_probe(repo_root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return GitState")
-    GitState.__post_init__(state)
+    git_state_validator(state)
     if state.sha != expected:
         raise ValueError(
             f"exact-head mismatch: expected {expected}, observed {state.sha}"
@@ -1017,6 +1124,20 @@ def _qualify_sil_with_backends(
     command_runner: CommandRunner,
     git_probe: GitProbe,
     package_manifest_builder: Callable[[str | Path], bytes] = build_package_manifest_bytes,
+    plan_builder: Callable[[CapabilityRegistry, SILScenario], SILPlan] = build_sil_plan,
+    registry_identity_builder: Callable[[CapabilityRegistry], str] = (
+        CapabilityRegistry.identity_sha256
+    ),
+    scenario_identity_builder: Callable[[SILScenario], str] = (
+        _sil_scenario_identity_from_stored_state
+    ),
+    plan_payload_builder: Callable[[SILPlan], dict[str, Any]] = (
+        _sil_plan_payload_from_stored_state
+    ),
+    git_state_validator: Callable[[GitState], None] = GitState.__post_init__,
+    command_execution_validator: Callable[[CommandExecution], None] = (
+        CommandExecution.__post_init__
+    ),
 ) -> tuple[dict[str, Any], str]:
     """Internal deterministic harness; not a canonical evidence authority."""
     expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
@@ -1042,13 +1163,14 @@ def _qualify_sil_with_backends(
     if not state.tracked_clean:
         raise ValueError("tracked checkout is dirty before SIL execution")
 
-    plan = build_sil_plan(registry, scenario)
+    plan = plan_builder(registry, scenario)
     package_identity = _sha256_bytes(package_bytes)
     environment_identity = environment_receipt["identity_sha256"]
-    registry_identity = registry.identity_sha256()
+    registry_identity = registry_identity_builder(registry)
     model_identity, init_identity = _synthetic_model_identities()
     data_identity = _sha256_bytes(scenario.synthetic_data_utf8.encode("utf-8"))
-    scenario_identity = scenario.identity_sha256()
+    scenario_identity = scenario_identity_builder(scenario)
+    plan_payload = plan_payload_builder(plan)
 
     input_envelope = {
         "schema_version": "12-6.github-sil-input.v1",
@@ -1061,7 +1183,7 @@ def _qualify_sil_with_backends(
         "data_identity_sha256": data_identity,
         "scenario_identity_sha256": scenario_identity,
         "synthetic_data_utf8": scenario.synthetic_data_utf8,
-        "plan": plan.to_dict(),
+        "plan": plan_payload,
     }
     input_envelope_bytes = _canonical_json_bytes(input_envelope)
     input_identity = _sha256_bytes(input_envelope_bytes)
@@ -1075,7 +1197,7 @@ def _qualify_sil_with_backends(
         pre_vector_state = git_probe(root)
         if not _is_exact_type(pre_vector_state, GitState):
             raise ValueError("git probe must return exact GitState")
-        GitState.__post_init__(pre_vector_state)
+        git_state_validator(pre_vector_state)
         if pre_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed before SIL vector execution: "
@@ -1093,12 +1215,12 @@ def _qualify_sil_with_backends(
         )
         if not _is_exact_type(result, CommandExecution):
             raise ValueError("command runner must return exact CommandExecution")
-        CommandExecution.__post_init__(result)
+        command_execution_validator(result)
 
         post_vector_state = git_probe(root)
         if not _is_exact_type(post_vector_state, GitState):
             raise ValueError("git probe must return exact GitState")
-        GitState.__post_init__(post_vector_state)
+        git_state_validator(post_vector_state)
         if post_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed during SIL vector execution: "
@@ -1138,7 +1260,7 @@ def _qualify_sil_with_backends(
     final_state = git_probe(root)
     if not _is_exact_type(final_state, GitState):
         raise ValueError("git probe must return exact GitState")
-    GitState.__post_init__(final_state)
+    git_state_validator(final_state)
     if final_state.sha != expected_git_sha:
         raise ValueError(
             "exact-head changed before SIL evidence sealing: "
@@ -1154,7 +1276,7 @@ def _qualify_sil_with_backends(
         for record in log_records
     )
     log_identity = _sha256_bytes(log_text.encode("utf-8"))
-    unavailable_payload = [item.to_dict() for item in plan.unavailable_journeys]
+    unavailable_payload = plan_payload["unavailable_journeys"]
     output_identity = _canonical_sha256(
         {
             "available_journey_ids": list(plan.available_journey_ids),
@@ -1224,6 +1346,12 @@ def _build_qualify_sil_authority():
     sealed_runner = run_command
     sealed_probe = probe_git_state
     sealed_package_manifest_builder = build_package_manifest_bytes
+    sealed_plan_builder = build_sil_plan
+    sealed_registry_identity_builder = CapabilityRegistry.identity_sha256
+    sealed_scenario_identity_builder = _sil_scenario_identity_from_stored_state
+    sealed_plan_payload_builder = _sil_plan_payload_from_stored_state
+    sealed_git_state_validator = GitState.__post_init__
+    sealed_command_execution_validator = CommandExecution.__post_init__
 
     def canonical(
         *,
@@ -1244,6 +1372,12 @@ def _build_qualify_sil_authority():
             command_runner=sealed_runner,
             git_probe=sealed_probe,
             package_manifest_builder=sealed_package_manifest_builder,
+            plan_builder=sealed_plan_builder,
+            registry_identity_builder=sealed_registry_identity_builder,
+            scenario_identity_builder=sealed_scenario_identity_builder,
+            plan_payload_builder=sealed_plan_payload_builder,
+            git_state_validator=sealed_git_state_validator,
+            command_execution_validator=sealed_command_execution_validator,
         )
 
     return canonical
@@ -1317,7 +1451,7 @@ def _load_sil_log_records(log_bytes: bytes) -> list[dict[str, Any]]:
     return records
 
 
-def verify_sil_evidence(
+def _verify_sil_evidence_with_authorities(
     evidence_path: str | Path,
     log_path: str | Path,
     *,
@@ -1327,6 +1461,10 @@ def verify_sil_evidence(
     expected_scenario: SILScenario,
     expected_git_sha: str,
     require_pass: bool = True,
+    plan_builder: Callable[[CapabilityRegistry, SILScenario], SILPlan],
+    registry_identity_builder: Callable[[CapabilityRegistry], str],
+    scenario_identity_builder: Callable[[SILScenario], str],
+    plan_payload_builder: Callable[[SILPlan], dict[str, Any]],
 ) -> dict[str, Any]:
     payload = _strict_json_object(
         Path(evidence_path).read_bytes(),
@@ -1371,13 +1509,15 @@ def verify_sil_evidence(
         "environment_identity_sha256": expected_environment_receipt[
             "identity_sha256"
         ],
-        "capability_registry_identity_sha256": expected_registry.identity_sha256(),
+        "capability_registry_identity_sha256": registry_identity_builder(
+            expected_registry
+        ),
         "model_spec_identity_sha256": expected_model_identity,
         "init_spec_identity_sha256": expected_init_identity,
         "data_identity_sha256": _sha256_bytes(
             expected_scenario.synthetic_data_utf8.encode("utf-8")
         ),
-        "scenario_identity_sha256": expected_scenario.identity_sha256(),
+        "scenario_identity_sha256": scenario_identity_builder(expected_scenario),
     }
     for field, expected_value in expected_identities.items():
         if payload[field] != expected_value:
@@ -1400,11 +1540,10 @@ def verify_sil_evidence(
     if not _is_exact_type(executions, list) or not executions:
         raise ValueError("SIL evidence needs executed integration vectors")
 
-    expected_plan = build_sil_plan(expected_registry, expected_scenario)
+    expected_plan = plan_builder(expected_registry, expected_scenario)
+    expected_plan_payload = plan_payload_builder(expected_plan)
     expected_available = list(expected_plan.available_journey_ids)
-    expected_unavailable = [
-        item.to_dict() for item in expected_plan.unavailable_journeys
-    ]
+    expected_unavailable = expected_plan_payload["unavailable_journeys"]
     if available_journey_ids != expected_available:
         raise ValueError("SIL evidence available journeys do not match exact registry")
     if unavailable_journeys != expected_unavailable:
@@ -1461,7 +1600,7 @@ def verify_sil_evidence(
         "data_identity_sha256": expected_identities["data_identity_sha256"],
         "scenario_identity_sha256": expected_identities["scenario_identity_sha256"],
         "synthetic_data_utf8": expected_scenario.synthetic_data_utf8,
-        "plan": expected_plan.to_dict(),
+        "plan": expected_plan_payload,
     }
     expected_input_identity = _sha256_bytes(
         _canonical_json_bytes(expected_input_envelope)
@@ -1568,6 +1707,45 @@ def verify_sil_evidence(
     if _canonical_sha256(unsigned) != evidence_identity:
         raise ValueError("SIL evidence identity mismatch")
     return payload
+
+
+def _build_verify_sil_evidence_authority():
+    sealed_impl = _verify_sil_evidence_with_authorities
+    sealed_plan_builder = build_sil_plan
+    sealed_registry_identity_builder = CapabilityRegistry.identity_sha256
+    sealed_scenario_identity_builder = _sil_scenario_identity_from_stored_state
+    sealed_plan_payload_builder = _sil_plan_payload_from_stored_state
+
+    def canonical(
+        evidence_path: str | Path,
+        log_path: str | Path,
+        *,
+        expected_package_bytes: bytes,
+        expected_environment_receipt: dict[str, Any],
+        expected_registry: CapabilityRegistry,
+        expected_scenario: SILScenario,
+        expected_git_sha: str,
+        require_pass: bool = True,
+    ) -> dict[str, Any]:
+        return sealed_impl(
+            evidence_path,
+            log_path,
+            expected_package_bytes=expected_package_bytes,
+            expected_environment_receipt=expected_environment_receipt,
+            expected_registry=expected_registry,
+            expected_scenario=expected_scenario,
+            expected_git_sha=expected_git_sha,
+            require_pass=require_pass,
+            plan_builder=sealed_plan_builder,
+            registry_identity_builder=sealed_registry_identity_builder,
+            scenario_identity_builder=sealed_scenario_identity_builder,
+            plan_payload_builder=sealed_plan_payload_builder,
+        )
+
+    return canonical
+
+
+verify_sil_evidence = _build_verify_sil_evidence_authority()
 
 
 def _write_run_outputs(
