@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 
 import pytest
 
@@ -13,7 +14,6 @@ from twelve_six.evidence_control_bridge import (
     build_canonical_evidence_record,
     build_requalification_requirement,
     physical_failure_observation,
-    qualify_repaired_candidate,
     write_canonical_evidence_record,
 )
 
@@ -296,7 +296,7 @@ def test_requalification_starts_only_from_physical_failure() -> None:
         )
 
 
-def test_fresh_sil_and_physical_pass_are_both_required_for_requalification() -> None:
+def test_requalification_preflight_accepts_fresh_same_scenario_physical_pass() -> None:
     old_dispatch = _dispatch()
     failed = _receipt(
         old_dispatch,
@@ -326,31 +326,12 @@ def test_fresh_sil_and_physical_pass_are_both_required_for_requalification() -> 
         evidence="fresh-physical-pass",
     )
 
-    def fake_sil_verifier(*args, **kwargs):
-        assert kwargs["expected_git_sha"] == requirement.repaired_candidate_git_sha
-        assert kwargs["require_pass"] is True
-        return {
-            "git_sha": requirement.repaired_candidate_git_sha,
-            "package_identity_sha256": requirement.repaired_package_identity_sha256,
-            "evidence_identity_sha256": _sha("fresh-sil-pass"),
-        }
-
-    receipt = qualify_repaired_candidate(
+    bridge_module._require_requalification_bindings(
         requirement,
         repaired_dispatch=repaired_dispatch,
         repaired_physical_receipt=physical_pass,
-        sil_evidence_path="sil.json",
-        sil_log_path="sil.log",
         expected_package_bytes=package_bytes,
-        expected_environment_receipt={},
-        expected_registry=object(),  # type: ignore[arg-type]
-        expected_scenario=object(),  # type: ignore[arg-type]
-        sil_verifier=fake_sil_verifier,
     )
-
-    assert isinstance(receipt, RequalificationReceipt)
-    assert receipt.repaired_candidate_git_sha == _git("b")
-    assert receipt.sil_evidence_identity_sha256 == _sha("fresh-sil-pass")
 
 
 def test_old_physical_pass_cannot_transfer_to_repaired_dispatch() -> None:
@@ -380,17 +361,11 @@ def test_old_physical_pass_cannot_transfer_to_repaired_dispatch() -> None:
     stale_pass = _receipt(old_dispatch, verdict="PASS", evidence="stale-pass")
 
     with pytest.raises(ValueError, match="fresh dispatch"):
-        qualify_repaired_candidate(
+        bridge_module._require_requalification_bindings(
             requirement,
             repaired_dispatch=repaired_dispatch,
             repaired_physical_receipt=stale_pass,
-            sil_evidence_path="unused",
-            sil_log_path="unused",
             expected_package_bytes=package_bytes,
-            expected_environment_receipt={},
-            expected_registry=object(),  # type: ignore[arg-type]
-            expected_scenario=object(),  # type: ignore[arg-type]
-            sil_verifier=lambda *args, **kwargs: {},
         )
 
 
@@ -425,17 +400,11 @@ def test_repaired_dispatch_must_preserve_same_physical_scenario() -> None:
     )
 
     with pytest.raises(ValueError, match="changes the physical scenario"):
-        qualify_repaired_candidate(
+        bridge_module._require_requalification_bindings(
             requirement,
             repaired_dispatch=changed_scenario,
             repaired_physical_receipt=fresh_pass,
-            sil_evidence_path="unused",
-            sil_log_path="unused",
             expected_package_bytes=package_bytes,
-            expected_environment_receipt={},
-            expected_registry=object(),  # type: ignore[arg-type]
-            expected_scenario=object(),  # type: ignore[arg-type]
-            sil_verifier=lambda *args, **kwargs: {},
         )
 
 
@@ -462,3 +431,15 @@ def test_identity_hashing_is_sealed_against_helper_rebinding(
         receipt.identity_sha256(),
         record.identity_sha256(),
     ) == expected
+
+
+def test_verification_entrypoints_expose_no_verifier_override_bypass() -> None:
+    physical_parameters = inspect.signature(
+        bridge_module.verify_physical_execution
+    ).parameters
+    requalification_parameters = inspect.signature(
+        bridge_module.qualify_repaired_candidate
+    ).parameters
+
+    assert "qualification_verifier" not in physical_parameters
+    assert "sil_verifier" not in requalification_parameters

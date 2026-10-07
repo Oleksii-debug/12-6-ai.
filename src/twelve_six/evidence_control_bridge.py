@@ -265,10 +265,6 @@ def _physical_failure_reproducer(evidence: dict[str, Any]) -> str | None:
     return None
 
 
-PhysicalVerifier = Callable[..., dict[str, Any]]
-SILVerifier = Callable[..., dict[str, Any]]
-
-
 def verify_physical_execution(
     dispatch: HostDispatch,
     evidence_path: str | Path,
@@ -281,7 +277,6 @@ def verify_physical_execution(
     resource_probe_verifiers: (
         dict[ResourceKind, ExternalResourceVerifier] | None
     ) = None,
-    qualification_verifier: PhysicalVerifier = verify_qualification_evidence,
 ) -> PhysicalExecutionReceipt:
     if not _is_exact_type(dispatch, HostDispatch):
         raise ValueError("dispatch must be an exact HostDispatch")
@@ -302,7 +297,7 @@ def verify_physical_execution(
     ):
         raise ValueError("dispatch signed bundle differs from verified packet")
 
-    evidence = qualification_verifier(
+    evidence = verify_qualification_evidence(
         evidence_path,
         log_path,
         verified_packet=verified_packet,
@@ -687,19 +682,13 @@ class RequalificationReceipt:
         return _sealed_identity(self.to_dict())
 
 
-def qualify_repaired_candidate(
+def _require_requalification_bindings(
     requirement: RequalificationRequirement,
     *,
     repaired_dispatch: HostDispatch,
     repaired_physical_receipt: PhysicalExecutionReceipt,
-    sil_evidence_path: str | Path,
-    sil_log_path: str | Path,
     expected_package_bytes: bytes,
-    expected_environment_receipt: dict[str, Any],
-    expected_registry: CapabilityRegistry,
-    expected_scenario: SILScenario,
-    sil_verifier: SILVerifier = verify_sil_evidence,
-) -> RequalificationReceipt:
+) -> None:
     if not _is_exact_type(requirement, RequalificationRequirement):
         raise ValueError("requirement must be an exact RequalificationRequirement")
     if not _is_exact_type(repaired_dispatch, HostDispatch):
@@ -747,7 +736,27 @@ def qualify_repaired_candidate(
     ):
         raise ValueError("physical PASS is not bound to repaired candidate/package")
 
-    sil_evidence = sil_verifier(
+
+def qualify_repaired_candidate(
+    requirement: RequalificationRequirement,
+    *,
+    repaired_dispatch: HostDispatch,
+    repaired_physical_receipt: PhysicalExecutionReceipt,
+    sil_evidence_path: str | Path,
+    sil_log_path: str | Path,
+    expected_package_bytes: bytes,
+    expected_environment_receipt: dict[str, Any],
+    expected_registry: CapabilityRegistry,
+    expected_scenario: SILScenario,
+) -> RequalificationReceipt:
+    _require_requalification_bindings(
+        requirement,
+        repaired_dispatch=repaired_dispatch,
+        repaired_physical_receipt=repaired_physical_receipt,
+        expected_package_bytes=expected_package_bytes,
+    )
+
+    sil_evidence = verify_sil_evidence(
         sil_evidence_path,
         sil_log_path,
         expected_package_bytes=expected_package_bytes,
