@@ -82,6 +82,26 @@ def _run_git(root: Path, *args: str) -> list[str]:
     return completed.stdout.splitlines()
 
 
+def _run_git_z(root: Path, *args: str) -> list[str]:
+    """Run Git and parse path-bearing output without quote/line ambiguity."""
+
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError(
+            f"git {' '.join(args)} failed: {completed.stderr.strip()}"
+        )
+    if not completed.stdout:
+        return []
+    if not completed.stdout.endswith("\0"):
+        raise ValueError("git NUL-delimited output is missing its terminal delimiter")
+    return completed.stdout[:-1].split("\0")
+
+
 def _resolve_live_main_sha(root: Path) -> str:
     for ref in ("refs/remotes/origin/main", "refs/heads/main"):
         completed = subprocess.run(
@@ -100,7 +120,7 @@ def _resolve_live_main_sha(root: Path) -> str:
 
 def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
     result: dict[str, str] = {}
-    for line in _run_git(root, "ls-tree", "-r", treeish):
+    for line in _run_git_z(root, "ls-tree", "-rz", treeish):
         try:
             metadata, path = line.split("\t", 1)
             mode, kind, blob_sha = metadata.split()
@@ -168,14 +188,20 @@ def _worktree_capability_surface_drift(
     """Return tracked and untracked capability-bearing worktree drift from HEAD."""
 
     tracked = {
-        path.strip()
-        for path in _run_git(root, "diff", "--name-only", "HEAD", "--")
-        if path.strip() and _is_capability_surface(path.strip())
+        path
+        for path in _run_git_z(root, "diff", "--name-only", "-z", "HEAD", "--")
+        if path and _is_capability_surface(path)
     }
     untracked = {
-        path.strip()
-        for path in _run_git(root, "ls-files", "--others", "--exclude-standard")
-        if path.strip() and _is_capability_surface(path.strip())
+        path
+        for path in _run_git_z(
+            root,
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+        )
+        if path and _is_capability_surface(path)
     }
     return tracked, untracked
 
@@ -355,15 +381,7 @@ def validate_repository_surface_coverage(
     _require_clean_capability_worktree(repo_root)
 
     main_paths = sorted(
-        path.strip()
-        for path in _run_git(
-            repo_root,
-            "ls-tree",
-            "-r",
-            "--name-only",
-            main_tree_sha,
-        )
-        if _is_surface(path.strip())
+        path for path in qualified_surface_blobs if _is_surface(path)
     )
     if len(main_paths) != expected_count:
         raise ValueError(
@@ -398,10 +416,9 @@ def validate_repository_surface_coverage(
             raise ValueError("candidate override capability lacks journey")
         candidate_overrides[path] = capability_id
 
+    checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
     checkout_paths = sorted(
-        path.strip()
-        for path in _run_git(repo_root, "ls-files")
-        if _is_surface(path.strip())
+        path for path in checkout_surface_blobs if _is_surface(path)
     )
     main_set = set(main_paths)
     checkout_set = set(checkout_paths)
@@ -413,7 +430,7 @@ def validate_repository_surface_coverage(
     }
     checkout_executable_blobs = {
         path: blob_sha
-        for path, blob_sha in _surface_blob_map(repo_root, "HEAD").items()
+        for path, blob_sha in checkout_surface_blobs.items()
         if _is_surface(path)
     }
     candidate_actual = _candidate_surface_paths(

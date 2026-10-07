@@ -211,14 +211,14 @@ def test_worktree_capability_surface_drift_detects_tracked_and_untracked(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    def fake_run_git(_root: Path, *args: str) -> list[str]:
-        if args == ("diff", "--name-only", "HEAD", "--"):
+    def fake_run_git_z(_root: Path, *args: str) -> list[str]:
+        if args == ("diff", "--name-only", "-z", "HEAD", "--"):
             return ["src/twelve_six/model.py", "README.md"]
-        if args == ("ls-files", "--others", "--exclude-standard"):
+        if args == ("ls-files", "-z", "--others", "--exclude-standard"):
             return ["tools/forged.py", "notes.txt"]
         raise AssertionError(args)
 
-    monkeypatch.setattr(surface_validator, "_run_git", fake_run_git)
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git_z)
 
     tracked, untracked = surface_validator._worktree_capability_surface_drift(tmp_path)
 
@@ -251,7 +251,7 @@ def test_surface_blob_map_identity_includes_regular_file_mode(
         mode = "100644" if treeish == "main-tree" else "100755"
         return [f"{mode} blob {blob_sha}\ttools/mode_sensitive.py"]
 
-    monkeypatch.setattr(surface_validator, "_run_git", fake_run_git)
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git)
     main_blobs = surface_validator._surface_blob_map(tmp_path, "main-tree")
     checkout_blobs = surface_validator._surface_blob_map(tmp_path, "checkout-tree")
 
@@ -263,12 +263,32 @@ def test_surface_blob_map_identity_includes_regular_file_mode(
     }
 
 
+def test_surface_blob_map_preserves_unquoted_unicode_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = "tools/перевірка.py"
+    line = "100644 blob " + ("a" * 40) + f"\t{path}"
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_git_z(_root: Path, *args: str) -> list[str]:
+        calls.append(args)
+        return [line]
+
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git_z)
+
+    blobs = surface_validator._surface_blob_map(tmp_path, "HEAD")
+
+    assert blobs[path] == "100644:" + ("a" * 40)
+    assert calls == [("ls-tree", "-rz", "HEAD")]
+
+
 def test_surface_blob_map_rejects_symlink_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     line = "120000 blob " + ("a" * 40) + "\ttools/forged.py"
-    monkeypatch.setattr(surface_validator, "_run_git", lambda *_args: [line])
+    monkeypatch.setattr(surface_validator, "_run_git_z", lambda *_args: [line])
 
     with pytest.raises(ValueError, match="regular Git blob"):
         surface_validator._surface_blob_map(tmp_path, "HEAD")
