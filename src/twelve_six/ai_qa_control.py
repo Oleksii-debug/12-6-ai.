@@ -168,6 +168,31 @@ class PhysicalScope(str, Enum):
     NONE = "NONE"
 
 
+_SEALED_FAILURE_SOURCES = tuple((item, item.value) for item in FailureSource)
+_SEALED_FAILURE_CLASSES = tuple((item, item.value) for item in FailureClass)
+_SEALED_GATE_KINDS = tuple((item, item.value) for item in GateKind)
+_SEALED_GATE_VERDICTS = tuple((item, item.value) for item in GateVerdict)
+_SEALED_PHYSICAL_SCOPES = tuple((item, item.value) for item in PhysicalScope)
+
+
+def _require_sealed_enum(
+    value: object,
+    enum_type: type[Enum],
+    sealed_members: tuple[tuple[Enum, str], ...],
+    *,
+    type_error: str,
+    wire_error: str,
+) -> Enum:
+    if type(value) is not enum_type:  # noqa: E721
+        raise ValueError(type_error)
+    for member, wire_value in sealed_members:
+        if value is member:
+            if member.value != wire_value:
+                raise ValueError(wire_error)
+            return member
+    raise ValueError(type_error)
+
+
 @dataclass(frozen=True, slots=True)
 class AIQAPolicy:
     schema_version: int
@@ -198,6 +223,14 @@ class AIQAPolicy:
             )
         ):
             raise ValueError("promotion gate order is non-canonical")
+        for item in (*self.automated_gate_order, *self.promotion_gate_order):
+            _require_sealed_enum(
+                item,
+                GateKind,
+                _SEALED_GATE_KINDS,
+                type_error="AI QA gate order is non-canonical",
+                wire_error="AI QA gate wire value is non-canonical",
+            )
         if self.automated_gate_order != (
             GateKind.COMPONENT,
             GateKind.ADVERSARIAL,
@@ -284,8 +317,13 @@ def _require_canonical_pytest_argv(
 
 
 def classify_failure(source: FailureSource, summary: str) -> FailureClass:
-    if not _is_exact_type(source, FailureSource):
-        raise ValueError("source must be a FailureSource")
+    _require_sealed_enum(
+        source,
+        FailureSource,
+        _SEALED_FAILURE_SOURCES,
+        type_error="source must be a FailureSource",
+        wire_error="failure source wire value is non-canonical",
+    )
     if not _is_exact_type(summary, str) or not summary.strip():
         raise ValueError("failure summary must be non-empty")
     if source is FailureSource.PHYSICAL:
@@ -340,12 +378,27 @@ class FailurePacket:
         if type(self.schema_version) is not int or self.schema_version != 1:
             raise ValueError("unsupported FailurePacket schema_version")
         _require_id("defect_id", self.defect_id)
-        if not _is_exact_type(self.source, FailureSource):
-            raise ValueError("source must be a FailureSource")
-        if not _is_exact_type(self.failure_class, FailureClass):
-            raise ValueError("failure_class must be a FailureClass")
-        if not _is_exact_type(self.physical_scope, PhysicalScope):
-            raise ValueError("physical_scope must be a PhysicalScope")
+        _require_sealed_enum(
+            self.source,
+            FailureSource,
+            _SEALED_FAILURE_SOURCES,
+            type_error="source must be a FailureSource",
+            wire_error="failure source wire value is non-canonical",
+        )
+        _require_sealed_enum(
+            self.failure_class,
+            FailureClass,
+            _SEALED_FAILURE_CLASSES,
+            type_error="failure_class must be a FailureClass",
+            wire_error="failure class wire value is non-canonical",
+        )
+        _require_sealed_enum(
+            self.physical_scope,
+            PhysicalScope,
+            _SEALED_PHYSICAL_SCOPES,
+            type_error="physical_scope must be a PhysicalScope",
+            wire_error="physical scope wire value is non-canonical",
+        )
         _require_git_sha("failing_git_sha", self.failing_git_sha)
         _require_sha256(
             "source_evidence_identity_sha256",
@@ -365,6 +418,7 @@ class FailurePacket:
             raise ValueError("physical_gate_id must be null when physical scope is NONE")
 
     def to_dict(self) -> dict[str, Any]:
+        FailurePacket.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "defect_id": self.defect_id,
@@ -399,10 +453,14 @@ class ExternalObservation:
             or self.schema_version != "12-6.aiqa-observation.v1"
         ):
             raise ValueError("unsupported external observation schema")
-        if (
-            not _is_exact_type(self.source, FailureSource)
-            or self.source not in {FailureSource.CI, FailureSource.PHYSICAL}
-        ):
+        _require_sealed_enum(
+            self.source,
+            FailureSource,
+            _SEALED_FAILURE_SOURCES,
+            type_error="external observations support CI or PHYSICAL only",
+            wire_error="failure source wire value is non-canonical",
+        )
+        if self.source not in {FailureSource.CI, FailureSource.PHYSICAL}:
             raise ValueError("external observations support CI or PHYSICAL only")
         _require_git_sha("git_sha", self.git_sha)
         _require_sha256("evidence_identity_sha256", self.evidence_identity_sha256)
@@ -453,6 +511,8 @@ def failure_packet_from_observation(
         raise ValueError("observation must be an ExternalObservation")
     if not _is_exact_type(policy, AIQAPolicy):
         raise ValueError("policy must be an AIQAPolicy")
+    ExternalObservation.__post_init__(observation)
+    AIQAPolicy.__post_init__(policy)
     if len(observation.failure_summary.encode("utf-8")) > policy.max_failure_summary_bytes:
         raise ValueError("failure summary exceeds AI QA policy bound")
     physical_scope = (
@@ -491,8 +551,14 @@ def failure_packet_from_sil(
 ) -> FailurePacket:
     if not _is_exact_type(policy, AIQAPolicy):
         raise ValueError("policy must be an AIQAPolicy")
-    if not _is_exact_type(physical_scope, PhysicalScope):
-        raise ValueError("physical_scope must be a PhysicalScope")
+    AIQAPolicy.__post_init__(policy)
+    _require_sealed_enum(
+        physical_scope,
+        PhysicalScope,
+        _SEALED_PHYSICAL_SCOPES,
+        type_error="physical_scope must be a PhysicalScope",
+        wire_error="physical scope wire value is non-canonical",
+    )
     evidence = verify_sil_evidence(
         evidence_path,
         log_path,
@@ -570,6 +636,7 @@ class RepairCandidate:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        RepairCandidate.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "defect_id": self.defect_id,
@@ -597,6 +664,8 @@ def build_repair_candidate(
         raise ValueError("failure must be a FailurePacket")
     if not _is_exact_type(policy, AIQAPolicy):
         raise ValueError("policy must be an AIQAPolicy")
+    FailurePacket.__post_init__(failure)
+    AIQAPolicy.__post_init__(policy)
     if base_git_sha != failure.failing_git_sha:
         raise ValueError("repair candidate base Git SHA must equal failing Git SHA")
     if not _is_exact_type(patch_bytes, bytes) or not patch_bytes:
@@ -735,6 +804,8 @@ def materialize_local_repair_candidate(
         raise ValueError("failure must be a FailurePacket")
     if not _is_exact_type(policy, AIQAPolicy):
         raise ValueError("policy must be an AIQAPolicy")
+    FailurePacket.__post_init__(failure)
+    AIQAPolicy.__post_init__(policy)
     _require_id("proposer_actor_id", proposer_actor_id)
     if not _is_exact_type(patch_bytes, bytes) or not patch_bytes:
         raise ValueError("isolated repair patch must be non-empty bytes")
@@ -946,8 +1017,13 @@ class RegressionChain:
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int or self.schema_version != 1:
             raise ValueError("unsupported RegressionChain schema_version")
-        if not _is_exact_type(self.physical_scope, PhysicalScope):
-            raise ValueError("physical_scope must be a PhysicalScope")
+        _require_sealed_enum(
+            self.physical_scope,
+            PhysicalScope,
+            _SEALED_PHYSICAL_SCOPES,
+            type_error="physical_scope must be a PhysicalScope",
+            wire_error="physical scope wire value is non-canonical",
+        )
         _require_id("defect_id", self.defect_id)
         _require_sha256("candidate_identity_sha256", self.candidate_identity_sha256)
         _require_git_sha("base_git_sha", self.base_git_sha)
@@ -971,6 +1047,8 @@ def build_regression_chain(
         raise ValueError("failure must be a FailurePacket")
     if not _is_exact_type(candidate, RepairCandidate):
         raise ValueError("candidate must be a RepairCandidate")
+    FailurePacket.__post_init__(failure)
+    RepairCandidate.__post_init__(candidate)
     if not _is_exact_type(adversarial_command, str):
         raise ValueError("adversarial_command must be text")
     if candidate.defect_id != failure.defect_id:
@@ -1002,10 +1080,20 @@ class GateReceipt:
     reason: str | None = None
 
     def __post_init__(self) -> None:
-        if not _is_exact_type(self.gate, GateKind):
-            raise ValueError("gate receipt gate must be a GateKind")
-        if not _is_exact_type(self.verdict, GateVerdict):
-            raise ValueError("gate receipt verdict must be a GateVerdict")
+        _require_sealed_enum(
+            self.gate,
+            GateKind,
+            _SEALED_GATE_KINDS,
+            type_error="gate receipt gate must be a GateKind",
+            wire_error="gate wire value is non-canonical",
+        )
+        _require_sealed_enum(
+            self.verdict,
+            GateVerdict,
+            _SEALED_GATE_VERDICTS,
+            type_error="gate receipt verdict must be a GateVerdict",
+            wire_error="gate verdict wire value is non-canonical",
+        )
         _require_git_sha("gate receipt git_sha", self.git_sha)
         _require_sha256("gate receipt evidence_identity_sha256", self.evidence_identity_sha256)
         _require_id("gate receipt actor_id", self.actor_id)
@@ -1018,6 +1106,7 @@ class GateReceipt:
                 raise ValueError("NOT_APPLICABLE physical gate needs an explicit reason")
 
     def to_dict(self) -> dict[str, Any]:
+        GateReceipt.__post_init__(self)
         return {
             "gate": self.gate.value,
             "verdict": self.verdict.value,
@@ -1046,16 +1135,24 @@ def execute_automated_regressions(
 ) -> tuple[GateReceipt, GateReceipt]:
     if not _is_exact_type(chain, RegressionChain):
         raise ValueError("chain must be a RegressionChain")
+    RegressionChain.__post_init__(chain)
     _require_id("actor_id", actor_id)
     if type(timeout_seconds) is not int or timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be a positive integer")
     root = Path(repo_root)
     state = git_probe(root)
+    if not _is_exact_type(state, GitState):
+        raise ValueError("git probe must return exact GitState")
+    GitState.__post_init__(state)
     if state.sha != chain.candidate_git_sha:
         raise ValueError("regression chain exact candidate SHA mismatch")
     if not state.tracked_clean:
         raise ValueError("regression candidate checkout is dirty")
     parents = candidate_parent_probe(root, chain.candidate_git_sha)
+    if not _is_exact_type(parents, tuple) or any(
+        not _is_exact_type(parent, str) for parent in parents
+    ):
+        raise ValueError("candidate parent probe must return exact Git SHA tuple")
     if parents != (chain.base_git_sha,):
         raise ValueError(
             "repair candidate must be a direct child of the exact failing Git SHA"
@@ -1067,6 +1164,9 @@ def execute_automated_regressions(
         (GateKind.ADVERSARIAL, chain.adversarial_argv),
     ):
         pre_gate_state = git_probe(root)
+        if not _is_exact_type(pre_gate_state, GitState):
+            raise ValueError("git probe must return exact GitState")
+        GitState.__post_init__(pre_gate_state)
         if pre_gate_state.sha != chain.candidate_git_sha:
             raise ValueError(
                 f"regression candidate SHA changed before {gate.value} gate"
@@ -1093,8 +1193,14 @@ def execute_automated_regressions(
             input_envelope_bytes,
             input_identity,
         )
+        if not _is_exact_type(result, CommandExecution):
+            raise ValueError("command runner must return exact CommandExecution")
+        CommandExecution.__post_init__(result)
 
         post_gate_state = git_probe(root)
+        if not _is_exact_type(post_gate_state, GitState):
+            raise ValueError("git probe must return exact GitState")
+        GitState.__post_init__(post_gate_state)
         if post_gate_state.sha != chain.candidate_git_sha:
             raise ValueError(
                 f"regression candidate SHA changed during {gate.value} gate"
@@ -1163,6 +1269,7 @@ class PromotionDecision:
             raise ValueError("BLOCK needs at least one reason")
 
     def to_dict(self) -> dict[str, Any]:
+        PromotionDecision.__post_init__(self)
         return {
             "decision": self.decision,
             "candidate_identity_sha256": self.candidate_identity_sha256,
@@ -1193,6 +1300,11 @@ def evaluate_promotion(
         or any(not _is_exact_type(receipt, GateReceipt) for receipt in receipts)
     ):
         raise ValueError("receipts must contain exact GateReceipt values")
+    FailurePacket.__post_init__(failure)
+    RepairCandidate.__post_init__(candidate)
+    AIQAPolicy.__post_init__(policy)
+    for receipt in receipts:
+        GateReceipt.__post_init__(receipt)
     _require_id("certifier_actor_id", certifier_actor_id)
     if candidate.defect_id != failure.defect_id:
         raise ValueError("candidate/failure defect mismatch")

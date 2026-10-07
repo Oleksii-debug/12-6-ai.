@@ -1232,6 +1232,7 @@ def test_closed_ai_qa_schema_rejects_behavioral_subclasses() -> None:
             policy=policy,
         )
 
+
 def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) -> None:
     class ForgedStr(str):
         pass
@@ -1314,5 +1315,117 @@ def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) 
             path,
             expected_candidate_identity_sha256=candidate_identity,
             trusted_receipts=ForgedTuple((receipt,)),
+        )
+
+
+def test_aiqa_enum_wire_value_mutation_fails_closed() -> None:
+    failure = _failure()
+    original_source_value = FailureSource.CI.value
+    object.__setattr__(FailureSource.CI, "_value_", "FORGED_CI")
+    try:
+        with pytest.raises(ValueError, match="failure source wire value is non-canonical"):
+            failure.identity_sha256()
+    finally:
+        object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+
+    receipt = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "d" * 64,
+        "component-certifier",
+    )
+    original_verdict_value = GateVerdict.PASS.value
+    object.__setattr__(GateVerdict.PASS, "_value_", "FORGED_PASS")
+    try:
+        with pytest.raises(ValueError, match="gate verdict wire value is non-canonical"):
+            receipt.to_dict()
+    finally:
+        object.__setattr__(GateVerdict.PASS, "_value_", original_verdict_value)
+
+
+def test_aiqa_identity_objects_revalidate_after_post_construction_mutation() -> None:
+    failure = _failure()
+    object.__setattr__(failure, "failure_summary_sha256", "0" * 64)
+
+    with pytest.raises(ValueError, match="does not match failure_summary"):
+        failure.identity_sha256()
+
+    clean_failure = _failure()
+    candidate = _candidate(clean_failure)
+    object.__setattr__(candidate, "candidate_git_sha", "0" * 39)
+
+    with pytest.raises(ValueError, match="candidate_git_sha"):
+        candidate.identity_sha256()
+
+    receipt = GateReceipt(
+        gate=GateKind.COMPONENT,
+        verdict=GateVerdict.PASS,
+        git_sha=_CANDIDATE_SHA,
+        evidence_identity_sha256="d" * 64,
+        actor_id="component-certifier",
+    )
+    object.__setattr__(receipt, "verdict", "PASS")
+
+    with pytest.raises(ValueError, match="verdict must be a GateVerdict"):
+        receipt.to_dict()
+
+
+def test_aiqa_regression_loop_revalidates_mutated_git_state() -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
+    )
+    state = GitState(sha=_CANDIDATE_SHA, tracked_clean=True)
+    object.__setattr__(state, "tracked_clean", "yes")
+
+    with pytest.raises(ValueError, match="tracked_clean must be boolean"):
+        execute_automated_regressions(
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-agent",
+            command_runner=_pass_runner,
+            git_probe=lambda _: state,
+            candidate_parent_probe=_candidate_parent_probe,
+        )
+
+
+def test_aiqa_regression_loop_revalidates_mutated_command_result() -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
+    )
+
+    def stale_runner(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+        object.__setattr__(result, "duration_ms", -1)
+        return result
+
+    with pytest.raises(ValueError, match="duration_ms must be a non-negative integer"):
+        execute_automated_regressions(
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-agent",
+            command_runner=stale_runner,
+            git_probe=_candidate_git_probe,
+            candidate_parent_probe=_candidate_parent_probe,
         )
 

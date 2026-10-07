@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from collections import Counter
@@ -68,12 +69,25 @@ def _is_capability_surface(path: str) -> bool:
     ) or _is_surface(path)
 
 
+def _git_subprocess_env() -> dict[str, str]:
+    """Drop ambient Git controls that could redirect probes away from repo_root."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    return env
+
+
 def _run_git(root: Path, *args: str) -> list[str]:
     completed = subprocess.run(
         ["git", "-C", str(root), *args],
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError(
@@ -90,6 +104,7 @@ def _run_git_z(root: Path, *args: str) -> list[str]:
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError(
@@ -109,6 +124,7 @@ def _resolve_live_main_sha(root: Path) -> str:
             check=False,
             capture_output=True,
             text=True,
+            env=_git_subprocess_env(),
         )
         if completed.returncode == 0:
             sha = completed.stdout.strip()

@@ -84,6 +84,20 @@ def _is_exact_type(value: object, expected: type[object]) -> bool:
     return type(value) is expected  # noqa: E721
 
 
+def _require_exact_object_fields(
+    schema_name: str,
+    value: object,
+    expected_fields: set[str],
+) -> dict[str, Any]:
+    if not _is_exact_type(value, dict):
+        raise ValueError(f"{schema_name} fields mismatch")
+    if any(not _is_exact_type(key, str) for key in value):
+        raise ValueError(f"{schema_name} fields mismatch")
+    if set(value) != expected_fields:
+        raise ValueError(f"{schema_name} fields mismatch")
+    return value
+
+
 class ArtifactKind(str, Enum):
     MODEL_SPEC = "model_spec"
     INIT_SPEC = "init_spec"
@@ -100,6 +114,37 @@ class ArtifactKind(str, Enum):
 
 
 CANONICAL_ARTIFACT_KINDS = tuple(ArtifactKind)
+_CANONICAL_ARTIFACT_KIND_VALUES = tuple(kind.value for kind in CANONICAL_ARTIFACT_KINDS)
+
+
+def _require_canonical_artifact_kind(
+    kind: object,
+    _sealed_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
+) -> ArtifactKind:
+    if not _is_exact_type(kind, ArtifactKind):
+        raise ValueError("kind must be an ArtifactKind")
+    for index, canonical_kind in enumerate(_sealed_kinds):
+        if kind is canonical_kind:
+            if canonical_kind.value != _sealed_values[index]:
+                raise ValueError("ArtifactKind wire value is non-canonical")
+            return canonical_kind
+    raise ValueError("kind must be a canonical ArtifactKind")
+
+
+def _artifact_kind_from_wire_value(
+    value: object,
+    _sealed_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
+) -> ArtifactKind:
+    if not _is_exact_type(value, str):
+        raise ValueError("ArtifactRef kind must be an exact string")
+    try:
+        index = _sealed_values.index(value)
+    except ValueError as exc:
+        raise ValueError("ArtifactRef kind is unsupported") from exc
+    kind = _sealed_kinds[index]
+    return _require_canonical_artifact_kind(kind)
 
 
 _GENERATION_PARENT_POLICY_SOURCE: dict[ArtifactKind, dict[str, ArtifactKind]] = {
@@ -151,6 +196,14 @@ _GENERATION_PARENT_POLICY: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = M
         for kind, parents in _GENERATION_PARENT_POLICY_SOURCE.items()
     }
 )
+_GENERATION_PARENT_POLICY_VALUES: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        kind.value: MappingProxyType(
+            {role: parent_kind.value for role, parent_kind in parents.items()}
+        )
+        for kind, parents in _GENERATION_PARENT_POLICY.items()
+    }
+)
 del _GENERATION_PARENT_POLICY_SOURCE
 
 
@@ -163,12 +216,12 @@ class ArtifactRef:
     identity_sha256: str
 
     def __post_init__(self) -> None:
-        if not _is_exact_type(self.kind, ArtifactKind):
-            raise ValueError("kind must be an ArtifactKind")
+        _require_canonical_artifact_kind(self.kind)
         _require_positive_int("schema_version", self.schema_version)
         _require_sha256("identity_sha256", self.identity_sha256)
 
     def to_dict(self) -> dict[str, Any]:
+        ArtifactRef.__post_init__(self)
         return {
             "kind": self.kind.value,
             "schema_version": self.schema_version,
@@ -177,16 +230,14 @@ class ArtifactRef:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactRef:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "kind",
-            "schema_version",
-            "identity_sha256",
-        }:
-            raise ValueError("ArtifactRef fields mismatch")
-        try:
-            kind = ArtifactKind(value["kind"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError("ArtifactRef kind is unsupported") from exc
+        if cls is not ArtifactRef:
+            raise ValueError("ArtifactRef decoder class must be exact")
+        value = _require_exact_object_fields(
+            "ArtifactRef",
+            value,
+            {"kind", "schema_version", "identity_sha256"},
+        )
+        kind = _artifact_kind_from_wire_value(value["kind"])
         return cls(
             kind=kind,
             schema_version=value["schema_version"],
@@ -207,12 +258,14 @@ class ParentBinding:
             raise ValueError("parent role must be canonical lower_snake_case")
         if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("parent artifact must be an ArtifactRef")
+        ArtifactRef.__post_init__(self.artifact)
         _require_sha256(
             "parent_manifest_identity_sha256",
             self.parent_manifest_identity_sha256,
         )
 
     def to_dict(self) -> dict[str, Any]:
+        ParentBinding.__post_init__(self)
         return {
             "role": self.role,
             "artifact": self.artifact.to_dict(),
@@ -221,12 +274,13 @@ class ParentBinding:
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "role",
-            "artifact",
-            "parent_manifest_identity_sha256",
-        }:
-            raise ValueError("ParentBinding fields mismatch")
+        if cls is not ParentBinding:
+            raise ValueError("ParentBinding decoder class must be exact")
+        value = _require_exact_object_fields(
+            "ParentBinding",
+            value,
+            {"role", "artifact", "parent_manifest_identity_sha256"},
+        )
         return cls(
             role=value["role"],
             artifact=ArtifactRef.from_dict(value["artifact"]),
@@ -252,6 +306,9 @@ class ArtifactManifest:
             raise ValueError("parents must be an immutable tuple")
         if any(not _is_exact_type(parent, ParentBinding) for parent in self.parents):
             raise ValueError("parents must contain only ParentBinding values")
+        ArtifactRef.__post_init__(self.artifact)
+        for parent in self.parents:
+            ParentBinding.__post_init__(parent)
 
         roles = tuple(parent.role for parent in self.parents)
         if roles != tuple(sorted(roles)):
@@ -266,6 +323,7 @@ class ArtifactManifest:
             raise ValueError("artifact cannot bind itself as a parent")
 
     def to_dict(self) -> dict[str, Any]:
+        ArtifactManifest.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "artifact": self.artifact.to_dict(),
@@ -276,19 +334,22 @@ class ArtifactManifest:
         return _canonical_json_sha256(self.to_dict())
 
     def parents_by_role(self) -> dict[str, ArtifactRef]:
+        ArtifactManifest.__post_init__(self)
         return {parent.role: parent.artifact for parent in self.parents}
 
     def parent_bindings_by_role(self) -> dict[str, ParentBinding]:
+        ArtifactManifest.__post_init__(self)
         return {parent.role: parent for parent in self.parents}
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "schema_version",
-            "artifact",
-            "parents",
-        }:
-            raise ValueError("ArtifactManifest fields mismatch")
+        if cls is not ArtifactManifest:
+            raise ValueError("ArtifactManifest decoder class must be exact")
+        value = _require_exact_object_fields(
+            "ArtifactManifest",
+            value,
+            {"schema_version", "artifact", "parents"},
+        )
         parents = value["parents"]
         if not _is_exact_type(parents, list):
             raise ValueError("ArtifactManifest parents must be a JSON array")
@@ -308,17 +369,19 @@ def bind_artifact(
 
     if not _is_exact_type(artifact, ArtifactRef):
         raise ValueError("artifact must be an ArtifactRef")
+    ArtifactRef.__post_init__(artifact)
     if parents is None:
         normalized: dict[str, ArtifactManifest] = {}
     else:
-        if not isinstance(parents, Mapping):
-            raise ValueError("parents must be a mapping")
+        if not _is_exact_type(parents, dict):
+            raise ValueError("parents must be an exact dict mapping")
         normalized = {}
         for role, parent in parents.items():
             if not _is_exact_type(role, str) or _ROLE_RE.fullmatch(role) is None:
                 raise ValueError("parent role must be canonical lower_snake_case")
             if not _is_exact_type(parent, ArtifactManifest):
                 raise ValueError("parent mapping values must be ArtifactManifest values")
+            ArtifactManifest.__post_init__(parent)
             normalized[role] = parent
 
     return ArtifactManifest(
@@ -346,8 +409,9 @@ def verify_parent_bindings(
 
     if not _is_exact_type(manifest, ArtifactManifest):
         raise ValueError("manifest must be an ArtifactManifest")
-    if not isinstance(expected_parents, Mapping):
-        raise ValueError("expected_parents must be a mapping")
+    ArtifactManifest.__post_init__(manifest)
+    if not _is_exact_type(expected_parents, dict):
+        raise ValueError("expected_parents must be an exact dict mapping")
 
     normalized: dict[str, ArtifactManifest] = {}
     for role, parent in expected_parents.items():
@@ -355,6 +419,7 @@ def verify_parent_bindings(
             raise ValueError("expected parent role must be canonical lower_snake_case")
         if not _is_exact_type(parent, ArtifactManifest):
             raise ValueError("expected parent values must be ArtifactManifest values")
+        ArtifactManifest.__post_init__(parent)
         normalized[role] = parent
 
     observed = manifest.parent_bindings_by_role()
@@ -381,9 +446,9 @@ class GenerationIdentityManifest:
 
     def __post_init__(
         self,
-        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
-        _sealed_parent_policy: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = (
-            _GENERATION_PARENT_POLICY
+        _sealed_artifact_kind_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
+        _sealed_parent_policy_values: Mapping[str, Mapping[str, str]] = (
+            _GENERATION_PARENT_POLICY_VALUES
         ),
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
@@ -391,46 +456,49 @@ class GenerationIdentityManifest:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
         if not _is_exact_type(self.artifacts, tuple):
             raise ValueError("artifacts must be an immutable tuple")
-        if len(self.artifacts) != len(_sealed_artifact_kinds):
+        if len(self.artifacts) != len(_sealed_artifact_kind_values):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")
         if any(not _is_exact_type(item, ArtifactManifest) for item in self.artifacts):
             raise ValueError("generation artifacts must contain only ArtifactManifest values")
+        for item in self.artifacts:
+            ArtifactManifest.__post_init__(item)
 
-        kinds = tuple(item.artifact.kind for item in self.artifacts)
-        if kinds != _sealed_artifact_kinds:
+        kind_values = tuple(item.artifact.kind.value for item in self.artifacts)
+        if kind_values != _sealed_artifact_kind_values:
             raise ValueError("generation artifact kind order or set is non-canonical")
 
-        by_kind = {item.artifact.kind: item for item in self.artifacts}
-        if len(by_kind) != len(_sealed_artifact_kinds):
+        by_kind_value = {item.artifact.kind.value: item for item in self.artifacts}
+        if len(by_kind_value) != len(_sealed_artifact_kind_values):
             raise ValueError("generation artifact kinds must be unique")
 
-        for kind in _sealed_artifact_kinds:
-            manifest = by_kind[kind]
-            expected_policy = _sealed_parent_policy[kind]
+        for kind_value in _sealed_artifact_kind_values:
+            manifest = by_kind_value[kind_value]
+            expected_policy = _sealed_parent_policy_values[kind_value]
             observed = manifest.parent_bindings_by_role()
             if tuple(observed) != tuple(sorted(expected_policy)):
-                raise ValueError(f"{kind.value} parent role set is non-canonical")
-            for role, parent_kind in expected_policy.items():
+                raise ValueError(f"{kind_value} parent role set is non-canonical")
+            for role, parent_kind_value in expected_policy.items():
                 binding = observed[role]
-                if binding.artifact.kind is not parent_kind:
+                if binding.artifact.kind.value != parent_kind_value:
                     raise ValueError(
-                        f"{kind.value}.{role} must reference {parent_kind.value}"
+                        f"{kind_value}.{role} must reference {parent_kind_value}"
                     )
-                canonical_parent = by_kind[parent_kind]
+                canonical_parent = by_kind_value[parent_kind_value]
                 if binding.artifact != canonical_parent.artifact:
                     raise ValueError(
-                        f"{kind.value}.{role} parent identity does not match generation"
+                        f"{kind_value}.{role} parent identity does not match generation"
                     )
                 if (
                     binding.parent_manifest_identity_sha256
                     != canonical_parent.manifest_identity_sha256()
                 ):
                     raise ValueError(
-                        f"{kind.value}.{role} parent lineage identity "
+                        f"{kind_value}.{role} parent lineage identity "
                         "does not match generation"
                     )
 
     def to_dict(self) -> dict[str, Any]:
+        GenerationIdentityManifest.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
@@ -442,20 +510,22 @@ class GenerationIdentityManifest:
     def artifact_ref(
         self,
         kind: ArtifactKind,
-        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+        _sealed_artifact_kind_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
     ) -> ArtifactRef:
+        GenerationIdentityManifest.__post_init__(self)
         if not _is_exact_type(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[_sealed_artifact_kinds.index(kind)].artifact
+        return self.artifacts[_sealed_artifact_kind_values.index(kind.value)].artifact
 
     def artifact_manifest(
         self,
         kind: ArtifactKind,
-        _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+        _sealed_artifact_kind_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
     ) -> ArtifactManifest:
+        GenerationIdentityManifest.__post_init__(self)
         if not _is_exact_type(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
-        return self.artifacts[_sealed_artifact_kinds.index(kind)]
+        return self.artifacts[_sealed_artifact_kind_values.index(kind.value)]
 
     def canonical_json_bytes(self) -> bytes:
         return json.dumps(
@@ -468,8 +538,13 @@ class GenerationIdentityManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> GenerationIdentityManifest:
-        if not _is_exact_type(value, dict) or set(value) != {"schema_version", "artifacts"}:
-            raise ValueError("GenerationIdentityManifest fields mismatch")
+        if cls is not GenerationIdentityManifest:
+            raise ValueError("GenerationIdentityManifest decoder class must be exact")
+        value = _require_exact_object_fields(
+            "GenerationIdentityManifest",
+            value,
+            {"schema_version", "artifacts"},
+        )
         artifacts = value["artifacts"]
         if not _is_exact_type(artifacts, list):
             raise ValueError("GenerationIdentityManifest artifacts must be a JSON array")
@@ -493,8 +568,8 @@ def build_generation_identity_manifest(
 ) -> GenerationIdentityManifest:
     """Cross-bind one exact reference per required identity kind into a transitive graph."""
 
-    if not isinstance(refs, Mapping):
-        raise ValueError("refs must be a mapping")
+    if not _is_exact_type(refs, dict):
+        raise ValueError("refs must be an exact dict mapping")
     if any(not _is_exact_type(kind, ArtifactKind) for kind in refs):
         raise ValueError("refs keys must be ArtifactKind values")
     if set(refs) != set(CANONICAL_ARTIFACT_KINDS):
@@ -505,6 +580,7 @@ def build_generation_identity_manifest(
         ref = refs[kind]
         if not _is_exact_type(ref, ArtifactRef):
             raise ValueError("refs values must be ArtifactRef values")
+        ArtifactRef.__post_init__(ref)
         if ref.kind is not kind:
             raise ValueError(f"ref kind mismatch for key: {kind.value}")
         normalized[kind] = ref

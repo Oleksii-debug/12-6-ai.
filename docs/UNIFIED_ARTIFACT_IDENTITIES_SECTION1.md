@@ -28,6 +28,9 @@ It does not introduce a second hashing algorithm for the underlying artifact. Ea
 The unified identity vocabulary is pinned to the original twelve-kind tuple by the
 generation validator and its typed accessors. Rebinding the public module-level tuple therefore
 cannot shrink or reorder what an already loaded validator accepts as a complete generation.
+The twelve canonical `ArtifactKind` wire strings are sealed independently at module load; a
+low-level mutation of an enum singleton value is rejected before that kind can be serialized,
+hashed or accepted by generation validation.
 
 The unified identity vocabulary covers exactly:
 
@@ -72,6 +75,12 @@ mapping at class definition, so later rebinding of the module-global policy cann
 change acceptance semantics; a builder influenced by such a rebind fails closed at validation.
 Stored parent/artifact tuples are exact built-in tuples rather than behavioral subclasses, so
 validation and later canonical serialization cannot observe different container views.
+
+Canonical identity objects are also revalidated whenever they are serialized, traversed,
+bound, verified or assembled into a generation. Constructor-time validation is not trusted
+after object creation, so low-level post-validation mutation cannot turn a once-valid exact
+dataclass into a new accepted identity. Identity-bearing builder inputs use exact built-in
+`dict` mappings rather than arbitrary behavioral `Mapping` implementations.
 
 The canonical graph is:
 

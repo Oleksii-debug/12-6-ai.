@@ -482,6 +482,36 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
         )
 
 
+def test_sil_rejects_checkout_mutation_before_evidence_sealing() -> None:
+    registry = _registry()
+    scenario = _scenario()
+    plan = build_sil_plan(registry, scenario)
+    final_probe_call = 2 * len(plan.vectors) + 2
+    calls = 0
+
+    def mutate_only_at_final_seal(_: str | Path) -> GitState:
+        nonlocal calls
+        calls += 1
+        return GitState(
+            sha=_GIT_SHA,
+            tracked_clean=calls != final_probe_call,
+        )
+
+    with pytest.raises(ValueError, match="dirty before SIL evidence sealing"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=mutate_only_at_final_seal,
+        )
+
+    assert calls == final_probe_call
+
+
 def test_probe_git_state_rejects_untracked_nonignored_checkout_drift(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     tracked = tmp_path / "tracked.txt"
@@ -512,6 +542,72 @@ def test_probe_git_state_rejects_untracked_nonignored_checkout_drift(tmp_path: P
     drifted = probe_git_state(tmp_path)
     assert drifted.sha == clean.sha
     assert drifted.tracked_clean is False
+
+
+def test_sil_subprocess_environment_rejects_host_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_must_execute.py").write_text(
+        "def test_must_execute() -> None:\n    assert False\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=12-6 SIL env test",
+            "-c",
+            "user.email=sil-env-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "redirected-git-dir"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "redirected-work-tree"))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "redirected-pythonpath"))
+
+    child_env = sil_qualification._qualification_subprocess_env()
+    assert "GIT_DIR" not in child_env
+    assert "GIT_WORK_TREE" not in child_env
+    assert "PYTEST_ADDOPTS" not in child_env
+    assert "PYTHONPATH" not in child_env
+    assert child_env["GIT_OPTIONAL_LOCKS"] == "0"
+    assert child_env["PYTHONHASHSEED"] == "0"
+    assert child_env["PYTHONNOUSERSITE"] == "1"
+    assert child_env["PYTHONUTF8"] == "1"
+    assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
+    state = probe_git_state(tmp_path)
+    assert state.tracked_clean is True
+
+    input_bytes = b'{"probe":"must-execute"}'
+    input_identity = hashlib.sha256(input_bytes).hexdigest()
+    execution = sil_qualification.run_command(
+        (
+            sil_qualification.sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_must_execute.py",
+        ),
+        tmp_path,
+        30,
+        input_bytes,
+        input_identity,
+    )
+    assert execution.consumed_input_identity_sha256 == input_identity
+    assert execution.return_code != 0
 
 
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
@@ -971,7 +1067,6 @@ def test_package_manifest_rejects_symlink_git_mode(
         build_package_manifest_bytes(tmp_path)
 
 
-
 def test_sil_plan_rejects_actual_vector_resealing() -> None:
     plan = build_sil_plan(_registry(), _scenario())
     first = plan.vectors[0]
@@ -1029,3 +1124,107 @@ def test_command_execution_contract_rejects_bool_return_code_and_bad_consumed_ha
 
     with pytest.raises(ValueError, match="consumed_input_identity_sha256"):
         CommandExecution(0, "", "", 0, "not-a-sha")
+
+
+def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass must not be decoded")
+
+    class ForgedTuple(tuple):
+        pass
+
+    with pytest.raises(ValueError, match="SIL scenario input must be bytes"):
+        sil_qualification._strict_json_object(
+            ForgedBytes(b"{}"),
+            maximum_bytes=1024,
+            label="SIL scenario",
+        )
+
+    scenario = _scenario()
+    with pytest.raises(ValueError, match="scenario_id must be a canonical identifier"):
+        replace(scenario, scenario_id=ForgedStr(scenario.scenario_id))
+
+    plan = build_sil_plan(_registry(), scenario)
+    vector = plan.vectors[0]
+    with pytest.raises(ValueError, match="planned vector argv must be canonical"):
+        sil_qualification.PlannedVector(
+            vector.journey_id,
+            vector.capability_id,
+            vector.vector_id,
+            ForgedTuple(vector.argv),
+        )
+
+    with pytest.raises(ValueError, match="stdout/stderr must be text"):
+        CommandExecution(0, ForgedStr("stdout"), "", 0, None)
+
+    with pytest.raises(ValueError, match="SIL log must be non-empty bytes"):
+        sil_qualification._load_sil_log_records(ForgedBytes(b"{}\n"))
+
+
+def test_sil_objects_revalidate_after_post_construction_mutation() -> None:
+    scenario = _scenario()
+    object.__setattr__(scenario, "timeout_seconds_per_vector", 0)
+
+    with pytest.raises(ValueError, match="timeout_seconds_per_vector"):
+        scenario.identity_sha256()
+
+    plan = build_sil_plan(_registry(), _scenario())
+    vector = plan.vectors[0]
+    object.__setattr__(vector, "argv", ("python", "-c", "forged"))
+
+    with pytest.raises(ValueError, match="planned vector argv"):
+        plan.to_dict()
+
+
+def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
+    state = GitState(sha=_GIT_SHA, tracked_clean=True)
+    object.__setattr__(state, "tracked_clean", "yes")
+
+    with pytest.raises(ValueError, match="tracked_clean must be boolean"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=lambda _: state,
+        )
+
+
+def test_sil_revalidates_mutated_exact_command_result() -> None:
+    def stale_runner(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+        object.__setattr__(result, "return_code", True)
+        return result
+
+    with pytest.raises(ValueError, match="return_code must be an integer"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=stale_runner,
+            git_probe=_git_probe,
+        )
+
