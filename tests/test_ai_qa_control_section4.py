@@ -293,6 +293,91 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         )
 
 
+def test_sil_failure_packet_uses_exact_failed_log_record_and_utf8_byte_bound(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    def fail_first(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return CommandExecution(
+                return_code=9,
+                stdout="",
+                stderr=("é" * 200) + "-target-failure-marker",
+                duration_ms=2,
+                consumed_input_identity_sha256=expected_input_identity_sha256,
+            )
+        return _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_FAIL_SHA,
+        registry=load_capability_registry(_CAPABILITIES),
+        scenario=load_sil_scenario(_SCENARIO),
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=fail_first,
+        git_probe=lambda _: GitState(sha=_FAIL_SHA, tracked_clean=True),
+    )
+    evidence_path = tmp_path / "sil-evidence.json"
+    log_path = tmp_path / "sil.log"
+    evidence_path.write_text(
+        json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    log_path.write_text(log_text, encoding="utf-8")
+
+    policy = _policy()
+    object.__setattr__(policy, "max_failure_summary_bytes", 96)
+    packet = failure_packet_from_sil(
+        evidence_path,
+        log_path,
+        defect_id="sil-byte-bounded-defect",
+        policy=policy,
+        expected_package_bytes=_package_bytes(),
+        expected_environment_receipt=_environment_receipt(),
+        expected_registry=load_capability_registry(_CAPABILITIES),
+        expected_scenario=load_sil_scenario(_SCENARIO),
+        expected_git_sha=_FAIL_SHA,
+    )
+
+    assert packet.failure_summary.endswith("-target-failure-marker")
+    assert len(packet.failure_summary.encode("utf-8")) <= 96
+
+
+def test_external_observation_preserves_quoted_test_path_as_one_argv_token() -> None:
+    observation = ExternalObservation(
+        schema_version="12-6.aiqa-observation.v1",
+        source=FailureSource.CI,
+        git_sha=_FAIL_SHA,
+        evidence_identity_sha256="c" * 64,
+        failure_summary="AssertionError: quoted path failed",
+        reproducer_command="pytest -q 'tests/test spaced.py'",
+        physical_gate_id=None,
+    )
+    packet = failure_packet_from_observation(
+        observation,
+        defect_id="quoted-test-path-defect",
+        policy=_policy(),
+    )
+
+    assert packet.reproducer_argv[-1] == "tests/test spaced.py"
+
+
 def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
     tmp_path: Path,
 ) -> None:

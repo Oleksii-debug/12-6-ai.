@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -332,7 +333,9 @@ def _require_canonical_pytest_argv(
     ):
         raise ValueError(f"{name} must be a canonical pytest argv tuple")
     try:
-        expected = parse_vector_command("pytest -q " + " ".join(value[4:]))
+        expected = parse_vector_command(
+            "pytest -q " + " ".join(shlex.quote(path) for path in value[4:])
+        )
     except ValueError as exc:
         raise ValueError(f"{name} must be a canonical pytest argv tuple") from exc
     if value != expected:
@@ -598,13 +601,14 @@ def failure_packet_from_sil(
     if evidence["verdict"] != "FAIL":
         raise ValueError("SIL evidence is not a failure")
     failed = [
-        item
-        for item in evidence["executions"]
+        (index, item)
+        for index, item in enumerate(evidence["executions"])
         if type(item) is dict and item.get("return_code") != 0
     ]
     if not failed:
         raise ValueError("SIL FAIL has no failing integration execution")
-    argv = failed[0].get("argv")
+    failed_index, failed_execution = failed[0]
+    argv = failed_execution.get("argv")
     if (
         not _is_exact_type(argv, list)
         or len(argv) < 5
@@ -614,15 +618,41 @@ def failure_packet_from_sil(
     test_paths = argv[4:]
     if not all(_is_exact_type(item, str) for item in test_paths):
         raise ValueError("SIL reproducer paths are malformed")
-    reproducer = parse_vector_command("pytest -q " + " ".join(test_paths))
+    reproducer = parse_vector_command(
+        "pytest -q " + " ".join(shlex.quote(path) for path in test_paths)
+    )
 
-    log_text = Path(log_path).read_text(encoding="utf-8", errors="strict")
-    summary = log_text[-policy.max_failure_summary_bytes :]
-    if not summary.strip():
-        summary = (
-            f"SIL vector {failed[0].get('vector_id')} failed with "
-            f"return code {failed[0].get('return_code')}"
+    # verify_sil_evidence() has already strictly parsed and cross-bound every JSONL
+    # record to the evidence executions.  Select the same failed record by index so
+    # a later passing vector cannot overwrite the failure classification context.
+    log_records = [
+        json.loads(line)
+        for line in Path(log_path).read_text(
+            encoding="utf-8", errors="strict"
+        ).splitlines()
+    ]
+    if len(log_records) != len(evidence["executions"]):
+        raise ValueError("SIL log execution count changed after verification")
+    failed_log = log_records[failed_index]
+    summary_source = "\n".join(
+        part
+        for part in (failed_log.get("stderr"), failed_log.get("stdout"))
+        if _is_exact_type(part, str) and part
+    )
+    if not summary_source.strip():
+        summary_source = (
+            f"SIL vector {failed_execution.get('vector_id')} failed with "
+            f"return code {failed_execution.get('return_code')}"
         )
+    summary_bytes = summary_source.encode("utf-8")
+    if len(summary_bytes) > policy.max_failure_summary_bytes:
+        summary = summary_bytes[-policy.max_failure_summary_bytes :].decode(
+            "utf-8", errors="ignore"
+        )
+    else:
+        summary = summary_source
+    if not summary.strip():
+        raise ValueError("bounded SIL failure summary is empty")
     return FailurePacket(
         schema_version=1,
         defect_id=defect_id,
