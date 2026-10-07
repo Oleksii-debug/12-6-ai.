@@ -47,6 +47,53 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
+    """Bind the editable package to exact tracked source and packaged research configs."""
+
+    root = Path(repo_root)
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--",
+            "pyproject.toml",
+            "src/twelve_six",
+            "configs/research",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise ValueError("cannot enumerate tracked package source files")
+    paths = sorted(line.strip() for line in listed.stdout.splitlines() if line.strip())
+    if "pyproject.toml" not in paths:
+        raise ValueError("tracked package manifest is missing pyproject.toml")
+    if not any(path.startswith("src/twelve_six/") for path in paths):
+        raise ValueError("tracked package manifest has no twelve_six package source")
+
+    files = []
+    for relative_path in paths:
+        path = root / relative_path
+        if not path.is_file():
+            raise ValueError(f"tracked package source is not a file: {relative_path}")
+        raw = path.read_bytes()
+        files.append(
+            {
+                "path": relative_path,
+                "bytes": len(raw),
+                "sha256": _sha256_bytes(raw),
+            }
+        )
+    return _canonical_json_bytes(
+        {
+            "schema_version": "12-6.package-source-manifest.v1",
+            "files": files,
+        }
+    )
+
+
 def _require_sha256(name: str, value: object) -> str:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be an exact lowercase SHA-256")
@@ -426,6 +473,12 @@ def qualify_sil(
         raise ValueError("package_bytes must be non-empty bytes")
 
     root = Path(repo_root)
+    expected_package_bytes = build_package_manifest_bytes(root)
+    if package_bytes != expected_package_bytes:
+        raise ValueError(
+            "package_bytes do not match exact tracked package source manifest"
+        )
+
     state = git_probe(root)
     if state.sha != expected_git_sha:
         raise ValueError(
@@ -891,7 +944,7 @@ def _run_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
-    package_bytes = (root / "pyproject.toml").read_bytes()
+    package_bytes = build_package_manifest_bytes(root)
     evidence, log_text = qualify_sil(
         repo_root=root,
         expected_git_sha=args.expected_git_sha,
@@ -925,7 +978,7 @@ def _verify_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
-    package_bytes = (root / "pyproject.toml").read_bytes()
+    package_bytes = build_package_manifest_bytes(root)
     evidence = verify_sil_evidence(
         args.evidence,
         args.log,
