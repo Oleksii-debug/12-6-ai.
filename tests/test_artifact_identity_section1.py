@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+import twelve_six.artifact_identity as artifact_identity_module
 from twelve_six.artifact_identity import (
     CANONICAL_ARTIFACT_KINDS,
     ArtifactKind,
@@ -369,6 +370,29 @@ def test_generation_manifest_strict_json_round_trip_preserves_identity() -> None
     assert decoded == generation
     assert decoded.identity_sha256() == generation.identity_sha256()
     assert hashlib.sha256(encoded).hexdigest() == generation.identity_sha256()
+
+
+def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
+    generation = _generation("a")
+    noncanonical = json.dumps(
+        generation.to_dict(),
+        ensure_ascii=False,
+        indent=2,
+    ).encode("utf-8")
+
+    assert noncanonical != generation.canonical_json_bytes()
+    with pytest.raises(ValueError, match="canonical JSON encoding"):
+        parse_generation_identity_manifest(noncanonical)
+
+
+def test_generation_parent_policy_is_runtime_immutable() -> None:
+    release_policy = artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE]
+
+    with pytest.raises(TypeError):
+        release_policy["evaluation"] = ArtifactKind.EXPORT  # type: ignore[index]
+
+    with pytest.raises(TypeError):
+        artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE] = {}  # type: ignore[index]
 
 
 def test_generation_manifest_strict_json_rejects_duplicate_members() -> None:
