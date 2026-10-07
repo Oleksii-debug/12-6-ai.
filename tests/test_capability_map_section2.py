@@ -17,13 +17,12 @@ from twelve_six.capability_map import (
     TestLevel,
     TestVector,
     _changed_existing_source_paths,
-    _worktree_python_source_drift,
     _python_source_blob_map,
+    _worktree_python_source_drift,
     load_capability_registry,
     load_source_surface_inventory,
     validate_source_surface_coverage,
 )
-
 
 _ROOT = Path(__file__).parents[1]
 _REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"

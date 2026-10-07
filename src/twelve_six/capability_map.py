@@ -13,7 +13,6 @@ from pathlib import Path, PurePosixPath
 from types import ModuleType
 from typing import Any
 
-
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_REGISTRY_BYTES = 1024 * 1024
@@ -144,7 +143,7 @@ def _require_nonnegative_int(name: str, value: object) -> int:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # Registry identity schemas reject behavioral subclasses that can reseal serialization.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -347,8 +346,8 @@ class Capability:
 
     def __post_init__(
         self,
-        _sealed_test_level_wire: Any = _test_level_wire_value,
-        _sealed_required_level_values: tuple[str, str] = (
+        _sealed_test_level_wire: Any = _test_level_wire_value,  # noqa: RUF033
+        _sealed_required_level_values: tuple[str, str] = (  # noqa: RUF033
             _CANONICAL_TEST_LEVEL_VALUES[0],
             _CANONICAL_TEST_LEVEL_VALUES[1],
         ),

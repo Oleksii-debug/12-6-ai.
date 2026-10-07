@@ -12,7 +12,6 @@ from tools.validate_section2_repository_surface_coverage import (
     validate_repository_surface_coverage,
 )
 
-
 _ROOT = Path(__file__).parents[1]
 _INVENTORY = (
     _ROOT
