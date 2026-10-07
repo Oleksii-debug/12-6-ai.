@@ -600,3 +600,77 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+  sil-current-capability-journeys:
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SIL_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact SIL checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+
+      - name: Install project runtime and qualification dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Execute all currently AVAILABLE capability journeys
+        id: sil
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m twelve_six.sil_qualification run \
+            --repo-root . \
+            --expected-git-sha "$SIL_EXPECTED_SHA" \
+            --capability-registry configs/control/product_capabilities_v1.json \
+            --scenario configs/control/sil_scenario_v1.json \
+            --evidence-output "$RUNNER_TEMP/sil-evidence.json" \
+            --log-output "$RUNNER_TEMP/sil.log"
+
+      - name: Independently verify SIL evidence and log binding
+        if: steps.sil.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m twelve_six.sil_qualification verify \
+            --evidence "$RUNNER_TEMP/sil-evidence.json" \
+            --log "$RUNNER_TEMP/sil.log" \
+            --expected-git-sha "$SIL_EXPECTED_SHA"
+
+      - name: Upload exact-head SIL evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: section3-sil-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/sil-evidence.json
+            ${{ runner.temp }}/sil.log
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Enforce SIL verdict
+        if: always() && steps.sil.outcome != 'success'
+        shell: bash
+        run: |
+          echo "Exact-head SIL execution did not PASS." >&2
+          exit 1
