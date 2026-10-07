@@ -850,3 +850,15 @@ def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
     with pytest.raises(ValueError, match="must not require a runtime-shell rewrite"):
         receipt.identity_sha256()
 
+def test_system_plane_enum_singleton_value_mutation_fails_closed() -> None:
+    architecture = canonical_system_architecture_v1()
+    original_value = SystemPlane.BASE_MODEL.value
+    object.__setattr__(SystemPlane.BASE_MODEL, "_value_", "forged_base_model")
+    try:
+        with pytest.raises(ValueError, match="plane order or set is non-canonical"):
+            architecture.identity_sha256()
+        with pytest.raises(ValueError, match="plane order or set is non-canonical"):
+            canonical_system_architecture_v1()
+    finally:
+        object.__setattr__(SystemPlane.BASE_MODEL, "_value_", original_value)
+
