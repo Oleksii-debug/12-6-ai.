@@ -810,3 +810,72 @@ def test_closed_schema_rejects_source_surface_subclass_resealing() -> None:
 
     with pytest.raises(ValueError, match="surfaces must contain only SourceSurface values"):
         replace(inventory, surfaces=surfaces)
+
+
+def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedInt(int):
+        pass
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass must not be decoded")
+
+    class ForgedTuple(tuple):
+        pass
+
+    with pytest.raises(ValueError, match="capability registry input must be bytes"):
+        capability_map_module._strict_json_object(ForgedBytes(b"{}"))
+
+    with pytest.raises(ValueError, match="environment_id must be a canonical identifier"):
+        capability_map_module.EnvironmentSupport(ForgedStr("windows"), True)
+
+    registry = _load()
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        replace(registry, schema_version=ForgedInt(1))
+
+    capability = registry.capabilities[0]
+    with pytest.raises(ValueError, match="dependencies must be an immutable tuple"):
+        replace(capability, dependencies=ForgedTuple(capability.dependencies))
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        replace(surface, origin=ForgedStr(surface.origin))
+
+def test_registry_revalidates_post_construction_nested_mutation() -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python -c print-pass")
+
+    with pytest.raises(ValueError, match="test vector command"):
+        registry.identity_sha256()
+
+
+def test_registry_accessors_revalidate_mutated_journey_state() -> None:
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "title", "")
+
+    with pytest.raises(ValueError, match="title must be a non-empty string"):
+        registry.journey_available(journey.journey_id)
+
+    with pytest.raises(ValueError, match="title must be a non-empty string"):
+        registry.acceptance_path(registry.capabilities[0].capability_id)
+
+
+def test_source_inventory_revalidates_mutated_surface_state() -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", "forged")
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        validate_source_surface_coverage(_load(), inventory, repo_root=_ROOT)
+

@@ -85,6 +85,16 @@ non-ignored checkout cleanliness, including untracked files. A vector that mutat
 or advances HEAD invalidates the run immediately, so later vectors cannot silently execute a
 different tree under the original SHA receipt.
 
+Both Git probe subprocesses and journey execution use the same bounded child environment:
+ambient `GIT_*`, `PYTHON*` and `PYTEST*` overrides are removed before execution, while the
+deterministic qualification controls are pinned explicitly. The SHA probe and cleanliness probe
+therefore cannot be redirected to different repositories or worktrees by inherited Git state.
+
+Identity-bearing SIL scenario/plan/vector/blocker objects and exact Git/command results are
+revalidated when serialized or consumed. Constructor-time validation is not trusted after object
+creation, so low-level mutation of a once-valid exact dataclass cannot reseal qualification
+evidence or alter an accepted execution result.
+
 The verifier rebuilds the exact tracked package-source manifest, loads and validates the
 canonical environment receipt against the pinned historical lock-source contract and current
 interpreter/distribution set, reloads the capability registry and SIL scenario, recomputes
