@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import re
@@ -406,6 +407,46 @@ class CapabilityRegistry:
         return _canonical_sha256(self.to_dict())
 
 
+def resolve_component_contract(component_contract: str) -> object:
+    """Resolve one repository-owned Python module or module attribute fail-closed."""
+
+    contract = _require_text("component_contract", component_contract)
+    if not contract.startswith("twelve_six."):
+        raise ValueError(
+            "AVAILABLE component contract must be repository-owned twelve_six Python"
+        )
+
+    parts = contract.split(".")
+    for index in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:index])
+        try:
+            resolved: object = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if exc.name != module_name:
+                raise ValueError(
+                    f"component contract import failed inside module: {module_name}"
+                ) from exc
+            continue
+        for attribute in parts[index:]:
+            if not hasattr(resolved, attribute):
+                raise ValueError(
+                    f"component contract attribute does not exist: {contract}"
+                )
+            resolved = getattr(resolved, attribute)
+        return resolved
+    raise ValueError(f"component contract module does not exist: {contract}")
+
+
+def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
+    """Prove every AVAILABLE capability begins at a live repository contract."""
+
+    if not isinstance(registry, CapabilityRegistry):
+        raise ValueError("registry must be a CapabilityRegistry")
+    for capability in registry.capabilities:
+        if capability.status is CapabilityStatus.AVAILABLE:
+            resolve_component_contract(capability.component_contract)
+
+
 def load_capability_registry(path: str | Path) -> CapabilityRegistry:
     payload = _strict_json_object(Path(path).read_bytes())
     if set(payload) != {
@@ -522,7 +563,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    return CapabilityRegistry(
+    registry = CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -530,3 +571,5 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
+    validate_available_component_contracts(registry)
+    return registry
