@@ -105,7 +105,7 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
     assert payload["candidate_overrides"] == [
         {
             "path": ".github/workflows/ci.yml",
-            "capability_id": "github-sil-qualification",
+            "capability_id": "project-control-plane",
         }
     ]
     payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
