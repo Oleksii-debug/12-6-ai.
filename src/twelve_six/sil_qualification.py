@@ -943,6 +943,8 @@ def run_command(
             text=True,
             timeout=timeout_seconds,
             env=_qualification_subprocess_env(),
+            stdin=subprocess.DEVNULL,
+            shell=False,
         )
         return_code = result.returncode
         stdout = result.stdout
