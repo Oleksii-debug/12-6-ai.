@@ -363,6 +363,13 @@ class CoreReplacementReceipt:
             ("shell_identity_sha256_after", self.shell_identity_sha256_after),
         ):
             _require_sha256(name, value)
+        if not isinstance(self.preserved_surface_identities, tuple) or any(
+            not isinstance(item, tuple) or len(item) != 2
+            for item in self.preserved_surface_identities
+        ):
+            raise ValueError(
+                "preserved_surface_identities must be an immutable tuple of 2-tuples"
+            )
         if self.shell_identity_sha256_before != self.shell_identity_sha256_after:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:
