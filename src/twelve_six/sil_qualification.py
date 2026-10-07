@@ -47,6 +47,13 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _git_blob_sha1(value: bytes) -> str:
+    """Return the repository's SHA-1 Git blob identity for exact worktree bytes."""
+
+    header = f"blob {len(value)}\0".encode("ascii")
+    return hashlib.sha1(header + value, usedforsecurity=False).hexdigest()
+
+
 def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
     """Bind the editable package to exact tracked source and packaged research configs."""
 
@@ -56,6 +63,7 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
             "git",
             "ls-files",
             "--stage",
+            "-z",
             "--",
             "pyproject.toml",
             "src/twelve_six",
@@ -68,10 +76,12 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
     )
     if listed.returncode != 0:
         raise ValueError("cannot enumerate tracked package source files")
-    paths = []
-    for line in listed.stdout.splitlines():
-        if not line:
-            continue
+    if listed.stdout and not listed.stdout.endswith("\0"):
+        raise ValueError("tracked package source listing is missing its NUL delimiter")
+
+    entries: list[tuple[str, str, str]] = []
+    records = listed.stdout[:-1].split("\0") if listed.stdout else []
+    for line in records:
         try:
             metadata, relative_path = line.split("\t", 1)
             mode, blob_sha, stage = metadata.split()
@@ -83,22 +93,40 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
             raise ValueError("tracked package source must be a regular Git file")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("tracked package source has a malformed Git blob SHA")
-        paths.append(relative_path)
-    paths.sort()
+        canonical_path = PurePosixPath(relative_path)
+        if (
+            "\\" in relative_path
+            or canonical_path.is_absolute()
+            or ".." in canonical_path.parts
+            or canonical_path.as_posix() != relative_path
+        ):
+            raise ValueError("tracked package source path is non-canonical")
+        entries.append((relative_path, mode, blob_sha))
+
+    entries.sort(key=lambda item: item[0])
+    paths = [item[0] for item in entries]
+    if len(paths) != len(set(paths)):
+        raise ValueError("tracked package source paths must be unique")
     if "pyproject.toml" not in paths:
         raise ValueError("tracked package manifest is missing pyproject.toml")
     if not any(path.startswith("src/twelve_six/") for path in paths):
         raise ValueError("tracked package manifest has no twelve_six package source")
 
     files = []
-    for relative_path in paths:
+    for relative_path, mode, blob_sha in entries:
         path = root / relative_path
         if not path.is_file():
             raise ValueError(f"tracked package source is not a file: {relative_path}")
         raw = path.read_bytes()
+        if _git_blob_sha1(raw) != blob_sha:
+            raise ValueError(
+                f"tracked package source bytes do not match Git blob: {relative_path}"
+            )
         files.append(
             {
                 "path": relative_path,
+                "git_mode": mode,
+                "git_blob_sha": blob_sha,
                 "bytes": len(raw),
                 "sha256": _sha256_bytes(raw),
             }
