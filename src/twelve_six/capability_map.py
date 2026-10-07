@@ -169,12 +169,34 @@ class TestLevel(str, Enum):
     END_TO_END = "end_to_end"
 
 
+def _capability_status_wire_value(value: object) -> str:
+    if not _is_exact_type(value, CapabilityStatus):
+        raise ValueError("status must be a CapabilityStatus")
+    raw_value = str.__str__(value)
+    stored_value = object.__getattribute__(value, "_value_")
+    if not _is_exact_type(stored_value, str) or stored_value != raw_value:
+        raise ValueError("status wire value is non-canonical")
+    return raw_value
+
+
+def _test_level_wire_value(value: object) -> str:
+    if not _is_exact_type(value, TestLevel):
+        raise ValueError("level must be a TestLevel")
+    raw_value = str.__str__(value)
+    stored_value = object.__getattribute__(value, "_value_")
+    if not _is_exact_type(stored_value, str) or stored_value != raw_value:
+        raise ValueError("level wire value is non-canonical")
+    return raw_value
+
+
 _CANONICAL_CAPABILITY_STATUSES = tuple(CapabilityStatus)
 _CANONICAL_CAPABILITY_STATUS_VALUES = tuple(
-    item.value for item in _CANONICAL_CAPABILITY_STATUSES
+    _capability_status_wire_value(item) for item in _CANONICAL_CAPABILITY_STATUSES
 )
 _CANONICAL_TEST_LEVELS = tuple(TestLevel)
-_CANONICAL_TEST_LEVEL_VALUES = tuple(item.value for item in _CANONICAL_TEST_LEVELS)
+_CANONICAL_TEST_LEVEL_VALUES = tuple(
+    _test_level_wire_value(item) for item in _CANONICAL_TEST_LEVELS
+)
 
 
 def _require_capability_status(
@@ -187,7 +209,7 @@ def _require_capability_status(
         raise ValueError("status must be a CapabilityStatus")
     for index, canonical in enumerate(_sealed_statuses):
         if value is canonical:
-            if canonical.value != _sealed_values[index]:
+            if _capability_status_wire_value(canonical) != _sealed_values[index]:
                 raise ValueError("status wire value is non-canonical")
             return canonical
     raise ValueError("status must be a canonical CapabilityStatus")
@@ -203,7 +225,7 @@ def _require_test_level(
         raise ValueError("level must be a TestLevel")
     for index, canonical in enumerate(_sealed_levels):
         if value is canonical:
-            if canonical.value != _sealed_values[index]:
+            if _test_level_wire_value(canonical) != _sealed_values[index]:
                 raise ValueError("level wire value is non-canonical")
             return canonical
     raise ValueError("level must be a canonical TestLevel")
@@ -290,7 +312,7 @@ class TestVector:
         TestVector.__post_init__(self)
         return {
             "vector_id": self.vector_id,
-            "level": self.level.value,
+            "level": _test_level_wire_value(self.level),
             "command": self.command,
         }
 
@@ -395,7 +417,7 @@ class Capability:
         return {
             "capability_id": self.capability_id,
             "schema_version": self.schema_version,
-            "status": self.status.value,
+            "status": _capability_status_wire_value(self.status),
             "component_contract": self.component_contract,
             "dependencies": list(self.dependencies),
             "journey_ids": list(self.journey_ids),
@@ -682,14 +704,14 @@ class CapabilityRegistry:
         if capability.status is CapabilityStatus.UNAVAILABLE:
             return {
                 "capability_id": capability.capability_id,
-                "status": capability.status.value,
+                "status": _capability_status_wire_value(capability.status),
                 "component_contract": capability.component_contract,
                 "unavailable_reason": capability.unavailable_reason,
                 "integrated_result": None,
             }
         return {
             "capability_id": capability.capability_id,
-            "status": capability.status.value,
+            "status": _capability_status_wire_value(capability.status),
             "component_contract": capability.component_contract,
             "test_vectors": [item.to_dict() for item in capability.test_vectors],
             "evidence_targets": [item.to_dict() for item in capability.evidence_targets],
