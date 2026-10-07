@@ -416,8 +416,8 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     assert inventory.observed_main_sha == "019944d5fe12334791f05f1232d13de4a12e37d3"
     assert inventory.observed_main_tree_sha == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
     assert inventory.accepted_main_surface_count == 114
-    assert inventory.candidate_overlay_surface_count == 3
-    assert inventory.source_surface_count == 117
+    assert inventory.candidate_overlay_surface_count == 4
+    assert inventory.source_surface_count == 118
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
