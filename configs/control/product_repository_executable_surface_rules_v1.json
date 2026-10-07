@@ -95,7 +95,7 @@
   "candidate_overrides": [
     {
       "path": ".github/workflows/ci.yml",
-      "capability_id": "github-sil-qualification"
+      "capability_id": "project-control-plane"
     }
   ]
 }

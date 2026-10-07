@@ -669,7 +669,7 @@
     {
       "capability_id": "project-control-plane",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.ci_workflow_policy",
       "dependencies": [],
       "journey_ids": [
@@ -678,11 +678,11 @@
       "environments": [
         {
           "environment_id": "python-3.11",
-          "supported": true
+          "supported": false
         },
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": true
+          "supported": false
         }
       ],
       "test_vectors": [
@@ -703,8 +703,8 @@
           "target": "github-actions:37625412078"
         }
       ],
-      "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Section 3 candidate modifies the canonical CI workflow; project-control-plane remains UNAVAILABLE until that exact workflow mutation is integrated and read back."
     },
     {
       "capability_id": "executable-capability-map",

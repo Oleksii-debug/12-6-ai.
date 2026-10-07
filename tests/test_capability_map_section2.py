@@ -171,6 +171,23 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
         assert capability.unavailable_reason
 
 
+def test_section3_candidate_demotes_modified_project_control_until_integration() -> None:
+    registry = _load()
+    control = registry.capability("project-control-plane")
+    sil = registry.capability("github-sil-qualification")
+
+    assert control.status is CapabilityStatus.UNAVAILABLE
+    assert control.integrated_result is None
+    assert control.unavailable_reason
+    assert all(not item.supported for item in control.environments)
+    assert registry.journey_available("maintainer-project-control") is False
+
+    assert sil.status is CapabilityStatus.UNAVAILABLE
+    assert sil.integrated_result is None
+    assert sil.unavailable_reason
+    assert registry.journey_available("maintainer-sil-qualification") is False
+
+
 def test_closed_predecessor_capabilities_are_available() -> None:
     registry = _load()
 

@@ -849,6 +849,37 @@ def test_unavailable_journeys_are_evidenced_as_blocked_not_simulated() -> None:
         assert all(item.reasons)
 
 
+def test_sealed_sil_policy_keeps_known_unavailable_journey_contracts_dormant() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+
+    unavailable_ids = {item.journey_id for item in plan.unavailable_journeys}
+    contract_ids = {journey_id for journey_id, _ in plan.journey_end_to_end_contracts}
+
+    assert "maintainer-project-control" in unavailable_ids
+    assert "maintainer-sil-qualification" in unavailable_ids
+    assert "maintainer-project-control" not in plan.available_journey_ids
+    assert "maintainer-sil-qualification" not in plan.available_journey_ids
+    assert "maintainer-project-control" not in contract_ids
+    assert "maintainer-sil-qualification" not in contract_ids
+
+
+def test_sil_policy_rejects_unknown_dormant_journey_contract() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+    forged_policy = (
+        *plan.journey_end_to_end_contracts,
+        ("forged-dormant-journey", ("section3-sil-stack",)),
+    )
+
+    with pytest.raises(ValueError, match="references unknown journey"):
+        sil_qualification._build_sil_plan_with_policy(
+            registry,
+            _scenario(),
+            e2e_policy=forged_policy,
+        )
+
+
 def test_strict_sil_scenario_rejects_duplicate_unknown_and_bool_timeout(tmp_path: Path) -> None:
     duplicate = tmp_path / "duplicate.json"
     duplicate.write_bytes(

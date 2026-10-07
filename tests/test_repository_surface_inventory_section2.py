@@ -70,7 +70,7 @@ def test_section3_workflow_is_only_candidate_overlay_and_section2_rule_stays_int
     assert payload["candidate_overrides"] == [
         {
             "path": ".github/workflows/ci.yml",
-            "capability_id": "github-sil-qualification",
+            "capability_id": "project-control-plane",
         }
     ]
     assert {

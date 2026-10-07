@@ -100,6 +100,7 @@ _CANONICAL_JOURNEY_E2E_VECTOR_POLICY = (
     ("researcher-split-validation", ("split-robustness-manifest",)),
     ("maintainer-project-control", ("swarm-protocol",)),
     ("maintainer-capability-qualification", ("section2-stack",)),
+    ("maintainer-sil-qualification", ("section3-sil-stack",)),
 )
 
 
@@ -783,6 +784,34 @@ def _build_sil_plan_with_policy(
     if len(set(policy_journey_ids)) != len(policy_journey_ids):
         raise ValueError("SIL end-to-end policy journey ids must be unique")
     policy_by_journey = dict(e2e_policy)
+    journey_by_id = {journey.journey_id: journey for journey in registry.journeys}
+    unknown_policy_journey_ids = tuple(
+        journey_id
+        for journey_id in policy_journey_ids
+        if journey_id not in journey_by_id
+    )
+    if unknown_policy_journey_ids:
+        raise ValueError(
+            "SIL end-to-end policy references unknown journey: "
+            f"{unknown_policy_journey_ids}"
+        )
+    for journey_id, declared_vector_ids in e2e_policy:
+        journey = journey_by_id[journey_id]
+        expected_vector_ids = tuple(
+            vector.vector_id
+            for capability_id in journey.capability_ids
+            for vector in registry.capability(capability_id).test_vectors
+            if vector.level is _integration_level
+        )
+        if not expected_vector_ids:
+            raise ValueError(
+                f"SIL end-to-end policy journey lacks integration vectors: {journey_id}"
+            )
+        if expected_vector_ids != declared_vector_ids:
+            raise ValueError(
+                "SIL end-to-end policy vectors do not match registry journey: "
+                f"{journey_id}"
+            )
 
     available: list[str] = []
     unavailable: list[UnavailableJourney] = []
@@ -850,9 +879,15 @@ def _build_sil_plan_with_policy(
             )
         )
 
-    if tuple(available) != policy_journey_ids:
+    available_set = set(available)
+    active_policy_journey_ids = tuple(
+        journey_id
+        for journey_id in policy_journey_ids
+        if journey_id in available_set
+    )
+    if tuple(available) != active_policy_journey_ids:
         raise ValueError(
-            "SIL end-to-end policy must exactly match the current AVAILABLE journeys"
+            "SIL end-to-end policy must preserve the current AVAILABLE journey order"
         )
 
     return SILPlan(
