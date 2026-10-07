@@ -462,8 +462,7 @@ class PlannedVector:
             parts = token.split("/")
             if (
                 "\\" in token
-                or token.startswith("-")
-                or token.startswith("/")
+                or token.startswith(("-", "/"))
                 or len(parts) < 2
                 or parts[0] != "tests"
                 or any(part in {"", ".", ".."} for part in parts)
