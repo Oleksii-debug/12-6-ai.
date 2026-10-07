@@ -262,6 +262,68 @@ class Journey:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceSurface:
+    path: str
+    capability_id: str
+
+    def __post_init__(self) -> None:
+        _require_text("source surface path", self.path)
+        _require_id("source surface capability_id", self.capability_id)
+        if not self.path.startswith("src/twelve_six/") or not self.path.endswith(".py"):
+            raise ValueError("source surface path must be a Python path under src/twelve_six")
+
+    def to_dict(self) -> dict[str, str]:
+        return {"path": self.path, "capability_id": self.capability_id}
+
+
+@dataclass(frozen=True, slots=True)
+class SourceSurfaceInventory:
+    schema_version: int
+    observed_main_sha: str
+    observed_main_tree_sha: str
+    source_root: str
+    source_surface_count: int
+    surfaces: tuple[SourceSurface, ...]
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported SourceSurfaceInventory schema_version")
+        for field_name, value in (
+            ("observed_main_sha", self.observed_main_sha),
+            ("observed_main_tree_sha", self.observed_main_tree_sha),
+        ):
+            if not isinstance(value, str) or _SHA40_RE.fullmatch(value) is None:
+                raise ValueError(f"{field_name} must be a lowercase 40-hex Git SHA")
+        if self.source_root != "src/twelve_six":
+            raise ValueError("source_root must be canonical src/twelve_six")
+        _require_positive_int("source_surface_count", self.source_surface_count)
+        if not isinstance(self.surfaces, tuple) or not self.surfaces:
+            raise ValueError("surfaces must be a non-empty tuple")
+        if any(not isinstance(item, SourceSurface) for item in self.surfaces):
+            raise ValueError("surfaces must contain only SourceSurface values")
+        if self.source_surface_count != len(self.surfaces):
+            raise ValueError("source_surface_count does not match surfaces")
+        paths = [item.path for item in self.surfaces]
+        if paths != sorted(paths):
+            raise ValueError("source surfaces must be in canonical path order")
+        if len(paths) != len(set(paths)):
+            raise ValueError("source surface paths must be unique")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "observed_main_sha": self.observed_main_sha,
+            "observed_main_tree_sha": self.observed_main_tree_sha,
+            "source_root": self.source_root,
+            "source_surface_count": self.source_surface_count,
+            "surfaces": [item.to_dict() for item in self.surfaces],
+        }
+
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self.to_dict())
+
+
+@dataclass(frozen=True, slots=True)
 class CapabilityRegistry:
     schema_version: int
     observed_main_sha: str
@@ -573,3 +635,88 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
     )
     validate_available_component_contracts(registry)
     return registry
+
+
+def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
+    payload = _strict_json_object(Path(path).read_bytes())
+    payload = _require_exact_fields(
+        payload,
+        {
+            "schema_version",
+            "observed_main_sha",
+            "observed_main_tree_sha",
+            "source_root",
+            "source_surface_count",
+            "surfaces",
+        },
+        "source_surface_inventory",
+    )
+    raw_surfaces = payload["surfaces"]
+    if not isinstance(raw_surfaces, list):
+        raise ValueError("source_surface_inventory.surfaces must be a JSON array")
+    surfaces = tuple(
+        SourceSurface(
+            **_require_exact_fields(
+                item,
+                {"path", "capability_id"},
+                "source_surface",
+            )
+        )
+        for item in raw_surfaces
+    )
+    return SourceSurfaceInventory(
+        schema_version=payload["schema_version"],
+        observed_main_sha=payload["observed_main_sha"],
+        observed_main_tree_sha=payload["observed_main_tree_sha"],
+        source_root=payload["source_root"],
+        source_surface_count=payload["source_surface_count"],
+        surfaces=surfaces,
+    )
+
+
+def validate_source_surface_coverage(
+    registry: CapabilityRegistry,
+    inventory: SourceSurfaceInventory,
+    *,
+    repo_root: str | Path,
+) -> None:
+    if not isinstance(registry, CapabilityRegistry):
+        raise ValueError("registry must be a CapabilityRegistry")
+    if not isinstance(inventory, SourceSurfaceInventory):
+        raise ValueError("inventory must be a SourceSurfaceInventory")
+    if registry.observed_main_sha != inventory.observed_main_sha:
+        raise ValueError("capability and source inventories observe different main SHAs")
+
+    known_capability_ids = {item.capability_id for item in registry.capabilities}
+    mapped_capability_ids = {item.capability_id for item in inventory.surfaces}
+    unknown = sorted(mapped_capability_ids.difference(known_capability_ids))
+    if unknown:
+        raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
+
+    root = Path(repo_root)
+    source_root = root / inventory.source_root
+    actual_paths = sorted(
+        path.relative_to(root).as_posix()
+        for path in source_root.rglob("*.py")
+        if path.is_file()
+    )
+    expected_paths = [item.path for item in inventory.surfaces]
+    if actual_paths != expected_paths:
+        missing = sorted(set(actual_paths).difference(expected_paths))
+        stale = sorted(set(expected_paths).difference(actual_paths))
+        raise ValueError(
+            "source surface inventory drift: "
+            f"unmapped_current={missing}, stale_inventory={stale}"
+        )
+
+    journey_ids = {item.journey_id for item in registry.journeys}
+    for capability_id in mapped_capability_ids:
+        capability = registry.capability(capability_id)
+        if not capability.journey_ids:
+            raise ValueError(
+                f"source-mapped capability lacks a user/operator journey: {capability_id}"
+            )
+        if any(journey_id not in journey_ids for journey_id in capability.journey_ids):
+            raise ValueError(
+                f"source-mapped capability has an unknown journey: {capability_id}"
+            )
