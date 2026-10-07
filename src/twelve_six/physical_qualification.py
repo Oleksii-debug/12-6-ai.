@@ -637,9 +637,9 @@ def _popen_process_group_kwargs() -> dict[str, Any]:
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
     if sys.platform == "win32":
+        if process.poll() is not None:
+            return
         system_root = os.environ.get("SystemRoot")
         if system_root:
             taskkill = Path(system_root) / "System32" / "taskkill.exe"
@@ -664,10 +664,11 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except OSError:
-        try:
-            process.kill()
-        except OSError:
-            pass
+        if process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
 
 
 def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionExecution:
