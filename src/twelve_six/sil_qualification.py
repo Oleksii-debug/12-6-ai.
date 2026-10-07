@@ -266,36 +266,53 @@ def _canonical_distribution_name(value: str) -> str:
     return _DIST_NAME_RE.sub("-", value.strip()).lower()
 
 
-def canonical_sil_environment_receipt_v1() -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "schema_version": "12-6.sil-environment-receipt.v1",
-        "python": {
-            "implementation": "cpython",
-            "version": "3.11.16",
-        },
-        "lock_source_commit": _SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT,
-        "locks": [
-            {
-                "role": role,
-                "path": path,
-                "sha256": digest,
-            }
-            for role, path, digest in _SIL_ENVIRONMENT_LOCKS
-        ],
-        "packages": [
-            {"name": name, "version": version}
-            for name, version in _SIL_ENVIRONMENT_PACKAGES
-        ],
-    }
-    payload["identity_sha256"] = _canonical_sha256(payload)
-    return payload
+def _build_sil_environment_receipt_authority():
+    # Capture the qualified lock-source contract once. Later module-global rebinding
+    # must not be able to mint a different self-consistent "canonical" environment.
+    sealed_lock_source_commit = _SIL_ENVIRONMENT_LOCK_SOURCE_COMMIT
+    sealed_locks = _SIL_ENVIRONMENT_LOCKS
+    sealed_packages = _SIL_ENVIRONMENT_PACKAGES
+    sealed_hash = _canonical_sha256
+
+    def canonical() -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": "12-6.sil-environment-receipt.v1",
+            "python": {
+                "implementation": "cpython",
+                "version": "3.11.16",
+            },
+            "lock_source_commit": sealed_lock_source_commit,
+            "locks": [
+                {
+                    "role": role,
+                    "path": path,
+                    "sha256": digest,
+                }
+                for role, path, digest in sealed_locks
+            ],
+            "packages": [
+                {"name": name, "version": version}
+                for name, version in sealed_packages
+            ],
+        }
+        payload["identity_sha256"] = sealed_hash(payload)
+        return payload
+
+    def validate(payload: dict[str, Any]) -> dict[str, Any]:
+        expected = canonical()
+        if payload != expected:
+            raise ValueError(
+                "SIL environment receipt does not match exact pinned lock-source contract"
+            )
+        return payload
+
+    return canonical, validate
 
 
-def _validate_sil_environment_receipt(payload: dict[str, Any]) -> dict[str, Any]:
-    expected = canonical_sil_environment_receipt_v1()
-    if payload != expected:
-        raise ValueError("SIL environment receipt does not match exact pinned lock-source contract")
-    return payload
+(
+    canonical_sil_environment_receipt_v1,
+    _validate_sil_environment_receipt,
+) = _build_sil_environment_receipt_authority()
 
 
 def load_sil_environment_receipt(path: str | Path) -> dict[str, Any]:
