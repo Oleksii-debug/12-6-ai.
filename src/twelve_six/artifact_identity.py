@@ -464,6 +464,8 @@ def build_generation_identity_manifest(
 
     if not isinstance(refs, Mapping):
         raise ValueError("refs must be a mapping")
+    if any(not isinstance(kind, ArtifactKind) for kind in refs):
+        raise ValueError("refs keys must be ArtifactKind values")
     if set(refs) != set(CANONICAL_ARTIFACT_KINDS):
         raise ValueError("refs must contain exactly every canonical artifact kind")
 
