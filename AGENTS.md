@@ -7,9 +7,9 @@ This root file is the highest-priority repository instruction for worker coordin
 - No repository-defined worker, coordinator, WIP, work-package, branch, or PR cap.
 - Claims, leases, ownership, assignments, queues, and coordinator labels are advisory only and never block useful safe work.
 - Workers may create branches, commits, PRs, fixes, tests, integration commits, and merges when GitHub permissions allow and evidence is adequate.
-- Dependency order constrains final integration only; it must not stop independent implementation, testing, hardening, research, documentation, accessibility, packaging, fixtures, adapters, model work, or recovery work.
-- Queued, pending, slow, or unavailable CI is never by itself a reason to terminate; record it and continue immediately with another valuable independent task.
-- A blocked first workline is never by itself a reason to terminate. STATUS: BLOCKED is allowed only after all reasonably available safe independent work is exhausted.
+- Parallel implementation/testing must obey the Sequential closure authority below: stay on the earliest unfinished Section except for dependency-safe work that directly supports it or the next front.
+- Queued, pending, slow, or unavailable CI is never by itself a reason to terminate; record it and continue work permitted by the current closure front.
+- A blocked primary closure front may be left only after all safe internally controllable residual work is exhausted and the blocker is durably recorded.
 - Do not idle because another PR, branch, worker, check, review, claim, or queue is active. If overlap occurs, switch to non-conflicting work or reconcile/rebase instead of abandoning the run.
 - No repository-defined exclusive integration owner is required.
 - Use the full execution window while useful safe work remains.
