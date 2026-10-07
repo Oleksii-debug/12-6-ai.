@@ -97,9 +97,11 @@ comparison use a sealed stored-state manifest hasher, so rebinding
 cannot forge a bound lineage or hide a post-validation parent/lineage mutation while different
 stored state is serialized.
 
-Identity-bearing serializers and generation accessors capture their original validators and
-serializers at class definition. Rebinding `__post_init__` or `to_dict` therefore cannot turn
-malformed stored state into a newly accepted or differently hashed identity after construction.
+Identity-bearing serializers and generation accessors route through private stored-state
+validators/serializers whose authority is not exposed as caller-supplied override parameters.
+Rebinding class-level `__post_init__` or `to_dict`, or attempting to pass an alternate
+validator/serializer/hasher into the public API, therefore cannot turn malformed stored state
+into a newly accepted or differently hashed identity after construction.
 
 The canonical graph is:
 
