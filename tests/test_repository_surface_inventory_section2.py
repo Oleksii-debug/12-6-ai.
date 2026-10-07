@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import tools.validate_section2_repository_surface_coverage as surface_validator
 from tools.validate_section2_repository_surface_coverage import (
     _candidate_surface_paths,
     _load_strict_json,
@@ -181,4 +182,38 @@ def test_repository_surface_coverage_rejects_duplicate_capability_ids(
 
     with pytest.raises(ValueError, match="capability ids must be unique"):
         _validate(capabilities=capabilities)
+
+def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["observed_main_sha"] = "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match coverage baseline"):
+        _validate(capabilities=capabilities)
+
+
+def test_repository_surface_coverage_rejects_nonterminal_capability_ci(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["observed_main_ci"]["conclusion"] = "failure"
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be terminal success"):
+        _validate(capabilities=capabilities)
+
+
+def test_surface_blob_map_rejects_symlink_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    line = "120000 blob " + ("a" * 40) + "\ttools/forged.py"
+    monkeypatch.setattr(surface_validator, "_run_git", lambda *_args: [line])
+
+    with pytest.raises(ValueError, match="regular Git blob"):
+        surface_validator._surface_blob_map(tmp_path, "HEAD")
 
