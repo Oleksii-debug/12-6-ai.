@@ -38,6 +38,7 @@ from twelve_six.sil_qualification import (
     CommandExecution,
     GitState,
     build_package_manifest_bytes,
+    canonical_sil_environment_receipt_v1,
     load_sil_scenario,
     qualify_sil,
 )
@@ -57,6 +58,10 @@ def _policy():
 
 def _package_bytes() -> bytes:
     return build_package_manifest_bytes(_ROOT)
+
+
+def _environment_receipt() -> dict[str, object]:
+    return canonical_sil_environment_receipt_v1()
 
 
 def _ci_observation(*, physical: bool = False) -> ExternalObservation:
@@ -232,6 +237,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         registry=load_capability_registry(_CAPABILITIES),
         scenario=load_sil_scenario(_SCENARIO),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=fail_first,
         git_probe=lambda _: GitState(sha=_FAIL_SHA, tracked_clean=True),
     )
@@ -257,6 +263,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         defect_id="sil-integration-defect",
         policy=_policy(),
         expected_package_bytes=_package_bytes(),
+        expected_environment_receipt=_environment_receipt(),
         expected_registry=load_capability_registry(_CAPABILITIES),
         expected_scenario=load_sil_scenario(_SCENARIO),
     )
@@ -267,6 +274,68 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
     assert packet.source_evidence_identity_sha256 == evidence[
         "evidence_identity_sha256"
     ]
+
+
+def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
+    tmp_path: Path,
+) -> None:
+    registry = load_capability_registry(_CAPABILITIES)
+    scenario = load_sil_scenario(_SCENARIO)
+
+    def fail_runner(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        assert argv and cwd and timeout_seconds
+        assert input_envelope_bytes
+        return CommandExecution(
+            return_code=9,
+            stdout="",
+            stderr="AssertionError: integration failed",
+            duration_ms=1,
+            consumed_input_identity_sha256=expected_input_identity_sha256,
+        )
+
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_FAIL_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=fail_runner,
+        git_probe=lambda _: GitState(sha=_FAIL_SHA, tracked_clean=True),
+    )
+    evidence_path = tmp_path / "sil-evidence.json"
+    log_path = tmp_path / "sil.log"
+    evidence_path.write_text(
+        json.dumps(
+            evidence,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log_path.write_text(log_text, encoding="utf-8")
+
+    forged_environment = dict(_environment_receipt())
+    forged_environment["identity_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="environment receipt|exact accepted authority"):
+        failure_packet_from_sil(
+            evidence_path,
+            log_path,
+            defect_id="sil-environment-authority-mismatch",
+            policy=_policy(),
+            expected_package_bytes=_package_bytes(),
+            expected_environment_receipt=forged_environment,
+            expected_registry=registry,
+            expected_scenario=scenario,
+        )
 
 
 def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
@@ -280,6 +349,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
         registry=registry,
         scenario=scenario,
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=lambda _: GitState(sha=_CANDIDATE_SHA, tracked_clean=True),
     )
@@ -309,6 +379,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
             log_path,
             repo_root=_ROOT,
             candidate_git_sha=_CANDIDATE_SHA,
+            expected_environment_receipt=_environment_receipt(),
             expected_registry=registry,
             expected_scenario=scenario,
             git_probe=lambda _: next(states),

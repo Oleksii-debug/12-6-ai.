@@ -18,6 +18,7 @@ from twelve_six.sil_qualification import (
     GitProbe,
     SILScenario,
     build_package_manifest_bytes,
+    load_sil_environment_receipt,
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
@@ -415,6 +416,7 @@ def failure_packet_from_sil(
     defect_id: str,
     policy: AIQAPolicy,
     expected_package_bytes: bytes,
+    expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
     physical_scope: PhysicalScope = PhysicalScope.NONE,
@@ -424,6 +426,7 @@ def failure_packet_from_sil(
         evidence_path,
         log_path,
         expected_package_bytes=expected_package_bytes,
+        expected_environment_receipt=expected_environment_receipt,
         expected_registry=expected_registry,
         expected_scenario=expected_scenario,
         expected_git_sha=None,
@@ -1359,6 +1362,7 @@ def verify_candidate_sil_evidence(
     *,
     repo_root: str | Path,
     candidate_git_sha: str,
+    expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
     git_probe: GitProbe = probe_git_state,
@@ -1373,6 +1377,7 @@ def verify_candidate_sil_evidence(
         evidence_path,
         log_path,
         expected_package_bytes=build_package_manifest_bytes(root),
+        expected_environment_receipt=expected_environment_receipt,
         expected_registry=expected_registry,
         expected_scenario=expected_scenario,
         expected_git_sha=candidate_git_sha,
@@ -1389,6 +1394,7 @@ def verify_candidate_sil_evidence(
 def _sil_receipt_cli(args: argparse.Namespace) -> int:
     candidate = load_repair_candidate(args.candidate)
     root = Path(args.repo_root).resolve()
+    environment_receipt = load_sil_environment_receipt(args.environment_receipt)
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
     evidence = verify_candidate_sil_evidence(
@@ -1396,6 +1402,7 @@ def _sil_receipt_cli(args: argparse.Namespace) -> int:
         args.log,
         repo_root=root,
         candidate_git_sha=candidate.candidate_git_sha,
+        expected_environment_receipt=environment_receipt,
         expected_registry=registry,
         expected_scenario=scenario,
     )
@@ -1445,6 +1452,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
     failure = load_failure_packet(args.failure)
     candidate = load_repair_candidate(args.candidate)
     root = Path(args.repo_root).resolve()
+    environment_receipt = load_sil_environment_receipt(args.environment_receipt)
 
     chain = build_regression_chain(
         failure,
@@ -1465,6 +1473,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
         args.sil_log,
         repo_root=root,
         candidate_git_sha=candidate.candidate_git_sha,
+        expected_environment_receipt=environment_receipt,
         expected_registry=registry,
         expected_scenario=scenario,
     )
@@ -1555,12 +1564,14 @@ def _sil_failure_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
+    environment_receipt = load_sil_environment_receipt(args.environment_receipt)
     packet = failure_packet_from_sil(
         args.evidence,
         args.log,
         defect_id=args.defect_id,
         policy=policy,
         expected_package_bytes=build_package_manifest_bytes(root),
+        expected_environment_receipt=environment_receipt,
         expected_registry=registry,
         expected_scenario=scenario,
         physical_scope=PhysicalScope(args.physical_scope),
@@ -1597,6 +1608,7 @@ def main() -> int:
     sil.add_argument("--repo-root", required=True)
     sil.add_argument("--capability-registry", required=True)
     sil.add_argument("--scenario", required=True)
+    sil.add_argument("--environment-receipt", required=True)
     sil.add_argument("--evidence", required=True)
     sil.add_argument("--log", required=True)
     sil.add_argument("--defect-id", required=True)
@@ -1647,6 +1659,7 @@ def main() -> int:
     sil_receipt.add_argument("--repo-root", required=True)
     sil_receipt.add_argument("--capability-registry", required=True)
     sil_receipt.add_argument("--scenario", required=True)
+    sil_receipt.add_argument("--environment-receipt", required=True)
     sil_receipt.add_argument("--evidence", required=True)
     sil_receipt.add_argument("--log", required=True)
     sil_receipt.add_argument("--actor-id", required=True)
@@ -1668,6 +1681,7 @@ def main() -> int:
     assess.add_argument("--repo-root", required=True)
     assess.add_argument("--capability-registry", required=True)
     assess.add_argument("--scenario", required=True)
+    assess.add_argument("--environment-receipt", required=True)
     assess.add_argument("--sil-evidence", required=True)
     assess.add_argument("--sil-log", required=True)
     assess.add_argument("--sil-actor-id", required=True)
