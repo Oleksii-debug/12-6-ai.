@@ -846,6 +846,33 @@ def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclas
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         replace(surface, origin=ForgedStr(surface.origin))
 
+def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> None:
+    registry = _load()
+    status = capability_map_module.CapabilityStatus.AVAILABLE
+    original_status_value = status.value
+    object.__setattr__(status, "_value_", "FORGED_AVAILABLE")
+    try:
+        with pytest.raises(ValueError, match="status wire value is non-canonical"):
+            registry.identity_sha256()
+    finally:
+        object.__setattr__(status, "_value_", original_status_value)
+
+    vector = next(
+        item
+        for capability in registry.capabilities
+        for item in capability.test_vectors
+        if item.level is capability_map_module.TestLevel.COMPONENT
+    )
+    level = capability_map_module.TestLevel.COMPONENT
+    original_level_value = level.value
+    object.__setattr__(level, "_value_", "forged_component")
+    try:
+        with pytest.raises(ValueError, match="level wire value is non-canonical"):
+            vector.to_dict()
+    finally:
+        object.__setattr__(level, "_value_", original_level_value)
+
+
 def test_registry_revalidates_post_construction_nested_mutation() -> None:
     registry = _load()
     capability = next(item for item in registry.capabilities if item.test_vectors)
