@@ -1265,6 +1265,7 @@ def test_capability_terminal_text_truth_ignores_require_text_rebinding(
     with pytest.raises(ValueError, match="integrated_result must be non-empty text"):
         registry.identity_sha256()
 
+    registry = _load()
     unavailable = next(
         capability
         for capability in registry.capabilities
