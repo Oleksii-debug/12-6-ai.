@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
-  "observed_main_tree_sha": "c727add7897dd94bdb02493e0cd7a565be7e8d9f",
-  "current_repository_main_sha": "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7",
-  "current_repository_main_tree_sha": "429a9933512f3d0c17f42d80193365e5df3f195a",
+  "observed_main_sha": "49218c0c581b73bcd0985646f48bf35300b1948c",
+  "observed_main_tree_sha": "2f8c32273994595b0bd466a293ee727d6f56d2ef",
+  "current_repository_main_sha": "5c041ca56edda55a5c3334f722361754051e121c",
+  "current_repository_main_tree_sha": "95ad101c8965fd49c1711027146253a093fce2f8",
   "expected_main_surface_count": 119,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -86,10 +86,6 @@
     }
   ],
   "candidate_overrides": [
-    {
-      "path": ".github/workflows/ci.yml",
-      "capability_id": "github-sil-qualification"
-    },
     {
       "path": "tools/validate_section2_repository_surface_coverage.py",
       "capability_id": "executable-capability-map"

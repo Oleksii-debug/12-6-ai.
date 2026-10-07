@@ -17,13 +17,12 @@ from twelve_six.capability_map import (
     TestLevel,
     TestVector,
     _changed_existing_source_paths,
-    _worktree_python_source_drift,
     _python_source_blob_map,
+    _worktree_python_source_drift,
     load_capability_registry,
     load_source_surface_inventory,
     validate_source_surface_coverage,
 )
-
 
 _ROOT = Path(__file__).parents[1]
 _REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
@@ -39,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "019944d5fe12334791f05f1232d13de4a12e37d3"
-    assert registry.observed_main_ci_run_id == 37248299503
+    assert registry.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert registry.observed_main_ci_run_id == 37608406911
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -163,14 +162,26 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
     registry = _load()
 
     for capability_id in (
-        "replaceable-cognitive-core-shell",
-        "unified-generation-identity",
         "learned-20m-base",
         "windows-nvda-final-product",
     ):
         capability = registry.capability(capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
         assert capability.unavailable_reason
+
+
+def test_closed_predecessor_capabilities_are_available() -> None:
+    registry = _load()
+
+    for capability_id in (
+        "replaceable-cognitive-core-shell",
+        "unified-generation-identity",
+    ):
+        capability = registry.capability(capability_id)
+        assert capability.status is CapabilityStatus.AVAILABLE
+        assert capability.integrated_result
+        assert capability.unavailable_reason is None
+    assert registry.journey_available("developer-replace-cognitive-core") is True
 
 
 def test_mechanics_are_not_resealed_as_physical_windows_acceptance() -> None:
@@ -199,18 +210,12 @@ def test_registry_rejects_available_capability_with_unavailable_dependency() -> 
     target_index = next(
         index
         for index, capability in enumerate(capabilities)
-        if capability.capability_id == "unified-generation-identity"
+        if capability.capability_id == "replaceable-cognitive-core-shell"
     )
     target = capabilities[target_index]
     capabilities[target_index] = replace(
         target,
-        status=CapabilityStatus.AVAILABLE,
-        unavailable_reason=None,
-        integrated_result="forged",
-        environments=tuple(
-            replace(environment, supported=True)
-            for environment in target.environments
-        ),
+        dependencies=("learned-20m-base",),
     )
 
     with pytest.raises(ValueError, match="depends on UNAVAILABLE"):
@@ -222,7 +227,6 @@ def test_registry_rejects_available_capability_with_unavailable_dependency() -> 
             capabilities=tuple(capabilities),
             journeys=registry.journeys,
         )
-
 
 def test_registry_rejects_dependency_cycles() -> None:
     registry = _load()
@@ -496,7 +500,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37248299503',
+        '"run_id": 37608406911',
         '"run_id": NaN',
         1,
     )
@@ -672,11 +676,11 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "019944d5fe12334791f05f1232d13de4a12e37d3"
-    assert inventory.observed_main_tree_sha == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
-    assert inventory.accepted_main_surface_count == 114
-    assert inventory.candidate_overlay_surface_count == 4
-    assert inventory.source_surface_count == 118
+    assert inventory.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert inventory.observed_main_tree_sha == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
+    assert inventory.accepted_main_surface_count == 116
+    assert inventory.candidate_overlay_surface_count == 1
+    assert inventory.source_surface_count == 117
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -1074,10 +1078,10 @@ def test_registry_accessors_revalidate_mutated_journey_state() -> None:
     journey = registry.journeys[0]
     object.__setattr__(journey, "title", "")
 
-    with pytest.raises(ValueError, match="title must be a non-empty string"):
+    with pytest.raises(ValueError, match="title must be non-empty text"):
         registry.journey_available(journey.journey_id)
 
-    with pytest.raises(ValueError, match="title must be a non-empty string"):
+    with pytest.raises(ValueError, match="title must be non-empty text"):
         registry.acceptance_path(registry.capabilities[0].capability_id)
 
 

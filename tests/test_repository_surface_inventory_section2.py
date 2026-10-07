@@ -12,7 +12,6 @@ from tools.validate_section2_repository_surface_coverage import (
     validate_repository_surface_coverage,
 )
 
-
 _ROOT = Path(__file__).parents[1]
 _INVENTORY = (
     _ROOT
@@ -37,11 +36,11 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
-    assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
-    assert result["current_repository_main_sha"] == "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
-    assert result["current_repository_main_tree_sha"] == "429a9933512f3d0c17f42d80193365e5df3f195a"
-    assert result["qualified_current_equivalent_surface_count"] == 233
+    assert result["observed_main_sha"] == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert result["observed_main_tree_sha"] == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
+    assert result["current_repository_main_sha"] == "5c041ca56edda55a5c3334f722361754051e121c"
+    assert result["current_repository_main_tree_sha"] == "95ad101c8965fd49c1711027146253a093fce2f8"
+    assert result["qualified_current_equivalent_surface_count"] == 235
     assert result["accepted_main_surface_count"] == 119
     assert result["candidate_overlay_surface_count"] == 1
     assert result["checkout_surface_count"] == 120
@@ -200,7 +199,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
+    payload["observed_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -246,9 +245,9 @@ def test_git_probes_strip_ambient_git_redirection(
         assert capture_output is True
         assert text is True
         observed_envs.append(dict(env))
-        stdout = f"{sha}\\n" if "rev-parse" in command else ""
+        stdout = f"{sha}\n" if "rev-parse" in command else ""
         if command[-1] == "HEAD":
-            stdout = "ok\\n"
+            stdout = "ok\n"
         return surface_validator.subprocess.CompletedProcess(
             command,
             0,
