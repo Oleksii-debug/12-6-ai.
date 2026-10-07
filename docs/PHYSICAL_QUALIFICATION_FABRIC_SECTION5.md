@@ -50,10 +50,12 @@ every action. A dirty checkout, changed HEAD, output overflow, non-zero test exi
 real resource or artifact substitution prevents physical PASS.
 
 The current subprocess implementation enforces timeout and the signed stdout/stderr capture cap
-*during* execution: two bounded drainers retain at most `max_output_bytes + 1` bytes per stream
-and terminate the direct pytest process when the cap is crossed. A hardened device-service
-transport with OS-level process-tree/memory/disk quotas is still required before final Section-5
-closure; this bounded capture is not presented as an OS resource sandbox.
+*during* execution: two bounded drainers retain at most `max_output_bytes + 1` bytes per stream.
+Each action is launched in an isolated POSIX session or Windows process group; timeout/output
+termination kills the POSIX process group or uses the absolute System32 `taskkill.exe /T /F`
+path on Windows before any direct-process fallback. A hardened device-service transport with
+OS-level memory/disk quotas is still required before final Section-5 closure; process-tree
+termination and bounded capture are not presented as a complete OS resource sandbox.
 
 ## Machine-verifiable evidence
 
