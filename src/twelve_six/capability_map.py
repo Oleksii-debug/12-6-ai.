@@ -265,15 +265,22 @@ class Journey:
 class SourceSurface:
     path: str
     capability_id: str
+    origin: str
 
     def __post_init__(self) -> None:
         _require_text("source surface path", self.path)
         _require_id("source surface capability_id", self.capability_id)
+        if self.origin not in {"accepted_main", "stacked_candidate"}:
+            raise ValueError("source surface origin is unsupported")
         if not self.path.startswith("src/twelve_six/") or not self.path.endswith(".py"):
             raise ValueError("source surface path must be a Python path under src/twelve_six")
 
     def to_dict(self) -> dict[str, str]:
-        return {"path": self.path, "capability_id": self.capability_id}
+        return {
+            "path": self.path,
+            "capability_id": self.capability_id,
+            "origin": self.origin,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +290,8 @@ class SourceSurfaceInventory:
     observed_main_tree_sha: str
     source_root: str
     source_surface_count: int
+    accepted_main_surface_count: int
+    candidate_overlay_surface_count: int
     surfaces: tuple[SourceSurface, ...]
 
     def __post_init__(self) -> None:
@@ -297,12 +306,26 @@ class SourceSurfaceInventory:
         if self.source_root != "src/twelve_six":
             raise ValueError("source_root must be canonical src/twelve_six")
         _require_positive_int("source_surface_count", self.source_surface_count)
+        _require_positive_int(
+            "accepted_main_surface_count", self.accepted_main_surface_count
+        )
+        _require_positive_int(
+            "candidate_overlay_surface_count", self.candidate_overlay_surface_count
+        )
         if not isinstance(self.surfaces, tuple) or not self.surfaces:
             raise ValueError("surfaces must be a non-empty tuple")
         if any(not isinstance(item, SourceSurface) for item in self.surfaces):
             raise ValueError("surfaces must contain only SourceSurface values")
         if self.source_surface_count != len(self.surfaces):
             raise ValueError("source_surface_count does not match surfaces")
+        accepted_count = sum(item.origin == "accepted_main" for item in self.surfaces)
+        candidate_count = sum(item.origin == "stacked_candidate" for item in self.surfaces)
+        if accepted_count != self.accepted_main_surface_count:
+            raise ValueError("accepted_main_surface_count does not match surfaces")
+        if candidate_count != self.candidate_overlay_surface_count:
+            raise ValueError("candidate_overlay_surface_count does not match surfaces")
+        if accepted_count + candidate_count != self.source_surface_count:
+            raise ValueError("source surface origin counts do not cover the inventory")
         paths = [item.path for item in self.surfaces]
         if paths != sorted(paths):
             raise ValueError("source surfaces must be in canonical path order")
@@ -316,6 +339,8 @@ class SourceSurfaceInventory:
             "observed_main_tree_sha": self.observed_main_tree_sha,
             "source_root": self.source_root,
             "source_surface_count": self.source_surface_count,
+            "accepted_main_surface_count": self.accepted_main_surface_count,
+            "candidate_overlay_surface_count": self.candidate_overlay_surface_count,
             "surfaces": [item.to_dict() for item in self.surfaces],
         }
 
@@ -647,6 +672,8 @@ def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
             "observed_main_tree_sha",
             "source_root",
             "source_surface_count",
+            "accepted_main_surface_count",
+            "candidate_overlay_surface_count",
             "surfaces",
         },
         "source_surface_inventory",
@@ -658,7 +685,7 @@ def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
         SourceSurface(
             **_require_exact_fields(
                 item,
-                {"path", "capability_id"},
+                {"path", "capability_id", "origin"},
                 "source_surface",
             )
         )
@@ -670,6 +697,8 @@ def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
         observed_main_tree_sha=payload["observed_main_tree_sha"],
         source_root=payload["source_root"],
         source_surface_count=payload["source_surface_count"],
+        accepted_main_surface_count=payload["accepted_main_surface_count"],
+        candidate_overlay_surface_count=payload["candidate_overlay_surface_count"],
         surfaces=surfaces,
     )
 
