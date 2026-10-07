@@ -87,6 +87,10 @@
   ],
   "candidate_overrides": [
     {
+      "path": ".github/workflows/ci.yml",
+      "capability_id": "github-sil-qualification"
+    },
+    {
       "path": "tools/validate_section2_repository_surface_coverage.py",
       "capability_id": "executable-capability-map"
     }

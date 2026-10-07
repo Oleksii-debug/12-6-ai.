@@ -42,7 +42,7 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["current_repository_main_tree_sha"] == "429a9933512f3d0c17f42d80193365e5df3f195a"
     assert result["qualified_current_equivalent_surface_count"] == 233
     assert result["accepted_main_surface_count"] == 119
-    assert result["candidate_overlay_surface_count"] == 1
+    assert result["candidate_overlay_surface_count"] == 2
     assert result["checkout_surface_count"] == 120
 
 
@@ -68,9 +68,13 @@ def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
 
     assert payload["candidate_overrides"] == [
         {
+            "path": ".github/workflows/ci.yml",
+            "capability_id": "github-sil-qualification",
+        },
+        {
             "path": "tools/validate_section2_repository_surface_coverage.py",
             "capability_id": "executable-capability-map",
-        }
+        },
     ]
 
 
