@@ -175,14 +175,14 @@ class SystemArchitectureManifest:
         if self.planes != _REQUIRED_PLANES:
             raise ValueError("system architecture plane order or set is non-canonical")
 
+        if any(not isinstance(boundary, TypedBoundary) for boundary in self.boundaries):
+            raise ValueError("boundaries must contain only TypedBoundary values")
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
             raise ValueError("typed boundary names must be unique")
 
         plane_set = set(self.planes)
         for boundary in self.boundaries:
-            if not isinstance(boundary, TypedBoundary):
-                raise ValueError("boundaries must contain only TypedBoundary values")
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 
@@ -363,6 +363,13 @@ class CoreReplacementReceipt:
             ("shell_identity_sha256_after", self.shell_identity_sha256_after),
         ):
             _require_sha256(name, value)
+        if not isinstance(self.preserved_surface_identities, tuple) or any(
+            not isinstance(item, tuple) or len(item) != 2
+            for item in self.preserved_surface_identities
+        ):
+            raise ValueError(
+                "preserved_surface_identities must be an immutable tuple of 2-tuples"
+            )
         if self.shell_identity_sha256_before != self.shell_identity_sha256_after:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:

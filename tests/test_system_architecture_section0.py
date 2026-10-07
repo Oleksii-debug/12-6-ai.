@@ -365,3 +365,35 @@ def test_manifest_rejects_mutable_boundary_container() -> None:
             boundaries=list(canonical.boundaries),  # type: ignore[arg-type]
         )
 
+def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="only TypedBoundary"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(*canonical.boundaries[:-1], None),  # type: ignore[arg-type]
+        )
+
+def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() -> None:
+    surfaces = canonical_runtime_shell_v1().surface_identities()
+    common = {
+        "previous_core_identity_sha256": _sha("previous"),
+        "candidate_core_identity_sha256": _sha("candidate"),
+        "shell_identity_sha256_before": _sha("shell"),
+        "shell_identity_sha256_after": _sha("shell"),
+        "shell_rewrite_required": False,
+    }
+
+    with pytest.raises(ValueError, match="immutable tuple of 2-tuples"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=list(surfaces),  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(ValueError, match="immutable tuple of 2-tuples"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=(*surfaces[:-1], ("ui-only",)),  # type: ignore[arg-type]
+        )
+
