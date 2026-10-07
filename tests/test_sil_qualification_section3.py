@@ -417,6 +417,24 @@ def test_sil_plan_policy_global_rebind_cannot_reseal_loaded_validator(
     assert rebound.journey_end_to_end_contracts == original
 
 
+def test_sil_plan_enum_policy_global_rebind_cannot_reseal_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = build_sil_plan(_registry(), _scenario()).to_dict()
+
+    class ForgedStatus:
+        AVAILABLE = object()
+        UNAVAILABLE = object()
+
+    class ForgedLevel:
+        INTEGRATION = object()
+
+    monkeypatch.setattr(sil_qualification, "CapabilityStatus", ForgedStatus)
+    monkeypatch.setattr(sil_qualification, "TestLevel", ForgedLevel)
+
+    assert build_sil_plan(_registry(), _scenario()).to_dict() == baseline
+
+
 def test_component_only_green_cannot_satisfy_available_capability_contract() -> None:
     registry = _registry()
     capabilities = list(registry.capabilities)
