@@ -695,6 +695,45 @@
       ],
       "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
       "unavailable_reason": null
+    },
+    {
+      "capability_id": "executable-capability-map",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.capability_map.CapabilityRegistry",
+      "dependencies": [
+        "replaceable-cognitive-core-shell",
+        "unified-generation-identity"
+      ],
+      "journey_ids": [
+        "maintainer-capability-qualification"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section2-capability-map",
+          "level": "component",
+          "command": "pytest -q tests/test_capability_map_section2.py"
+        },
+        {
+          "vector_id": "section2-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_section_closure_registry.py tests/test_capability_map_section2.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section2-pr",
+          "target": "pull-request:3078"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 2 remains IN_PROGRESS until exhaustive capability/source/journey coverage is mechanically demonstrated and predecessors close."
     }
   ],
   "journeys": [
@@ -812,6 +851,13 @@
       "title": "Maintainer validates CI policy and collision-safe worker protocol",
       "capability_ids": [
         "project-control-plane"
+      ]
+    },
+    {
+      "journey_id": "maintainer-capability-qualification",
+      "title": "Maintainer audits executable capability coverage and acceptance evidence",
+      "capability_ids": [
+        "executable-capability-map"
       ]
     }
   ]
