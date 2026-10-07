@@ -7,7 +7,7 @@ This document implements the current canonical Section Plan requirement:
 - **Section 1 — Єдина система ідентичностей і маніфестів**
 - plan document: `16KotBqgSyf3A0FEWpN8Pnobgf2ZJ1ecT8MLgHoQXibY`
 - observed plan revision:
-  `AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw`
+  `ANLCKQnXY8VKCJDDnoyswSWTUVvktY41ODOKs8vJB9_b2whb1GpVUU2nUEZxcqkQXTS7YYo7IcAlrRhEcbUHlYiysiUA00rP9QpL5qUJ0A`
 
 This work is stacked after Section 0 and cannot become canonical DONE before Section 0.
 
