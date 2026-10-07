@@ -20,18 +20,18 @@ Permanent adversarial coverage is:
 
 ## Qualified baseline and current-main equivalence
 
-The rule authority binds the accepted Section-1 merge baseline:
+The rule authority binds the qualified repaired Section-1 baseline:
 
-- accepted `main@9c34e8f321c3b174bee74de33ebe115332defdb7`;
-- exact baseline tree `7426abb05e0847e5b75e4a572ad7343c158cf254`;
+- accepted `main@49218c0c581b73bcd0985646f48bf35300b1948c`;
+- exact baseline tree `2f8c32273994595b0bd466a293ee727d6f56d2ef`;
 - that tree is identical to exact-head qualified candidate
-  `8594b0987bc2948145a84010cd5b1c9fa650690b`, whose CI run `37607396874`
+  `49218c0c581b73bcd0985646f48bf35300b1948c`, whose CI run `37608406911`
   is terminal SUCCESS.
 
 It also pins the live repository main observed for this candidate:
 
-- current `main@64f0d2fba572122d216b8c6882ff036e3a665920`;
-- exact current tree `568d0b865afa46452f2390a1b1734a5d3fbb1d37`;
+- current `main@5c041ca56edda55a5c3334f722361754051e121c`;
+- exact current tree `95ad101c8965fd49c1711027146253a093fce2f8`;
 - the validator requires that SHA to equal the live `origin/main`/local `main` ref;
 - all **235 capability-bearing blobs** across `src/twelve_six/**/*.py`, `tools/`,
   workflows and `pyproject.toml` must have an identical path→blob-SHA map between the

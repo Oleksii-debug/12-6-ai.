@@ -1086,3 +1086,63 @@ def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
             ),
         )
 
+
+def test_artifact_ref_validator_rebinding_cannot_bypass_serialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ref = _ref(ArtifactKind.CORPUS, "validator-rebind-ref")
+    object.__setattr__(ref, "schema_version", 0)
+    monkeypatch.setattr(ArtifactRef, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        ref.to_dict()
+
+
+def test_manifest_method_rebinding_cannot_reseal_stored_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("manifest-method-rebind")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    expected_identity = release.manifest_identity_sha256()
+
+    monkeypatch.setattr(ArtifactManifest, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        ArtifactManifest,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        ParentBinding,
+        "to_dict",
+        lambda _self: {"forged_parent": True},
+    )
+
+    assert release.manifest_identity_sha256() == expected_identity
+    object.__setattr__(release, "parents", list(release.parents))
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        generation.identity_sha256()
+
+
+def test_generation_method_rebinding_cannot_reseal_incomplete_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("generation-method-rebind")
+    expected_identity = generation.identity_sha256()
+
+    monkeypatch.setattr(GenerationIdentityManifest, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        GenerationIdentityManifest,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    assert generation.identity_sha256() == expected_identity
+    object.__setattr__(generation, "artifacts", generation.artifacts[:-1])
+
+    with pytest.raises(
+        ValueError,
+        match="generation must contain exactly one artifact of every canonical kind",
+    ):
+        generation.identity_sha256()
+

@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "9c34e8f321c3b174bee74de33ebe115332defdb7"
-    assert registry.observed_main_ci_run_id == 37607396874
+    assert registry.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert registry.observed_main_ci_run_id == 37608406911
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -500,7 +500,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37607396874',
+        '"run_id": 37608406911',
         '"run_id": NaN',
         1,
     )
@@ -676,8 +676,8 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "9c34e8f321c3b174bee74de33ebe115332defdb7"
-    assert inventory.observed_main_tree_sha == "7426abb05e0847e5b75e4a572ad7343c158cf254"
+    assert inventory.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert inventory.observed_main_tree_sha == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
     assert inventory.accepted_main_surface_count == 116
     assert inventory.candidate_overlay_surface_count == 1
     assert inventory.source_surface_count == 117

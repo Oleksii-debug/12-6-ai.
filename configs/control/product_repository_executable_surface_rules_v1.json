@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "9c34e8f321c3b174bee74de33ebe115332defdb7",
-  "observed_main_tree_sha": "7426abb05e0847e5b75e4a572ad7343c158cf254",
-  "current_repository_main_sha": "64f0d2fba572122d216b8c6882ff036e3a665920",
-  "current_repository_main_tree_sha": "568d0b865afa46452f2390a1b1734a5d3fbb1d37",
+  "observed_main_sha": "49218c0c581b73bcd0985646f48bf35300b1948c",
+  "observed_main_tree_sha": "2f8c32273994595b0bd466a293ee727d6f56d2ef",
+  "current_repository_main_sha": "5c041ca56edda55a5c3334f722361754051e121c",
+  "current_repository_main_tree_sha": "95ad101c8965fd49c1711027146253a093fce2f8",
   "expected_main_surface_count": 119,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,

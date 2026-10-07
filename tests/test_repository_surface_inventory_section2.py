@@ -36,10 +36,10 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "9c34e8f321c3b174bee74de33ebe115332defdb7"
-    assert result["observed_main_tree_sha"] == "7426abb05e0847e5b75e4a572ad7343c158cf254"
-    assert result["current_repository_main_sha"] == "64f0d2fba572122d216b8c6882ff036e3a665920"
-    assert result["current_repository_main_tree_sha"] == "568d0b865afa46452f2390a1b1734a5d3fbb1d37"
+    assert result["observed_main_sha"] == "49218c0c581b73bcd0985646f48bf35300b1948c"
+    assert result["observed_main_tree_sha"] == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
+    assert result["current_repository_main_sha"] == "5c041ca56edda55a5c3334f722361754051e121c"
+    assert result["current_repository_main_tree_sha"] == "95ad101c8965fd49c1711027146253a093fce2f8"
     assert result["qualified_current_equivalent_surface_count"] == 235
     assert result["accepted_main_surface_count"] == 119
     assert result["candidate_overlay_surface_count"] == 1
@@ -199,7 +199,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "64f0d2fba572122d216b8c6882ff036e3a665920"
+    payload["observed_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 

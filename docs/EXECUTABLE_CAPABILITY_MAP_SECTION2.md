@@ -32,10 +32,10 @@ Each capability binds:
 - evidence targets;
 - either an integrated result or an explicit unavailable reason.
 
-The registry's AVAILABLE evidence is refreshed to accepted Section-1 merge
-`main@9c34e8f321c3b174bee74de33ebe115332defdb7` / tree `7426abb05e0847e5b75e4a572ad7343c158cf254`. That tree is byte-identical to the
-exact-head qualified Section-1 candidate `8594b0987bc2948145a84010cd5b1c9fa650690b`,
-whose CI run `37607396874` is terminal SUCCESS. Live `main@64f0d2fba572122d216b8c6882ff036e3a665920` is the
+The registry's AVAILABLE evidence is refreshed to qualified repaired Section-1 candidate
+`main@49218c0c581b73bcd0985646f48bf35300b1948c` / tree `2f8c32273994595b0bd466a293ee727d6f56d2ef`. That tree is byte-identical to the
+exact-head qualified Section-1 candidate `49218c0c581b73bcd0985646f48bf35300b1948c`,
+whose CI run `37608406911` is terminal SUCCESS. Live `main@5c041ca56edda55a5c3334f722361754051e121c` is the
 subsequent ledger-only commit; the repository equivalence gate proves all 235 capability-bearing
 `src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are unchanged.
 
