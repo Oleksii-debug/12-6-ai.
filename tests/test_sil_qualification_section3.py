@@ -780,12 +780,12 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "--no-deps --no-build-isolation -e ." in sil_job
     assert "python -m pip install --upgrade pip" not in sil_job
     assert "pip install -e .[dev]" not in sil_job
-    assert "python -m twelve_six.sil_qualification environment-receipt" in sil_job
+    assert '"$sil_python" -m twelve_six.sil_qualification environment-receipt' in sil_job
     assert sil_job.count(
         '--environment-receipt "$RUNNER_TEMP/sil-environment.json"'
     ) == 2
-    assert "python -m twelve_six.sil_qualification run" in sil_job
-    assert "python -m twelve_six.sil_qualification verify" in sil_job
+    assert '"$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification run' in sil_job
+    assert '"$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification verify' in sil_job
     assert "continue-on-error: true" in sil_job
     assert "if: always()" in sil_job
 
