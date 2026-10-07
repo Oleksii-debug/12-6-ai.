@@ -44,6 +44,11 @@ serialization or evidence boundary. Constructor-time validation is therefore not
 object creation: post-validation mutation of an exact dataclass instance (including mutation via
 low-level `object.__setattr__`) fails closed before its stale state can be hashed or promoted.
 
+System-plane wire identities are read from the immutable underlying `str` payload and
+cross-checked against the Enum member's stored `_value_` without dispatching the mutable
+`.value` descriptor. This prevents class-level descriptor rebinding from creating a
+validation/serialization split while still failing closed on low-level Enum value mutation.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`
