@@ -345,6 +345,356 @@
       ],
       "integrated_result": null,
       "unavailable_reason": "Physical Windows 11/NVDA acceptance and packaged whole-product journey are not yet qualified"
+    },
+    {
+      "capability_id": "package-runtime",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six",
+      "dependencies": [],
+      "journey_ids": [
+        "developer-package-runtime"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": false
+        }
+      ],
+      "test_vectors": [],
+      "evidence_targets": [
+        {
+          "evidence_id": "section2-package-gate",
+          "target": "section:2"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "The package namespace is inventoried as a source surface but has no independent accepted product-level acceptance path; concrete package capabilities are qualified separately."
+    },
+    {
+      "capability_id": "training-mechanics",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.training.trainer",
+      "dependencies": [
+        "model-spec-identity",
+        "checkpoint-integrity-mechanics"
+      ],
+      "journey_ids": [
+        "researcher-training-mechanics"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "trainer-checkpoint-adapter",
+          "level": "component",
+          "command": "pytest -q tests/test_trainer_checkpoint_adapter.py"
+        },
+        {
+          "vector_id": "trainer-preflight",
+          "level": "integration",
+          "command": "pytest -q tests/test_checkpoint_trainer_preflight.py tests/test_checkpoint_trainer_progress_binding.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "project-owned training-loop and checkpoint-integration mechanics; this does not authorize a learned-20M optimizer run",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "data-governance-mechanics",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.data.current_clean_execution_v1",
+      "dependencies": [],
+      "journey_ids": [
+        "data-curator-governance"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "data-quality-authority",
+          "level": "component",
+          "command": "pytest -q tests/test_quality_execution_authority.py tests/test_privacy_execution_authority.py"
+        },
+        {
+          "vector_id": "data-clean-dedup-decontam",
+          "level": "integration",
+          "command": "pytest -q tests/test_current_clean_execution_v1.py tests/test_expanded_global_dedup_v10.py tests/test_data232_decontamination_authority_v2.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "rights/privacy/quality/dedup/decontamination control mechanics on accepted main; this does not assert a launch-authoritative learned-20M corpus",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "learned20m-control-plane",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.learned20m_readiness",
+      "dependencies": [
+        "training-mechanics",
+        "data-governance-mechanics"
+      ],
+      "journey_ids": [
+        "operator-learned20m-readiness"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "learned20m-current-run-authority",
+          "level": "component",
+          "command": "pytest -q tests/test_learned20m_current_run_authority.py tests/test_r01_learned20m_launch_readiness.py"
+        },
+        {
+          "vector_id": "learned20m-lease-control",
+          "level": "integration",
+          "command": "pytest -q tests/test_learned20m_training_lease.py tests/test_learned20m_global_training_lease.py tests/test_learned20m_launch_input.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "fail-closed learned-20M readiness, launch-input and lease-control mechanics; no training authorization or learned weights are implied",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "portable-run-authority",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.portable_run_packet",
+      "dependencies": [
+        "learned20m-control-plane"
+      ],
+      "journey_ids": [
+        "operator-portable-run"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "portable-run-packet",
+          "level": "component",
+          "command": "pytest -q tests/test_r01_portable_run_packet.py"
+        },
+        {
+          "vector_id": "portable-run-binding",
+          "level": "integration",
+          "command": "pytest -q tests/test_r01_portable_run_binding.py tests/test_assess_r01_portable_run_packet_cli.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "portable run packet and exact binding validation mechanics",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "scale141-recovery",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.scale141_recovery",
+      "dependencies": [
+        "checkpoint-integrity-mechanics"
+      ],
+      "journey_ids": [
+        "operator-scale141-recovery"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "scale141-recovery-core",
+          "level": "component",
+          "command": "pytest -q tests/test_scale141_recovery.py tests/test_scale141_strict_json.py"
+        },
+        {
+          "vector_id": "scale141-content-addressed",
+          "level": "integration",
+          "command": "pytest -q tests/test_scale141_content_addressed_recovery.py tests/test_scale141_sidecar_snapshot.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "content-addressed scale-141 recovery and sidecar validation mechanics",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "accelerated-scaling-research",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.accelerated_scaling",
+      "dependencies": [
+        "scale141-recovery"
+      ],
+      "journey_ids": [
+        "researcher-scaling-roadmap"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "accelerated-scaling-roadmap",
+          "level": "component",
+          "command": "pytest -q tests/test_r01_accelerated_scaling_roadmap.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "scaling-gates",
+          "target": "section:66-70"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "The accepted-main scaling roadmap is research/control code, not a qualified larger-scale execution capability; later scale gates remain unsatisfied."
+    },
+    {
+      "capability_id": "split-robustness",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.split_robustness",
+      "dependencies": [
+        "data-governance-mechanics"
+      ],
+      "journey_ids": [
+        "researcher-split-validation"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "split-robustness-core",
+          "level": "component",
+          "command": "pytest -q tests/test_split_robustness.py"
+        },
+        {
+          "vector_id": "split-robustness-manifest",
+          "level": "integration",
+          "command": "pytest -q tests/test_split_robustness_manifest_invariants.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "deterministic split-robustness and manifest-invariant validation mechanics",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "project-control-plane",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.ci_workflow_policy",
+      "dependencies": [],
+      "journey_ids": [
+        "maintainer-project-control"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "ci-workflow-policy",
+          "level": "component",
+          "command": "pytest -q tests/test_ci_workflow_policy.py"
+        },
+        {
+          "vector_id": "swarm-protocol",
+          "level": "integration",
+          "command": "pytest -q tests/test_swarm_protocol_v2.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
+      "unavailable_reason": null
     }
   ],
   "journeys": [
@@ -399,6 +749,69 @@
         "windows-operator-cli-packaging",
         "learned-20m-base",
         "windows-nvda-final-product"
+      ]
+    },
+    {
+      "journey_id": "developer-package-runtime",
+      "title": "Developer resolves the installed/source package runtime surface",
+      "capability_ids": [
+        "package-runtime"
+      ]
+    },
+    {
+      "journey_id": "researcher-training-mechanics",
+      "title": "Researcher exercises project-owned training and checkpoint mechanics",
+      "capability_ids": [
+        "training-mechanics"
+      ]
+    },
+    {
+      "journey_id": "data-curator-governance",
+      "title": "Data curator applies rights/privacy/quality/dedup/decontamination controls",
+      "capability_ids": [
+        "data-governance-mechanics"
+      ]
+    },
+    {
+      "journey_id": "operator-learned20m-readiness",
+      "title": "Operator evaluates learned-20M readiness and run/lease authority without bypassing gates",
+      "capability_ids": [
+        "learned20m-control-plane"
+      ]
+    },
+    {
+      "journey_id": "operator-portable-run",
+      "title": "Operator validates a portable run packet and its exact bindings",
+      "capability_ids": [
+        "portable-run-authority"
+      ]
+    },
+    {
+      "journey_id": "operator-scale141-recovery",
+      "title": "Operator validates content-addressed scale-141 recovery state",
+      "capability_ids": [
+        "scale141-recovery"
+      ]
+    },
+    {
+      "journey_id": "researcher-scaling-roadmap",
+      "title": "Researcher inspects the guarded accelerated-scaling roadmap",
+      "capability_ids": [
+        "accelerated-scaling-research"
+      ]
+    },
+    {
+      "journey_id": "researcher-split-validation",
+      "title": "Researcher validates split robustness and manifest invariants",
+      "capability_ids": [
+        "split-robustness"
+      ]
+    },
+    {
+      "journey_id": "maintainer-project-control",
+      "title": "Maintainer validates CI policy and collision-safe worker protocol",
+      "capability_ids": [
+        "project-control-plane"
       ]
     }
   ]
