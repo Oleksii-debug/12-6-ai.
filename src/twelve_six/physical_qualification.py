@@ -1210,15 +1210,25 @@ def verify_qualification_evidence(
             raise ValueError("external resource evidence must use canonical unique order")
         previous_resource = resource.value
         adapter_id = _require_id("external resource adapter id", item["adapter_id"])
+        encoded = item["evidence_b64"]
+        if not isinstance(encoded, str):
+            raise ValueError("external resource evidence_b64 must be a string")
         try:
-            raw = base64.b64decode(item["evidence_b64"], validate=True)
+            raw = base64.b64decode(encoded, validate=True)
         except (TypeError, ValueError) as exc:
             raise ValueError("external resource evidence is not strict base64") from exc
         if not raw or len(raw) > _MAX_RESOURCE_PROBE_BYTES:
             raise ValueError("external resource evidence size is invalid or unbounded")
-        if item["evidence_bytes"] != len(raw):
+        claimed_bytes = item["evidence_bytes"]
+        if type(claimed_bytes) is not int or claimed_bytes <= 0:
+            raise ValueError("external resource evidence_bytes must be a positive integer")
+        if claimed_bytes != len(raw):
             raise ValueError("external resource evidence byte count mismatch")
-        if item["evidence_sha256"] != _sha256_bytes(raw):
+        claimed_sha = _require_sha256(
+            "external resource evidence_sha256",
+            item["evidence_sha256"],
+        )
+        if claimed_sha != _sha256_bytes(raw):
             raise ValueError("external resource evidence hash mismatch")
         verifier = external_verifiers.get(resource)
         if verifier is None:
