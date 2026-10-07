@@ -887,8 +887,9 @@ class GitState:
     tracked_clean: bool
 
     def __post_init__(self) -> None:
-        _require_git_sha("GitState.sha", self.sha)
-        if not _is_exact_type(self.tracked_clean, bool):
+        if type(self.sha) is not str or _SHA40_RE.fullmatch(self.sha) is None:
+            raise ValueError("GitState.sha must be a lowercase 40-hex Git SHA")
+        if type(self.tracked_clean) is not bool:
             raise ValueError("GitState.tracked_clean must be boolean")
 
 
@@ -970,14 +971,17 @@ class CommandExecution:
     def __post_init__(self) -> None:
         if type(self.return_code) is not int:
             raise ValueError("CommandExecution.return_code must be an integer")
-        if not _is_exact_type(self.stdout, str) or not _is_exact_type(self.stderr, str):
+        if type(self.stdout) is not str or type(self.stderr) is not str:
             raise ValueError("CommandExecution stdout/stderr must be text")
         if type(self.duration_ms) is not int or self.duration_ms < 0:
             raise ValueError("CommandExecution.duration_ms must be a non-negative integer")
-        if self.consumed_input_identity_sha256 is not None:
-            _require_sha256(
-                "CommandExecution.consumed_input_identity_sha256",
-                self.consumed_input_identity_sha256,
+        if self.consumed_input_identity_sha256 is not None and (
+            type(self.consumed_input_identity_sha256) is not str
+            or _SHA256_RE.fullmatch(self.consumed_input_identity_sha256) is None
+        ):
+            raise ValueError(
+                "CommandExecution.consumed_input_identity_sha256 "
+                "must be a lowercase 64-hex SHA-256"
             )
 
 
