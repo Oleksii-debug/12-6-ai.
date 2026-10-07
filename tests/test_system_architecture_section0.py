@@ -880,6 +880,44 @@ def test_interface_authority_rebinding_cannot_bypass_gateway_compatibility(
         replace_cognitive_core(assembly, incompatible_binding)
 
 
+def test_identity_hash_helper_rebinding_cannot_reseal_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assembly = _assembly("hash-helper-rebind", 20_613_440)
+    candidate = CognitiveCoreBinding(
+        core=_core("hash-helper-rebind-candidate", 200_000_000),
+        gateway_api=assembly.shell.gateway_api,
+    )
+    replacement, receipt = replace_cognitive_core(assembly, candidate)
+    expected_identities = (
+        assembly.shell.gateway_api.identity_sha256(),
+        assembly.architecture.identity_sha256(),
+        assembly.core_binding.core.identity_sha256(),
+        assembly.shell.identity_sha256(),
+        assembly.identity_sha256(),
+        receipt.identity_sha256(),
+        replacement.identity_sha256(),
+    )
+
+    monkeypatch.setattr(
+        system_architecture_module,
+        "_canonical_json_sha256",
+        lambda _payload: "0" * 64,
+    )
+
+    observed_identities = (
+        assembly.shell.gateway_api.identity_sha256(),
+        assembly.architecture.identity_sha256(),
+        assembly.core_binding.core.identity_sha256(),
+        assembly.shell.identity_sha256(),
+        assembly.identity_sha256(),
+        receipt.identity_sha256(),
+        replacement.identity_sha256(),
+    )
+    assert observed_identities == expected_identities
+
+
+
 def test_system_plane_value_descriptor_rebinding_cannot_reseal_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
