@@ -170,17 +170,19 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
         assert capability.unavailable_reason
 
 
-def test_closed_predecessor_capabilities_are_available() -> None:
+def test_closed_and_reopened_predecessor_capability_truth_is_explicit() -> None:
     registry = _load()
 
-    for capability_id in (
-        "replaceable-cognitive-core-shell",
-        "unified-generation-identity",
-    ):
-        capability = registry.capability(capability_id)
-        assert capability.status is CapabilityStatus.AVAILABLE
-        assert capability.integrated_result
-        assert capability.unavailable_reason is None
+    closed = registry.capability("replaceable-cognitive-core-shell")
+    assert closed.status is CapabilityStatus.AVAILABLE
+    assert closed.integrated_result
+    assert closed.unavailable_reason is None
+
+    reopened = registry.capability("unified-generation-identity")
+    assert reopened.status is CapabilityStatus.UNAVAILABLE
+    assert reopened.integrated_result is None
+    assert reopened.unavailable_reason
+
     assert registry.journey_available("developer-replace-cognitive-core") is True
 
 
