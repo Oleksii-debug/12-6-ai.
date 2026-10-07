@@ -804,6 +804,8 @@ def execute_qualification(
         raise ValueError("signed packet does not authorize this qualification agent source")
 
     inventory = inventory_host(root) if host_inventory is None else host_inventory
+    if action_runner is run_bounded_pytest and inventory.python_executable != sys.executable:
+        raise ValueError("default physical runner executable does not match host inventory")
     resources = resource_observations(inventory, execution_mode=packet.execution_mode)
     reasons: list[str] = []
     if inventory.os_family not in packet.allowed_os_families:
