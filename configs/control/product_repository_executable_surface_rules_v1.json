@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "26744c1b2c6dc502c50d6c818b7a6013011fc19e",
-  "observed_main_tree_sha": "21ba29dbac1b39a6a26ca184f9d97448b84843c5",
-  "current_repository_main_sha": "a10287066dae4adc9eb78a7a6dc40fcf73ab9161",
-  "current_repository_main_tree_sha": "43c908ba384303e0e1edb721b6bc3675fe4b27da",
+  "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
+  "observed_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
+  "current_repository_main_sha": "c27f78fea59148c51f40d1d86c1b263e1a7f98ef",
+  "current_repository_main_tree_sha": "62d8ff938583c80ccd09ab04573aa593d8597514",
   "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -86,7 +86,7 @@
       "capability_id": "data-governance-mechanics"
     },
     {
-      "rule_id": "section2-repository-surface-validator",
+      "rule_id": "section2-surface-validator",
       "selector": "exact",
       "pattern": "tools/validate_section2_repository_surface_coverage.py",
       "capability_id": "executable-capability-map"
