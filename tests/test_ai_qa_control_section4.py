@@ -1231,3 +1231,88 @@ def test_closed_ai_qa_schema_rejects_behavioral_subclasses() -> None:
             certifier_actor_id="independent-certifier",
             policy=policy,
         )
+
+def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) -> None:
+    class ForgedStr(str):
+        pass
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("behavioral tuple must not be iterated")
+
+    policy = _policy()
+    registry = load_capability_registry(_CAPABILITIES)
+    scenario = load_sil_scenario(_SCENARIO)
+
+    class ForgedPolicy(ai_qa_control.AIQAPolicy):
+        pass
+
+    forged_policy = ForgedPolicy(
+        policy.schema_version,
+        policy.automated_gate_order,
+        policy.promotion_gate_order,
+        policy.require_independent_certifier,
+        policy.require_exact_candidate_sha,
+        policy.physical_not_applicable_requires_explicit_scope,
+        policy.max_failure_summary_bytes,
+        policy.max_patch_bytes,
+    )
+    with pytest.raises(ValueError, match="policy must be an AIQAPolicy"):
+        failure_packet_from_sil(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            defect_id="closed-policy",
+            policy=forged_policy,
+            expected_package_bytes=b"package",
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=registry,
+            expected_scenario=scenario,
+        )
+
+    with pytest.raises(ValueError, match="physical_scope must be a PhysicalScope"):
+        failure_packet_from_sil(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            defect_id="closed-scope",
+            policy=policy,
+            expected_package_bytes=b"package",
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=registry,
+            expected_scenario=scenario,
+            physical_scope="NONE",
+        )
+
+    failure = _failure()
+    candidate = _candidate(failure)
+    with pytest.raises(ValueError, match="adversarial_command must be text"):
+        build_regression_chain(
+            failure,
+            candidate,
+            adversarial_command=ForgedStr("pytest -q tests/test_payload.py"),
+        )
+
+    receipt = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "a" * 64,
+        "independent-certifier",
+    )
+    candidate_identity = candidate.identity_sha256()
+    bundle = {
+        "schema_version": "12-6.aiqa-gate-receipts.v1",
+        "candidate_identity_sha256": candidate_identity,
+        "receipts": [receipt.to_dict()],
+    }
+    path = tmp_path / "receipts.json"
+    path.write_text(
+        json.dumps(bundle, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="trusted_receipts must be an immutable tuple"):
+        load_gate_receipt_bundle(
+            path,
+            expected_candidate_identity_sha256=candidate_identity,
+            trusted_receipts=ForgedTuple((receipt,)),
+        )
+
