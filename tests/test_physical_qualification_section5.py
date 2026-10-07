@@ -376,9 +376,7 @@ def test_process_tree_policy_uses_windows_taskkill(
     assert len(calls) == 1
     argv, kwargs = calls[0]
     assert argv[1:] == ("/PID", "4343", "/T", "/F")
-    assert argv[0].endswith("System32/taskkill.exe") or argv[0].endswith(
-        r"System32\taskkill.exe"
-    )
+    assert argv[0].replace("\\", "/").endswith("/System32/taskkill.exe")
     assert kwargs["shell"] is False
     assert kwargs["check"] is True
 
