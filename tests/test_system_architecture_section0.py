@@ -851,6 +851,26 @@ def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
         receipt.identity_sha256()
 
 
+def test_system_plane_value_descriptor_rebinding_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    architecture = canonical_system_architecture_v1()
+    expected_identity = architecture.identity_sha256()
+
+    def dispatching_value(_: SystemPlane) -> str:
+        raise AssertionError("SystemPlane.value descriptor must not be dispatched")
+
+    monkeypatch.setattr(
+        SystemPlane,
+        "value",
+        property(dispatching_value),
+        raising=False,
+    )
+
+    assert architecture.identity_sha256() == expected_identity
+    assert canonical_system_architecture_v1().identity_sha256() == expected_identity
+
+
 def test_system_plane_enum_singleton_value_mutation_fails_closed() -> None:
     architecture = canonical_system_architecture_v1()
     original_value = SystemPlane.BASE_MODEL.value
