@@ -25,7 +25,6 @@ from twelve_six.sil_qualification import (
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
-    require_exact_clean_git_state,
     run_command,
     verify_sil_evidence,
 )
@@ -1737,7 +1736,7 @@ def _regression_cli(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
-def verify_candidate_sil_evidence(
+def _verify_candidate_sil_evidence_with_authorities(
     evidence_path: str | Path,
     log_path: str | Path,
     *,
@@ -1746,30 +1745,80 @@ def verify_candidate_sil_evidence(
     expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
-    git_probe: GitProbe = probe_git_state,
+    git_probe: GitProbe,
+    git_state_type: type[GitState] = GitState,
+    git_state_validator: Callable[[GitState], None] = GitState.__post_init__,
+    package_manifest_builder: Callable[[str | Path], bytes] = build_package_manifest_bytes,
+    sil_evidence_verifier: Callable[..., dict[str, Any]] = verify_sil_evidence,
 ) -> dict[str, Any]:
     root = Path(repo_root).resolve()
-    require_exact_clean_git_state(
-        root,
-        candidate_git_sha,
-        git_probe=git_probe,
-    )
-    evidence = verify_sil_evidence(
+    candidate_git_sha = _require_git_sha("candidate_git_sha", candidate_git_sha)
+
+    def require_exact_clean_state() -> None:
+        state = git_probe(root)
+        if type(state) is not git_state_type:
+            raise ValueError("candidate Git probe must return exact GitState")
+        git_state_validator(state)
+        if state.sha != candidate_git_sha:
+            raise ValueError(
+                "candidate verification exact-head mismatch: "
+                f"expected {candidate_git_sha}, observed {state.sha}"
+            )
+        if not state.tracked_clean:
+            raise ValueError("candidate verification checkout is dirty")
+
+    require_exact_clean_state()
+    evidence = sil_evidence_verifier(
         evidence_path,
         log_path,
-        expected_package_bytes=build_package_manifest_bytes(root),
+        expected_package_bytes=package_manifest_builder(root),
         expected_environment_receipt=expected_environment_receipt,
         expected_registry=expected_registry,
         expected_scenario=expected_scenario,
         expected_git_sha=candidate_git_sha,
         require_pass=False,
     )
-    require_exact_clean_git_state(
-        root,
-        candidate_git_sha,
-        git_probe=git_probe,
-    )
+    require_exact_clean_state()
     return evidence
+
+
+def _build_verify_candidate_sil_evidence_authority():
+    sealed_impl = _verify_candidate_sil_evidence_with_authorities
+    sealed_probe = probe_git_state
+    sealed_git_state_type = GitState
+    sealed_git_state_validator = GitState.__post_init__
+    sealed_package_manifest_builder = build_package_manifest_bytes
+    sealed_sil_evidence_verifier = verify_sil_evidence
+
+    def canonical(
+        evidence_path: str | Path,
+        log_path: str | Path,
+        *,
+        repo_root: str | Path,
+        candidate_git_sha: str,
+        expected_environment_receipt: dict[str, Any],
+        expected_registry: CapabilityRegistry,
+        expected_scenario: SILScenario,
+    ) -> dict[str, Any]:
+        return sealed_impl(
+            evidence_path,
+            log_path,
+            repo_root=repo_root,
+            candidate_git_sha=candidate_git_sha,
+            expected_environment_receipt=expected_environment_receipt,
+            expected_registry=expected_registry,
+            expected_scenario=expected_scenario,
+            git_probe=sealed_probe,
+            git_state_type=sealed_git_state_type,
+            git_state_validator=sealed_git_state_validator,
+            package_manifest_builder=sealed_package_manifest_builder,
+            sil_evidence_verifier=sealed_sil_evidence_verifier,
+        )
+
+    return canonical
+
+
+verify_candidate_sil_evidence = _build_verify_candidate_sil_evidence_authority()
 
 
 def _sil_receipt_cli(args: argparse.Namespace) -> int:
