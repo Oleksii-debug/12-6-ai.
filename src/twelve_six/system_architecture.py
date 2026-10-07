@@ -23,19 +23,19 @@ def _canonical_json_sha256(payload: dict[str, Any]) -> str:
 
 
 def _require_nonempty_text(name: str, value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
+    if not _is_exact_type(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value
 
 
 def _require_positive_int(name: str, value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    if not _is_exact_type(value, int) or value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return value
 
 
 def _require_sha256(name: str, value: object) -> str:
-    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+    if not _is_exact_type(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be a lowercase 64-hex SHA-256")
     return value
 
