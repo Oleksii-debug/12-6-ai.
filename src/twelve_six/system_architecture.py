@@ -353,6 +353,7 @@ class CoreReplacementReceipt:
     shell_identity_sha256_before: str
     shell_identity_sha256_after: str
     preserved_surface_identities: tuple[tuple[str, str], ...]
+    preserved_shell: RuntimeShellContract
     shell_rewrite_required: bool
 
     def __post_init__(self) -> None:
@@ -374,6 +375,8 @@ class CoreReplacementReceipt:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:
             raise ValueError("canonical core replacement must not require a runtime-shell rewrite")
+        if not isinstance(self.preserved_shell, RuntimeShellContract):
+            raise ValueError("preserved_shell must be a RuntimeShellContract")
         expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
         observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
         if observed_surfaces != expected_surfaces:
@@ -381,6 +384,11 @@ class CoreReplacementReceipt:
         for surface, identity in self.preserved_surface_identities:
             _require_nonempty_text("surface", surface)
             _require_sha256(f"{surface}_identity_sha256", identity)
+        preserved_shell_identity = self.preserved_shell.identity_sha256()
+        if self.shell_identity_sha256_before != preserved_shell_identity:
+            raise ValueError("replacement receipt shell identity does not match preserved shell")
+        if self.preserved_surface_identities != self.preserved_shell.surface_identities():
+            raise ValueError("replacement receipt surface identities do not match preserved shell")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -392,6 +400,7 @@ class CoreReplacementReceipt:
                 {"surface": surface, "identity_sha256": identity}
                 for surface, identity in self.preserved_surface_identities
             ],
+            "preserved_shell": self.preserved_shell.to_dict(),
             "shell_rewrite_required": self.shell_rewrite_required,
         }
 
@@ -491,6 +500,7 @@ def replace_cognitive_core(
         shell_identity_sha256_before=shell_before,
         shell_identity_sha256_after=shell_after,
         preserved_surface_identities=assembly.shell.surface_identities(),
+        preserved_shell=assembly.shell,
         shell_rewrite_required=False,
     )
     return replacement, receipt

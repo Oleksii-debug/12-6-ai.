@@ -284,6 +284,7 @@ def test_core_replacement_preserves_all_persistent_shell_contracts() -> None:
     assert replacement.shell.surface_identities() == current.shell.surface_identities()
     assert receipt.shell_identity_sha256_before == receipt.shell_identity_sha256_after
     assert receipt.preserved_surface_identities == current.shell.surface_identities()
+    assert receipt.preserved_shell == current.shell
     assert receipt.shell_rewrite_required is False
     assert replacement.identity_sha256() != assembly_before_identity
 
@@ -335,6 +336,8 @@ def test_runtime_shell_identity_changes_when_a_surface_contract_changes() -> Non
 
 
 def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None:
+    shell = canonical_runtime_shell_v1()
+
     with pytest.raises(ValueError, match="changed runtime shell"):
         CoreReplacementReceipt(
             previous_core_identity_sha256=_sha("previous"),
@@ -342,6 +345,7 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             shell_identity_sha256_before=_sha("shell-a"),
             shell_identity_sha256_after=_sha("shell-b"),
             preserved_surface_identities=(),
+            preserved_shell=shell,
             shell_rewrite_required=False,
         )
 
@@ -352,6 +356,7 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             shell_identity_sha256_before=_sha("shell"),
             shell_identity_sha256_after=_sha("shell"),
             preserved_surface_identities=(),
+            preserved_shell=shell,
             shell_rewrite_required=True,
         )
 
@@ -382,6 +387,7 @@ def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() ->
         "candidate_core_identity_sha256": _sha("candidate"),
         "shell_identity_sha256_before": _sha("shell"),
         "shell_identity_sha256_after": _sha("shell"),
+        "preserved_shell": canonical_runtime_shell_v1(),
         "shell_rewrite_required": False,
     }
 
@@ -397,3 +403,37 @@ def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() ->
             preserved_surface_identities=(*surfaces[:-1], ("ui-only",)),  # type: ignore[arg-type]
         )
 
+
+
+def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> None:
+    shell = canonical_runtime_shell_v1()
+    common = {
+        "previous_core_identity_sha256": _sha("previous"),
+        "candidate_core_identity_sha256": _sha("candidate"),
+        "shell_identity_sha256_before": shell.identity_sha256(),
+        "shell_identity_sha256_after": shell.identity_sha256(),
+        "preserved_shell": shell,
+        "shell_rewrite_required": False,
+    }
+    tampered_surfaces = list(shell.surface_identities())
+    tampered_surfaces[1] = ("memory", _sha("tampered-memory"))
+
+    with pytest.raises(ValueError, match="surface identities do not match preserved shell"):
+        CoreReplacementReceipt(
+            **common,
+            preserved_surface_identities=tuple(tampered_surfaces),
+        )
+
+    changed_shell = RuntimeShellContract(
+        gateway_api=shell.gateway_api,
+        memory_api=InterfaceContract("twelve_six.memory", 2),
+        tools_api=shell.tools_api,
+        voice_api=shell.voice_api,
+        ui_api=shell.ui_api,
+        orchestration_api=shell.orchestration_api,
+    )
+    with pytest.raises(ValueError, match="shell identity does not match preserved shell"):
+        CoreReplacementReceipt(
+            **{**common, "preserved_shell": changed_shell},
+            preserved_surface_identities=changed_shell.surface_identities(),
+        )

@@ -60,8 +60,10 @@ binds stable contracts for:
 
 `replace_cognitive_core()` accepts a new checkpoint or scale only when its gateway contract
 is exactly compatible with the shell. The replacement receipt binds the old and new core
-identities and the unchanged shell/surface identities. A gateway generation mismatch fails
-closed before the assembly is changed.
+identities and the unchanged shell/surface identities. It also carries the immutable preserved
+shell contract and cross-checks the shell hash plus every surface hash against that snapshot, so
+a resealed receipt cannot claim unrelated surface identities. A gateway generation mismatch
+fails closed before the assembly is changed.
 
 The regression suite proves both important replacement classes:
 
