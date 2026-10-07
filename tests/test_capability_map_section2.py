@@ -11,6 +11,7 @@ from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
     _changed_existing_source_paths,
+    _python_source_blob_map,
     load_capability_registry,
     load_source_surface_inventory,
     validate_source_surface_coverage,
@@ -484,6 +485,27 @@ def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
         accepted_main_blobs,
         checkout_blobs,
     ) == {"src/twelve_six/model.py"}
+
+
+def test_python_source_blob_map_rejects_symlink_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class GitResult:
+        returncode = 0
+        stdout = (
+            "120000 blob "
+            + "a" * 40
+            + "\tsrc/twelve_six/symlinked_module.py\n"
+        )
+
+    monkeypatch.setattr(
+        "twelve_six.capability_map.subprocess.run",
+        lambda *args, **kwargs: GitResult(),
+    )
+
+    with pytest.raises(ValueError, match="regular Git blob"):
+        _python_source_blob_map(tmp_path, "HEAD", "src/twelve_six")
 
 
 def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> None:
