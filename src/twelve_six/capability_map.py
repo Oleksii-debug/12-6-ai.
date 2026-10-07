@@ -197,6 +197,12 @@ _CANONICAL_TEST_LEVEL_VALUES = tuple(
     _test_level_wire_value(item) for item in _CANONICAL_TEST_LEVELS
 )
 
+_SEALED_TEST_LEVEL_WIRE = _test_level_wire_value
+_SEALED_REQUIRED_LEVEL_VALUES = (
+    _CANONICAL_TEST_LEVEL_VALUES[0],
+    _CANONICAL_TEST_LEVEL_VALUES[1],
+)
+
 
 def _require_capability_status(
     value: object,
@@ -337,14 +343,7 @@ class Capability:
     integrated_result: str | None
     unavailable_reason: str | None
 
-    def __post_init__(
-        self,
-        _sealed_test_level_wire: Any = _test_level_wire_value,  # noqa: RUF033
-        _sealed_required_level_values: tuple[str, str] = (  # noqa: RUF033
-            _CANONICAL_TEST_LEVEL_VALUES[0],
-            _CANONICAL_TEST_LEVEL_VALUES[1],
-        ),
-    ) -> None:
+    def __post_init__(self) -> None:
         _require_id("capability_id", self.capability_id)
         _require_positive_int("schema_version", self.schema_version)
         _require_capability_status(self.status)
@@ -400,11 +399,11 @@ class Capability:
             if not any(item.supported for item in self.environments):
                 raise ValueError("AVAILABLE capability needs a supported environment")
             levels = {
-                _sealed_test_level_wire(item.level) for item in self.test_vectors
+                _SEALED_TEST_LEVEL_WIRE(item.level) for item in self.test_vectors
             }
             if any(
                 required_level not in levels
-                for required_level in _sealed_required_level_values
+                for required_level in _SEALED_REQUIRED_LEVEL_VALUES
             ):
                 raise ValueError(
                     "AVAILABLE capability needs component and integration test vectors"
