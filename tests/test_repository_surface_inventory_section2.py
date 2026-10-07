@@ -224,9 +224,13 @@ def test_git_probes_strip_ambient_git_redirection(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("GIT_DIR", str(tmp_path / "forged.git"))
-    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "forged-worktree"))
-    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "core.worktree=/forged")
+    hostile = {
+        "Git_Dir": str(tmp_path / "forged.git"),
+        "git_work_tree": str(tmp_path / "forged-worktree"),
+        "gIt_CoNfIg_PaRaMeTeRs": "core.worktree=/forged",
+    }
+    for key, value in hostile.items():
+        monkeypatch.setenv(key, value)
     observed_envs: list[dict[str, str]] = []
     sha = "a" * 40
 
@@ -259,9 +263,10 @@ def test_git_probes_strip_ambient_git_redirection(
     assert surface_validator._resolve_live_main_sha(tmp_path) == sha
     assert len(observed_envs) == 3
     for env in observed_envs:
-        assert "GIT_DIR" not in env
-        assert "GIT_WORK_TREE" not in env
-        assert "GIT_CONFIG_PARAMETERS" not in env
+        assert all(
+            not key.upper().startswith("GIT_") or key == "GIT_OPTIONAL_LOCKS"
+            for key in env
+        )
         assert env["GIT_OPTIONAL_LOCKS"] == "0"
 
 
