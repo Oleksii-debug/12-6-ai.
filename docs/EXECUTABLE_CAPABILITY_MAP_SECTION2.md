@@ -81,7 +81,7 @@ UNAVAILABLE capability. Journeys are bidirectionally bound to their capabilities
 `journey_available()` is true only when every required capability is AVAILABLE.
 
 Permanent regressions in `tests/test_capability_map_section2.py` cover:
-- AVAILABLE component contracts are resolved by the registry constructor itself, so direct in-memory construction cannot bypass the executable-contract gate;
+- AVAILABLE component contracts are resolved by the registry constructor itself, and the resolved module/symbol must actually be owned by the `twelve_six` namespace; imported external objects cannot be re-exported through a `twelve_six.*` attribute path to bypass the executable-contract gate;
 - source-surface paths must be canonical POSIX paths beneath `src/twelve_six/`, rejecting traversal and alternate separators before inventory identity is accepted;
 
 - exact accepted-main/CI binding;
