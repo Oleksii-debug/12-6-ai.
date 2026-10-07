@@ -92,5 +92,10 @@
       "capability_id": "executable-capability-map"
     }
   ],
-  "candidate_overrides": []
+  "candidate_overrides": [
+    {
+      "path": "tools/validate_section2_repository_surface_coverage.py",
+      "capability_id": "executable-capability-map"
+    }
+  ]
 }
