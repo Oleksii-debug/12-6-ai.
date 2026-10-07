@@ -50,8 +50,9 @@ cross-checked against the Enum member's stored `_value_` without dispatching the
 validation/serialization split while still failing closed on low-level Enum value mutation.
 
 Authority-bearing gateway compatibility uses revalidated exact scalar contract signatures
-rather than dispatchable dataclass equality. Rebinding `InterfaceContract.__eq__` therefore
-cannot make an incompatible core gateway appear compatible with the persistent shell.
+directly rather than dispatchable dataclass equality or a mutable module helper. Rebinding
+`InterfaceContract.__eq__` or a helper global therefore cannot make an incompatible core
+gateway appear compatible with the persistent shell.
 
 The canonical typed boundaries are:
 

@@ -851,7 +851,7 @@ def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
         receipt.identity_sha256()
 
 
-def test_interface_equality_rebinding_cannot_bypass_gateway_compatibility(
+def test_interface_authority_rebinding_cannot_bypass_gateway_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assembly = _assembly("eq-rebind", 20_613_440)
@@ -862,6 +862,12 @@ def test_interface_equality_rebinding_cannot_bypass_gateway_compatibility(
     )
 
     monkeypatch.setattr(InterfaceContract, "__eq__", lambda _self, _other: True)
+    monkeypatch.setattr(
+        system_architecture_module,
+        "_same_interface_contract",
+        lambda _left, _right: True,
+        raising=False,
+    )
 
     with pytest.raises(ValueError, match="incompatible with runtime shell"):
         ProductAssembly(
