@@ -1597,3 +1597,27 @@ def test_public_sil_environment_validation_ignores_module_global_rebinding(
             expected_git_sha=_GIT_SHA,
         )
 
+
+def test_parse_vector_command_ignores_pureposixpath_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForgedPath:
+        def __init__(self, value: str) -> None:
+            self.parts = ("tests", "forged.py")
+            self.suffix = ".py"
+            self._value = value
+
+        def is_absolute(self) -> bool:
+            return False
+
+        def as_posix(self) -> str:
+            return self._value
+
+    monkeypatch.setattr(sil_module, "PurePosixPath", ForgedPath)
+
+    with pytest.raises(
+        ValueError,
+        match="SIL integration test path must stay inside the repository",
+    ):
+        parse_vector_command("pytest -q tests/../forged.py")
+

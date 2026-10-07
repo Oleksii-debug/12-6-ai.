@@ -170,12 +170,11 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
             raise ValueError("tracked package source must be a regular Git file")
         if _SHA40_RE.fullmatch(blob_sha) is None:
             raise ValueError("tracked package source has a malformed Git blob SHA")
-        canonical_path = PurePosixPath(relative_path)
+        path_parts = relative_path.split("/")
         if (
             "\\" in relative_path
-            or canonical_path.is_absolute()
-            or ".." in canonical_path.parts
-            or canonical_path.as_posix() != relative_path
+            or relative_path.startswith("/")
+            or any(part in {"", ".", ".."} for part in path_parts)
         ):
             raise ValueError("tracked package source path is non-canonical")
         entries.append((relative_path, mode, blob_sha))
@@ -460,16 +459,16 @@ class PlannedVector:
         for token in self.argv[4:]:
             if not _is_exact_type(token, str) or not token:
                 raise ValueError("planned vector test path must be non-empty text")
-            path = PurePosixPath(token)
+            parts = token.split("/")
             if (
                 "\\" in token
                 or token.startswith("-")
-                or path.is_absolute()
-                or ".." in path.parts
-                or len(path.parts) < 2
-                or path.parts[0] != "tests"
-                or path.suffix != ".py"
-                or path.as_posix() != token
+                or token.startswith("/")
+                or len(parts) < 2
+                or parts[0] != "tests"
+                or any(part in {"", ".", ".."} for part in parts)
+                or not parts[-1].endswith(".py")
+                or parts[-1] == ".py"
             ):
                 raise ValueError("planned vector may reference only canonical tests/*.py paths")
 
@@ -729,10 +728,19 @@ def parse_vector_command(command: str) -> tuple[str, ...]:
     for token in test_paths:
         if token.startswith("-") or any(char in token for char in (";", "|", "&", ">", "<", "$")):
             raise ValueError("SIL integration vector contains shell/control syntax")
-        path = PurePosixPath(token)
-        if path.is_absolute() or ".." in path.parts:
+        parts = token.split("/")
+        if (
+            "\\" in token
+            or token.startswith("/")
+            or any(part in {"", ".", ".."} for part in parts)
+        ):
             raise ValueError("SIL integration test path must stay inside the repository")
-        if len(path.parts) < 2 or path.parts[0] != "tests" or path.suffix != ".py":
+        if (
+            len(parts) < 2
+            or parts[0] != "tests"
+            or not parts[-1].endswith(".py")
+            or parts[-1] == ".py"
+        ):
             raise ValueError("SIL integration vectors may reference only tests/*.py files")
     return (sys.executable, "-m", "pytest", "-q", *test_paths)
 
