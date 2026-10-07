@@ -1086,6 +1086,7 @@ def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
             ),
         )
 
+
 def test_artifact_ref_validator_rebinding_cannot_bypass_serialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
