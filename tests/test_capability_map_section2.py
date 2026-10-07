@@ -1188,3 +1188,12 @@ def test_source_inventory_method_rebinding_cannot_hide_invalid_surface(
 
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         inventory.identity_sha256()
+
+
+def test_capability_validator_rejects_public_authority_override_arguments() -> None:
+    capability = _load().capabilities[0]
+
+    with pytest.raises(TypeError):
+        capability.__post_init__(  # type: ignore[call-arg]
+            _sealed_test_level_wire=lambda _value: "component"
+        )
