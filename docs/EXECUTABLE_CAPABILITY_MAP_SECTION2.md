@@ -32,12 +32,15 @@ Each capability binds:
 - evidence targets;
 - either an integrated result or an explicit unavailable reason.
 
-The registry's AVAILABLE evidence is refreshed to qualified repaired Section-1 candidate
-`main@49218c0c581b73bcd0985646f48bf35300b1948c` / tree `2f8c32273994595b0bd466a293ee727d6f56d2ef`. That tree is byte-identical to the
-exact-head qualified Section-1 candidate `49218c0c581b73bcd0985646f48bf35300b1948c`,
-whose CI run `37608406911` is terminal SUCCESS. Live `main@5c041ca56edda55a5c3334f722361754051e121c` is the
-subsequent ledger-only commit; the repository equivalence gate proves all 235 capability-bearing
-`src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are unchanged.
+The checked-in registry still carries historical Section-1 predecessor evidence from candidate
+`49218c0c581b73bcd0985646f48bf35300b1948c` / CI `37608406911`. That evidence was valid
+for the earlier closure but is no longer current authority because Section 1 has been REOPENED.
+This staged Section-2 repair is converged on exact Section-1 candidate
+`005da1c86768af95737ea29c7583387d7c99797f` / tree
+`1f7b7a118a3b262e02ea394d562ebd2afc5ad8ed`; its CI run `37610826590` is currently
+QUEUED / NOT PASS. Section 2 must refresh the registry/inventory predecessor SHA, tree and terminal
+CI binding only after that Section-1 candidate is terminally qualified and integrated. Historical
+green evidence is not transferred to the repaired predecessor.
 
 The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface. Candidate authority distinguishes new `stacked_candidate` paths from existing accepted-main paths explicitly changed as `modified_candidate`; changed existing source bytes must match that modified set exactly. This keeps repair qualification fail-closed after a Section's source has already landed on main instead of silently treating a modified accepted surface as unchanged. At the original candidate head the coverage was 116 accepted-main surfaces + 1 candidate overlay = 117/117 current Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
 
@@ -107,11 +110,11 @@ Permanent regressions in `tests/test_capability_map_section2.py` cover:
 
 ## Truth boundary
 
-This Section-2 candidate consumes the already-DONE Section 0 and Section 1 truth without
-reopening or widening it, and does not create learned weights, corpus admission, tokenizer-fit
-authority, optimizer exposure, final-test access,
-paid-compute authority, Windows/NVDA physical acceptance, server acceptance or release
-authority.
+This Section-2 candidate consumes terminal Section 0 only. Section 1 is currently REOPENED,
+so Section 2 is also REOPENED and cannot consume historical Section-1 evidence as current
+predecessor authority. The staged repair does not create learned weights, corpus admission,
+tokenizer-fit authority, optimizer exposure, final-test access, paid-compute authority,
+Windows/NVDA physical acceptance, server acceptance or release authority.
 
 Its only purpose is to make current capability truth executable and machine-readable so later
 functionality must enter the graph as AVAILABLE with evidence or remain explicitly
