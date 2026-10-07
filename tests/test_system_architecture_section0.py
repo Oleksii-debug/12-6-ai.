@@ -753,3 +753,37 @@ def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> N
     with pytest.raises(ValueError, match="candidate must be a CognitiveCoreBinding"):
         replace_cognitive_core(assembly, forged_binding)
 
+
+def test_closed_scalar_fields_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-nonempty"
+
+    class ForgedInt(int):
+        def __le__(self, other: object) -> bool:
+            return False
+
+    with pytest.raises(ValueError, match="name must be a non-empty string"):
+        InterfaceContract(ForgedStr(""), 1)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        InterfaceContract("twelve_six.scalar", ForgedInt(1))
+
+    canonical = _core("scalar-closed", 20_613_440)
+    with pytest.raises(ValueError, match="model_spec_sha256 must be a lowercase 64-hex SHA-256"):
+        CognitiveCoreIdentity(
+            model_spec_sha256=ForgedStr(canonical.model_spec_sha256),
+            init_spec_sha256=canonical.init_spec_sha256,
+            checkpoint_sha256=canonical.checkpoint_sha256,
+            tokenizer_sha256=canonical.tokenizer_sha256,
+            parameter_count=canonical.parameter_count,
+        )
+
+    with pytest.raises(ValueError, match="parameter_count must be a positive integer"):
+        CognitiveCoreIdentity(
+            model_spec_sha256=canonical.model_spec_sha256,
+            init_spec_sha256=canonical.init_spec_sha256,
+            checkpoint_sha256=canonical.checkpoint_sha256,
+            tokenizer_sha256=canonical.tokenizer_sha256,
+            parameter_count=ForgedInt(canonical.parameter_count),
+        )
