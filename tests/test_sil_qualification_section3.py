@@ -1613,7 +1613,12 @@ def test_parse_vector_command_ignores_pureposixpath_rebinding(
         def as_posix(self) -> str:
             return self._value
 
-    monkeypatch.setattr(sil_module, "PurePosixPath", ForgedPath, raising=False)
+    monkeypatch.setattr(
+        sil_qualification,
+        "PurePosixPath",
+        ForgedPath,
+        raising=False,
+    )
 
     with pytest.raises(
         ValueError,
