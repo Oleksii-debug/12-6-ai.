@@ -927,6 +927,7 @@ def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
     assert repeated == candidate
     assert repeated_branch == branch_name
 
+
 def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     tmp_path: Path,
 ) -> None:

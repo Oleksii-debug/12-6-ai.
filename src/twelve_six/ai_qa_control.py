@@ -1106,7 +1106,6 @@ def evaluate_promotion(
     )
 
 
-
 def load_failure_packet(path: str | Path) -> FailurePacket:
     payload = _strict_json_object(path, label="AI QA failure packet")
     expected = {
