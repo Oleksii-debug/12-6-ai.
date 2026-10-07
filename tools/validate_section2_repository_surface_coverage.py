@@ -13,6 +13,8 @@ _REQUIRED_TOP_LEVEL_FIELDS = {
     "schema_version",
     "observed_main_sha",
     "observed_main_tree_sha",
+    "current_repository_main_sha",
+    "current_repository_main_tree_sha",
     "expected_main_surface_count",
     "expected_main_capability_counts",
     "rules",
@@ -59,6 +61,13 @@ def _is_surface(path: str) -> bool:
     )
 
 
+def _is_capability_surface(path: str) -> bool:
+    return (
+        path.startswith("src/twelve_six/")
+        and path.endswith(".py")
+    ) or _is_surface(path)
+
+
 def _run_git(root: Path, *args: str) -> list[str]:
     completed = subprocess.run(
         ["git", "-C", str(root), *args],
@@ -71,6 +80,38 @@ def _run_git(root: Path, *args: str) -> list[str]:
             f"git {' '.join(args)} failed: {completed.stderr.strip()}"
         )
     return completed.stdout.splitlines()
+
+
+def _resolve_live_main_sha(root: Path) -> str:
+    for ref in ("refs/remotes/origin/main", "refs/heads/main"):
+        completed = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", ref],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 0:
+            sha = completed.stdout.strip()
+            if _SHA40_RE.fullmatch(sha) is None:
+                raise ValueError("live main ref did not resolve to lowercase 40-hex")
+            return sha
+    raise ValueError("live main ref is unavailable for current-main equivalence proof")
+
+
+def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line in _run_git(root, "ls-tree", "-r", treeish):
+        try:
+            metadata, path = line.split("\t", 1)
+            _mode, kind, blob_sha = metadata.split()
+        except ValueError as exc:
+            raise ValueError("git ls-tree emitted a non-canonical record") from exc
+        if kind != "blob" or not _is_capability_surface(path):
+            continue
+        if _SHA40_RE.fullmatch(blob_sha) is None:
+            raise ValueError("git ls-tree emitted a malformed blob SHA")
+        result[path] = blob_sha
+    return result
 
 
 def _validate_rule(rule: object) -> dict[str, str]:
@@ -138,10 +179,22 @@ def validate_repository_surface_coverage(
 
     main_sha = inventory["observed_main_sha"]
     main_tree_sha = inventory["observed_main_tree_sha"]
-    if not isinstance(main_sha, str) or _SHA40_RE.fullmatch(main_sha) is None:
-        raise ValueError("observed_main_sha must be lowercase 40-hex")
-    if not isinstance(main_tree_sha, str) or _SHA40_RE.fullmatch(main_tree_sha) is None:
-        raise ValueError("observed_main_tree_sha must be lowercase 40-hex")
+    current_main_sha = inventory["current_repository_main_sha"]
+    current_main_tree_sha = inventory["current_repository_main_tree_sha"]
+    for field, value in (
+        ("observed_main_sha", main_sha),
+        ("observed_main_tree_sha", main_tree_sha),
+        ("current_repository_main_sha", current_main_sha),
+        ("current_repository_main_tree_sha", current_main_tree_sha),
+    ):
+        if not isinstance(value, str) or _SHA40_RE.fullmatch(value) is None:
+            raise ValueError(f"{field} must be lowercase 40-hex")
+
+    live_main_sha = _resolve_live_main_sha(repo_root)
+    if current_main_sha != live_main_sha:
+        raise ValueError(
+            "current_repository_main_sha does not match the live repository main ref"
+        )
 
     expected_count = inventory["expected_main_surface_count"]
     if not isinstance(expected_count, int) or isinstance(expected_count, bool):
@@ -199,6 +252,30 @@ def validate_repository_surface_coverage(
     resolved_tree = _run_git(repo_root, "show", "-s", "--format=%T", main_sha)
     if resolved_tree != [main_tree_sha]:
         raise ValueError("observed_main_tree_sha does not match observed_main_sha")
+    resolved_current_tree = _run_git(
+        repo_root, "show", "-s", "--format=%T", current_main_sha
+    )
+    if resolved_current_tree != [current_main_tree_sha]:
+        raise ValueError(
+            "current_repository_main_tree_sha does not match current_repository_main_sha"
+        )
+
+    qualified_surface_blobs = _surface_blob_map(repo_root, main_tree_sha)
+    current_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
+    if current_surface_blobs != qualified_surface_blobs:
+        qualified_paths = set(qualified_surface_blobs)
+        current_paths = set(current_surface_blobs)
+        changed = sorted(
+            path
+            for path in qualified_paths & current_paths
+            if qualified_surface_blobs[path] != current_surface_blobs[path]
+        )
+        raise ValueError(
+            "current main capability-bearing surface drift from qualified baseline: "
+            f"added={sorted(current_paths - qualified_paths)}, "
+            f"removed={sorted(qualified_paths - current_paths)}, "
+            f"changed={changed}"
+        )
 
     main_paths = sorted(
         path.strip()
@@ -269,6 +346,9 @@ def validate_repository_surface_coverage(
     return {
         "observed_main_sha": main_sha,
         "observed_main_tree_sha": main_tree_sha,
+        "current_repository_main_sha": current_main_sha,
+        "current_repository_main_tree_sha": current_main_tree_sha,
+        "qualified_current_equivalent_surface_count": len(qualified_surface_blobs),
         "accepted_main_surface_count": len(main_paths),
         "candidate_overlay_surface_count": len(candidate_actual),
         "checkout_surface_count": len(checkout_paths),
