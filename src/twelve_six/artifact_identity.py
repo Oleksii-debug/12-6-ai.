@@ -100,6 +100,22 @@ class ArtifactKind(str, Enum):
 
 
 CANONICAL_ARTIFACT_KINDS = tuple(ArtifactKind)
+_CANONICAL_ARTIFACT_KIND_VALUES = tuple(kind.value for kind in CANONICAL_ARTIFACT_KINDS)
+
+
+def _require_canonical_artifact_kind(
+    kind: object,
+    _sealed_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
+) -> ArtifactKind:
+    if not _is_exact_type(kind, ArtifactKind):
+        raise ValueError("kind must be an ArtifactKind")
+    for index, canonical_kind in enumerate(_sealed_kinds):
+        if kind is canonical_kind:
+            if canonical_kind.value != _sealed_values[index]:
+                raise ValueError("ArtifactKind wire value is non-canonical")
+            return canonical_kind
+    raise ValueError("kind must be a canonical ArtifactKind")
 
 
 _GENERATION_PARENT_POLICY_SOURCE: dict[ArtifactKind, dict[str, ArtifactKind]] = {
@@ -163,8 +179,7 @@ class ArtifactRef:
     identity_sha256: str
 
     def __post_init__(self) -> None:
-        if not _is_exact_type(self.kind, ArtifactKind):
-            raise ValueError("kind must be an ArtifactKind")
+        _require_canonical_artifact_kind(self.kind)
         _require_positive_int("schema_version", self.schema_version)
         _require_sha256("identity_sha256", self.identity_sha256)
 

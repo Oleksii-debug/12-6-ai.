@@ -384,6 +384,20 @@ def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
         parse_generation_identity_manifest(noncanonical)
 
 
+def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
+    generation = _generation("enum-wire")
+    corpus = generation.artifact_ref(ArtifactKind.CORPUS)
+    original_value = ArtifactKind.CORPUS.value
+    object.__setattr__(ArtifactKind.CORPUS, "_value_", "forged_corpus")
+    try:
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            corpus.to_dict()
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            generation.identity_sha256()
+    finally:
+        object.__setattr__(ArtifactKind.CORPUS, "_value_", original_value)
+
+
 def test_generation_parent_policy_is_runtime_immutable() -> None:
     release_policy = artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE]
 
