@@ -142,16 +142,6 @@ class InterfaceContract:
         return _canonical_json_sha256(self.to_dict())
 
 
-def _same_interface_contract(left: object, right: object) -> bool:
-    if not _is_exact_type(left, InterfaceContract) or not _is_exact_type(
-        right, InterfaceContract
-    ):
-        return False
-    InterfaceContract.__post_init__(left)
-    InterfaceContract.__post_init__(right)
-    return left.name == right.name and left.schema_version == right.schema_version
-
-
 @dataclass(frozen=True, slots=True)
 class TypedBoundary:
     """One directed contract edge between two system planes."""
@@ -392,11 +382,21 @@ class ProductAssembly:
             for boundary in self.architecture.boundaries
             if boundary.name == "base_to_gateway"
         )
-        if not _same_interface_contract(self.shell.gateway_api, architecture_gateway):
+        shell_gateway_signature = (
+            self.shell.gateway_api.name,
+            self.shell.gateway_api.schema_version,
+        )
+        architecture_gateway_signature = (
+            architecture_gateway.name,
+            architecture_gateway.schema_version,
+        )
+        core_gateway_signature = (
+            self.core_binding.gateway_api.name,
+            self.core_binding.gateway_api.schema_version,
+        )
+        if shell_gateway_signature != architecture_gateway_signature:
             raise ValueError("runtime shell gateway contract is incompatible with architecture")
-        if not _same_interface_contract(
-            self.core_binding.gateway_api, self.shell.gateway_api
-        ):
+        if core_gateway_signature != shell_gateway_signature:
             raise ValueError("cognitive core gateway contract is incompatible with runtime shell")
 
     def to_dict(self) -> dict[str, Any]:
@@ -564,7 +564,15 @@ def replace_cognitive_core(
         raise ValueError("candidate must be a CognitiveCoreBinding")
     ProductAssembly.__post_init__(assembly)
     CognitiveCoreBinding.__post_init__(candidate)
-    if not _same_interface_contract(candidate.gateway_api, assembly.shell.gateway_api):
+    candidate_gateway_signature = (
+        candidate.gateway_api.name,
+        candidate.gateway_api.schema_version,
+    )
+    shell_gateway_signature = (
+        assembly.shell.gateway_api.name,
+        assembly.shell.gateway_api.schema_version,
+    )
+    if candidate_gateway_signature != shell_gateway_signature:
         raise ValueError("candidate cognitive core is incompatible with runtime shell gateway")
 
     shell_before = assembly.shell.identity_sha256()
