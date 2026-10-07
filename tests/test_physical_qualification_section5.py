@@ -432,6 +432,22 @@ def test_runtime_results_require_exact_schema_types(tmp_path: Path) -> None:
             evidence_signer=_fake_evidence_signer,
         )
 
+    network_action = _action(resources=(ResourceKind.NETWORK,))
+    network_verified = _load(tmp_path, _packet(actions=(network_action,)))
+    with pytest.raises(ValueError, match="exact ExternalResourceEvidence"):
+        execute_qualification(
+            network_verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=_pass_runner,
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+            resource_probes={ResourceKind.NETWORK: lambda _: object()},
+            resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+        )
+
 
 def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> None:
     verified = _load(tmp_path, _packet(actions=(_action(max_output_bytes=2),)))
