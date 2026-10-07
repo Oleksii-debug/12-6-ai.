@@ -272,6 +272,7 @@ def test_generation_manifest_rejects_wrong_parent_kind_even_with_valid_digest() 
     with pytest.raises(ValueError, match="must reference checkpoint"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
 
+
 def test_generation_rejects_resealed_parent_lineage_with_same_raw_artifact_identity() -> None:
     generation = _generation("a")
     corpus_b = bind_artifact(_ref(ArtifactKind.CORPUS, "b"))
@@ -313,7 +314,7 @@ def test_parent_binding_durable_json_rejects_lineage_hash_reseal() -> None:
     payload = json.loads(generation.canonical_json_bytes())
     packing_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.PACKING)
     packing = payload["artifacts"][packing_index]
-    packing["parents"][0]["manifest_identity_sha256"] = _sha("foreign-lineage")
+    packing["parents"][0]["parent_manifest_identity_sha256"] = _sha("foreign-lineage")
 
     with pytest.raises(ValueError, match="parent lineage does not match generation"):
         parse_generation_identity_manifest(
