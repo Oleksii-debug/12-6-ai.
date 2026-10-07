@@ -1029,3 +1029,43 @@ def test_command_execution_contract_rejects_bool_return_code_and_bad_consumed_ha
 
     with pytest.raises(ValueError, match="consumed_input_identity_sha256"):
         CommandExecution(0, "", "", 0, "not-a-sha")
+
+def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass must not be decoded")
+
+    class ForgedTuple(tuple):
+        pass
+
+    with pytest.raises(ValueError, match="SIL scenario input must be bytes"):
+        sil_qualification._strict_json_object(
+            ForgedBytes(b"{}"),
+            maximum_bytes=1024,
+            label="SIL scenario",
+        )
+
+    scenario = _scenario()
+    with pytest.raises(ValueError, match="scenario_id must be a canonical identifier"):
+        replace(scenario, scenario_id=ForgedStr(scenario.scenario_id))
+
+    plan = build_sil_plan(_registry(), scenario)
+    vector = plan.vectors[0]
+    with pytest.raises(ValueError, match="planned vector argv must be canonical"):
+        sil_qualification.PlannedVector(
+            vector.journey_id,
+            vector.capability_id,
+            vector.vector_id,
+            ForgedTuple(vector.argv),
+        )
+
+    with pytest.raises(ValueError, match="stdout/stderr must be text"):
+        CommandExecution(0, ForgedStr("stdout"), "", 0, None)
+
+    with pytest.raises(ValueError, match="SIL log must be non-empty bytes"):
+        sil_qualification._load_sil_log_records(ForgedBytes(b"{}\n"))
+
