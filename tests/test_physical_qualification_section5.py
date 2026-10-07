@@ -208,6 +208,27 @@ def test_action_rejects_shell_or_path_escape() -> None:
         )
 
 
+def test_external_resource_evidence_is_bounded_and_scope_typed() -> None:
+    with pytest.raises(ValueError, match="only valid for NETWORK/MODEL/PROVIDER"):
+        ExternalResourceEvidence(
+            resource=ResourceKind.CPU,
+            adapter_id="cpu-not-external",
+            evidence=b"x",
+        )
+    with pytest.raises(ValueError, match="size is invalid or unbounded"):
+        ExternalResourceEvidence(
+            resource=ResourceKind.NETWORK,
+            adapter_id="network-empty",
+            evidence=b"",
+        )
+    with pytest.raises(ValueError, match="size is invalid or unbounded"):
+        ExternalResourceEvidence(
+            resource=ResourceKind.NETWORK,
+            adapter_id="network-oversized",
+            evidence=b"x" * (physical_qualification._MAX_RESOURCE_PROBE_BYTES + 1),
+        )
+
+
 def test_simulation_can_never_claim_physical_pass(tmp_path: Path) -> None:
     verified = _load(tmp_path, _packet(mode=ExecutionMode.SIMULATION))
     evidence, _ = execute_qualification(
@@ -313,6 +334,17 @@ def test_verified_external_network_probe_can_satisfy_real_resource(
         resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
     )
     assert checked["verdict"] == "PASS"
+
+    with pytest.raises(ValueError, match="verifier is missing: NETWORK"):
+        verify_qualification_evidence(
+            evidence_path,
+            log_path,
+            verified_packet=verified,
+            agent_source_bytes=_AGENT_BYTES,
+            artifact_root=tmp_path,
+            require_real_pass=True,
+            evidence_signature_verifier=_fake_evidence_verify,
+        )
 
 
 def test_external_resource_probe_requires_independent_verifier(tmp_path: Path) -> None:
