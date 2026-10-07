@@ -345,7 +345,7 @@ class EnvironmentSupport:
             )
         ):
             raise ValueError("environment_id must be a canonical identifier")
-        if not _is_exact_type(self.supported, bool):
+        if type(self.supported) is not bool:
             raise ValueError("supported must be boolean")
 
     def to_dict(self) -> dict[str, Any]:
@@ -457,7 +457,7 @@ class Capability:
             ("dependencies", self.dependencies),
             ("journey_ids", self.journey_ids),
         ):
-            if not _is_exact_type(values, tuple):
+            if type(values) is not tuple:
                 raise ValueError(f"{name} must be an immutable tuple")
             for value in values:
                 if (
@@ -476,16 +476,16 @@ class Capability:
         if not self.journey_ids:
             raise ValueError("capability must bind at least one user/operator journey")
 
-        if not _is_exact_type(self.environments, tuple) or any(
-            not _is_exact_type(item, EnvironmentSupport) for item in self.environments
+        if type(self.environments) is not tuple or any(
+            type(item) is not EnvironmentSupport for item in self.environments
         ):
             raise ValueError("environments must contain EnvironmentSupport values")
-        if not _is_exact_type(self.test_vectors, tuple) or any(
-            not _is_exact_type(item, TestVector) for item in self.test_vectors
+        if type(self.test_vectors) is not tuple or any(
+            type(item) is not TestVector for item in self.test_vectors
         ):
             raise ValueError("test_vectors must contain TestVector values")
-        if not _is_exact_type(self.evidence_targets, tuple) or any(
-            not _is_exact_type(item, EvidenceTarget) for item in self.evidence_targets
+        if type(self.evidence_targets) is not tuple or any(
+            type(item) is not EvidenceTarget for item in self.evidence_targets
         ):
             raise ValueError("evidence_targets must contain EvidenceTarget values")
         for item in self.environments:
@@ -561,7 +561,7 @@ class Journey:
             raise ValueError("journey_id must be a canonical identifier")
         if type(self.title) is not str or not self.title.strip():
             raise ValueError("title must be non-empty text")
-        if not _is_exact_type(self.capability_ids, tuple) or not self.capability_ids:
+        if type(self.capability_ids) is not tuple or not self.capability_ids:
             raise ValueError("journey capability_ids must be a non-empty tuple")
         for capability_id in self.capability_ids:
             if (
@@ -599,7 +599,7 @@ class SourceSurface:
             )
         ):
             raise ValueError("source surface capability_id must be a canonical identifier")
-        if not _is_exact_type(self.origin, str) or self.origin not in {
+        if type(self.origin) is not str or self.origin not in {
             "accepted_main",
             "stacked_candidate",
             "modified_candidate",
@@ -637,7 +637,7 @@ class SourceSurfaceInventory:
     def __post_init__(self) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if (
-            not _is_exact_type(self.schema_version, int)
+            type(self.schema_version) is not int
             or self.schema_version != 1
         ):
             raise ValueError("unsupported SourceSurfaceInventory schema_version")
@@ -645,7 +645,7 @@ class SourceSurfaceInventory:
             ("observed_main_sha", self.observed_main_sha),
             ("observed_main_tree_sha", self.observed_main_tree_sha),
         ):
-            if not _is_exact_type(value, str) or _SHA40_RE.fullmatch(value) is None:
+            if type(value) is not str or _SHA40_RE.fullmatch(value) is None:
                 raise ValueError(f"{field_name} must be a lowercase 40-hex Git SHA")
         _require_text("source_root", self.source_root)
         if self.source_root != "src/twelve_six":
@@ -657,9 +657,9 @@ class SourceSurfaceInventory:
         _require_nonnegative_int(
             "candidate_overlay_surface_count", self.candidate_overlay_surface_count
         )
-        if not _is_exact_type(self.surfaces, tuple) or not self.surfaces:
+        if type(self.surfaces) is not tuple or not self.surfaces:
             raise ValueError("surfaces must be a non-empty tuple")
-        if any(not _is_exact_type(item, SourceSurface) for item in self.surfaces):
+        if any(type(item) is not SourceSurface for item in self.surfaces):
             raise ValueError("surfaces must contain only SourceSurface values")
         for item in self.surfaces:
             SourceSurface.__post_init__(item)
@@ -699,7 +699,7 @@ def _build_capability_registry_post_init() -> Any:
             or self.schema_version != 1
         ):
             raise ValueError("unsupported CapabilityRegistry schema_version")
-        if not _is_exact_type(self.observed_main_sha, str) or _SHA40_RE.fullmatch(
+        if type(self.observed_main_sha) is not str or _SHA40_RE.fullmatch(
             self.observed_main_sha
         ) is None:
             raise ValueError("observed_main_sha must be a lowercase 40-hex Git SHA")
@@ -708,13 +708,13 @@ def _build_capability_registry_post_init() -> Any:
         if self.observed_main_ci_conclusion != "success":
             raise ValueError("observed main CI must be terminal success")
 
-        if not _is_exact_type(self.capabilities, tuple) or not self.capabilities:
+        if type(self.capabilities) is not tuple or not self.capabilities:
             raise ValueError("capabilities must be a non-empty tuple")
-        if any(not _is_exact_type(item, Capability) for item in self.capabilities):
+        if any(type(item) is not Capability for item in self.capabilities):
             raise ValueError("capabilities must contain only Capability values")
-        if not _is_exact_type(self.journeys, tuple) or not self.journeys:
+        if type(self.journeys) is not tuple or not self.journeys:
             raise ValueError("journeys must be a non-empty tuple")
-        if any(not _is_exact_type(item, Journey) for item in self.journeys):
+        if any(type(item) is not Journey for item in self.journeys):
             raise ValueError("journeys must contain only Journey values")
         for item in self.capabilities:
             Capability.__post_init__(item)
