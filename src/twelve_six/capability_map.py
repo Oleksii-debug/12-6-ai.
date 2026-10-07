@@ -725,7 +725,15 @@ def validate_source_surface_coverage(
 
     root = Path(repo_root)
     tree_check = subprocess.run(
-        ["git", "-C", str(root), "show", "-s", "--format=%T", inventory.observed_main_sha],
+        [
+            "git",
+            "-C",
+            str(root),
+            "show",
+            "-s",
+            "--format=%T",
+            inventory.observed_main_sha,
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -754,20 +762,45 @@ def validate_source_surface_coverage(
     )
     if listing.returncode != 0:
         raise ValueError("cannot enumerate observed main source tree")
+
     prefix = f"{inventory.source_root}/"
-    actual_paths = sorted(
+    accepted_main_actual = sorted(
         line.strip()
         for line in listing.stdout.splitlines()
         if line.strip().startswith(prefix) and line.strip().endswith(".py")
     )
-    expected_paths = [item.path for item in inventory.surfaces]
-    if actual_paths != expected_paths:
-        missing = sorted(set(actual_paths).difference(expected_paths))
-        stale = sorted(set(expected_paths).difference(actual_paths))
+    accepted_main_expected = [
+        item.path for item in inventory.surfaces if item.origin == "accepted_main"
+    ]
+    if accepted_main_actual != accepted_main_expected:
+        missing = sorted(set(accepted_main_actual).difference(accepted_main_expected))
+        stale = sorted(set(accepted_main_expected).difference(accepted_main_actual))
         raise ValueError(
-            "source surface inventory drift: "
-            f"unmapped_current={missing}, stale_inventory={stale}"
+            "accepted-main source inventory drift: "
+            f"unmapped_main={missing}, stale_main_inventory={stale}"
         )
+
+    source_root = root / inventory.source_root
+    checkout_actual = sorted(
+        path.relative_to(root).as_posix()
+        for path in source_root.rglob("*.py")
+        if path.is_file()
+    )
+    checkout_expected = [item.path for item in inventory.surfaces]
+    if checkout_actual != checkout_expected:
+        missing = sorted(set(checkout_actual).difference(checkout_expected))
+        stale = sorted(set(checkout_expected).difference(checkout_actual))
+        raise ValueError(
+            "stacked source inventory drift: "
+            f"unmapped_checkout={missing}, stale_checkout_inventory={stale}"
+        )
+
+    overlay_actual = sorted(set(checkout_actual).difference(accepted_main_actual))
+    overlay_expected = [
+        item.path for item in inventory.surfaces if item.origin == "stacked_candidate"
+    ]
+    if overlay_actual != overlay_expected:
+        raise ValueError("stacked candidate surface classification is non-canonical")
 
     journey_ids = {item.journey_id for item in registry.journeys}
     for capability_id in mapped_capability_ids:
