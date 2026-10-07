@@ -206,3 +206,14 @@ def test_d03_rada_physical_success_requires_exact_run_successor_pin():
     assert "rada-successor-pin-v2.json" not in failure_section
     assert "rada-source-a.zip" not in failure_section
     assert "if: failure()" in failure_section
+
+
+
+def test_section3_sil_uses_noneditable_candidate_install():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job = workflow[workflow.index("  sil-current-capability-journeys:\n"):]
+
+    assert "--no-deps --no-build-isolation .\n" in job
+    assert "--no-deps --no-build-isolation -e ." not in job
