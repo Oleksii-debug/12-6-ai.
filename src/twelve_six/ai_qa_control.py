@@ -682,6 +682,7 @@ def materialize_local_repair_candidate(
             "--cached",
             "--raw",
             "--no-renames",
+            "--abbrev=40",
             base_sha,
             "--",
             check=False,
