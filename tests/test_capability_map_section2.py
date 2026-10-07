@@ -1378,6 +1378,48 @@ def test_stored_exact_type_boundaries_ignore_helper_rebinding(
         inventory.identity_sha256()
 
 
+def test_stored_integer_authority_ignores_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_positive_int",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_nonnegative_int",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "schema_version", True)
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        registry.identity_sha256()
+
+    registry = _load()
+    object.__setattr__(registry, "observed_main_ci_run_id", True)
+    with pytest.raises(
+        ValueError,
+        match="observed_main_ci_run_id must be a positive integer",
+    ):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    object.__setattr__(inventory, "candidate_overlay_surface_count", True)
+    with pytest.raises(
+        ValueError,
+        match="candidate_overlay_surface_count must be a non-negative integer",
+    ):
+        inventory.identity_sha256()
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
