@@ -1,0 +1,102 @@
+{
+  "artifact": {
+    "digest": "sha256:a85b39d65e4411bb35f94cf5ee1fa30959b8cd7a09a3003bee63b8d2e7af24d8",
+    "id": 10185371935,
+    "name": "d03-cpython-stdlib-execution-receipt",
+    "size_in_bytes": 3848
+  },
+  "execution": {
+    "job_id": 103152200042,
+    "run_id": 34563978371,
+    "workflow": "D03 CPython stdlib terminal execution",
+    "workflow_conclusion": "success"
+  },
+  "materializer_observation": {
+    "rejected_by_source_policy": 5,
+    "report_identity_sha256": "1ae69b91ad0eb2e99592563814b054cfe16b3f3800604d9dee54e6184a89b75a"
+  },
+  "receipt": {
+    "acquisition": {
+      "archive_bytes_identical": true,
+      "run1_archive": {
+        "bytes": 43922948,
+        "sha256": "d6e2248fbf75f9192997fad00aa7805b2d903ef1bc765e3b9d794c20f55d2a67"
+      },
+      "run2_archive": {
+        "bytes": 43922948,
+        "sha256": "d6e2248fbf75f9192997fad00aa7805b2d903ef1bc765e3b9d794c20f55d2a67"
+      }
+    },
+    "evidence_identity_sha256": "882205322689277fc429ed9d5de764e098053628c117834a6daa367c21db9bda",
+    "execution_class": "LOCAL_FREE_GITHUB_HOSTED_PUBLIC_RUNNER",
+    "product_head_executed": "e339007b7a295f2262f927819778fd0d22b5a474",
+    "product_pr": 903,
+    "reproducibility": {
+      "inventory_identity_sha256": "e786370430e73b674ed5b4d09829cddffa6a943fc550b5316f2cb1da93bca654",
+      "materializer_report_identity_sha256": "1ae69b91ad0eb2e99592563814b054cfe16b3f3800604d9dee54e6184a89b75a",
+      "records_byte_identical": true,
+      "records_run1": {
+        "bytes": 1260581,
+        "sha256": "6465d3f1ea7fdd5ae9cf7ba9913c784237f3fb1ecf37f74822e31ab0d2ad5033"
+      },
+      "records_run2": {
+        "bytes": 1260581,
+        "sha256": "6465d3f1ea7fdd5ae9cf7ba9913c784237f3fb1ecf37f74822e31ab0d2ad5033"
+      },
+      "report_byte_identical": true,
+      "report_run1": {
+        "bytes": 1806,
+        "sha256": "516d0de15590f67608eeb99dbf13930b41468607d1aa8f2c71752685a3f9eb24"
+      },
+      "report_run2": {
+        "bytes": 1806,
+        "sha256": "516d0de15590f67608eeb99dbf13930b41468607d1aa8f2c71752685a3f9eb24"
+      }
+    },
+    "rights_retest": {
+      "blanket_admission": false,
+      "conclusion": "ZERO_CREDIT_PENDING_BINDING_RIGHTS_AUTHORITY",
+      "explicit_non_allowlisted_spdx_object_count": 0,
+      "explicit_spdx_object_count": 0,
+      "objects_with_copyright_or_license_notice_in_first_12k": 25,
+      "selected_objects_rights_admitted": false,
+      "status": "NOT_ADMITTED_FILE_LEVEL_REVIEW_REQUIRED"
+    },
+    "schema_version": "12-6.d03-cpython-stdlib-terminal-execution-receipt.v1",
+    "selection": {
+      "eligible_archive_objects": 138,
+      "selected_bytes": 1199986,
+      "selected_objects": 52,
+      "skipped_for_cap": 79
+    },
+    "source": {
+      "commit": "23180c50082fe98784c78511b335d7274ed87fb7",
+      "family_id": "code.python.cpython",
+      "license_blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044",
+      "repository": "python/cpython",
+      "tree": "8853f9fbbf23d2a8c8b7afc9ecab242a482125f2"
+    },
+    "source_parser": {
+      "authority": "BUILT_FROM_SAME_PINNED_CPYTHON_ARCHIVE",
+      "expected_version": "3.16.0a0",
+      "observed_version": "3.16.0a0 (main, Sep 11 2026, 04:57:24) [GCC 13.3.0]"
+    },
+    "truth_boundary": {
+      "canonical_capacity_credit_bytes": 0,
+      "canonical_corpus_admitted": false,
+      "family_count_credit_added": 0,
+      "final_test_accessed": false,
+      "foreign_pretrained_weights": false,
+      "learned_weights_created": false,
+      "model_training_executed": false,
+      "optimized_target_exposure": 0,
+      "optimizer_updates": 0,
+      "paid_compute_used": false,
+      "real_source_bytes_executed": true,
+      "tokenizer_fit_executed": false,
+      "training_authorized_bytes": 0,
+      "unique_causal_loss_positions": 0
+    }
+  },
+  "schema_version": "12-6.d03-cpython-stdlib-durable-execution-binding.v1"
+}

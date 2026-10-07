@@ -1,0 +1,162 @@
+{
+  "claim_boundary": {
+    "final_test_payload_accessed": false,
+    "model_training_executed": false,
+    "paid_compute_used": false,
+    "rights_scope_candidate_bytes_are_training_credit": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0
+  },
+  "config_sha256": "34da44a047c5e0d562ee6a86987cb66e3ed266e1c1f09af95e63c38c219fe1a3",
+  "decision": {
+    "attribution_required": true,
+    "next_required": [
+      "language_quality_privacy",
+      "global_exact_near_lineage_dedup",
+      "reserved_evaluation_decontamination",
+      "family_cap_mix_recompute"
+    ],
+    "rights_scope_supported_bytes_are_training_credit": false,
+    "status": "DATED_PARLIAMENT_TRANSCRIPT_RIGHTS_SCOPE_SUPPORTED_WITH_ATTRIBUTION_ONE_SOURCE_SCOPE_HOLD"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "parent_full_scan": {
+    "exact_unique_bytes": 877983909,
+    "exact_unique_payload_count": 4385,
+    "member_metadata_identity_sha256": "9d6ba19977d91a0cd8068b7921790daa9c13e6040a797e4f5fb683d4fca40008",
+    "report_sha256": "689dbea2b5975c1d073dde7fefa814af694378d12a88adcb33b1caf2e0ffa291",
+    "terminal_evidence_identity_sha256": "b25ff7e7948e2fa215ee8d059ea5594025693e105389b7095f5250808ecc3a9d"
+  },
+  "provenance": {
+    "accepted_exact_unique_bytes": 877899128,
+    "accepted_exact_unique_members": 4384,
+    "accepted_path_inventory_sha256": "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc",
+    "accepted_status": "RIGHTS_SCOPE_SUPPORTED_DATED_PARLIAMENT_TRANSCRIPT_CANDIDATE",
+    "explicit_holds": [
+      {
+        "path": "texts/stenogramy-zasidannya-rnbo-vid-28-lyutogo-2014-roku.txt",
+        "reason": "RNBO_SESSION_PATH_IS_OUTSIDE_DECLARED_PLENARY_SESSION_SCOPE_UNTIL_PRIMARY_SOURCE_IS_BOUND",
+        "sha256": "0f199cdf0f7e24d87d78835ed4cd8d4c4d53e3e90db4d5bc9a5dfe523e9d8ffd",
+        "size_bytes": 84781
+      }
+    ],
+    "held_exact_unique_bytes": 84781,
+    "held_exact_unique_members": 1,
+    "held_path_inventory_sha256": "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9",
+    "held_status": "SOURCE_SCOPE_HOLD",
+    "maximum_date": "2024-01-16",
+    "minimum_date": "1990-05-15",
+    "unique_session_dates": 2963,
+    "year_bytes": {
+      "1990": 22694273,
+      "1991": 24159060,
+      "1992": 24711973,
+      "1993": 23243743,
+      "1994": 24133034,
+      "1995": 32083663,
+      "1996": 38699024,
+      "1997": 42500981,
+      "1998": 30316531,
+      "1999": 30479679,
+      "2000": 31456142,
+      "2001": 29952927,
+      "2002": 21771539,
+      "2003": 31678285,
+      "2004": 32124443,
+      "2005": 31622027,
+      "2006": 23146023,
+      "2007": 16708848,
+      "2008": 16804946,
+      "2009": 24524500,
+      "2010": 30674119,
+      "2011": 27796427,
+      "2012": 20273705,
+      "2013": 15805210,
+      "2014": 19249533,
+      "2015": 26839761,
+      "2016": 27501342,
+      "2017": 27873118,
+      "2018": 30890099,
+      "2019": 29649946,
+      "2020": 19475483,
+      "2021": 23862719,
+      "2022": 10632614,
+      "2023": 14049093,
+      "2024": 514318
+    },
+    "year_member_counts": {
+      "1990": 152,
+      "1991": 152,
+      "1992": 150,
+      "1993": 140,
+      "1994": 142,
+      "1995": 163,
+      "1996": 202,
+      "1997": 238,
+      "1998": 185,
+      "1999": 156,
+      "2000": 149,
+      "2001": 145,
+      "2002": 118,
+      "2003": 135,
+      "2004": 139,
+      "2005": 136,
+      "2006": 125,
+      "2007": 101,
+      "2008": 113,
+      "2009": 115,
+      "2010": 128,
+      "2011": 108,
+      "2012": 88,
+      "2013": 88,
+      "2014": 104,
+      "2015": 124,
+      "2016": 125,
+      "2017": 119,
+      "2018": 128,
+      "2019": 135,
+      "2020": 84,
+      "2021": 92,
+      "2022": 50,
+      "2023": 51,
+      "2024": 4
+    }
+  },
+  "report_sha256": "7eea6d0b79353ef565910738dce9de93008a961059cab503b6f05686c0f27a7d",
+  "rights_authorities": [
+    {
+      "authority": "RADA_TREES_DATASET_CARD_AT_EXACT_REVISION",
+      "license": "CC-BY-4.0",
+      "observation_binding": "EXACT_DATASET_REVISION_URL_PLUS_CURRENT_PRIMARY_CARD_OBSERVATION",
+      "observed_at_utc_date": "2026-09-07",
+      "period_statement": "1990-2024 (nine convocations)",
+      "plain_text_statement": "Plain text (original transcripts)",
+      "source_statement": "Official transcripts from plenary sessions downloaded from the Verkhovna Rada open data portal",
+      "url": "https://huggingface.co/datasets/uacorpus/Rada_Trees/blob/1b994a5804dcda122721e8d33a03fd172cf8d867/README.md"
+    },
+    {
+      "authority": "VERKHOVNA_RADA_OPEN_DATA_STENOGRAM_PORTAL",
+      "condition": "MANDATORY_SOURCE_ATTRIBUTION",
+      "observation_binding": "CURRENT_OFFICIAL_PRIMARY_PORTAL_OBSERVATION_NON_IMMUTABLE",
+      "observed_at_utc_date": "2026-09-07",
+      "reuse_scope": "FREE_COPY_PUBLISH_DISTRIBUTE_USE_INCLUDING_COMMERCIAL_AND_COMBINE_OR_INCLUDE_IN_PRODUCT",
+      "url": "https://data.rada.gov.ua/open/data/stenogram"
+    },
+    {
+      "authority": "CABINET_RESOLUTION_835_OPEN_DATA_REUSE_TERMS",
+      "condition": "MANDATORY_SOURCE_ATTRIBUTION",
+      "observation_binding": "OFFICIAL_LEGAL_TEXT_CURRENT_OBSERVATION_NON_IMMUTABLE",
+      "observed_at_utc_date": "2026-09-07",
+      "reuse_scope": "OPEN_DATA_FREE_REUSE_AND_DISTRIBUTION_INCLUDING_COMMERCIAL",
+      "url": "https://zakon.rada.gov.ua/laws/show/835-2015-%D0%BF/ed20151021/print"
+    }
+  ],
+  "schema_version": "12-6.d03-rada-trees-provenance-rights-report.v1",
+  "source": {
+    "archive_path": "rada_xtag_texts.7z",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867"
+  }
+}
