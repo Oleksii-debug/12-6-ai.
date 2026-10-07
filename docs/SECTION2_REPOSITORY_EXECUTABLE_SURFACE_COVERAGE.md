@@ -18,12 +18,31 @@ Permanent adversarial coverage is:
 
 `tests/test_repository_surface_inventory_section2.py`
 
-## Exact accepted-main binding
+## Qualified baseline and current-main equivalence
 
-The rule authority binds:
+The rule authority preserves the terminally qualified product baseline:
 
-- accepted `main@019944d5fe12334791f05f1232d13de4a12e37d3`;
-- exact tree `c727add7897dd94bdb02493e0cd7a565be7e8d9f`;
+- qualified `main@019944d5fe12334791f05f1232d13de4a12e37d3`;
+- exact baseline tree `c727add7897dd94bdb02493e0cd7a565be7e8d9f`;
+- terminal baseline CI remains the separately recorded run `37248299503` and is **not**
+  reassigned to a newer commit.
+
+It also pins the repository main observed for this candidate:
+
+- current `main@330fb46aa3199e26d8b7e49968ee93fb12447560`;
+- exact current tree `20559f951b6e2c744832ce0cd1cb324e2e1c2eea`;
+- the validator requires that SHA to equal the live `origin/main`/local `main` ref;
+- all **233 capability-bearing blobs** across `src/twelve_six/**/*.py`, `tools/`,
+  workflows and `pyproject.toml` must have an identical path→blob-SHA map between the
+  qualified baseline and current main.
+
+The only baseline→current-main changes are coordination-only `AGENTS.md` and
+`SEQUENTIAL_CLOSURE_STATE.md`; neither is a capability-bearing product/executable surface.
+Therefore the older terminal CI remains evidence for the unchanged product baseline without
+falsely claiming that CI ran on `330fb46aa3199e26d8b7e49968ee93fb12447560`.
+
+The external executable/control classification covers:
+
 - all 117 accepted-main `tools/` executable surfaces;
 - the shared `.github/workflows/ci.yml` control surface;
 - `pyproject.toml` packaging/entry-point surface.

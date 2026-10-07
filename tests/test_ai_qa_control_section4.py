@@ -351,6 +351,32 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
         )
 
 
+def test_regression_chain_rejects_checkout_mutation_during_gate() -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
+    )
+    states = iter(
+        (
+            GitState(sha=_CANDIDATE_SHA, tracked_clean=True),
+            GitState(sha=_CANDIDATE_SHA, tracked_clean=True),
+            GitState(sha=_CANDIDATE_SHA, tracked_clean=False),
+        )
+    )
+
+    with pytest.raises(ValueError, match="became dirty during component gate"):
+        execute_automated_regressions(
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-automation",
+            command_runner=_pass_runner,
+            git_probe=lambda _: next(states),
+        )
+
+
 def _pass_receipt(
     gate: GateKind,
     *,

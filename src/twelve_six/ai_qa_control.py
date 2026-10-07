@@ -775,6 +775,16 @@ def execute_automated_regressions(
         (GateKind.COMPONENT, chain.component_argv),
         (GateKind.ADVERSARIAL, chain.adversarial_argv),
     ):
+        pre_gate_state = git_probe(root)
+        if pre_gate_state.sha != chain.candidate_git_sha:
+            raise ValueError(
+                f"regression candidate SHA changed before {gate.value} gate"
+            )
+        if not pre_gate_state.tracked_clean:
+            raise ValueError(
+                f"regression candidate checkout is dirty before {gate.value} gate"
+            )
+
         input_envelope = {
             "schema_version": "12-6.aiqa-regression-input.v1",
             "defect_id": chain.defect_id,
@@ -792,6 +802,17 @@ def execute_automated_regressions(
             input_envelope_bytes,
             input_identity,
         )
+
+        post_gate_state = git_probe(root)
+        if post_gate_state.sha != chain.candidate_git_sha:
+            raise ValueError(
+                f"regression candidate SHA changed during {gate.value} gate"
+            )
+        if not post_gate_state.tracked_clean:
+            raise ValueError(
+                f"regression candidate checkout became dirty during {gate.value} gate"
+            )
+
         evidence = {
             "gate": gate.value,
             "git_sha": chain.candidate_git_sha,

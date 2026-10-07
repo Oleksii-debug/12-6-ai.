@@ -234,7 +234,7 @@
         {
           "vector_id": "section0-product-stack",
           "level": "integration",
-          "command": "pytest -q tests/test_section_closure_registry.py tests/test_system_architecture_section0.py"
+          "command": "pytest -q tests/test_system_architecture_section0.py"
         }
       ],
       "evidence_targets": [
@@ -272,7 +272,7 @@
         {
           "vector_id": "section1-stack",
           "level": "integration",
-          "command": "pytest -q tests/test_section_closure_registry.py tests/test_artifact_identity_section1.py"
+          "command": "pytest -q tests/test_system_architecture_section0.py tests/test_artifact_identity_section1.py"
         }
       ],
       "evidence_targets": [
@@ -723,7 +723,7 @@
         {
           "vector_id": "section2-stack",
           "level": "integration",
-          "command": "pytest -q tests/test_section_closure_registry.py tests/test_capability_map_section2.py"
+          "command": "pytest -q tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py"
         }
       ],
       "evidence_targets": [
