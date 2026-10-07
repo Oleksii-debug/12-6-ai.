@@ -475,7 +475,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
         )
     )
     with pytest.raises(ValueError, match="dirty"):
-        verify_candidate_sil_evidence(
+        ai_qa_control._verify_candidate_sil_evidence_with_authorities(
             evidence_path,
             log_path,
             repo_root=_ROOT,
@@ -1590,5 +1590,18 @@ def test_public_automated_regression_authority_rejects_caller_backends() -> None
             command_runner=_pass_runner,
             git_probe=_candidate_git_probe,
             candidate_parent_probe=_candidate_parent_probe,
+        )
+
+def test_public_candidate_sil_verifier_rejects_caller_git_probe(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        verify_candidate_sil_evidence(  # type: ignore[call-arg]
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            repo_root=_ROOT,
+            candidate_git_sha=_CANDIDATE_SHA,
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=load_capability_registry(_CAPABILITIES),
+            expected_scenario=load_sil_scenario(_SCENARIO),
+            git_probe=_candidate_git_probe,
         )
 
