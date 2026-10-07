@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
@@ -266,14 +267,161 @@ def _test_level_from_wire_value(
     return _sealed_validator(_sealed_levels[index])
 
 
+def _build_component_contract_authority() -> Any:
+    # Capture the import/origin machinery used by the acceptance authority.
+    # Rebinding module globals after import must not manufacture a repository-owned
+    # component contract.
+    sealed_import_module = importlib.import_module
+    sealed_getsourcefile = inspect.getsourcefile
+    sealed_module_type = ModuleType
+    sealed_path_type = Path
+    sealed_package_root = _PACKAGE_ROOT.resolve()
+
+    def require_module_origin(module: ModuleType, expected_name: str) -> Path:
+        if type(module) is not sealed_module_type:
+            raise ValueError("component contract owner must be an exact Python module")
+        module_name = getattr(module, "__name__", None)
+        if type(module_name) is not str or module_name != expected_name:
+            raise ValueError("component contract import resolved unexpected module")
+        if not (
+            module_name == "twelve_six" or module_name.startswith("twelve_six.")
+        ):
+            raise ValueError("component contract owner module is not canonical twelve_six code")
+
+        module_file = getattr(module, "__file__", None)
+        module_spec = getattr(module, "__spec__", None)
+        spec_origin = getattr(module_spec, "origin", None)
+        if type(module_file) is not str or type(spec_origin) is not str:
+            raise ValueError("component contract repository-owned module origin is unavailable")
+
+        source_path = sealed_path_type(module_file).resolve()
+        spec_path = sealed_path_type(spec_origin).resolve()
+        if source_path != spec_path or not source_path.is_file():
+            raise ValueError("component contract repository-owned module origin mismatch")
+
+        relative_parts = module_name.split(".")[1:]
+        module_stem = sealed_package_root.joinpath(*relative_parts)
+        expected_paths = {
+            module_stem.with_suffix(".py").resolve(),
+            (module_stem / "__init__.py").resolve(),
+        }
+        if source_path not in expected_paths:
+            raise ValueError("component contract repository-owned module origin is outside package")
+        try:
+            source_path.relative_to(sealed_package_root)
+        except ValueError as exc:
+            raise ValueError(
+                "component contract repository-owned module origin escapes package root"
+            ) from exc
+        return source_path
+
+    def resolve(component_contract: str) -> object:
+        if type(component_contract) is not str or not component_contract.strip():
+            raise ValueError("component_contract must be non-empty text")
+        contract = component_contract
+        if not contract.startswith("twelve_six."):
+            raise ValueError(
+                "AVAILABLE component contract must be repository-owned twelve_six Python"
+            )
+
+        parts = contract.split(".")
+        for index in range(len(parts), 0, -1):
+            module_name = ".".join(parts[:index])
+            try:
+                imported_module = sealed_import_module(module_name)
+            except ModuleNotFoundError as exc:
+                missing_name = exc.name
+                if (
+                    type(missing_name) is not str
+                    or not (
+                        module_name == missing_name
+                        or module_name.startswith(f"{missing_name}.")
+                    )
+                ):
+                    raise ValueError(
+                        f"component contract import failed inside module: {module_name}"
+                    ) from exc
+                continue
+
+            require_module_origin(imported_module, module_name)
+            resolved: object = imported_module
+            for attribute in parts[index:]:
+                if not hasattr(resolved, attribute):
+                    raise ValueError(
+                        f"component contract attribute does not exist: {contract}"
+                    )
+                resolved = getattr(resolved, attribute)
+
+            if type(resolved) is sealed_module_type:
+                owner = resolved
+                owner_name = getattr(owner, "__name__", None)
+                if type(owner_name) is not str:
+                    raise ValueError(
+                        "component contract owner module name is unavailable"
+                    )
+            else:
+                owner_name = getattr(resolved, "__module__", None)
+                if type(owner_name) is not str or not (
+                    owner_name == "twelve_six"
+                    or owner_name.startswith("twelve_six.")
+                ):
+                    raise ValueError(
+                        "AVAILABLE component contract must resolve to "
+                        "repository-owned twelve_six code"
+                    )
+                try:
+                    owner = sealed_import_module(owner_name)
+                except (ImportError, ValueError) as exc:
+                    raise ValueError(
+                        "AVAILABLE component contract owner module cannot be resolved"
+                    ) from exc
+
+            owner_source_path = require_module_origin(owner, owner_name)
+            if type(resolved) is not sealed_module_type:
+                try:
+                    resolved_source = sealed_getsourcefile(resolved)
+                except (OSError, TypeError) as exc:
+                    raise ValueError(
+                        "component contract object source is unavailable"
+                    ) from exc
+                if type(resolved_source) is not str:
+                    raise ValueError(
+                        "component contract object source is unavailable"
+                    )
+                if sealed_path_type(resolved_source).resolve() != owner_source_path:
+                    raise ValueError(
+                        "component contract object source does not match owner module"
+                    )
+            return resolved
+        raise ValueError(f"component contract module does not exist: {contract}")
+
+    return resolve
+
+
+_resolve_component_contract_authority = _build_component_contract_authority()
+
+# Seal the repository-owned contract resolver against rebinding of public/module
+# helpers. Stored registry authority captures this closure at definition time.
+_SEALED_RESOLVE_COMPONENT_CONTRACT = _resolve_component_contract_authority
+
+
 @dataclass(frozen=True, slots=True)
 class EnvironmentSupport:
     environment_id: str
     supported: bool
 
     def __post_init__(self) -> None:
-        _require_id("environment_id", self.environment_id)
-        if not _is_exact_type(self.supported, bool):
+        if (
+            type(self.environment_id) is not str
+            or not 1 <= len(self.environment_id) <= 96
+            or self.environment_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.environment_id[1:]
+            )
+        ):
+            raise ValueError("environment_id must be a canonical identifier")
+        if type(self.supported) is not bool:
             raise ValueError("supported must be boolean")
 
     def to_dict(self) -> dict[str, Any]:
@@ -287,7 +435,16 @@ class TestVector:
     command: str
 
     def __post_init__(self) -> None:
-        _require_id("vector_id", self.vector_id)
+        if (
+            type(self.vector_id) is not str
+            or not 1 <= len(self.vector_id) <= 96
+            or self.vector_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.vector_id[1:]
+            )
+        ):
+            raise ValueError("vector_id must be a canonical identifier")
         _require_test_level(self.level)
         _require_text("command", self.command)
         tokens = self.command.split()
@@ -298,15 +455,15 @@ class TestVector:
         ):
             raise ValueError("test vector command must be canonical pytest -q test paths")
         for token in tokens[2:]:
-            path = PurePosixPath(token)
+            parts = token.split("/")
             if (
                 "\\" in token
-                or path.is_absolute()
-                or len(path.parts) < 2
-                or path.parts[0] != "tests"
-                or ".." in path.parts
-                or path.as_posix() != token
-                or path.suffix != ".py"
+                or token.startswith("/")
+                or len(parts) < 2
+                or parts[0] != "tests"
+                or any(part in {"", ".", ".."} for part in parts)
+                or not parts[-1].endswith(".py")
+                or parts[-1] == ".py"
             ):
                 raise ValueError(
                     "test vector command may reference only canonical tests/*.py paths"
@@ -322,8 +479,18 @@ class EvidenceTarget:
     target: str
 
     def __post_init__(self) -> None:
-        _require_id("evidence_id", self.evidence_id)
-        _require_text("target", self.target)
+        if (
+            type(self.evidence_id) is not str
+            or not 1 <= len(self.evidence_id) <= 96
+            or self.evidence_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.evidence_id[1:]
+            )
+        ):
+            raise ValueError("evidence_id must be a canonical identifier")
+        if type(self.target) is not str or not self.target.strip():
+            raise ValueError("target must be non-empty text")
 
     def to_dict(self) -> dict[str, str]:
         return _evidence_target_payload_from_stored_state(self)
@@ -344,35 +511,58 @@ class Capability:
     unavailable_reason: str | None
 
     def __post_init__(self) -> None:
-        _require_id("capability_id", self.capability_id)
-        _require_positive_int("schema_version", self.schema_version)
+        if (
+            type(self.capability_id) is not str
+            or not 1 <= len(self.capability_id) <= 96
+            or self.capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.capability_id[1:]
+            )
+        ):
+            raise ValueError("capability_id must be a canonical identifier")
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         _require_capability_status(self.status)
-        _require_text("component_contract", self.component_contract)
+        if (
+            type(self.component_contract) is not str
+            or not self.component_contract.strip()
+        ):
+            raise ValueError("component_contract must be non-empty text")
 
         for name, values in (
             ("dependencies", self.dependencies),
             ("journey_ids", self.journey_ids),
         ):
-            if not _is_exact_type(values, tuple):
+            if type(values) is not tuple:
                 raise ValueError(f"{name} must be an immutable tuple")
             for value in values:
-                _require_id(name, value)
+                if (
+                    type(value) is not str
+                    or not 1 <= len(value) <= 96
+                    or value[0] not in "abcdefghijklmnopqrstuvwxyz"
+                    or any(
+                        char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                        for char in value[1:]
+                    )
+                ):
+                    raise ValueError(f"{name} must be a canonical identifier")
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must be unique")
 
         if not self.journey_ids:
             raise ValueError("capability must bind at least one user/operator journey")
 
-        if not _is_exact_type(self.environments, tuple) or any(
-            not _is_exact_type(item, EnvironmentSupport) for item in self.environments
+        if type(self.environments) is not tuple or any(
+            type(item) is not EnvironmentSupport for item in self.environments
         ):
             raise ValueError("environments must contain EnvironmentSupport values")
-        if not _is_exact_type(self.test_vectors, tuple) or any(
-            not _is_exact_type(item, TestVector) for item in self.test_vectors
+        if type(self.test_vectors) is not tuple or any(
+            type(item) is not TestVector for item in self.test_vectors
         ):
             raise ValueError("test_vectors must contain TestVector values")
-        if not _is_exact_type(self.evidence_targets, tuple) or any(
-            not _is_exact_type(item, EvidenceTarget) for item in self.evidence_targets
+        if type(self.evidence_targets) is not tuple or any(
+            type(item) is not EvidenceTarget for item in self.evidence_targets
         ):
             raise ValueError("evidence_targets must contain EvidenceTarget values")
         for item in self.environments:
@@ -392,18 +582,24 @@ class Capability:
         if len(evidence_ids) != len(set(evidence_ids)):
             raise ValueError("evidence target ids must be unique")
 
-        if self.status is CapabilityStatus.AVAILABLE:
+        if str.__str__(self.status) == "AVAILABLE":
             if self.unavailable_reason is not None:
                 raise ValueError("AVAILABLE capability cannot have unavailable_reason")
-            _require_text("integrated_result", self.integrated_result)
+            if (
+                type(self.integrated_result) is not str
+                or not self.integrated_result.strip()
+            ):
+                raise ValueError("integrated_result must be non-empty text")
             if not any(item.supported for item in self.environments):
                 raise ValueError("AVAILABLE capability needs a supported environment")
-            levels = {
-                _SEALED_TEST_LEVEL_WIRE(item.level) for item in self.test_vectors
-            }
+            # The required acceptance levels are part of Section-2 authority.
+            # Do not read module-global "sealed" aliases here: they can be rebound
+            # after import. Nested TestVector state is revalidated separately on
+            # stored-state paths, and the canonical wire values are fixed literals.
+            levels = {str.__str__(item.level) for item in self.test_vectors}
             if any(
                 required_level not in levels
-                for required_level in _SEALED_REQUIRED_LEVEL_VALUES
+                for required_level in ("component", "integration")
             ):
                 raise ValueError(
                     "AVAILABLE capability needs component and integration test vectors"
@@ -411,12 +607,58 @@ class Capability:
             if not self.evidence_targets:
                 raise ValueError("AVAILABLE capability needs an evidence target")
         else:
-            _require_text("unavailable_reason", self.unavailable_reason)
+            if (
+                type(self.unavailable_reason) is not str
+                or not self.unavailable_reason.strip()
+            ):
+                raise ValueError("unavailable_reason must be non-empty text")
             if self.integrated_result is not None:
                 raise ValueError("UNAVAILABLE capability cannot claim an integrated_result")
 
     def to_dict(self) -> dict[str, Any]:
         return _capability_payload_from_stored_state(self)
+
+
+def _build_capability_post_init_authority(original_validate: Any) -> Any:
+    # Seal nested authority used by direct Capability construction/replacement.
+    # The returned public method intentionally accepts only self.
+    sealed_require_status = _require_capability_status
+    sealed_environment_type = EnvironmentSupport
+    sealed_test_vector_type = TestVector
+    sealed_evidence_type = EvidenceTarget
+    sealed_environment_validate = EnvironmentSupport.__post_init__
+    sealed_test_vector_validate = TestVector.__post_init__
+    sealed_evidence_validate = EvidenceTarget.__post_init__
+
+    def validate(self: Any) -> None:
+        sealed_require_status(self.status)
+        if type(self.environments) is not tuple or any(
+            type(item) is not sealed_environment_type for item in self.environments
+        ):
+            raise ValueError("environments must contain EnvironmentSupport values")
+        if type(self.test_vectors) is not tuple or any(
+            type(item) is not sealed_test_vector_type for item in self.test_vectors
+        ):
+            raise ValueError("test_vectors must contain TestVector values")
+        if type(self.evidence_targets) is not tuple or any(
+            type(item) is not sealed_evidence_type for item in self.evidence_targets
+        ):
+            raise ValueError("evidence_targets must contain EvidenceTarget values")
+        for item in self.environments:
+            sealed_environment_validate(item)
+        for item in self.test_vectors:
+            sealed_test_vector_validate(item)
+        for item in self.evidence_targets:
+            sealed_evidence_validate(item)
+        original_validate(self)
+
+    return validate
+
+
+_CAPABILITY_POST_INIT_AUTHORITY = _build_capability_post_init_authority(
+    Capability.__post_init__
+)
+Capability.__post_init__ = _CAPABILITY_POST_INIT_AUTHORITY
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,12 +668,31 @@ class Journey:
     capability_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        _require_id("journey_id", self.journey_id)
-        _require_text("title", self.title)
-        if not _is_exact_type(self.capability_ids, tuple) or not self.capability_ids:
+        if (
+            type(self.journey_id) is not str
+            or not 1 <= len(self.journey_id) <= 96
+            or self.journey_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.journey_id[1:]
+            )
+        ):
+            raise ValueError("journey_id must be a canonical identifier")
+        if type(self.title) is not str or not self.title.strip():
+            raise ValueError("title must be non-empty text")
+        if type(self.capability_ids) is not tuple or not self.capability_ids:
             raise ValueError("journey capability_ids must be a non-empty tuple")
         for capability_id in self.capability_ids:
-            _require_id("journey capability_id", capability_id)
+            if (
+                type(capability_id) is not str
+                or not 1 <= len(capability_id) <= 96
+                or capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+                or any(
+                    char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                    for char in capability_id[1:]
+                )
+            ):
+                raise ValueError("journey capability_id must be a canonical identifier")
         if len(self.capability_ids) != len(set(self.capability_ids)):
             raise ValueError("journey capability_ids must be unique")
 
@@ -447,22 +708,31 @@ class SourceSurface:
 
     def __post_init__(self) -> None:
         _require_text("source surface path", self.path)
-        _require_id("source surface capability_id", self.capability_id)
-        if not _is_exact_type(self.origin, str) or self.origin not in {
+        if (
+            type(self.capability_id) is not str
+            or not 1 <= len(self.capability_id) <= 96
+            or self.capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.capability_id[1:]
+            )
+        ):
+            raise ValueError("source surface capability_id must be a canonical identifier")
+        if type(self.origin) is not str or self.origin not in {
             "accepted_main",
             "stacked_candidate",
             "modified_candidate",
         }:
             raise ValueError("source surface origin is unsupported")
-        path = PurePosixPath(self.path)
+        parts = self.path.split("/")
         if (
             "\\" in self.path
-            or path.is_absolute()
-            or len(path.parts) < 3
-            or path.parts[:2] != ("src", "twelve_six")
-            or ".." in path.parts
-            or path.as_posix() != self.path
-            or path.suffix != ".py"
+            or self.path.startswith("/")
+            or len(parts) < 3
+            or parts[:2] != ["src", "twelve_six"]
+            or any(part in {"", ".", ".."} for part in parts)
+            or not parts[-1].endswith(".py")
+            or parts[-1] == ".py"
         ):
             raise ValueError(
                 "source surface path must be a canonical Python path under src/twelve_six"
@@ -484,9 +754,10 @@ class SourceSurfaceInventory:
     surfaces: tuple[SourceSurface, ...]
 
     def __post_init__(self) -> None:
-        _require_positive_int("schema_version", self.schema_version)
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         if (
-            not _is_exact_type(self.schema_version, int)
+            type(self.schema_version) is not int
             or self.schema_version != 1
         ):
             raise ValueError("unsupported SourceSurfaceInventory schema_version")
@@ -494,21 +765,28 @@ class SourceSurfaceInventory:
             ("observed_main_sha", self.observed_main_sha),
             ("observed_main_tree_sha", self.observed_main_tree_sha),
         ):
-            if not _is_exact_type(value, str) or _SHA40_RE.fullmatch(value) is None:
+            if type(value) is not str or _SHA40_RE.fullmatch(value) is None:
                 raise ValueError(f"{field_name} must be a lowercase 40-hex Git SHA")
         _require_text("source_root", self.source_root)
         if self.source_root != "src/twelve_six":
             raise ValueError("source_root must be canonical src/twelve_six")
-        _require_positive_int("source_surface_count", self.source_surface_count)
-        _require_positive_int(
-            "accepted_main_surface_count", self.accepted_main_surface_count
-        )
-        _require_nonnegative_int(
-            "candidate_overlay_surface_count", self.candidate_overlay_surface_count
-        )
-        if not _is_exact_type(self.surfaces, tuple) or not self.surfaces:
+        if type(self.source_surface_count) is not int or self.source_surface_count <= 0:
+            raise ValueError("source_surface_count must be a positive integer")
+        if (
+            type(self.accepted_main_surface_count) is not int
+            or self.accepted_main_surface_count <= 0
+        ):
+            raise ValueError("accepted_main_surface_count must be a positive integer")
+        if (
+            type(self.candidate_overlay_surface_count) is not int
+            or self.candidate_overlay_surface_count < 0
+        ):
+            raise ValueError(
+                "candidate_overlay_surface_count must be a non-negative integer"
+            )
+        if type(self.surfaces) is not tuple or not self.surfaces:
             raise ValueError("surfaces must be a non-empty tuple")
-        if any(not _is_exact_type(item, SourceSurface) for item in self.surfaces):
+        if any(type(item) is not SourceSurface for item in self.surfaces):
             raise ValueError("surfaces must contain only SourceSurface values")
         for item in self.surfaces:
             SourceSurface.__post_init__(item)
@@ -535,43 +813,116 @@ class SourceSurfaceInventory:
         return _source_surface_inventory_identity_from_stored_state(self)
 
 
-@dataclass(frozen=True, slots=True)
-class CapabilityRegistry:
-    schema_version: int
-    observed_main_sha: str
-    observed_main_ci_run_id: int
-    observed_main_ci_conclusion: str
-    capabilities: tuple[Capability, ...]
-    journeys: tuple[Journey, ...]
+def _build_source_inventory_post_init_authority(original_validate: Any) -> Any:
+    # Seal nested source-record validation for direct inventory construction.
+    sealed_surface_type = SourceSurface
+    sealed_surface_validate = SourceSurface.__post_init__
+    sealed_sha40_fullmatch = _SHA40_RE.fullmatch
 
-    def __post_init__(self) -> None:
-        _require_positive_int("schema_version", self.schema_version)
+    def validate(self: Any) -> None:
+        for field_name, value in (
+            ("observed_main_sha", self.observed_main_sha),
+            ("observed_main_tree_sha", self.observed_main_tree_sha),
+        ):
+            if type(value) is not str or sealed_sha40_fullmatch(value) is None:
+                raise ValueError(
+                    f"{field_name} must be a lowercase 40-hex Git SHA"
+                )
+        if type(self.source_root) is not str or not self.source_root.strip():
+            raise ValueError("source_root must be non-empty text")
+        if type(self.surfaces) is not tuple or not self.surfaces:
+            raise ValueError("surfaces must be a non-empty tuple")
+        if any(type(item) is not sealed_surface_type for item in self.surfaces):
+            raise ValueError("surfaces must contain only SourceSurface values")
+        for item in self.surfaces:
+            sealed_surface_validate(item)
+        original_validate(self)
+
+    return validate
+
+
+_SOURCE_INVENTORY_POST_INIT_AUTHORITY = _build_source_inventory_post_init_authority(
+    SourceSurfaceInventory.__post_init__
+)
+SourceSurfaceInventory.__post_init__ = _SOURCE_INVENTORY_POST_INIT_AUTHORITY
+
+
+def _build_capability_registry_post_init() -> Any:
+    # The canonical constructor validator closes over authority at definition time.
+    # The public dataclass hook therefore exposes no caller-supplied validator
+    # parameter and later module-global resolver rebinding cannot replace it.
+    sealed_resolve_component_contract = _SEALED_RESOLVE_COMPONENT_CONTRACT
+    sealed_capability_type = Capability
+    sealed_journey_type = Journey
+    sealed_environment_type = EnvironmentSupport
+    sealed_test_vector_type = TestVector
+    sealed_evidence_type = EvidenceTarget
+    sealed_capability_validate = Capability.__post_init__
+    sealed_journey_validate = Journey.__post_init__
+    sealed_environment_validate = EnvironmentSupport.__post_init__
+    sealed_test_vector_validate = TestVector.__post_init__
+    sealed_evidence_validate = EvidenceTarget.__post_init__
+    sealed_require_capability_status = _require_capability_status
+    sealed_require_test_level = _require_test_level
+    sealed_available_status = CapabilityStatus.AVAILABLE
+    sealed_unavailable_status = CapabilityStatus.UNAVAILABLE
+    sealed_sha40_fullmatch = _SHA40_RE.fullmatch
+
+    def validate(self: Any) -> None:
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         if (
-            not _is_exact_type(self.schema_version, int)
+            type(self.schema_version) is not int
             or self.schema_version != 1
         ):
             raise ValueError("unsupported CapabilityRegistry schema_version")
-        if not _is_exact_type(self.observed_main_sha, str) or _SHA40_RE.fullmatch(
+        if type(self.observed_main_sha) is not str or sealed_sha40_fullmatch(
             self.observed_main_sha
         ) is None:
             raise ValueError("observed_main_sha must be a lowercase 40-hex Git SHA")
-        _require_positive_int("observed_main_ci_run_id", self.observed_main_ci_run_id)
-        _require_text("observed_main_ci_conclusion", self.observed_main_ci_conclusion)
+        if (
+            type(self.observed_main_ci_run_id) is not int
+            or self.observed_main_ci_run_id <= 0
+        ):
+            raise ValueError("observed_main_ci_run_id must be a positive integer")
+        if (
+            type(self.observed_main_ci_conclusion) is not str
+            or not self.observed_main_ci_conclusion.strip()
+        ):
+            raise ValueError("observed_main_ci_conclusion must be non-empty text")
         if self.observed_main_ci_conclusion != "success":
             raise ValueError("observed main CI must be terminal success")
 
-        if not _is_exact_type(self.capabilities, tuple) or not self.capabilities:
+        if type(self.capabilities) is not tuple or not self.capabilities:
             raise ValueError("capabilities must be a non-empty tuple")
-        if any(not _is_exact_type(item, Capability) for item in self.capabilities):
+        if any(type(item) is not sealed_capability_type for item in self.capabilities):
             raise ValueError("capabilities must contain only Capability values")
-        if not _is_exact_type(self.journeys, tuple) or not self.journeys:
+        if type(self.journeys) is not tuple or not self.journeys:
             raise ValueError("journeys must be a non-empty tuple")
-        if any(not _is_exact_type(item, Journey) for item in self.journeys):
+        if any(type(item) is not sealed_journey_type for item in self.journeys):
             raise ValueError("journeys must contain only Journey values")
         for item in self.capabilities:
-            Capability.__post_init__(item)
+            sealed_require_capability_status(item.status)
+            for environment in item.environments:
+                if type(environment) is not sealed_environment_type:
+                    raise ValueError(
+                        "environments must contain EnvironmentSupport values"
+                    )
+                sealed_environment_validate(environment)
+            for vector in item.test_vectors:
+                if type(vector) is not sealed_test_vector_type:
+                    raise ValueError("test_vectors must contain TestVector values")
+                sealed_require_test_level(vector.level)
+                sealed_test_vector_validate(vector)
+            for evidence in item.evidence_targets:
+                if type(evidence) is not sealed_evidence_type:
+                    raise ValueError(
+                        "evidence_targets must contain EvidenceTarget values"
+                    )
+                sealed_evidence_validate(evidence)
+            sealed_capability_validate(item)
         for item in self.journeys:
-            Journey.__post_init__(item)
+            sealed_journey_validate(item)
 
         by_capability = {item.capability_id: item for item in self.capabilities}
         by_journey = {item.journey_id: item for item in self.journeys}
@@ -582,8 +933,8 @@ class CapabilityRegistry:
 
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
-            if capability.status is CapabilityStatus.AVAILABLE:
-                _SEALED_RESOLVE_COMPONENT_CONTRACT(capability.component_contract)
+            if capability.status is sealed_available_status:
+                sealed_resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
@@ -599,8 +950,8 @@ class CapabilityRegistry:
                         f"{capability.capability_id} has unknown dependency {dependency_id}"
                     )
                 if (
-                    capability.status is CapabilityStatus.AVAILABLE
-                    and by_capability[dependency_id].status is CapabilityStatus.UNAVAILABLE
+                    capability.status is sealed_available_status
+                    and by_capability[dependency_id].status is sealed_unavailable_status
                 ):
                     raise ValueError(
                         f"AVAILABLE capability depends on UNAVAILABLE {dependency_id}"
@@ -626,7 +977,39 @@ class CapabilityRegistry:
                         f"{journey.journey_id} is not back-bound by {capability_id}"
                     )
 
-        self._reject_dependency_cycles(by_capability)
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(capability_id: str) -> None:
+            if capability_id in visited:
+                return
+            if capability_id in visiting:
+                raise ValueError(f"capability dependency cycle at {capability_id}")
+            visiting.add(capability_id)
+            for dependency_id in by_capability[capability_id].dependencies:
+                visit(dependency_id)
+            visiting.remove(capability_id)
+            visited.add(capability_id)
+
+        for capability_id in by_capability:
+            visit(capability_id)
+
+    return validate
+
+
+_CAPABILITY_REGISTRY_POST_INIT = _build_capability_registry_post_init()
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityRegistry:
+    schema_version: int
+    observed_main_sha: str
+    observed_main_ci_run_id: int
+    observed_main_ci_conclusion: str
+    capabilities: tuple[Capability, ...]
+    journeys: tuple[Journey, ...]
+
+    __post_init__ = _CAPABILITY_REGISTRY_POST_INIT
 
     @staticmethod
     def _reject_dependency_cycles(by_capability: dict[str, Capability]) -> None:
@@ -711,7 +1094,6 @@ class CapabilityRegistry:
 
     def identity_sha256(self) -> str:
         return _capability_registry_identity_from_stored_state(self)
-
 
 
 def _environment_support_payload_from_stored_state(
@@ -802,6 +1184,12 @@ def _source_surface_inventory_payload_from_stored_state(
     _sealed_validate=SourceSurfaceInventory.__post_init__,
     _sealed_surface_payload=_source_surface_payload_from_stored_state,
 ) -> dict[str, Any]:
+    # Validate nested authority-bearing records through the sealed stored-state
+    # path before the aggregate validator.  The aggregate dataclass validator
+    # intentionally performs count checks too, but its nested method lookup can
+    # be monkeypatched after construction; ordering the sealed payload checks
+    # first prevents such rebinding from masking the actual invalid surface.
+    surfaces = [_sealed_surface_payload(item) for item in value.surfaces]
     _sealed_validate(value)
     return {
         "schema_version": value.schema_version,
@@ -811,7 +1199,7 @@ def _source_surface_inventory_payload_from_stored_state(
         "source_surface_count": value.source_surface_count,
         "accepted_main_surface_count": value.accepted_main_surface_count,
         "candidate_overlay_surface_count": value.candidate_overlay_surface_count,
-        "surfaces": [_sealed_surface_payload(item) for item in value.surfaces],
+        "surfaces": surfaces,
     }
 
 
@@ -829,8 +1217,12 @@ def _validate_capability_registry_stored(
     _sealed_cycle_check=CapabilityRegistry._reject_dependency_cycles,
     _sealed_capability_payload=_capability_payload_from_stored_state,
     _sealed_journey_payload=_journey_payload_from_stored_state,
+    _sealed_resolve_component_contract=_SEALED_RESOLVE_COMPONENT_CONTRACT,
 ) -> None:
     _sealed_registry_validate(value)
+    for capability in value.capabilities:
+        if capability.status is CapabilityStatus.AVAILABLE:
+            _sealed_resolve_component_contract(capability.component_contract)
     for capability in value.capabilities:
         _sealed_capability_payload(capability)
     for journey in value.journeys:
@@ -872,64 +1264,7 @@ def _capability_registry_identity_from_stored_state(
 def resolve_component_contract(component_contract: str) -> object:
     """Resolve one repository-owned Python module or module attribute fail-closed."""
 
-    contract = _require_text("component_contract", component_contract)
-    if not contract.startswith("twelve_six."):
-        raise ValueError(
-            "AVAILABLE component contract must be repository-owned twelve_six Python"
-        )
-
-    parts = contract.split(".")
-    for index in range(len(parts), 0, -1):
-        module_name = ".".join(parts[:index])
-        try:
-            imported_module = importlib.import_module(module_name)
-        except ModuleNotFoundError as exc:
-            missing_name = exc.name
-            if (
-                not isinstance(missing_name, str)
-                or not (
-                    module_name == missing_name
-                    or module_name.startswith(f"{missing_name}.")
-                )
-            ):
-                raise ValueError(
-                    f"component contract import failed inside module: {module_name}"
-                ) from exc
-            continue
-        _require_repository_module_origin(imported_module)
-        resolved: object = imported_module
-        for attribute in parts[index:]:
-            if not hasattr(resolved, attribute):
-                raise ValueError(
-                    f"component contract attribute does not exist: {contract}"
-                )
-            resolved = getattr(resolved, attribute)
-
-        if _is_exact_type(resolved, ModuleType):
-            owner = resolved
-        else:
-            owner_module = getattr(resolved, "__module__", None)
-            if not _is_exact_type(owner_module, str) or not (
-                owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
-            ):
-                raise ValueError(
-                    "AVAILABLE component contract must resolve to repository-owned twelve_six code"
-                )
-            try:
-                owner = importlib.import_module(owner_module)
-            except (ImportError, ValueError) as exc:
-                raise ValueError(
-                    "AVAILABLE component contract owner module cannot be resolved"
-                ) from exc
-        _require_repository_module_origin(owner)
-        return resolved
-    raise ValueError(f"component contract module does not exist: {contract}")
-
-
-# Seal the repository-owned contract resolver against rebinding of the public helper.
-# Stored registry authority must not depend on a later replacement of
-# `resolve_component_contract`.
-_SEALED_RESOLVE_COMPONENT_CONTRACT = resolve_component_contract
+    return _SEALED_RESOLVE_COMPONENT_CONTRACT(component_contract)
 
 
 def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
@@ -1059,7 +1394,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    return CapabilityRegistry(
+    registry = CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -1067,6 +1402,8 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
+    _validate_capability_registry_stored(registry)
+    return registry
 
 
 def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
@@ -1211,6 +1548,63 @@ def _worktree_python_source_drift(
     return changed
 
 
+def _baseline_source_capability_map(
+    repo_root: Path,
+    observed_main_sha: str,
+) -> dict[str, str]:
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "show",
+            f"{observed_main_sha}:configs/control/product_source_surface_inventory_v1.json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_git_subprocess_env(),
+    )
+    if completed.returncode != 0:
+        raise ValueError("cannot read accepted-main source capability inventory")
+    try:
+        payload = _strict_json_object(completed.stdout.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise ValueError(
+            "accepted-main source capability inventory is not canonical UTF-8"
+        ) from exc
+    payload = _require_exact_fields(
+        payload,
+        {
+            "schema_version",
+            "observed_main_sha",
+            "observed_main_tree_sha",
+            "source_root",
+            "source_surface_count",
+            "accepted_main_surface_count",
+            "candidate_overlay_surface_count",
+            "surfaces",
+        },
+        "accepted_main_source_surface_inventory",
+    )
+    raw_surfaces = payload["surfaces"]
+    if not _is_exact_type(raw_surfaces, list):
+        raise ValueError("accepted-main source surfaces must be a JSON array")
+
+    mapping: dict[str, str] = {}
+    for raw_surface in raw_surfaces:
+        item = _require_exact_fields(
+            raw_surface,
+            {"path", "capability_id", "origin"},
+            "accepted_main_source_surface",
+        )
+        surface = SourceSurface(**item)
+        if surface.path in mapping:
+            raise ValueError("accepted-main source surface paths must be unique")
+        mapping[surface.path] = surface.capability_id
+    return mapping
+
+
 def validate_source_surface_coverage(
     registry: CapabilityRegistry,
     inventory: SourceSurfaceInventory,
@@ -1226,7 +1620,10 @@ def validate_source_surface_coverage(
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
 
-    known_capability_ids = {item.capability_id for item in registry.capabilities}
+    by_capability = {
+        item.capability_id: item for item in registry.capabilities
+    }
+    known_capability_ids = set(by_capability)
     mapped_capability_ids = {item.capability_id for item in inventory.surfaces}
     unknown = sorted(mapped_capability_ids.difference(known_capability_ids))
     if unknown:
@@ -1236,7 +1633,7 @@ def validate_source_surface_coverage(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
         if surface.origin != "accepted_main"
-        and registry.capability(surface.capability_id).status
+        and by_capability[surface.capability_id].status
         is not CapabilityStatus.UNAVAILABLE
     )
     if premature_candidate_acceptance:
@@ -1275,6 +1672,25 @@ def validate_source_surface_coverage(
     if resolved_tree_sha != inventory.observed_main_tree_sha:
         raise ValueError(
             "source inventory observed_main_tree_sha does not match observed_main_sha"
+        )
+
+    baseline_capability_map = _baseline_source_capability_map(
+        root,
+        inventory.observed_main_sha,
+    )
+    candidate_capability_map = {
+        item.path: item.capability_id for item in inventory.surfaces
+    }
+    capability_mapping_drift = sorted(
+        path
+        for path, capability_id in baseline_capability_map.items()
+        if path in candidate_capability_map
+        and candidate_capability_map[path] != capability_id
+    )
+    if capability_mapping_drift:
+        raise ValueError(
+            "source capability mapping drift from accepted predecessor: "
+            f"{capability_mapping_drift}"
         )
 
     accepted_main_blobs = _python_source_blob_map(
@@ -1337,7 +1753,7 @@ def validate_source_surface_coverage(
 
     journey_ids = {item.journey_id for item in registry.journeys}
     for capability_id in mapped_capability_ids:
-        capability = registry.capability(capability_id)
+        capability = by_capability[capability_id]
         if not capability.journey_ids:
             raise ValueError(
                 f"source-mapped capability lacks a user/operator journey: {capability_id}"
