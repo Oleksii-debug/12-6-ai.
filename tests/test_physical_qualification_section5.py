@@ -944,6 +944,13 @@ def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_pa
         ActionExecution(0, ForgedBytes(b"out"), b"", 1)
 
     verified = _load(tmp_path, packet)
+    with pytest.raises(ValueError, match="created by signature verification"):
+        physical_qualification.VerifiedSignedPacket(
+            verified.packet,
+            verified.signing_key_id,
+            verified.signature_sha256,
+            verified.signed_bundle_identity_sha256,
+        )
 
     class ForgedVerified(physical_qualification.VerifiedSignedPacket):
         pass
@@ -953,6 +960,7 @@ def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_pa
         verified.signing_key_id,
         verified.signature_sha256,
         verified.signed_bundle_identity_sha256,
+        _verification_token=physical_qualification._VERIFIED_PACKET_TOKEN,
     )
     with pytest.raises(ValueError, match="exact VerifiedSignedPacket"):
         execute_qualification(
