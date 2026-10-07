@@ -1798,3 +1798,26 @@ def test_stored_paths_ignore_pureposixpath_rebinding(
         match="source surface path must be a canonical Python path",
     ):
         inventory.identity_sha256()
+
+
+def test_capability_replace_nested_validator_rebinding_cannot_accept_corrupt_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = next(item for item in _load().capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(
+        capability_map_module.TestVector,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_capability_status",
+        lambda value: value,
+    )
+
+    with pytest.raises(ValueError, match="test vector command"):
+        replace(capability)
+

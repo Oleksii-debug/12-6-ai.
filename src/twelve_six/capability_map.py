@@ -619,6 +619,48 @@ class Capability:
         return _capability_payload_from_stored_state(self)
 
 
+def _build_capability_post_init_authority(original_validate: Any) -> Any:
+    # Seal nested authority used by direct Capability construction/replacement.
+    # The returned public method intentionally accepts only self.
+    sealed_require_status = _require_capability_status
+    sealed_environment_type = EnvironmentSupport
+    sealed_test_vector_type = TestVector
+    sealed_evidence_type = EvidenceTarget
+    sealed_environment_validate = EnvironmentSupport.__post_init__
+    sealed_test_vector_validate = TestVector.__post_init__
+    sealed_evidence_validate = EvidenceTarget.__post_init__
+
+    def validate(self: Any) -> None:
+        sealed_require_status(self.status)
+        if type(self.environments) is not tuple or any(
+            type(item) is not sealed_environment_type for item in self.environments
+        ):
+            raise ValueError("environments must contain EnvironmentSupport values")
+        if type(self.test_vectors) is not tuple or any(
+            type(item) is not sealed_test_vector_type for item in self.test_vectors
+        ):
+            raise ValueError("test_vectors must contain TestVector values")
+        if type(self.evidence_targets) is not tuple or any(
+            type(item) is not sealed_evidence_type for item in self.evidence_targets
+        ):
+            raise ValueError("evidence_targets must contain EvidenceTarget values")
+        for item in self.environments:
+            sealed_environment_validate(item)
+        for item in self.test_vectors:
+            sealed_test_vector_validate(item)
+        for item in self.evidence_targets:
+            sealed_evidence_validate(item)
+        original_validate(self)
+
+    return validate
+
+
+_CAPABILITY_POST_INIT_AUTHORITY = _build_capability_post_init_authority(
+    Capability.__post_init__
+)
+Capability.__post_init__ = _CAPABILITY_POST_INIT_AUTHORITY
+
+
 @dataclass(frozen=True, slots=True)
 class Journey:
     journey_id: str
