@@ -416,6 +416,14 @@ def test_generation_manifest_is_deterministic_and_generation_sensitive() -> None
     assert a1.identity_sha256() != b.identity_sha256()
 
 
+def test_generation_builder_rejects_raw_string_kind_key_aliases() -> None:
+    refs = _refs("a")
+    raw_key_refs = {kind.value: ref for kind, ref in refs.items()}
+
+    with pytest.raises(ValueError, match="ArtifactKind"):
+        build_generation_identity_manifest(raw_key_refs)  # type: ignore[arg-type]
+
+
 def test_generation_builder_rejects_missing_kind_and_key_ref_mismatch() -> None:
     refs = _refs("a")
     del refs[ArtifactKind.RELEASE]
