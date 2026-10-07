@@ -678,9 +678,16 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     assert inventory.observed_main_sha == registry.observed_main_sha
     assert inventory.observed_main_sha == "0e1f301c5123b4e52c111cb94264cfd61b60bf4b"
     assert inventory.observed_main_tree_sha == "4fd06e8836450e61ab47e39657c96c6b6f76792e"
-    assert inventory.accepted_main_surface_count == 117
-    assert inventory.candidate_overlay_surface_count == 0
+    assert inventory.accepted_main_surface_count == 116
+    assert inventory.candidate_overlay_surface_count == 1
     assert inventory.source_surface_count == 117
+    modified = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/capability_map.py"
+    )
+    assert modified.origin == "modified_candidate"
+    assert registry.capability(modified.capability_id).status is CapabilityStatus.UNAVAILABLE
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -695,11 +702,21 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
         assert capability.journey_ids
 
 
-def test_integrated_source_inventory_has_no_candidate_overlay() -> None:
+def test_reopened_section2_source_is_explicit_modified_candidate() -> None:
+    registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
-    assert inventory.candidate_overlay_surface_count == 0
-    assert all(surface.origin == "accepted_main" for surface in inventory.surfaces)
+    modified = [
+        surface for surface in inventory.surfaces if surface.origin != "accepted_main"
+    ]
+    assert inventory.candidate_overlay_surface_count == 1
+    assert [(surface.path, surface.origin) for surface in modified] == [
+        ("src/twelve_six/capability_map.py", "modified_candidate")
+    ]
+    capability = registry.capability("executable-capability-map")
+    assert capability.status is CapabilityStatus.UNAVAILABLE
+    assert capability.integrated_result is None
+    assert capability.unavailable_reason
 
 
 def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(

@@ -46,14 +46,14 @@ repository-equivalence gate authenticates both the pinned current-main receipt a
 surfaces remain equivalent.
 
 The capability registry is paired with
-`configs/control/product_source_surface_inventory_v1.json`. The inventory now classifies
-117/117 production Python surfaces as accepted-main and has zero candidate source overlays.
-The schema still supports an explicit `modified_candidate` origin for post-integration repair:
-the declared modified set must equal the exact set of changed existing source blobs, and any
-unintegrated candidate surface must remain mapped to an UNAVAILABLE capability. This prevents a
-repair from silently inheriting accepted-main authority. The 117 accepted source surfaces map
-into the registered capability families, and every capability is reciprocally bound to at least
-one user/operator journey.
+`configs/control/product_source_surface_inventory_v1.json`. This reopened repair candidate
+classifies 116 production Python surfaces as accepted-main plus exactly one
+`modified_candidate`: `src/twelve_six/capability_map.py`. The modified surface remains
+mapped to the UNAVAILABLE `executable-capability-map` capability until the repaired bytes are
+integrated. The declared modified set must equal the exact set of changed existing source blobs,
+preventing a repair from silently inheriting accepted-main authority. All 117 source surfaces
+remain mapped into registered capability families, and every capability is reciprocally bound
+to at least one user/operator journey.
 
 Examples:
 
@@ -135,7 +135,9 @@ authority.
 
 Its only purpose is to make current capability truth executable and machine-readable so later
 functionality must enter the graph as AVAILABLE with evidence or remain explicitly
-UNAVAILABLE. All predecessors are now terminally closed. Section 2 remains REOPENED/non-DONE
-until this exact successor candidate receives fresh terminal exact-head CI, is integrated onto
-then-current `main`, and its closure evidence is recorded in
-`SEQUENTIAL_CLOSURE_STATE.md`. No earlier Section-2 green is transferred across the reopen.
+UNAVAILABLE. All predecessors are now terminally closed. During this repair qualification,
+`executable-capability-map` deliberately remains UNAVAILABLE because its authority-bearing
+source differs from accepted main. Section 2 remains REOPENED/non-DONE until this exact
+candidate receives fresh terminal exact-head CI, the repaired source is integrated onto
+then-current `main`, and durable closure evidence is recorded. No earlier Section-2 green is
+transferred across the reopen.

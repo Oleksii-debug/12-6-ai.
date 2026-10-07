@@ -709,7 +709,7 @@
     {
       "capability_id": "executable-capability-map",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.capability_map.CapabilityRegistry",
       "dependencies": [
         "replaceable-cognitive-core-shell",
@@ -721,7 +721,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": true
+          "supported": false
         }
       ],
       "test_vectors": [
@@ -740,14 +740,10 @@
         {
           "evidence_id": "section2-pr",
           "target": "pull-request:3092"
-        },
-        {
-          "evidence_id": "main-ci",
-          "target": "github-actions:37615156740"
         }
       ],
-      "integrated_result": "integrated executable capability/source/journey acceptance authority with fail-closed method-binding and live-main equivalence controls",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Section 2 is REOPENED for canonical capability-authority repair; PR #3092 contains a modified capability_map source surface and requires fresh exact-head CI plus integration before this capability returns to AVAILABLE."
     }
   ],
   "journeys": [
