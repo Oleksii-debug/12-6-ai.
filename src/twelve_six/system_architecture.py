@@ -119,6 +119,7 @@ class InterfaceContract:
         _require_positive_int("schema_version", self.schema_version)
 
     def to_dict(self) -> dict[str, Any]:
+        InterfaceContract.__post_init__(self)
         return {
             "name": self.name,
             "schema_version": self.schema_version,
@@ -147,8 +148,10 @@ class TypedBoundary:
             raise ValueError("typed boundary producer and consumer must differ")
         if not _is_exact_type(self.interface, InterfaceContract):
             raise ValueError("interface must be an InterfaceContract")
+        InterfaceContract.__post_init__(self.interface)
 
     def to_dict(self) -> dict[str, Any]:
+        TypedBoundary.__post_init__(self)
         return {
             "name": self.name,
             "producer": self.producer.value,
@@ -194,6 +197,8 @@ class SystemArchitectureManifest:
 
         if any(not _is_exact_type(boundary, TypedBoundary) for boundary in self.boundaries):
             raise ValueError("boundaries must contain only TypedBoundary values")
+        for boundary in self.boundaries:
+            TypedBoundary.__post_init__(boundary)
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
             raise ValueError("typed boundary names must be unique")
@@ -219,6 +224,7 @@ class SystemArchitectureManifest:
             raise ValueError("system architecture typed-boundary semantics are non-canonical")
 
     def to_dict(self) -> dict[str, Any]:
+        SystemArchitectureManifest.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "planes": [plane.value for plane in self.planes],
@@ -247,6 +253,7 @@ class CognitiveCoreIdentity:
         _require_positive_int("parameter_count", self.parameter_count)
 
     def to_dict(self) -> dict[str, Any]:
+        CognitiveCoreIdentity.__post_init__(self)
         return {
             "model_spec_sha256": self.model_spec_sha256,
             "init_spec_sha256": self.init_spec_sha256,
@@ -282,6 +289,7 @@ class RuntimeShellContract:
         for name, value, expected_contract_name in contracts:
             if not _is_exact_type(value, InterfaceContract):
                 raise ValueError(f"{name} must be an InterfaceContract")
+            InterfaceContract.__post_init__(value)
             if value.name != expected_contract_name:
                 raise ValueError(
                     f"{name} contract role semantics are non-canonical: "
@@ -289,6 +297,7 @@ class RuntimeShellContract:
                 )
 
     def to_dict(self) -> dict[str, Any]:
+        RuntimeShellContract.__post_init__(self)
         return {
             "gateway_api": self.gateway_api.to_dict(),
             "memory_api": self.memory_api.to_dict(),
@@ -302,6 +311,7 @@ class RuntimeShellContract:
         return _canonical_json_sha256(self.to_dict())
 
     def surface_identities(self) -> tuple[tuple[str, str], ...]:
+        RuntimeShellContract.__post_init__(self)
         return tuple(
             (name, contract.identity_sha256())
             for name, contract in (
@@ -325,8 +335,11 @@ class CognitiveCoreBinding:
             raise ValueError("core must be a CognitiveCoreIdentity")
         if not _is_exact_type(self.gateway_api, InterfaceContract):
             raise ValueError("gateway_api must be an InterfaceContract")
+        CognitiveCoreIdentity.__post_init__(self.core)
+        InterfaceContract.__post_init__(self.gateway_api)
 
     def to_dict(self) -> dict[str, Any]:
+        CognitiveCoreBinding.__post_init__(self)
         return {
             "core": self.core.to_dict(),
             "gateway_api": self.gateway_api.to_dict(),
@@ -348,6 +361,9 @@ class ProductAssembly:
             raise ValueError("shell must be a RuntimeShellContract")
         if not _is_exact_type(self.core_binding, CognitiveCoreBinding):
             raise ValueError("core_binding must be a CognitiveCoreBinding")
+        SystemArchitectureManifest.__post_init__(self.architecture)
+        RuntimeShellContract.__post_init__(self.shell)
+        CognitiveCoreBinding.__post_init__(self.core_binding)
         architecture_gateway = next(
             boundary.interface
             for boundary in self.architecture.boundaries
@@ -359,6 +375,7 @@ class ProductAssembly:
             raise ValueError("cognitive core gateway contract is incompatible with runtime shell")
 
     def to_dict(self) -> dict[str, Any]:
+        ProductAssembly.__post_init__(self)
         return {
             "architecture_identity_sha256": self.architecture.identity_sha256(),
             "shell_identity_sha256": self.shell.identity_sha256(),
@@ -393,6 +410,8 @@ class CoreReplacementReceipt:
             raise ValueError("previous_core must be a CognitiveCoreIdentity")
         if not _is_exact_type(self.candidate_core, CognitiveCoreIdentity):
             raise ValueError("candidate_core must be a CognitiveCoreIdentity")
+        CognitiveCoreIdentity.__post_init__(self.previous_core)
+        CognitiveCoreIdentity.__post_init__(self.candidate_core)
         if self.previous_core_identity_sha256 != self.previous_core.identity_sha256():
             raise ValueError("replacement receipt previous core identity does not match snapshot")
         if self.candidate_core_identity_sha256 != self.candidate_core.identity_sha256():
@@ -410,6 +429,7 @@ class CoreReplacementReceipt:
             raise ValueError("canonical core replacement must not require a runtime-shell rewrite")
         if not _is_exact_type(self.preserved_shell, RuntimeShellContract):
             raise ValueError("preserved_shell must be a RuntimeShellContract")
+        RuntimeShellContract.__post_init__(self.preserved_shell)
         expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
         observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
         if observed_surfaces != expected_surfaces:
@@ -424,6 +444,7 @@ class CoreReplacementReceipt:
             raise ValueError("replacement receipt surface identities do not match preserved shell")
 
     def to_dict(self) -> dict[str, Any]:
+        CoreReplacementReceipt.__post_init__(self)
         return {
             "previous_core_identity_sha256": self.previous_core_identity_sha256,
             "candidate_core_identity_sha256": self.candidate_core_identity_sha256,
@@ -516,6 +537,8 @@ def replace_cognitive_core(
         raise ValueError("assembly must be a ProductAssembly")
     if not _is_exact_type(candidate, CognitiveCoreBinding):
         raise ValueError("candidate must be a CognitiveCoreBinding")
+    ProductAssembly.__post_init__(assembly)
+    CognitiveCoreBinding.__post_init__(candidate)
     if candidate.gateway_api != assembly.shell.gateway_api:
         raise ValueError("candidate cognitive core is incompatible with runtime shell gateway")
 
