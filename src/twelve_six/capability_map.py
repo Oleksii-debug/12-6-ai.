@@ -582,7 +582,7 @@ class Capability:
         if len(evidence_ids) != len(set(evidence_ids)):
             raise ValueError("evidence target ids must be unique")
 
-        if self.status is CapabilityStatus.AVAILABLE:
+        if str.__str__(self.status) == "AVAILABLE":
             if self.unavailable_reason is not None:
                 raise ValueError("AVAILABLE capability cannot have unavailable_reason")
             if (
