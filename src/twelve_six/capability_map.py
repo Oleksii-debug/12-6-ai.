@@ -598,19 +598,13 @@ class SourceSurfaceInventory:
         return _source_surface_inventory_identity_from_stored_state(self)
 
 
-@dataclass(frozen=True, slots=True)
-class CapabilityRegistry:
-    schema_version: int
-    observed_main_sha: str
-    observed_main_ci_run_id: int
-    observed_main_ci_conclusion: str
-    capabilities: tuple[Capability, ...]
-    journeys: tuple[Journey, ...]
+def _build_capability_registry_post_init():
+    # The canonical constructor validator closes over authority at definition time.
+    # The public dataclass hook therefore exposes no caller-supplied validator
+    # parameter and later module-global resolver rebinding cannot replace it.
+    sealed_resolve_component_contract = _SEALED_RESOLVE_COMPONENT_CONTRACT
 
-    def __post_init__(
-        self,
-        _sealed_resolve_component_contract=_SEALED_RESOLVE_COMPONENT_CONTRACT,
-    ) -> None:
+    def validate(self: Any) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if (
             not _is_exact_type(self.schema_version, int)
@@ -649,7 +643,7 @@ class CapabilityRegistry:
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
             if capability.status is CapabilityStatus.AVAILABLE:
-                _sealed_resolve_component_contract(capability.component_contract)
+                sealed_resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
@@ -692,7 +686,40 @@ class CapabilityRegistry:
                         f"{journey.journey_id} is not back-bound by {capability_id}"
                     )
 
-        self._reject_dependency_cycles(by_capability)
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(capability_id: str) -> None:
+            if capability_id in visited:
+                return
+            if capability_id in visiting:
+                raise ValueError(f"capability dependency cycle at {capability_id}")
+            visiting.add(capability_id)
+            for dependency_id in by_capability[capability_id].dependencies:
+                visit(dependency_id)
+            visiting.remove(capability_id)
+            visited.add(capability_id)
+
+        for capability_id in by_capability:
+            visit(capability_id)
+
+
+    return validate
+
+
+_CAPABILITY_REGISTRY_POST_INIT = _build_capability_registry_post_init()
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityRegistry:
+    schema_version: int
+    observed_main_sha: str
+    observed_main_ci_run_id: int
+    observed_main_ci_conclusion: str
+    capabilities: tuple[Capability, ...]
+    journeys: tuple[Journey, ...]
+
+    __post_init__ = _CAPABILITY_REGISTRY_POST_INIT
 
     @staticmethod
     def _reject_dependency_cycles(by_capability: dict[str, Capability]) -> None:
