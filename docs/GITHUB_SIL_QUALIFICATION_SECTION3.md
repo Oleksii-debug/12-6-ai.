@@ -82,3 +82,5 @@ Section 3 creates no data admission, tokenizer-fit, optimizer, training, learned
 final-test, paid-compute, scale-promotion, server, Windows/NVDA physical, or release authority.
 GitHub SIL is software-in-the-loop qualification only. Later Sections retain their own higher
 physical and product gates.
+
+The verifier treats timing evidence as a closed schema: start/finish nanosecond timestamps and duration must be non-negative integers, and wall-clock finish cannot precede start. A recomputed self-hash cannot reseal impossible timing metadata into a PASS artifact.
