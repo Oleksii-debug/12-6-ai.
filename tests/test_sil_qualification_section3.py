@@ -514,6 +514,72 @@ def test_probe_git_state_rejects_untracked_nonignored_checkout_drift(tmp_path: P
     assert drifted.tracked_clean is False
 
 
+def test_sil_subprocess_environment_rejects_host_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_must_execute.py").write_text(
+        "def test_must_execute() -> None:\n    assert False\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=12-6 SIL env test",
+            "-c",
+            "user.email=sil-env-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "redirected-git-dir"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "redirected-work-tree"))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "redirected-pythonpath"))
+
+    child_env = sil_qualification._qualification_subprocess_env()
+    assert "GIT_DIR" not in child_env
+    assert "GIT_WORK_TREE" not in child_env
+    assert "PYTEST_ADDOPTS" not in child_env
+    assert "PYTHONPATH" not in child_env
+    assert child_env["GIT_OPTIONAL_LOCKS"] == "0"
+    assert child_env["PYTHONHASHSEED"] == "0"
+    assert child_env["PYTHONNOUSERSITE"] == "1"
+    assert child_env["PYTHONUTF8"] == "1"
+    assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
+    state = probe_git_state(tmp_path)
+    assert state.tracked_clean is True
+
+    input_bytes = b'{"probe":"must-execute"}'
+    input_identity = hashlib.sha256(input_bytes).hexdigest()
+    execution = sil_qualification.run_command(
+        (
+            sil_qualification.sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_must_execute.py",
+        ),
+        tmp_path,
+        30,
+        input_bytes,
+        input_identity,
+    )
+    assert execution.consumed_input_identity_sha256 == input_identity
+    assert execution.return_code != 0
+
+
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     registry = _registry()
     scenario = _scenario()
