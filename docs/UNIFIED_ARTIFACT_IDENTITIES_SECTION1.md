@@ -107,9 +107,12 @@ Because this is a post-closure repair, the shared Section-2 capability/source au
 also refreshed on the same PRIMARY lineage. Their qualified baseline is the last terminal
 Section-2 candidate `3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5` with exact-head CI
 `37609405086`; current main is equivalence-checked separately. While this Section-1 repair is
-unintegrated, `unified-generation-identity` is explicitly UNAVAILABLE and
-`src/twelve_six/artifact_identity.py` is the sole modified source overlay. This prevents a
-reopened identity implementation from inheriting stale AVAILABLE/accepted-main authority.
+unintegrated, `unified-generation-identity` is explicitly UNAVAILABLE. The source inventory
+records exactly two modified overlays: `src/twelve_six/artifact_identity.py` for the reopened
+Section-1 implementation and `src/twelve_six/capability_map.py` for the bounded shared-control
+support that makes same-path repair overlays explicit and fail-closed. This prevents either a
+reopened identity implementation or its qualification control from inheriting stale
+AVAILABLE/accepted-main authority; it does not close or advance Section 2.
 
 The canonical graph is:
 
