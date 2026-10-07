@@ -974,3 +974,81 @@ def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_pa
             evidence_signer=_fake_evidence_signer,
         )
 
+def test_verifier_callbacks_require_exact_boolean_decisions(tmp_path: Path) -> None:
+    packet = _packet()
+    packet_path = tmp_path / "truthy-packet.json"
+    _write_signed_packet(packet_path, packet)
+
+    def truthy_signature_verifier(
+        key_id: str,
+        message: bytes,
+        signature: bytes,
+    ) -> object:
+        del key_id, message, signature
+        return "truthy-not-bool"
+
+    with pytest.raises(ValueError, match="signature verifier must return bool"):
+        load_verified_signed_packet(
+            packet_path,
+            signature_verifier=truthy_signature_verifier,
+            now_epoch_seconds=150,
+        )
+
+    external = ExternalResourceEvidence(
+        ResourceKind.NETWORK,
+        "network-adapter",
+        b"network-proof",
+    )
+    with pytest.raises(ValueError, match="external resource verifier must return bool"):
+        physical_qualification._collect_external_resource_evidence(
+            required={ResourceKind.NETWORK},
+            repo_root=tmp_path,
+            execution_mode=ExecutionMode.REAL_HOST,
+            resource_probes={
+                ResourceKind.NETWORK: lambda root: external,
+            },
+            resource_probe_verifiers={
+                ResourceKind.NETWORK: lambda adapter_id, raw: "truthy-not-bool",
+            },
+        )
+
+    class ForgedDict(dict):
+        pass
+
+    with pytest.raises(ValueError, match="must be exact dictionaries"):
+        physical_qualification._validate_external_resource_maps(
+            ForgedDict(),
+            {},
+        )
+
+    verified = _load(tmp_path, packet)
+    evidence, log_bytes = execute_qualification(
+        verified,
+        repo_root=tmp_path,
+        host_inventory=_inventory(),
+        action_runner=_pass_runner,
+        git_probe=_git_probe,
+        agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
+    )
+    evidence_path = tmp_path / "truthy-evidence.json"
+    log_path = tmp_path / "truthy-run.jsonl"
+    write_evidence_bundle(
+        evidence_path,
+        log_path,
+        evidence=evidence,
+        log_bytes=log_bytes,
+    )
+
+    with pytest.raises(ValueError, match="signature verifier must return bool"):
+        verify_qualification_evidence(
+            evidence_path,
+            log_path,
+            verified_packet=verified,
+            agent_source_bytes=_AGENT_BYTES,
+            artifact_root=tmp_path,
+            require_real_pass=True,
+            evidence_signature_verifier=truthy_signature_verifier,
+        )
+
