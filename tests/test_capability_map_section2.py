@@ -1696,3 +1696,53 @@ def test_component_resolver_rejects_runtime_injected_repository_attribute(
             match="component contract object source does not match owner module",
         ):
             operation()
+
+
+def test_registry_constructor_nested_validator_rebinding_cannot_accept_corrupt_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.TestVector,
+        "__post_init__",
+        lambda _self: None,
+    )
+
+    with pytest.raises(ValueError, match="test vector command"):
+        replace(registry)
+
+
+def test_registry_constructor_status_validator_rebinding_cannot_accept_forged_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(capability, "status", "AVAILABLE")
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_capability_status",
+        lambda value: value,
+    )
+
+    with pytest.raises(ValueError, match="status must be a CapabilityStatus"):
+        replace(registry)
+

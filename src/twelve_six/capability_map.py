@@ -776,6 +776,21 @@ def _build_capability_registry_post_init() -> Any:
     # The public dataclass hook therefore exposes no caller-supplied validator
     # parameter and later module-global resolver rebinding cannot replace it.
     sealed_resolve_component_contract = _SEALED_RESOLVE_COMPONENT_CONTRACT
+    sealed_capability_type = Capability
+    sealed_journey_type = Journey
+    sealed_environment_type = EnvironmentSupport
+    sealed_test_vector_type = TestVector
+    sealed_evidence_type = EvidenceTarget
+    sealed_capability_validate = Capability.__post_init__
+    sealed_journey_validate = Journey.__post_init__
+    sealed_environment_validate = EnvironmentSupport.__post_init__
+    sealed_test_vector_validate = TestVector.__post_init__
+    sealed_evidence_validate = EvidenceTarget.__post_init__
+    sealed_require_capability_status = _require_capability_status
+    sealed_require_test_level = _require_test_level
+    sealed_available_status = sealed_available_status
+    sealed_unavailable_status = sealed_unavailable_status
+    sealed_sha40_fullmatch = _SHA40_RE.fullmatch
 
     def validate(self: Any) -> None:
         if type(self.schema_version) is not int or self.schema_version <= 0:
@@ -785,7 +800,7 @@ def _build_capability_registry_post_init() -> Any:
             or self.schema_version != 1
         ):
             raise ValueError("unsupported CapabilityRegistry schema_version")
-        if type(self.observed_main_sha) is not str or _SHA40_RE.fullmatch(
+        if type(self.observed_main_sha) is not str or sealed_sha40_fullmatch(
             self.observed_main_sha
         ) is None:
             raise ValueError("observed_main_sha must be a lowercase 40-hex Git SHA")
@@ -794,22 +809,44 @@ def _build_capability_registry_post_init() -> Any:
             or self.observed_main_ci_run_id <= 0
         ):
             raise ValueError("observed_main_ci_run_id must be a positive integer")
-        _require_text("observed_main_ci_conclusion", self.observed_main_ci_conclusion)
+        if (
+            type(self.observed_main_ci_conclusion) is not str
+            or not self.observed_main_ci_conclusion.strip()
+        ):
+            raise ValueError("observed_main_ci_conclusion must be non-empty text")
         if self.observed_main_ci_conclusion != "success":
             raise ValueError("observed main CI must be terminal success")
 
         if type(self.capabilities) is not tuple or not self.capabilities:
             raise ValueError("capabilities must be a non-empty tuple")
-        if any(type(item) is not Capability for item in self.capabilities):
+        if any(type(item) is not sealed_capability_type for item in self.capabilities):
             raise ValueError("capabilities must contain only Capability values")
         if type(self.journeys) is not tuple or not self.journeys:
             raise ValueError("journeys must be a non-empty tuple")
-        if any(type(item) is not Journey for item in self.journeys):
+        if any(type(item) is not sealed_journey_type for item in self.journeys):
             raise ValueError("journeys must contain only Journey values")
         for item in self.capabilities:
-            Capability.__post_init__(item)
+            sealed_require_capability_status(item.status)
+            for environment in item.environments:
+                if type(environment) is not sealed_environment_type:
+                    raise ValueError(
+                        "environments must contain EnvironmentSupport values"
+                    )
+                sealed_environment_validate(environment)
+            for vector in item.test_vectors:
+                if type(vector) is not sealed_test_vector_type:
+                    raise ValueError("test_vectors must contain TestVector values")
+                sealed_require_test_level(vector.level)
+                sealed_test_vector_validate(vector)
+            for evidence in item.evidence_targets:
+                if type(evidence) is not sealed_evidence_type:
+                    raise ValueError(
+                        "evidence_targets must contain EvidenceTarget values"
+                    )
+                sealed_evidence_validate(evidence)
+            sealed_capability_validate(item)
         for item in self.journeys:
-            Journey.__post_init__(item)
+            sealed_journey_validate(item)
 
         by_capability = {item.capability_id: item for item in self.capabilities}
         by_journey = {item.journey_id: item for item in self.journeys}
@@ -820,7 +857,7 @@ def _build_capability_registry_post_init() -> Any:
 
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
-            if capability.status is CapabilityStatus.AVAILABLE:
+            if capability.status is sealed_available_status:
                 sealed_resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
@@ -837,8 +874,8 @@ def _build_capability_registry_post_init() -> Any:
                         f"{capability.capability_id} has unknown dependency {dependency_id}"
                     )
                 if (
-                    capability.status is CapabilityStatus.AVAILABLE
-                    and by_capability[dependency_id].status is CapabilityStatus.UNAVAILABLE
+                    capability.status is sealed_available_status
+                    and by_capability[dependency_id].status is sealed_unavailable_status
                 ):
                     raise ValueError(
                         f"AVAILABLE capability depends on UNAVAILABLE {dependency_id}"
