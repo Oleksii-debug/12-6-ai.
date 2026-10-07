@@ -114,6 +114,18 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
     )
 
 
+def test_public_verifier_requires_exact_git_sha_authority(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="expected_git_sha"):
+        verify_sil_evidence(
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            expected_package_bytes=b"candidate",
+            expected_environment_receipt={},
+            expected_registry=_registry(),
+            expected_scenario=_scenario(),
+        )
+
+
 def test_canonical_environment_receipt_binds_pinned_historical_lock_source(
     tmp_path: Path,
 ) -> None:
