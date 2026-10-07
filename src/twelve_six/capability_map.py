@@ -266,6 +266,69 @@ def _test_level_from_wire_value(
     return _sealed_validator(_sealed_levels[index])
 
 
+def _resolve_component_contract_authority(component_contract: str) -> object:
+    """Resolve one repository-owned Python module or module attribute fail-closed."""
+
+    contract = _require_text("component_contract", component_contract)
+    if not contract.startswith("twelve_six."):
+        raise ValueError(
+            "AVAILABLE component contract must be repository-owned twelve_six Python"
+        )
+
+    parts = contract.split(".")
+    for index in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:index])
+        try:
+            imported_module = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            missing_name = exc.name
+            if (
+                not isinstance(missing_name, str)
+                or not (
+                    module_name == missing_name
+                    or module_name.startswith(f"{missing_name}.")
+                )
+            ):
+                raise ValueError(
+                    f"component contract import failed inside module: {module_name}"
+                ) from exc
+            continue
+        _require_repository_module_origin(imported_module)
+        resolved: object = imported_module
+        for attribute in parts[index:]:
+            if not hasattr(resolved, attribute):
+                raise ValueError(
+                    f"component contract attribute does not exist: {contract}"
+                )
+            resolved = getattr(resolved, attribute)
+
+        if _is_exact_type(resolved, ModuleType):
+            owner = resolved
+        else:
+            owner_module = getattr(resolved, "__module__", None)
+            if not _is_exact_type(owner_module, str) or not (
+                owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
+            ):
+                raise ValueError(
+                    "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+                )
+            try:
+                owner = importlib.import_module(owner_module)
+            except (ImportError, ValueError) as exc:
+                raise ValueError(
+                    "AVAILABLE component contract owner module cannot be resolved"
+                ) from exc
+        _require_repository_module_origin(owner)
+        return resolved
+    raise ValueError(f"component contract module does not exist: {contract}")
+
+
+# Seal the repository-owned contract resolver against rebinding of the public helper.
+# Stored registry authority must not depend on a later replacement of
+# `resolve_component_contract`.
+_SEALED_RESOLVE_COMPONENT_CONTRACT = _resolve_component_contract_authority
+
+
 @dataclass(frozen=True, slots=True)
 class EnvironmentSupport:
     environment_id: str
@@ -835,8 +898,12 @@ def _validate_capability_registry_stored(
     _sealed_cycle_check=CapabilityRegistry._reject_dependency_cycles,
     _sealed_capability_payload=_capability_payload_from_stored_state,
     _sealed_journey_payload=_journey_payload_from_stored_state,
+    _sealed_resolve_component_contract=_SEALED_RESOLVE_COMPONENT_CONTRACT,
 ) -> None:
     _sealed_registry_validate(value)
+    for capability in value.capabilities:
+        if capability.status is CapabilityStatus.AVAILABLE:
+            _sealed_resolve_component_contract(capability.component_contract)
     for capability in value.capabilities:
         _sealed_capability_payload(capability)
     for journey in value.journeys:
@@ -878,64 +945,7 @@ def _capability_registry_identity_from_stored_state(
 def resolve_component_contract(component_contract: str) -> object:
     """Resolve one repository-owned Python module or module attribute fail-closed."""
 
-    contract = _require_text("component_contract", component_contract)
-    if not contract.startswith("twelve_six."):
-        raise ValueError(
-            "AVAILABLE component contract must be repository-owned twelve_six Python"
-        )
-
-    parts = contract.split(".")
-    for index in range(len(parts), 0, -1):
-        module_name = ".".join(parts[:index])
-        try:
-            imported_module = importlib.import_module(module_name)
-        except ModuleNotFoundError as exc:
-            missing_name = exc.name
-            if (
-                not isinstance(missing_name, str)
-                or not (
-                    module_name == missing_name
-                    or module_name.startswith(f"{missing_name}.")
-                )
-            ):
-                raise ValueError(
-                    f"component contract import failed inside module: {module_name}"
-                ) from exc
-            continue
-        _require_repository_module_origin(imported_module)
-        resolved: object = imported_module
-        for attribute in parts[index:]:
-            if not hasattr(resolved, attribute):
-                raise ValueError(
-                    f"component contract attribute does not exist: {contract}"
-                )
-            resolved = getattr(resolved, attribute)
-
-        if _is_exact_type(resolved, ModuleType):
-            owner = resolved
-        else:
-            owner_module = getattr(resolved, "__module__", None)
-            if not _is_exact_type(owner_module, str) or not (
-                owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
-            ):
-                raise ValueError(
-                    "AVAILABLE component contract must resolve to repository-owned twelve_six code"
-                )
-            try:
-                owner = importlib.import_module(owner_module)
-            except (ImportError, ValueError) as exc:
-                raise ValueError(
-                    "AVAILABLE component contract owner module cannot be resolved"
-                ) from exc
-        _require_repository_module_origin(owner)
-        return resolved
-    raise ValueError(f"component contract module does not exist: {contract}")
-
-
-# Seal the repository-owned contract resolver against rebinding of the public helper.
-# Stored registry authority must not depend on a later replacement of
-# `resolve_component_contract`.
-_SEALED_RESOLVE_COMPONENT_CONTRACT = resolve_component_contract
+    return _SEALED_RESOLVE_COMPONENT_CONTRACT(component_contract)
 
 
 def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
@@ -1065,7 +1075,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    return CapabilityRegistry(
+    registry = CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -1073,6 +1083,8 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
+    _validate_capability_registry_stored(registry)
+    return registry
 
 
 def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
