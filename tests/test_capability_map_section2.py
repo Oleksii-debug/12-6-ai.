@@ -815,7 +815,28 @@ def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) 
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
 
-    with pytest.raises(ValueError, match="unmapped_checkout"):
+    with pytest.raises(ValueError, match="accepted-main source inventory drift"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_modified_candidate_requires_exact_changed_source_set(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "modified_candidate"
+    )
+    target["origin"] = "accepted_main"
+    payload["accepted_main_surface_count"] += 1
+    payload["candidate_overlay_surface_count"] -= 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="modified candidate source classification drift"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
