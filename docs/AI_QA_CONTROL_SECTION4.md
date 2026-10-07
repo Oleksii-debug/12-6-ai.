@@ -62,6 +62,12 @@ or FAIL receipts block promotion. SIL/physical evidence produced by the same rep
 blocks promotion. Software-only physical `NOT_APPLICABLE` is recomputed from the exact failure and
 candidate; a required physical PASS remains blocked until a trusted physical verifier is integrated.
 
+Exact AI-QA policy/failure/candidate/regression/receipt objects are revalidated when consumed or
+serialized rather than trusting constructor-time validation indefinitely. Externally supplied
+`GitState`, `CommandExecution` and candidate-parent probe results are also exact-type/revalidated
+before they can authorize an automated gate result, so low-level mutation of a once-valid object
+cannot reseal a repair or promotion path.
+
 ## Current closure boundary
 
 The deterministic control protocol and executable CLI are implemented, but Section 4 is not
