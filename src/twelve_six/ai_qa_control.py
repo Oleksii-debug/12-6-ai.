@@ -1202,15 +1202,15 @@ CommandRunner = Callable[
 ]
 
 
-def execute_automated_regressions(
+def _execute_automated_regressions_with_backends(
     chain: RegressionChain,
     *,
     repo_root: str | Path,
     actor_id: str,
     timeout_seconds: int = 300,
-    command_runner: CommandRunner = run_command,
-    git_probe: GitProbe = probe_git_state,
-    candidate_parent_probe: CandidateParentProbe = probe_candidate_parents,
+    command_runner: CommandRunner,
+    git_probe: GitProbe,
+    candidate_parent_probe: CandidateParentProbe,
 ) -> tuple[GateReceipt, GateReceipt]:
     if not _is_exact_type(chain, RegressionChain):
         raise ValueError("chain must be a RegressionChain")
@@ -1316,6 +1316,38 @@ def execute_automated_regressions(
             )
         )
     return receipts[0], receipts[1]
+
+
+def _build_execute_automated_regressions_authority():
+    # Canonical component/adversarial gate receipts must come from repository-owned
+    # execution and Git authorities. Tests may inject deterministic backends only
+    # through the underscore-prefixed harness above.
+    sealed_impl = _execute_automated_regressions_with_backends
+    sealed_runner = run_command
+    sealed_git_probe = probe_git_state
+    sealed_parent_probe = probe_candidate_parents
+
+    def canonical(
+        chain: RegressionChain,
+        *,
+        repo_root: str | Path,
+        actor_id: str,
+        timeout_seconds: int = 300,
+    ) -> tuple[GateReceipt, GateReceipt]:
+        return sealed_impl(
+            chain,
+            repo_root=repo_root,
+            actor_id=actor_id,
+            timeout_seconds=timeout_seconds,
+            command_runner=sealed_runner,
+            git_probe=sealed_git_probe,
+            candidate_parent_probe=sealed_parent_probe,
+        )
+
+    return canonical
+
+
+execute_automated_regressions = _build_execute_automated_regressions_authority()
 
 
 @dataclass(frozen=True, slots=True)
