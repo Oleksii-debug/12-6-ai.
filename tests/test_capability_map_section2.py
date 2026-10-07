@@ -1141,3 +1141,134 @@ def test_available_level_gate_ignores_testlevel_dunder_rebinding(
     with pytest.raises(ValueError, match="component and integration"):
         replace(target, test_vectors=(end_to_end_only,))
 
+
+def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(CapabilityRegistry, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(TestVector, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="test vector command"):
+        registry.identity_sha256()
+
+
+def test_registry_serializer_rebinding_cannot_reseal_identity_or_acceptance_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    expected_identity = registry.identity_sha256()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    expected_path = registry.acceptance_path(capability.capability_id)
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        TestVector,
+        "to_dict",
+        lambda _self: {"forged_vector": True},
+    )
+
+    assert registry.identity_sha256() == expected_identity
+    assert registry.acceptance_path(capability.capability_id) == expected_path
+
+
+def test_source_inventory_method_rebinding_cannot_hide_invalid_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", "forged")
+
+    monkeypatch.setattr(
+        capability_map_module.SourceSurfaceInventory,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
+
+def test_capability_validator_rejects_public_authority_override_arguments() -> None:
+    capability = _load().capabilities[0]
+
+    with pytest.raises(TypeError):
+        capability.__post_init__(  # type: ignore[call-arg]
+            _sealed_test_level_wire=lambda _value: "component"
+        )
+
+
+def test_registry_cycle_checker_rebinding_cannot_hide_dependency_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    available = [
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    ]
+    first, second = available[:2]
+    object.__setattr__(first, "dependencies", (second.capability_id,))
+    object.__setattr__(second, "dependencies", (first.capability_id,))
+    monkeypatch.setattr(
+        CapabilityRegistry,
+        "_reject_dependency_cycles",
+        staticmethod(lambda _by_capability: None),
+    )
+
+    with pytest.raises(ValueError, match="capability dependency cycle"):
+        registry.identity_sha256()
+
+
+def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "resolve_component_contract",
+        lambda _contract: object(),
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
