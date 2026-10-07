@@ -125,6 +125,7 @@ class EnvironmentSupport:
             raise ValueError("supported must be boolean")
 
     def to_dict(self) -> dict[str, Any]:
+        EnvironmentSupport.__post_init__(self)
         return {"environment_id": self.environment_id, "supported": self.supported}
 
 
@@ -162,6 +163,7 @@ class TestVector:
                 )
 
     def to_dict(self) -> dict[str, Any]:
+        TestVector.__post_init__(self)
         return {
             "vector_id": self.vector_id,
             "level": self.level.value,
@@ -179,6 +181,7 @@ class EvidenceTarget:
         _require_text("target", self.target)
 
     def to_dict(self) -> dict[str, str]:
+        EvidenceTarget.__post_init__(self)
         return {"evidence_id": self.evidence_id, "target": self.target}
 
 
@@ -229,6 +232,12 @@ class Capability:
             not _is_exact_type(item, EvidenceTarget) for item in self.evidence_targets
         ):
             raise ValueError("evidence_targets must contain EvidenceTarget values")
+        for item in self.environments:
+            EnvironmentSupport.__post_init__(item)
+        for item in self.test_vectors:
+            TestVector.__post_init__(item)
+        for item in self.evidence_targets:
+            EvidenceTarget.__post_init__(item)
 
         environment_ids = [item.environment_id for item in self.environments]
         vector_ids = [item.vector_id for item in self.test_vectors]
@@ -259,6 +268,7 @@ class Capability:
                 raise ValueError("UNAVAILABLE capability cannot claim an integrated_result")
 
     def to_dict(self) -> dict[str, Any]:
+        Capability.__post_init__(self)
         return {
             "capability_id": self.capability_id,
             "schema_version": self.schema_version,
@@ -291,6 +301,7 @@ class Journey:
             raise ValueError("journey capability_ids must be unique")
 
     def to_dict(self) -> dict[str, Any]:
+        Journey.__post_init__(self)
         return {
             "journey_id": self.journey_id,
             "title": self.title,
@@ -327,6 +338,7 @@ class SourceSurface:
             )
 
     def to_dict(self) -> dict[str, str]:
+        SourceSurface.__post_init__(self)
         return {
             "path": self.path,
             "capability_id": self.capability_id,
@@ -372,6 +384,8 @@ class SourceSurfaceInventory:
             raise ValueError("surfaces must be a non-empty tuple")
         if any(not _is_exact_type(item, SourceSurface) for item in self.surfaces):
             raise ValueError("surfaces must contain only SourceSurface values")
+        for item in self.surfaces:
+            SourceSurface.__post_init__(item)
         if self.source_surface_count != len(self.surfaces):
             raise ValueError("source_surface_count does not match surfaces")
         accepted_count = sum(item.origin == "accepted_main" for item in self.surfaces)
@@ -389,6 +403,7 @@ class SourceSurfaceInventory:
             raise ValueError("source surface paths must be unique")
 
     def to_dict(self) -> dict[str, Any]:
+        SourceSurfaceInventory.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "observed_main_sha": self.observed_main_sha,
@@ -437,6 +452,10 @@ class CapabilityRegistry:
             raise ValueError("journeys must be a non-empty tuple")
         if any(not _is_exact_type(item, Journey) for item in self.journeys):
             raise ValueError("journeys must contain only Journey values")
+        for item in self.capabilities:
+            Capability.__post_init__(item)
+        for item in self.journeys:
+            Journey.__post_init__(item)
 
         by_capability = {item.capability_id: item for item in self.capabilities}
         by_journey = {item.journey_id: item for item in self.journeys}
@@ -513,6 +532,7 @@ class CapabilityRegistry:
             visit(capability_id)
 
     def capability(self, capability_id: str) -> Capability:
+        CapabilityRegistry.__post_init__(self)
         _require_id("capability_id", capability_id)
         for capability in self.capabilities:
             if capability.capability_id == capability_id:
@@ -520,6 +540,7 @@ class CapabilityRegistry:
         raise KeyError(capability_id)
 
     def journey_available(self, journey_id: str) -> bool:
+        CapabilityRegistry.__post_init__(self)
         _require_id("journey_id", journey_id)
         journey = next(
             (item for item in self.journeys if item.journey_id == journey_id),
@@ -533,6 +554,7 @@ class CapabilityRegistry:
         )
 
     def acceptance_path(self, capability_id: str) -> dict[str, Any]:
+        CapabilityRegistry.__post_init__(self)
         capability = self.capability(capability_id)
         if capability.status is CapabilityStatus.UNAVAILABLE:
             return {
@@ -552,6 +574,7 @@ class CapabilityRegistry:
         }
 
     def to_dict(self) -> dict[str, Any]:
+        CapabilityRegistry.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "observed_main_sha": self.observed_main_sha,
@@ -612,6 +635,7 @@ def validate_available_component_contracts(registry: CapabilityRegistry) -> None
 
     if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
+    CapabilityRegistry.__post_init__(registry)
     for capability in registry.capabilities:
         if capability.status is CapabilityStatus.AVAILABLE:
             resolve_component_contract(capability.component_contract)
@@ -893,6 +917,8 @@ def validate_source_surface_coverage(
         raise ValueError("registry must be a CapabilityRegistry")
     if not _is_exact_type(inventory, SourceSurfaceInventory):
         raise ValueError("inventory must be a SourceSurfaceInventory")
+    CapabilityRegistry.__post_init__(registry)
+    SourceSurfaceInventory.__post_init__(inventory)
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
 
