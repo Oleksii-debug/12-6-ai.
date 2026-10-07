@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "26744c1b2c6dc502c50d6c818b7a6013011fc19e",
+  "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
   "observed_main_ci": {
-    "run_id": 37609405086,
+    "run_id": 37625412078,
     "conclusion": "success"
   },
   "capabilities": [
@@ -40,7 +40,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "versioned ModelSpec identity usable by project-owned model and training surfaces",
@@ -80,7 +80,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "project-owned byte tokenizer runtime and compatibility checks",
@@ -122,7 +122,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "deterministic packing mechanics over admitted tokenizer/split inputs",
@@ -164,7 +164,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "fail-closed checkpoint serialization, integrity validation and corruption rejection mechanics",
@@ -205,7 +205,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "packaged Python operator CLI mechanics; this does not claim physical Windows/NVDA acceptance",
@@ -245,7 +245,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "integrated replaceable cognitive-core/runtime-shell architecture contract from closed Section 0",
@@ -283,11 +283,11 @@
       "evidence_targets": [
         {
           "evidence_id": "section1-pr",
-          "target": "pull-request:3086"
+          "target": "pull-request:3090"
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "integrated repaired unified generation identity and exact parent-manifest cross-binding contract from closed Section 1",
@@ -418,7 +418,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "project-owned training-loop and checkpoint-integration mechanics; this does not authorize a learned-20M optimizer run",
@@ -458,7 +458,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "rights/privacy/quality/dedup/decontamination control mechanics on accepted main; this does not assert a launch-authoritative learned-20M corpus",
@@ -501,7 +501,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "fail-closed learned-20M readiness, launch-input and lease-control mechanics; no training authorization or learned weights are implied",
@@ -543,7 +543,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "portable run packet and exact binding validation mechanics",
@@ -585,7 +585,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "content-addressed scale-141 recovery and sidecar validation mechanics",
@@ -660,7 +660,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "deterministic split-robustness and manifest-invariant validation mechanics",
@@ -700,7 +700,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
       "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
@@ -739,14 +739,14 @@
       "evidence_targets": [
         {
           "evidence_id": "section2-pr",
-          "target": "pull-request:3078"
+          "target": "pull-request:3092"
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37609405086"
+          "target": "github-actions:37625412078"
         }
       ],
-      "integrated_result": "integrated executable capability/journey registry, repository/source completeness authorities and fail-closed acceptance paths from closed Section 2",
+      "integrated_result": "integrated executable capability registry and acceptance graph with exhaustive source/journey coverage, fail-closed AVAILABLE/UNAVAILABLE truth, and sealed component/source authority",
       "unavailable_reason": null
     },
     {
