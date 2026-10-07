@@ -209,16 +209,32 @@ def test_registry_rejects_capability_forward_binding_absent_from_journey() -> No
         )
 
 
+def test_capability_rejects_missing_user_operator_journey() -> None:
+    registry = _load()
+    target = registry.capabilities[0]
+
+    with pytest.raises(ValueError, match="must bind at least one user/operator journey"):
+        replace(target, journey_ids=())
+
+
 def test_registry_rejects_journey_without_capability_back_binding() -> None:
     registry = _load()
-    capabilities = list(registry.capabilities)
-    packing_index = next(
+    journeys = list(registry.journeys)
+    target_capability = registry.capability("model-spec-identity")
+    target_index = next(
         index
-        for index, capability in enumerate(capabilities)
-        if capability.capability_id == "deterministic-packing-mechanics"
+        for index, journey in enumerate(journeys)
+        if target_capability.capability_id not in journey.capability_ids
+        and journey.journey_id not in target_capability.journey_ids
     )
-    packing = capabilities[packing_index]
-    capabilities[packing_index] = replace(packing, journey_ids=())
+    target_journey = journeys[target_index]
+    journeys[target_index] = replace(
+        target_journey,
+        capability_ids=(
+            *target_journey.capability_ids,
+            target_capability.capability_id,
+        ),
+    )
 
     with pytest.raises(ValueError, match="is not back-bound"):
         CapabilityRegistry(
@@ -226,8 +242,8 @@ def test_registry_rejects_journey_without_capability_back_binding() -> None:
             observed_main_sha=registry.observed_main_sha,
             observed_main_ci_run_id=registry.observed_main_ci_run_id,
             observed_main_ci_conclusion=registry.observed_main_ci_conclusion,
-            capabilities=tuple(capabilities),
-            journeys=registry.journeys,
+            capabilities=registry.capabilities,
+            journeys=tuple(journeys),
         )
 
 
@@ -387,6 +403,18 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
         assert capability.integrated_result is None
+
+
+def test_source_surface_inventory_rejects_bool_schema_version_alias(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_source_surface_inventory(path)
 
 
 def test_source_surface_inventory_rejects_bool_schema_version_alias(
