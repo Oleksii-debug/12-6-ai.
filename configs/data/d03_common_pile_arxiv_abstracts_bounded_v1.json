@@ -1,0 +1,68 @@
+{
+  "schema_version": "12-6.d03-common-pile-arxiv-abstracts-bounded.v1",
+  "execution_profile": "LOCAL_FREE",
+  "parent_rights": {
+    "merged_pr": 769,
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "arxiv_abstracts",
+    "hf_dataset": "common-pile/arxiv_abstracts",
+    "required_rights_basis_class": "METADATA_OPEN_LICENSE",
+    "required_rights_signal": "CC0",
+    "required_project_review_status": "REVIEW_REQUIRED"
+  },
+  "source": {
+    "revision": "46de78c48636c0b46f60049dfd1c5a3710d233f9",
+    "file": "00003_arxiv-abstracts.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/arxiv_abstracts/resolve/46de78c48636c0b46f60049dfd1c5a3710d233f9/00003_arxiv-abstracts.jsonl.gz",
+    "sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "bytes": 232616926,
+    "compression": "gzip",
+    "expected_source_label": "arxiv-abstracts",
+    "expected_row_fields": [
+      "id",
+      "text",
+      "source",
+      "created",
+      "added",
+      "metadata"
+    ],
+    "expected_metadata_license": "Creative Commons Zero - Public Domain - https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  "selection": {
+    "max_scanned_records": 4096,
+    "max_retained_records": 1024,
+    "order": "exact_shard_file_order_after_fail_closed_filters"
+  },
+  "quality": {
+    "min_chars": 200,
+    "max_chars": 12000,
+    "min_alpha_fraction": 0.35
+  },
+  "privacy": {
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_control_characters": true,
+    "universal_pii_absence_claimed": false
+  },
+  "downstream_required": [
+    "global_cross_source_dedup",
+    "reserved_evaluation_decontamination",
+    "final_source_rights_review",
+    "quality_privacy_balance_family_caps",
+    "cluster_safe_split",
+    "deterministic_tokenizer_packing",
+    "positive_unique_loss_ledger"
+  ],
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "research_corpus_v1_released": false
+  }
+}
