@@ -873,6 +873,50 @@ def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> Non
         object.__setattr__(level, "_value_", original_level_value)
 
 
+def test_registry_loader_ignores_poisoned_enum_value_lookup_tables(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+        and any(vector["level"] == "component" for vector in capability["test_vectors"])
+    )
+    component_vector = next(
+        vector for vector in target["test_vectors"] if vector["level"] == "component"
+    )
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    level_map = capability_map_module.TestLevel._value2member_map_
+    status_map = capability_map_module.CapabilityStatus._value2member_map_
+    original_component = level_map["component"]
+    original_integration = level_map["integration"]
+    original_available = status_map["AVAILABLE"]
+    original_unavailable = status_map["UNAVAILABLE"]
+    level_map["component"] = capability_map_module.TestLevel.INTEGRATION
+    level_map["integration"] = capability_map_module.TestLevel.COMPONENT
+    status_map["AVAILABLE"] = capability_map_module.CapabilityStatus.UNAVAILABLE
+    status_map["UNAVAILABLE"] = capability_map_module.CapabilityStatus.AVAILABLE
+    try:
+        registry = load_capability_registry(path)
+    finally:
+        level_map["component"] = original_component
+        level_map["integration"] = original_integration
+        status_map["AVAILABLE"] = original_available
+        status_map["UNAVAILABLE"] = original_unavailable
+
+    loaded = registry.capability(target["capability_id"])
+    loaded_vector = next(
+        vector
+        for vector in loaded.test_vectors
+        if vector.vector_id == component_vector["vector_id"]
+    )
+    assert loaded.status is capability_map_module.CapabilityStatus.AVAILABLE
+    assert loaded_vector.level is capability_map_module.TestLevel.COMPONENT
+
+
 def test_registry_revalidates_post_construction_nested_mutation() -> None:
     registry = _load()
     capability = next(item for item in registry.capabilities if item.test_vectors)
