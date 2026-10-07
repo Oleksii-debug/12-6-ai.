@@ -1,0 +1,710 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import shlex
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Any, Callable
+
+from twelve_six.capability_map import (
+    CapabilityRegistry,
+    CapabilityStatus,
+    TestLevel,
+    load_capability_registry,
+)
+from twelve_six.model import InitSpec, ModelSpec
+
+
+_SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
+_MAX_SCENARIO_BYTES = 64 * 1024
+_MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _require_sha256(name: str, value: object) -> str:
+    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+        raise ValueError(f"{name} must be an exact lowercase SHA-256")
+    return value
+
+
+def _require_git_sha(name: str, value: object) -> str:
+    if not isinstance(value, str) or _SHA40_RE.fullmatch(value) is None:
+        raise ValueError(f"{name} must be an exact lowercase 40-hex Git SHA")
+    return value
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object member")
+        value[key] = item
+    return value
+
+
+def _strict_json_object(data: bytes, *, maximum_bytes: int, label: str) -> dict[str, Any]:
+    if not isinstance(data, bytes):
+        raise ValueError(f"{label} input must be bytes")
+    if len(data) > maximum_bytes:
+        raise ValueError(f"{label} exceeds maximum encoded size")
+    try:
+        value = json.loads(
+            data.decode("utf-8", errors="strict"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant is not allowed: {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"{label} is not strict unambiguous UTF-8 JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} root must be a JSON object")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class SILScenario:
+    schema_version: int
+    scenario_id: str
+    journey_selector: str
+    fixture_policy: str
+    synthetic_data_utf8: str
+    timeout_seconds_per_vector: int
+
+    def __post_init__(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != 1:
+            raise ValueError("unsupported SILScenario schema_version")
+        if not isinstance(self.scenario_id, str) or _ID_RE.fullmatch(self.scenario_id) is None:
+            raise ValueError("scenario_id must be a canonical identifier")
+        if self.journey_selector != "ALL_AVAILABLE":
+            raise ValueError("journey_selector must be ALL_AVAILABLE")
+        if self.fixture_policy != "DETERMINISTIC_SYNTHETIC":
+            raise ValueError("fixture_policy must be DETERMINISTIC_SYNTHETIC")
+        if not isinstance(self.synthetic_data_utf8, str) or not self.synthetic_data_utf8:
+            raise ValueError("synthetic_data_utf8 must be non-empty text")
+        if len(self.synthetic_data_utf8.encode("utf-8")) > 64 * 1024:
+            raise ValueError("synthetic_data_utf8 is too large")
+        if (
+            type(self.timeout_seconds_per_vector) is not int
+            or not 1 <= self.timeout_seconds_per_vector <= 900
+        ):
+            raise ValueError("timeout_seconds_per_vector must be an integer in [1, 900]")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "scenario_id": self.scenario_id,
+            "journey_selector": self.journey_selector,
+            "fixture_policy": self.fixture_policy,
+            "synthetic_data_utf8": self.synthetic_data_utf8,
+            "timeout_seconds_per_vector": self.timeout_seconds_per_vector,
+        }
+
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self.to_dict())
+
+
+def load_sil_scenario(path: str | Path) -> SILScenario:
+    payload = _strict_json_object(
+        Path(path).read_bytes(),
+        maximum_bytes=_MAX_SCENARIO_BYTES,
+        label="SIL scenario",
+    )
+    expected = {
+        "schema_version",
+        "scenario_id",
+        "journey_selector",
+        "fixture_policy",
+        "synthetic_data_utf8",
+        "timeout_seconds_per_vector",
+    }
+    if set(payload) != expected:
+        raise ValueError("SIL scenario fields are non-canonical")
+    return SILScenario(**payload)
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedVector:
+    journey_id: str
+    capability_id: str
+    vector_id: str
+    argv: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "journey_id": self.journey_id,
+            "capability_id": self.capability_id,
+            "vector_id": self.vector_id,
+            "argv": list(self.argv),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class UnavailableJourney:
+    journey_id: str
+    blocking_capability_ids: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "journey_id": self.journey_id,
+            "blocking_capability_ids": list(self.blocking_capability_ids),
+            "reasons": list(self.reasons),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SILPlan:
+    available_journey_ids: tuple[str, ...]
+    unavailable_journeys: tuple[UnavailableJourney, ...]
+    vectors: tuple[PlannedVector, ...]
+
+    def __post_init__(self) -> None:
+        if not self.available_journey_ids:
+            raise ValueError("SIL plan needs at least one AVAILABLE journey")
+        if not self.vectors:
+            raise ValueError("SIL plan needs at least one integration vector")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "available_journey_ids": list(self.available_journey_ids),
+            "unavailable_journeys": [item.to_dict() for item in self.unavailable_journeys],
+            "vectors": [item.to_dict() for item in self.vectors],
+        }
+
+
+def parse_vector_command(command: str) -> tuple[str, ...]:
+    if not isinstance(command, str) or not command.strip():
+        raise ValueError("integration vector command must be non-empty")
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError as exc:
+        raise ValueError("integration vector command is not shell-tokenizable") from exc
+    if len(tokens) < 3 or tokens[:2] != ["pytest", "-q"]:
+        raise ValueError("SIL integration vectors must use 'pytest -q <test files>'")
+    test_paths = tokens[2:]
+    for token in test_paths:
+        if token.startswith("-") or any(char in token for char in (";", "|", "&", ">", "<", "$")):
+            raise ValueError("SIL integration vector contains shell/control syntax")
+        path = PurePosixPath(token)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("SIL integration test path must stay inside the repository")
+        if len(path.parts) < 2 or path.parts[0] != "tests" or path.suffix != ".py":
+            raise ValueError("SIL integration vectors may reference only tests/*.py files")
+    return (sys.executable, "-m", "pytest", "-q", *test_paths)
+
+
+def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPlan:
+    if not isinstance(registry, CapabilityRegistry):
+        raise ValueError("registry must be a CapabilityRegistry")
+    if not isinstance(scenario, SILScenario):
+        raise ValueError("scenario must be a SILScenario")
+    if scenario.journey_selector != "ALL_AVAILABLE":
+        raise ValueError("unsupported journey selection")
+
+    available: list[str] = []
+    unavailable: list[UnavailableJourney] = []
+    vectors: list[PlannedVector] = []
+
+    for journey in registry.journeys:
+        if registry.journey_available(journey.journey_id):
+            available.append(journey.journey_id)
+            for capability_id in journey.capability_ids:
+                capability = registry.capability(capability_id)
+                if capability.status is not CapabilityStatus.AVAILABLE:
+                    raise ValueError("available journey contains an unavailable capability")
+                integration_vectors = tuple(
+                    vector
+                    for vector in capability.test_vectors
+                    if vector.level is TestLevel.INTEGRATION
+                )
+                if not integration_vectors:
+                    raise ValueError(
+                        f"AVAILABLE capability lacks an integration vector: {capability_id}"
+                    )
+                for vector in integration_vectors:
+                    vectors.append(
+                        PlannedVector(
+                            journey_id=journey.journey_id,
+                            capability_id=capability_id,
+                            vector_id=vector.vector_id,
+                            argv=parse_vector_command(vector.command),
+                        )
+                    )
+            continue
+
+        blockers = tuple(
+            registry.capability(capability_id)
+            for capability_id in journey.capability_ids
+            if registry.capability(capability_id).status is CapabilityStatus.UNAVAILABLE
+        )
+        if not blockers:
+            raise ValueError("unavailable journey has no explicit unavailable capability")
+        unavailable.append(
+            UnavailableJourney(
+                journey_id=journey.journey_id,
+                blocking_capability_ids=tuple(item.capability_id for item in blockers),
+                reasons=tuple(item.unavailable_reason or "" for item in blockers),
+            )
+        )
+
+    return SILPlan(
+        available_journey_ids=tuple(available),
+        unavailable_journeys=tuple(unavailable),
+        vectors=tuple(vectors),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GitState:
+    sha: str
+    tracked_clean: bool
+
+
+def probe_git_state(repo_root: str | Path) -> GitState:
+    root = Path(repo_root)
+    sha_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sha = sha_result.stdout.strip()
+    _require_git_sha("observed git SHA", sha)
+    worktree = subprocess.run(["git", "diff", "--quiet", "HEAD", "--"], cwd=root)
+    index = subprocess.run(["git", "diff", "--cached", "--quiet", "HEAD", "--"], cwd=root)
+    return GitState(sha=sha, tracked_clean=worktree.returncode == 0 and index.returncode == 0)
+
+
+@dataclass(frozen=True, slots=True)
+class CommandExecution:
+    return_code: int
+    stdout: str
+    stderr: str
+    duration_ms: int
+
+
+CommandRunner = Callable[[tuple[str, ...], Path, int], CommandExecution]
+GitProbe = Callable[[str | Path], GitState]
+
+
+def run_command(argv: tuple[str, ...], cwd: Path, timeout_seconds: int) -> CommandExecution:
+    started = time.monotonic_ns()
+    try:
+        result = subprocess.run(
+            list(argv),
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+        return_code = result.returncode
+        stdout = result.stdout
+        stderr = result.stderr
+    except subprocess.TimeoutExpired as exc:
+        return_code = 124
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        stderr += f"\nSIL_TIMEOUT_AFTER_SECONDS={timeout_seconds}\n"
+    duration_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
+    return CommandExecution(
+        return_code=return_code,
+        stdout=stdout,
+        stderr=stderr,
+        duration_ms=duration_ms,
+    )
+
+
+def _synthetic_model_identities() -> tuple[str, str]:
+    model = ModelSpec(
+        schema_version=1,
+        vocab_size=256,
+        max_seq_len=64,
+        d_model=64,
+        n_layers=2,
+        n_heads=4,
+        n_kv_heads=2,
+        head_dim=16,
+        d_ff=128,
+        rope_rotary_dim=16,
+    )
+    init = InitSpec()
+    return model.identity_sha256(), init.identity_sha256()
+
+
+def qualify_sil(
+    *,
+    repo_root: str | Path,
+    expected_git_sha: str,
+    registry: CapabilityRegistry,
+    scenario: SILScenario,
+    package_bytes: bytes,
+    command_runner: CommandRunner = run_command,
+    git_probe: GitProbe = probe_git_state,
+) -> tuple[dict[str, Any], str]:
+    expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
+    if not isinstance(package_bytes, bytes) or not package_bytes:
+        raise ValueError("package_bytes must be non-empty bytes")
+
+    root = Path(repo_root)
+    state = git_probe(root)
+    if state.sha != expected_git_sha:
+        raise ValueError(
+            f"exact-head mismatch: expected {expected_git_sha}, observed {state.sha}"
+        )
+    if not state.tracked_clean:
+        raise ValueError("tracked checkout is dirty before SIL execution")
+
+    plan = build_sil_plan(registry, scenario)
+    package_identity = _sha256_bytes(package_bytes)
+    registry_identity = registry.identity_sha256()
+    model_identity, init_identity = _synthetic_model_identities()
+    data_identity = _sha256_bytes(scenario.synthetic_data_utf8.encode("utf-8"))
+    scenario_identity = scenario.identity_sha256()
+
+    input_identity = _canonical_sha256(
+        {
+            "git_sha": expected_git_sha,
+            "package_identity_sha256": package_identity,
+            "capability_registry_identity_sha256": registry_identity,
+            "model_spec_identity_sha256": model_identity,
+            "init_spec_identity_sha256": init_identity,
+            "data_identity_sha256": data_identity,
+            "scenario_identity_sha256": scenario_identity,
+            "plan": plan.to_dict(),
+        }
+    )
+
+    started_unix_ns = time.time_ns()
+    started_monotonic_ns = time.monotonic_ns()
+    executions: list[dict[str, Any]] = []
+    log_parts: list[str] = []
+
+    for vector in plan.vectors:
+        result = command_runner(
+            vector.argv,
+            root,
+            scenario.timeout_seconds_per_vector,
+        )
+        execution = {
+            "journey_id": vector.journey_id,
+            "capability_id": vector.capability_id,
+            "vector_id": vector.vector_id,
+            "argv": list(vector.argv),
+            "return_code": result.return_code,
+            "stdout_sha256": _sha256_bytes(result.stdout.encode("utf-8")),
+            "stderr_sha256": _sha256_bytes(result.stderr.encode("utf-8")),
+            "duration_ms": result.duration_ms,
+        }
+        executions.append(execution)
+        log_parts.extend(
+            [
+                (
+                    f"=== journey={vector.journey_id} capability={vector.capability_id} "
+                    f"vector={vector.vector_id} return_code={result.return_code} ===\n"
+                ),
+                "--- stdout ---\n",
+                result.stdout,
+                "\n--- stderr ---\n",
+                result.stderr,
+                "\n",
+            ]
+        )
+
+    finished_monotonic_ns = time.monotonic_ns()
+    finished_unix_ns = time.time_ns()
+    log_text = "".join(log_parts)
+    log_identity = _sha256_bytes(log_text.encode("utf-8"))
+    unavailable_payload = [item.to_dict() for item in plan.unavailable_journeys]
+    output_identity = _canonical_sha256(
+        {
+            "available_journey_ids": list(plan.available_journey_ids),
+            "unavailable_journeys": unavailable_payload,
+            "executions": executions,
+        }
+    )
+    verdict = (
+        "PASS"
+        if executions and all(item["return_code"] == 0 for item in executions)
+        else "FAIL"
+    )
+
+    evidence: dict[str, Any] = {
+        "schema_version": "12-6.github-sil-evidence.v1",
+        "git_sha": expected_git_sha,
+        "package_identity_sha256": package_identity,
+        "capability_registry_identity_sha256": registry_identity,
+        "model_spec_identity_sha256": model_identity,
+        "init_spec_identity_sha256": init_identity,
+        "data_identity_sha256": data_identity,
+        "scenario_id": scenario.scenario_id,
+        "scenario_identity_sha256": scenario_identity,
+        "fixture_policy": scenario.fixture_policy,
+        "input_identity_sha256": input_identity,
+        "available_journey_ids": list(plan.available_journey_ids),
+        "unavailable_journeys": unavailable_payload,
+        "executions": executions,
+        "output_identity_sha256": output_identity,
+        "log_sha256": log_identity,
+        "timings": {
+            "started_unix_ns": started_unix_ns,
+            "finished_unix_ns": finished_unix_ns,
+            "duration_ms": max(
+                0,
+                (finished_monotonic_ns - started_monotonic_ns) // 1_000_000,
+            ),
+        },
+        "verdict": verdict,
+        "scientific_boundary": {
+            "corpus_admission_authorized": False,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+        },
+    }
+    evidence["evidence_identity_sha256"] = _canonical_sha256(evidence)
+    return evidence, log_text
+
+
+_EVIDENCE_FIELDS = {
+    "schema_version",
+    "git_sha",
+    "package_identity_sha256",
+    "capability_registry_identity_sha256",
+    "model_spec_identity_sha256",
+    "init_spec_identity_sha256",
+    "data_identity_sha256",
+    "scenario_id",
+    "scenario_identity_sha256",
+    "fixture_policy",
+    "input_identity_sha256",
+    "available_journey_ids",
+    "unavailable_journeys",
+    "executions",
+    "output_identity_sha256",
+    "log_sha256",
+    "timings",
+    "verdict",
+    "scientific_boundary",
+    "evidence_identity_sha256",
+}
+
+
+def verify_sil_evidence(
+    evidence_path: str | Path,
+    log_path: str | Path,
+    *,
+    expected_git_sha: str | None = None,
+    require_pass: bool = True,
+) -> dict[str, Any]:
+    payload = _strict_json_object(
+        Path(evidence_path).read_bytes(),
+        maximum_bytes=_MAX_EVIDENCE_BYTES,
+        label="SIL evidence",
+    )
+    if set(payload) != _EVIDENCE_FIELDS:
+        raise ValueError("SIL evidence fields are non-canonical")
+    if payload["schema_version"] != "12-6.github-sil-evidence.v1":
+        raise ValueError("unsupported SIL evidence schema_version")
+    _require_git_sha("evidence git_sha", payload["git_sha"])
+    if expected_git_sha is not None and payload["git_sha"] != _require_git_sha(
+        "expected_git_sha", expected_git_sha
+    ):
+        raise ValueError("SIL evidence Git SHA mismatch")
+    for field in (
+        "package_identity_sha256",
+        "capability_registry_identity_sha256",
+        "model_spec_identity_sha256",
+        "init_spec_identity_sha256",
+        "data_identity_sha256",
+        "scenario_identity_sha256",
+        "input_identity_sha256",
+        "output_identity_sha256",
+        "log_sha256",
+        "evidence_identity_sha256",
+    ):
+        _require_sha256(field, payload[field])
+
+    if payload["fixture_policy"] != "DETERMINISTIC_SYNTHETIC":
+        raise ValueError("SIL evidence fixture policy is not canonical")
+    if not isinstance(payload["available_journey_ids"], list) or not payload[
+        "available_journey_ids"
+    ]:
+        raise ValueError("SIL evidence needs available journeys")
+    if not isinstance(payload["unavailable_journeys"], list):
+        raise ValueError("SIL evidence unavailable_journeys must be an array")
+    executions = payload["executions"]
+    if not isinstance(executions, list) or not executions:
+        raise ValueError("SIL evidence needs executed integration vectors")
+    if payload["verdict"] not in {"PASS", "FAIL"}:
+        raise ValueError("SIL evidence verdict is invalid")
+    if payload["verdict"] == "PASS" and any(
+        type(item) is not dict or item.get("return_code") != 0 for item in executions
+    ):
+        raise ValueError("SIL PASS contains a failed or malformed execution")
+    if require_pass and payload["verdict"] != "PASS":
+        raise ValueError("SIL evidence is not PASS")
+
+    scientific_boundary = payload["scientific_boundary"]
+    expected_boundary = {
+        "corpus_admission_authorized": False,
+        "tokenizer_fit_authorized": False,
+        "optimizer_updates_executed": 0,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "foreign_pretrained_weights_used": False,
+    }
+    if scientific_boundary != expected_boundary:
+        raise ValueError("SIL evidence widened the scientific boundary")
+
+    log_bytes = Path(log_path).read_bytes()
+    if _sha256_bytes(log_bytes) != payload["log_sha256"]:
+        raise ValueError("SIL log identity mismatch")
+
+    expected_output = _canonical_sha256(
+        {
+            "available_journey_ids": payload["available_journey_ids"],
+            "unavailable_journeys": payload["unavailable_journeys"],
+            "executions": executions,
+        }
+    )
+    if expected_output != payload["output_identity_sha256"]:
+        raise ValueError("SIL output identity mismatch")
+
+    evidence_identity = payload["evidence_identity_sha256"]
+    unsigned = dict(payload)
+    del unsigned["evidence_identity_sha256"]
+    if _canonical_sha256(unsigned) != evidence_identity:
+        raise ValueError("SIL evidence identity mismatch")
+    return payload
+
+
+def _write_run_outputs(
+    evidence: dict[str, Any],
+    log_text: str,
+    *,
+    evidence_output: str | Path,
+    log_output: str | Path,
+) -> None:
+    evidence_path = Path(evidence_output)
+    log_path = Path(log_output)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_bytes(_canonical_json_bytes(evidence) + b"\n")
+    log_path.write_text(log_text, encoding="utf-8")
+
+
+def _run_cli(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
+    package_bytes = (root / "pyproject.toml").read_bytes()
+    evidence, log_text = qualify_sil(
+        repo_root=root,
+        expected_git_sha=args.expected_git_sha,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=package_bytes,
+    )
+    _write_run_outputs(
+        evidence,
+        log_text,
+        evidence_output=args.evidence_output,
+        log_output=args.log_output,
+    )
+    print(
+        json.dumps(
+            {
+                "git_sha": evidence["git_sha"],
+                "scenario_id": evidence["scenario_id"],
+                "available_journeys": len(evidence["available_journey_ids"]),
+                "executions": len(evidence["executions"]),
+                "verdict": evidence["verdict"],
+                "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if evidence["verdict"] == "PASS" else 1
+
+
+def _verify_cli(args: argparse.Namespace) -> int:
+    evidence = verify_sil_evidence(
+        args.evidence,
+        args.log,
+        expected_git_sha=args.expected_git_sha,
+        require_pass=True,
+    )
+    print(
+        json.dumps(
+            {
+                "git_sha": evidence["git_sha"],
+                "verdict": evidence["verdict"],
+                "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run or verify the 12-6 GitHub Software-in-the-Loop qualification."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--repo-root", required=True)
+    run_parser.add_argument("--expected-git-sha", required=True)
+    run_parser.add_argument("--capability-registry", required=True)
+    run_parser.add_argument("--scenario", required=True)
+    run_parser.add_argument("--evidence-output", required=True)
+    run_parser.add_argument("--log-output", required=True)
+    run_parser.set_defaults(func=_run_cli)
+
+    verify_parser = subparsers.add_parser("verify")
+    verify_parser.add_argument("--evidence", required=True)
+    verify_parser.add_argument("--log", required=True)
+    verify_parser.add_argument("--expected-git-sha", required=True)
+    verify_parser.set_defaults(func=_verify_cli)
+
+    args = parser.parse_args()
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
