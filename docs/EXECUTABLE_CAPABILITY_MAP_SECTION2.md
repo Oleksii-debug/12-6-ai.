@@ -36,7 +36,7 @@ The registry is bound to accepted
 `main@019944d5fe12334791f05f1232d13de4a12e37d3` and its terminal successful push
 CI run `37248299503`. Candidate Section-0/1 behavior is not resealed as accepted main truth.
 
-The first registry intentionally distinguishes mechanics from complete product claims. It is an initial truthful slice, not yet an exhaustive Section-2.1 inventory. Section 2 therefore remains IN_PROGRESS until current product capabilities and user/operator journeys are exhaustively enumerated and mechanically checked for coverage.
+The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface, while separately classifying stacked Section-0/1/2 candidate overlays. At this candidate head the coverage is 114 accepted-main surfaces + 3 candidate overlays = 117/117 current stacked Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
 
 Examples:
 
@@ -97,4 +97,6 @@ authority.
 
 Its only purpose is to make current capability truth executable and machine-readable so later
 functionality must enter the graph as AVAILABLE with evidence or remain explicitly
-UNAVAILABLE. The present branch does not claim Section-2.1 exhaustive coverage yet.
+UNAVAILABLE. Section 2 remains IN_PROGRESS until exact-head shared CI is terminal PASS and
+its unfinished predecessors close; the static capability/source/journey coverage gap itself
+has been closed on this candidate.
