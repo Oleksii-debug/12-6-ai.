@@ -34,6 +34,9 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
 
     assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
     assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
+    assert result["current_repository_main_sha"] == "330fb46aa3199e26d8b7e49968ee93fb12447560"
+    assert result["current_repository_main_tree_sha"] == "20559f951b6e2c744832ce0cd1cb324e2e1c2eea"
+    assert result["qualified_current_equivalent_surface_count"] == 233
     assert result["accepted_main_surface_count"] == 119
     assert result["candidate_overlay_surface_count"] == 1
     assert result["checkout_surface_count"] == 120
@@ -120,3 +123,28 @@ def test_repository_surface_inventory_rejects_duplicate_json_members(
 def test_repository_surface_rules_are_nonambiguous_on_exact_main() -> None:
     # Full validation classifies every accepted-main surface through exactly one rule.
     _validate()
+
+
+def test_repository_surface_coverage_rejects_resealed_current_main(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["current_repository_main_sha"] = payload["observed_main_sha"]
+    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match the live repository main ref"):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_current_main_tree_reseal(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match current_repository_main_sha"):
+        _validate(inventory)
