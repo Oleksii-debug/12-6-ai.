@@ -7,7 +7,7 @@ This document implements the current canonical Section Plan requirement:
 - **Section 0 — Цільова архітектура 12-6 як повної AI-системи**
 - plan document: `16KotBqgSyf3A0FEWpN8Pnobgf2ZJ1ecT8MLgHoQXibY`
 - observed plan revision at implementation start:
-  `AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw`
+  `ANLCKQnXY8VKCJDDnoyswSWTUVvktY41ODOKs8vJB9_b2whb1GpVUU2nUEZxcqkQXTS7YYo7IcAlrRhEcbUHlYiysiUA00rP9QpL5qUJ0A`
 
 This is **not** the historical `S0 ~10K` experiment described by
 `docs/S0_EXECUTION_PLAN.md`. The old S0 remains historical factory evidence. The
@@ -88,10 +88,12 @@ remain independently versioned.
 
 `replace_cognitive_core()` accepts a new checkpoint or scale only when its gateway contract
 is exactly compatible with the shell. The replacement receipt binds the old and new core
-identities and the unchanged shell/surface identities. It carries immutable snapshots of both
-cores and the preserved shell, cross-checking each claimed core hash, the shell hash, and every
-surface hash against those snapshots so a resealed receipt cannot rename either core or claim
-unrelated surface identities. A gateway generation mismatch
+identities, both exact cognitive-core binding snapshots, and the unchanged shell/surface
+identities. It carries immutable snapshots of both cores and the preserved shell, cross-checking
+each claimed core hash, each binding-to-core relationship, both binding gateway contracts, the
+shell hash, and every surface hash against those snapshots. A standalone receipt therefore
+cannot claim an incompatible core/gateway pairing while presenting an unchanged shell. A
+gateway generation mismatch
 fails closed before the assembly is changed.
 
 The regression suite proves both important replacement classes:
