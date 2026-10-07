@@ -381,6 +381,7 @@ class SILScenario:
             raise ValueError("timeout_seconds_per_vector must be an integer in [1, 900]")
 
     def to_dict(self) -> dict[str, Any]:
+        SILScenario.__post_init__(self)
         return {
             "schema_version": self.schema_version,
             "scenario_id": self.scenario_id,
@@ -451,6 +452,7 @@ class PlannedVector:
                 raise ValueError("planned vector may reference only canonical tests/*.py paths")
 
     def to_dict(self) -> dict[str, Any]:
+        PlannedVector.__post_init__(self)
         return {
             "journey_id": self.journey_id,
             "capability_id": self.capability_id,
@@ -484,6 +486,7 @@ class UnavailableJourney:
             raise ValueError("unavailable journey reasons must be non-empty text")
 
     def to_dict(self) -> dict[str, Any]:
+        UnavailableJourney.__post_init__(self)
         return {
             "journey_id": self.journey_id,
             "blocking_capability_ids": list(self.blocking_capability_ids),
@@ -529,6 +532,10 @@ class SILPlan:
             or any(not _is_exact_type(item, PlannedVector) for item in self.vectors)
         ):
             raise ValueError("SIL plan integration vectors are non-canonical")
+        for item in self.unavailable_journeys:
+            UnavailableJourney.__post_init__(item)
+        for item in self.vectors:
+            PlannedVector.__post_init__(item)
         if any(
             vector.journey_id not in self.available_journey_ids
             for vector in self.vectors
@@ -574,6 +581,7 @@ class SILPlan:
                 )
 
     def to_dict(self) -> dict[str, Any]:
+        SILPlan.__post_init__(self)
         return {
             "available_journey_ids": list(self.available_journey_ids),
             "unavailable_journeys": [item.to_dict() for item in self.unavailable_journeys],
@@ -622,6 +630,8 @@ def build_sil_plan(
         raise ValueError("registry must be a CapabilityRegistry")
     if not _is_exact_type(scenario, SILScenario):
         raise ValueError("scenario must be a SILScenario")
+    CapabilityRegistry.__post_init__(registry)
+    SILScenario.__post_init__(scenario)
     if scenario.journey_selector != "ALL_AVAILABLE":
         raise ValueError("unsupported journey selection")
 
@@ -771,9 +781,12 @@ def probe_git_state(repo_root: str | Path) -> GitState:
     status = subprocess.run(
         ["git", "status", "--porcelain=v1", "--untracked-files=all"],
         cwd=root,
+        env=_qualification_subprocess_env(),
+        stdin=subprocess.DEVNULL,
         check=False,
         capture_output=True,
         text=True,
+        shell=False,
     )
     if status.returncode != 0:
         raise ValueError("cannot establish SIL checkout cleanliness")
@@ -834,6 +847,7 @@ def require_exact_clean_git_state(
     state = probe(repo_root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return GitState")
+    GitState.__post_init__(state)
     if state.sha != expected:
         raise ValueError(
             f"exact-head mismatch: expected {expected}, observed {state.sha}"
@@ -947,6 +961,7 @@ def qualify_sil(
     state = git_probe(root)
     if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return exact GitState")
+    GitState.__post_init__(state)
     if state.sha != expected_git_sha:
         raise ValueError(
             f"exact-head mismatch: expected {expected_git_sha}, observed {state.sha}"
@@ -987,6 +1002,7 @@ def qualify_sil(
         pre_vector_state = git_probe(root)
         if not _is_exact_type(pre_vector_state, GitState):
             raise ValueError("git probe must return exact GitState")
+        GitState.__post_init__(pre_vector_state)
         if pre_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed before SIL vector execution: "
@@ -1004,10 +1020,12 @@ def qualify_sil(
         )
         if not _is_exact_type(result, CommandExecution):
             raise ValueError("command runner must return exact CommandExecution")
+        CommandExecution.__post_init__(result)
 
         post_vector_state = git_probe(root)
         if not _is_exact_type(post_vector_state, GitState):
             raise ValueError("git probe must return exact GitState")
+        GitState.__post_init__(post_vector_state)
         if post_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed during SIL vector execution: "
