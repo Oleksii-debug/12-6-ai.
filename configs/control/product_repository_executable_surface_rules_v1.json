@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "49218c0c581b73bcd0985646f48bf35300b1948c",
-  "observed_main_tree_sha": "2f8c32273994595b0bd466a293ee727d6f56d2ef",
-  "current_repository_main_sha": "5c041ca56edda55a5c3334f722361754051e121c",
-  "current_repository_main_tree_sha": "95ad101c8965fd49c1711027146253a093fce2f8",
-  "expected_main_surface_count": 119,
+  "observed_main_sha": "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5",
+  "observed_main_tree_sha": "21ba29dbac1b39a6a26ca184f9d97448b84843c5",
+  "current_repository_main_sha": "213fe5c41fe9310e325b9c38c863d75eb6a5bb47",
+  "current_repository_main_tree_sha": "30ebc206bc2064f622bf0a7a106356366e54a7c4",
+  "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
     "byte-tokenizer-runtime": 1,
@@ -15,7 +15,8 @@
     "model-spec-identity": 2,
     "package-runtime": 1,
     "portable-run-authority": 2,
-    "project-control-plane": 1
+    "project-control-plane": 1,
+    "executable-capability-map": 1
   },
   "rules": [
     {
@@ -83,6 +84,12 @@
       "selector": "regex",
       "pattern": "^tools/(?:adapt_d03_|assert_data_|audit_d03_|build_d03_|classify_d03_|compose_data|converge_d03_|derive_(?:d03_|next100_)|discover_kmu_|download_d03_|execute_(?:current_|eval647_)|extract_d03_|inventory_d03_|materialize_(?:d03_|data|eval_|next100_|post)|next100_|normalize_d03_|pin_d03_|prepare_(?:d03_|data)|probe_(?:d03_|kmu_)|qualify_d03_|replay_d03_|retest_d03_|run_(?:current_|d03_|data|eval647_|next100_)|scan_d03_|validate_(?:common_|culturax_|d03_|data|eval|next100_)|verify_(?:d03_|incumbent_|next100_)).*$",
       "capability_id": "data-governance-mechanics"
+    },
+    {
+      "rule_id": "section2-surface-validator",
+      "selector": "exact",
+      "pattern": "tools/validate_section2_repository_surface_coverage.py",
+      "capability_id": "executable-capability-map"
     }
   ],
   "candidate_overrides": [

@@ -1146,3 +1146,63 @@ def test_generation_method_rebinding_cannot_reseal_incomplete_generation(
     ):
         generation.identity_sha256()
 
+
+
+def test_public_identity_apis_do_not_accept_seal_override_hooks() -> None:
+    ref = _ref(ArtifactKind.CORPUS, "public-seal-override")
+    parent = bind_artifact(ref)
+    generation = _generation("public-seal-override")
+
+    with pytest.raises(TypeError):
+        ref.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.manifest_identity_sha256(  # type: ignore[call-arg]
+            _sealed_hash_payload=lambda _value: "0" * 64
+        )
+    with pytest.raises(TypeError):
+        generation.identity_sha256(  # type: ignore[call-arg]
+            _sealed_to_dict=lambda _value: {"forged": True}
+        )
+    with pytest.raises(TypeError):
+        bind_artifact(  # type: ignore[call-arg]
+            _ref(ArtifactKind.TOKENIZER, "public-seal-override"),
+            parents={"corpus": parent},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
+    with pytest.raises(TypeError):
+        verify_parent_bindings(  # type: ignore[call-arg]
+            parent,
+            expected_parents={},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
+
+
+def test_builder_validator_rebinding_cannot_admit_invalid_artifact_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refs = _refs("builder-validator-rebind")
+    corpus = refs[ArtifactKind.CORPUS]
+    object.__setattr__(corpus, "schema_version", 0)
+    monkeypatch.setattr(ArtifactRef, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        build_generation_identity_manifest(refs)
+
+
+def test_verify_parent_bindings_validator_rebinding_cannot_hide_invalid_expected_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_parent = bind_artifact(
+        _ref(ArtifactKind.CORPUS, "verify-validator-rebind")
+    )
+    child = bind_artifact(
+        _ref(ArtifactKind.TOKENIZER, "verify-validator-rebind"),
+        parents={"corpus": expected_parent},
+    )
+    object.__setattr__(expected_parent, "parents", [])
+    monkeypatch.setattr(ArtifactManifest, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        verify_parent_bindings(child, expected_parents={"corpus": expected_parent})

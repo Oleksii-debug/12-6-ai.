@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert registry.observed_main_ci_run_id == 37608406911
+    assert registry.observed_main_sha == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
+    assert registry.observed_main_ci_run_id == 37609405086
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -170,18 +170,20 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
         assert capability.unavailable_reason
 
 
-def test_closed_predecessor_capabilities_are_available() -> None:
+def test_closed_and_reopened_predecessor_capability_truth_is_explicit() -> None:
     registry = _load()
 
-    for capability_id in (
-        "replaceable-cognitive-core-shell",
-        "unified-generation-identity",
-    ):
-        capability = registry.capability(capability_id)
-        assert capability.status is CapabilityStatus.AVAILABLE
-        assert capability.integrated_result
-        assert capability.unavailable_reason is None
-    assert registry.journey_available("developer-replace-cognitive-core") is True
+    closed = registry.capability("replaceable-cognitive-core-shell")
+    assert closed.status is CapabilityStatus.AVAILABLE
+    assert closed.integrated_result
+    assert closed.unavailable_reason is None
+
+    reopened = registry.capability("unified-generation-identity")
+    assert reopened.status is CapabilityStatus.UNAVAILABLE
+    assert reopened.integrated_result is None
+    assert reopened.unavailable_reason
+
+    assert registry.journey_available("developer-replace-cognitive-core") is False
 
 
 def test_mechanics_are_not_resealed_as_physical_windows_acceptance() -> None:
@@ -500,7 +502,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37608406911',
+        '"run_id": 37609405086',
         '"run_id": NaN',
         1,
     )
@@ -676,10 +678,10 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert inventory.observed_main_tree_sha == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
-    assert inventory.accepted_main_surface_count == 116
-    assert inventory.candidate_overlay_surface_count == 1
+    assert inventory.observed_main_sha == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
+    assert inventory.observed_main_tree_sha == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
+    assert inventory.accepted_main_surface_count == 115
+    assert inventory.candidate_overlay_surface_count == 2
     assert inventory.source_surface_count == 117
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
@@ -700,7 +702,7 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     for surface in inventory.surfaces:
-        if surface.origin != "stacked_candidate":
+        if surface.origin == "accepted_main":
             continue
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
@@ -715,7 +717,7 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
+        if surface["origin"] != "accepted_main"
     )
     target["capability_id"] = "model-spec-identity"
     path = tmp_path / "surface-inventory.json"
@@ -806,7 +808,7 @@ def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) 
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
+        if surface["origin"] != "accepted_main"
     )
     payload["surfaces"].remove(target)
     payload["source_surface_count"] -= 1
@@ -815,7 +817,28 @@ def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) 
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
 
-    with pytest.raises(ValueError, match="unmapped_checkout"):
+    with pytest.raises(ValueError, match="accepted-main source inventory drift"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_modified_candidate_requires_exact_changed_source_set(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "modified_candidate"
+    )
+    target["origin"] = "accepted_main"
+    payload["accepted_main_surface_count"] += 1
+    payload["candidate_overlay_surface_count"] -= 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="modified candidate source classification drift"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
