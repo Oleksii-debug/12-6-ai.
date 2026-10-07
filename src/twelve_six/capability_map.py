@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
@@ -271,6 +272,7 @@ def _build_component_contract_authority() -> Any:
     # Rebinding module globals after import must not manufacture a repository-owned
     # component contract.
     sealed_import_module = importlib.import_module
+    sealed_getsourcefile = inspect.getsourcefile
     sealed_module_type = ModuleType
     sealed_path_type = Path
     sealed_package_root = _PACKAGE_ROOT.resolve()
@@ -374,7 +376,22 @@ def _build_component_contract_authority() -> Any:
                         "AVAILABLE component contract owner module cannot be resolved"
                     ) from exc
 
-            require_module_origin(owner, owner_name)
+            owner_source_path = require_module_origin(owner, owner_name)
+            if type(resolved) is not sealed_module_type:
+                try:
+                    resolved_source = sealed_getsourcefile(resolved)
+                except (OSError, TypeError) as exc:
+                    raise ValueError(
+                        "component contract object source is unavailable"
+                    ) from exc
+                if type(resolved_source) is not str:
+                    raise ValueError(
+                        "component contract object source is unavailable"
+                    )
+                if sealed_path_type(resolved_source).resolve() != owner_source_path:
+                    raise ValueError(
+                        "component contract object source does not match owner module"
+                    )
             return resolved
         raise ValueError(f"component contract module does not exist: {contract}")
 
