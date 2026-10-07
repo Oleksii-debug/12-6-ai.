@@ -177,7 +177,8 @@
       "component_contract": "twelve_six.windows_operator_cli",
       "dependencies": [],
       "journey_ids": [
-        "operator-windows-cli"
+        "operator-windows-cli",
+        "operator-windows-product"
       ],
       "environments": [
         {
@@ -296,7 +297,8 @@
         "checkpoint-integrity-mechanics"
       ],
       "journey_ids": [
-        "operator-local-learned-model"
+        "operator-local-learned-model",
+        "operator-windows-product"
       ],
       "environments": [
         {

@@ -245,9 +245,9 @@ def test_git_probes_strip_ambient_git_redirection(
         assert capture_output is True
         assert text is True
         observed_envs.append(dict(env))
-        stdout = f"{sha}\\n" if "rev-parse" in command else ""
+        stdout = f"{sha}\n" if "rev-parse" in command else ""
         if command[-1] == "HEAD":
-            stdout = "ok\\n"
+            stdout = "ok\n"
         return surface_validator.subprocess.CompletedProcess(
             command,
             0,
