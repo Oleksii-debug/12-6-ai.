@@ -335,6 +335,20 @@ def test_runtime_shell_identity_changes_when_a_surface_contract_changes() -> Non
     assert changed.identity_sha256() != shell.identity_sha256()
 
 
+def test_runtime_shell_rejects_role_resealing() -> None:
+    shell = canonical_runtime_shell_v1()
+
+    with pytest.raises(ValueError, match="memory_api contract role semantics are non-canonical"):
+        RuntimeShellContract(
+            gateway_api=shell.gateway_api,
+            memory_api=shell.tools_api,
+            tools_api=shell.tools_api,
+            voice_api=shell.voice_api,
+            ui_api=shell.ui_api,
+            orchestration_api=shell.orchestration_api,
+        )
+
+
 def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None:
     shell = canonical_runtime_shell_v1()
 
