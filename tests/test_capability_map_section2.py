@@ -1563,7 +1563,6 @@ def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
         )
 
 
-
 def test_component_resolver_ignores_import_authority_rebinding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
