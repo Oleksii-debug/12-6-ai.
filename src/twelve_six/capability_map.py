@@ -114,6 +114,36 @@ class TestLevel(str, Enum):
     END_TO_END = "end_to_end"
 
 
+_CANONICAL_CAPABILITY_STATUSES = tuple(CapabilityStatus)
+_CANONICAL_CAPABILITY_STATUS_VALUES = tuple(
+    item.value for item in _CANONICAL_CAPABILITY_STATUSES
+)
+_CANONICAL_TEST_LEVELS = tuple(TestLevel)
+_CANONICAL_TEST_LEVEL_VALUES = tuple(item.value for item in _CANONICAL_TEST_LEVELS)
+
+
+def _require_capability_status(value: object) -> CapabilityStatus:
+    if not _is_exact_type(value, CapabilityStatus):
+        raise ValueError("status must be a CapabilityStatus")
+    for index, canonical in enumerate(_CANONICAL_CAPABILITY_STATUSES):
+        if value is canonical:
+            if canonical.value != _CANONICAL_CAPABILITY_STATUS_VALUES[index]:
+                raise ValueError("status wire value is non-canonical")
+            return canonical
+    raise ValueError("status must be a canonical CapabilityStatus")
+
+
+def _require_test_level(value: object) -> TestLevel:
+    if not _is_exact_type(value, TestLevel):
+        raise ValueError("level must be a TestLevel")
+    for index, canonical in enumerate(_CANONICAL_TEST_LEVELS):
+        if value is canonical:
+            if canonical.value != _CANONICAL_TEST_LEVEL_VALUES[index]:
+                raise ValueError("level wire value is non-canonical")
+            return canonical
+    raise ValueError("level must be a canonical TestLevel")
+
+
 @dataclass(frozen=True, slots=True)
 class EnvironmentSupport:
     environment_id: str
@@ -137,8 +167,7 @@ class TestVector:
 
     def __post_init__(self) -> None:
         _require_id("vector_id", self.vector_id)
-        if not _is_exact_type(self.level, TestLevel):
-            raise ValueError("level must be a TestLevel")
+        _require_test_level(self.level)
         _require_text("command", self.command)
         tokens = self.command.split()
         if (
@@ -202,8 +231,7 @@ class Capability:
     def __post_init__(self) -> None:
         _require_id("capability_id", self.capability_id)
         _require_positive_int("schema_version", self.schema_version)
-        if not _is_exact_type(self.status, CapabilityStatus):
-            raise ValueError("status must be a CapabilityStatus")
+        _require_capability_status(self.status)
         _require_text("component_contract", self.component_contract)
 
         for name, values in (

@@ -1067,7 +1067,6 @@ def test_package_manifest_rejects_symlink_git_mode(
         build_package_manifest_bytes(tmp_path)
 
 
-
 def test_sil_plan_rejects_actual_vector_resealing() -> None:
     plan = build_sil_plan(_registry(), _scenario())
     first = plan.vectors[0]
@@ -1165,6 +1164,7 @@ def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses
 
     with pytest.raises(ValueError, match="SIL log must be non-empty bytes"):
         sil_qualification._load_sil_log_records(ForgedBytes(b"{}\n"))
+
 
 def test_sil_objects_revalidate_after_post_construction_mutation() -> None:
     scenario = _scenario()

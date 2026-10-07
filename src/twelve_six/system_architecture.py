@@ -56,53 +56,54 @@ class SystemPlane(str, Enum):
 
 
 _REQUIRED_PLANES = tuple(SystemPlane)
-_BOUNDARY_SPECS_SOURCE: dict[str, tuple[SystemPlane, SystemPlane, str, int]] = {
+_REQUIRED_PLANE_VALUES = tuple(plane.value for plane in _REQUIRED_PLANES)
+_BOUNDARY_SPECS_SOURCE: dict[str, tuple[str, str, str, int]] = {
     "base_to_gateway": (
-        SystemPlane.BASE_MODEL,
-        SystemPlane.MODEL_GATEWAY,
+        SystemPlane.BASE_MODEL.value,
+        SystemPlane.MODEL_GATEWAY.value,
         "twelve_six.model_gateway",
         1,
     ),
     "post_base_to_base": (
-        SystemPlane.POST_BASE_LEARNING,
-        SystemPlane.BASE_MODEL,
+        SystemPlane.POST_BASE_LEARNING.value,
+        SystemPlane.BASE_MODEL.value,
         "twelve_six.descendant_model",
         1,
     ),
     "gateway_to_cognition": (
-        SystemPlane.MODEL_GATEWAY,
-        SystemPlane.PERSISTENT_COGNITION,
+        SystemPlane.MODEL_GATEWAY.value,
+        SystemPlane.PERSISTENT_COGNITION.value,
         "twelve_six.inference_exchange",
         1,
     ),
     "cognition_to_tools": (
-        SystemPlane.PERSISTENT_COGNITION,
-        SystemPlane.TOOLS,
+        SystemPlane.PERSISTENT_COGNITION.value,
+        SystemPlane.TOOLS.value,
         "twelve_six.tool_invocation",
         1,
     ),
     "cognition_to_live_agent": (
-        SystemPlane.PERSISTENT_COGNITION,
-        SystemPlane.LIVE_AGENT_PLANE,
+        SystemPlane.PERSISTENT_COGNITION.value,
+        SystemPlane.LIVE_AGENT_PLANE.value,
         "twelve_six.cognition_state",
         1,
     ),
     "evolution_to_post_base": (
-        SystemPlane.EVOLUTION_PLANE,
-        SystemPlane.POST_BASE_LEARNING,
+        SystemPlane.EVOLUTION_PLANE.value,
+        SystemPlane.POST_BASE_LEARNING.value,
         "twelve_six.training_candidate",
         1,
     ),
     "evolution_to_gateway": (
-        SystemPlane.EVOLUTION_PLANE,
-        SystemPlane.MODEL_GATEWAY,
+        SystemPlane.EVOLUTION_PLANE.value,
+        SystemPlane.MODEL_GATEWAY.value,
         "twelve_six.model_promotion",
         1,
     ),
 }
 
 _REQUIRED_BOUNDARY_SPECS: Mapping[
-    str, tuple[SystemPlane, SystemPlane, str, int]
+    str, tuple[str, str, str, int]
 ] = MappingProxyType(dict(_BOUNDARY_SPECS_SOURCE))
 del _BOUNDARY_SPECS_SOURCE
 
@@ -170,9 +171,9 @@ class SystemArchitectureManifest:
 
     def __post_init__(
         self,
-        _sealed_planes: tuple[SystemPlane, ...] = _REQUIRED_PLANES,
+        _sealed_plane_values: tuple[str, ...] = _REQUIRED_PLANE_VALUES,
         _sealed_boundary_specs: Mapping[
-            str, tuple[SystemPlane, SystemPlane, str, int]
+            str, tuple[str, str, str, int]
         ] = _REQUIRED_BOUNDARY_SPECS,
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
@@ -188,11 +189,11 @@ class SystemArchitectureManifest:
         if not _is_exact_type(self.boundaries, tuple):
             raise ValueError("system architecture boundaries must be an immutable tuple")
 
-        if len(self.planes) != len(_sealed_planes):
+        if len(self.planes) != len(_sealed_plane_values):
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):
             raise ValueError("system architecture planes must be unique")
-        if self.planes != _sealed_planes:
+        if tuple(plane.value for plane in self.planes) != _sealed_plane_values:
             raise ValueError("system architecture plane order or set is non-canonical")
 
         if any(not _is_exact_type(boundary, TypedBoundary) for boundary in self.boundaries):
@@ -213,8 +214,8 @@ class SystemArchitectureManifest:
 
         observed_specs = {
             boundary.name: (
-                boundary.producer,
-                boundary.consumer,
+                boundary.producer.value,
+                boundary.consumer.value,
                 boundary.interface.name,
                 boundary.interface.schema_version,
             )
