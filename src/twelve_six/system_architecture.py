@@ -165,6 +165,8 @@ class SystemArchitectureManifest:
             raise ValueError(
                 "system architecture planes must be an immutable tuple of SystemPlane values"
             )
+        if not isinstance(self.boundaries, tuple):
+            raise ValueError("system architecture boundaries must be an immutable tuple")
 
         if len(self.planes) != len(_REQUIRED_PLANES):
             raise ValueError("system architecture must contain exactly seven required planes")
