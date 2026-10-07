@@ -357,9 +357,15 @@ class SILScenario:
             raise ValueError("unsupported SILScenario schema_version")
         if not _is_exact_type(self.scenario_id, str) or _ID_RE.fullmatch(self.scenario_id) is None:
             raise ValueError("scenario_id must be a canonical identifier")
-        if not _is_exact_type(self.journey_selector, str) or self.journey_selector != "ALL_AVAILABLE":
+        if (
+            not _is_exact_type(self.journey_selector, str)
+            or self.journey_selector != "ALL_AVAILABLE"
+        ):
             raise ValueError("journey_selector must be ALL_AVAILABLE")
-        if not _is_exact_type(self.fixture_policy, str) or self.fixture_policy != "DETERMINISTIC_SYNTHETIC":
+        if (
+            not _is_exact_type(self.fixture_policy, str)
+            or self.fixture_policy != "DETERMINISTIC_SYNTHETIC"
+        ):
             raise ValueError("fixture_policy must be DETERMINISTIC_SYNTHETIC")
         if not _is_exact_type(self.synthetic_data_utf8, str) or not self.synthetic_data_utf8:
             raise ValueError("synthetic_data_utf8 must be non-empty text")
@@ -582,7 +588,7 @@ class SILPlan:
 
 
 def parse_vector_command(command: str) -> tuple[str, ...]:
-    if not isinstance(command, str) or not command.strip():
+    if not _is_exact_type(command, str) or not command.strip():
         raise ValueError("integration vector command must be non-empty")
     try:
         tokens = shlex.split(command, posix=True)
@@ -617,7 +623,7 @@ def build_sil_plan(
         raise ValueError("unsupported journey selection")
 
     if (
-        not isinstance(_sealed_e2e_policy, tuple)
+        not _is_exact_type(_sealed_e2e_policy, tuple)
         or any(
             not _is_exact_type(item, tuple)
             or len(item) != 2
