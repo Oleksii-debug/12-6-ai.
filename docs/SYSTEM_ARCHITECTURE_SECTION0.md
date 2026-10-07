@@ -35,6 +35,10 @@ The canonical boundary policy is sealed after module initialization, and the man
 validator captures that sealed policy. Callers therefore cannot mutate or rebind the
 module-level policy and make a different producer/consumer/interface tuple become canonical.
 
+Closed architecture, shell, core-binding and replacement-evidence schemas also reject
+behavioral subclasses at canonical boundaries, preventing validation-facing state from
+diverging from overridable identity serialization.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`
