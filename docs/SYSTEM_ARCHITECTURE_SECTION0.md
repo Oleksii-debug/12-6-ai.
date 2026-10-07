@@ -31,6 +31,10 @@ The canonical manifest is machine-checkable. It rejects missing/duplicate planes
 missing/duplicate required boundary contracts, self-edges, invalid contract versions and
 boundaries whose endpoints are not part of the manifest.
 
+The canonical boundary policy is sealed after module initialization, and the manifest
+validator captures that sealed policy. Callers therefore cannot mutate or rebind the
+module-level policy and make a different producer/consumer/interface tuple become canonical.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`

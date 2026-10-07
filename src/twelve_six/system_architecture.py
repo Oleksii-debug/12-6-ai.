@@ -5,7 +5,8 @@ import json
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -50,7 +51,7 @@ class SystemPlane(str, Enum):
 
 
 _REQUIRED_PLANES = tuple(SystemPlane)
-_REQUIRED_BOUNDARY_SPECS = {
+_BOUNDARY_SPECS_SOURCE: dict[str, tuple[SystemPlane, SystemPlane, str, int]] = {
     "base_to_gateway": (
         SystemPlane.BASE_MODEL,
         SystemPlane.MODEL_GATEWAY,
@@ -94,6 +95,11 @@ _REQUIRED_BOUNDARY_SPECS = {
         1,
     ),
 }
+
+_REQUIRED_BOUNDARY_SPECS: Mapping[
+    str, tuple[SystemPlane, SystemPlane, str, int]
+] = MappingProxyType(dict(_BOUNDARY_SPECS_SOURCE))
+del _BOUNDARY_SPECS_SOURCE
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +160,13 @@ class SystemArchitectureManifest:
     planes: tuple[SystemPlane, ...]
     boundaries: tuple[TypedBoundary, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_planes: tuple[SystemPlane, ...] = _REQUIRED_PLANES,
+        _sealed_boundary_specs: Mapping[
+            str, tuple[SystemPlane, SystemPlane, str, int]
+        ] = _REQUIRED_BOUNDARY_SPECS,
+    ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported system architecture schema_version")
@@ -168,11 +180,11 @@ class SystemArchitectureManifest:
         if not isinstance(self.boundaries, tuple):
             raise ValueError("system architecture boundaries must be an immutable tuple")
 
-        if len(self.planes) != len(_REQUIRED_PLANES):
+        if len(self.planes) != len(_sealed_planes):
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):
             raise ValueError("system architecture planes must be unique")
-        if self.planes != _REQUIRED_PLANES:
+        if self.planes != _sealed_planes:
             raise ValueError("system architecture plane order or set is non-canonical")
 
         if any(not isinstance(boundary, TypedBoundary) for boundary in self.boundaries):
@@ -186,7 +198,7 @@ class SystemArchitectureManifest:
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 
-        if names != list(_REQUIRED_BOUNDARY_SPECS):
+        if names != list(_sealed_boundary_specs):
             raise ValueError("system architecture typed-boundary order or set is non-canonical")
 
         observed_specs = {
@@ -198,7 +210,7 @@ class SystemArchitectureManifest:
             )
             for boundary in self.boundaries
         }
-        if observed_specs != _REQUIRED_BOUNDARY_SPECS:
+        if observed_specs != _sealed_boundary_specs:
             raise ValueError("system architecture typed-boundary semantics are non-canonical")
 
     def to_dict(self) -> dict[str, Any]:
