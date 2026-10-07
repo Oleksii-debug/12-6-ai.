@@ -506,7 +506,10 @@ def load_verified_signed_packet(
         raise ValueError("ED25519 signature must contain exactly 64 bytes")
     packet = _packet_from_dict(payload["packet"])
     message = _canonical_json_bytes(packet.to_dict())
-    if not signature_verifier(key_id, message, signature_bytes):
+    signature_ok = signature_verifier(key_id, message, signature_bytes)
+    if type(signature_ok) is not bool:
+        raise ValueError("qualification packet signature verifier must return bool")
+    if not signature_ok:
         raise ValueError("qualification packet signature verification failed")
     now = int(time.time()) if now_epoch_seconds is None else now_epoch_seconds
     if type(now) is not int:
@@ -714,13 +717,20 @@ def _validate_external_resource_maps(
 ]:
     probes = {} if resource_probes is None else resource_probes
     verifiers = {} if resource_probe_verifiers is None else resource_probe_verifiers
-    if not isinstance(probes, dict) or not isinstance(verifiers, dict):
-        raise ValueError("external resource probe registries must be dictionaries")
+    if not _is_exact_type(probes, dict) or not _is_exact_type(verifiers, dict):
+        raise ValueError("external resource probe registries must be exact dictionaries")
     for registry_name, registry in (("probe", probes), ("verifier", verifiers)):
-        for resource in registry:
-            if not isinstance(resource, ResourceKind) or resource not in _EXTERNAL_RESOURCE_KINDS:
+        for resource, callback in registry.items():
+            if (
+                not _is_exact_type(resource, ResourceKind)
+                or resource not in _EXTERNAL_RESOURCE_KINDS
+            ):
                 raise ValueError(
                     f"external resource {registry_name} key must be NETWORK/MODEL/PROVIDER"
+                )
+            if not callable(callback):
+                raise ValueError(
+                    f"external resource {registry_name} callback must be callable"
                 )
     return probes, verifiers
 
@@ -752,8 +762,13 @@ def _collect_external_resource_evidence(
             raise ValueError("external resource probe must return exact ExternalResourceEvidence")
         if evidence.resource is not resource:
             raise ValueError("external resource probe returned evidence for the wrong resource")
-        if not verifier(evidence.adapter_id, evidence.evidence):
-            raise ValueError(f"external resource evidence verification failed: {resource.value}")
+        verification_ok = verifier(evidence.adapter_id, evidence.evidence)
+        if type(verification_ok) is not bool:
+            raise ValueError("external resource verifier must return bool")
+        if not verification_ok:
+            raise ValueError(
+                f"external resource evidence verification failed: {resource.value}"
+            )
         collected.append(evidence)
     return tuple(collected)
 
@@ -1305,11 +1320,14 @@ def verify_qualification_evidence(
         raise ValueError("physical evidence ED25519 signature must contain 64 bytes")
     if _sha256_bytes(evidence_signature) != attestation["signature_sha256"]:
         raise ValueError("physical evidence signature identity mismatch")
-    if not evidence_signature_verifier(
+    evidence_signature_ok = evidence_signature_verifier(
         evidence_key_id,
         evidence_message,
         evidence_signature,
-    ):
+    )
+    if type(evidence_signature_ok) is not bool:
+        raise ValueError("physical evidence signature verifier must return bool")
+    if not evidence_signature_ok:
         raise ValueError("physical evidence host attestation verification failed")
 
     packet = verified_packet.packet
@@ -1399,8 +1417,13 @@ def verify_qualification_evidence(
         verifier = external_verifiers.get(resource)
         if verifier is None:
             raise ValueError(f"external resource verifier is missing: {resource.value}")
-        if not verifier(adapter_id, raw):
-            raise ValueError(f"external resource evidence verification failed: {resource.value}")
+        verification_ok = verifier(adapter_id, raw)
+        if type(verification_ok) is not bool:
+            raise ValueError("external resource verifier must return bool")
+        if not verification_ok:
+            raise ValueError(
+                f"external resource evidence verification failed: {resource.value}"
+            )
         external_verified_items.append(resource)
     if mode is ExecutionMode.SIMULATION and external_verified_items:
         raise ValueError("simulation evidence cannot contain real external resource proof")
