@@ -1,0 +1,332 @@
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from twelve_six.capability_map import (
+    CapabilityRegistry,
+    CapabilityStatus,
+    TestLevel,
+    load_capability_registry,
+)
+from twelve_six.sil_qualification import (
+    CommandExecution,
+    GitState,
+    SILScenario,
+    build_sil_plan,
+    load_sil_scenario,
+    parse_vector_command,
+    qualify_sil,
+    verify_sil_evidence,
+)
+
+
+_ROOT = Path(__file__).parents[1]
+_REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
+_SCENARIO = _ROOT / "configs" / "control" / "sil_scenario_v1.json"
+_GIT_SHA = "a" * 40
+
+
+def _registry() -> CapabilityRegistry:
+    return load_capability_registry(_REGISTRY)
+
+
+def _scenario() -> SILScenario:
+    return load_sil_scenario(_SCENARIO)
+
+
+def _pass_runner(
+    argv: tuple[str, ...],
+    cwd: Path,
+    timeout_seconds: int,
+) -> CommandExecution:
+    assert cwd
+    assert timeout_seconds == 300
+    return CommandExecution(
+        return_code=0,
+        stdout="PASS " + " ".join(argv),
+        stderr="",
+        duration_ms=1,
+    )
+
+
+def _git_probe(_: str | Path) -> GitState:
+    return GitState(sha=_GIT_SHA, tracked_clean=True)
+
+
+def _write_evidence(path: Path, evidence: dict[str, object]) -> None:
+    path.write_text(
+        json.dumps(
+            evidence,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_sil_plan_executes_every_current_available_journey_with_integration_vectors() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+
+    expected_available = tuple(
+        journey.journey_id
+        for journey in registry.journeys
+        if registry.journey_available(journey.journey_id)
+    )
+    assert plan.available_journey_ids == expected_available
+    assert plan.available_journey_ids
+
+    planned_keys = {
+        (vector.journey_id, vector.capability_id, vector.vector_id)
+        for vector in plan.vectors
+    }
+    for journey in registry.journeys:
+        if not registry.journey_available(journey.journey_id):
+            continue
+        for capability_id in journey.capability_ids:
+            capability = registry.capability(capability_id)
+            integration_ids = {
+                vector.vector_id
+                for vector in capability.test_vectors
+                if vector.level is TestLevel.INTEGRATION
+            }
+            assert integration_ids
+            assert integration_ids <= {
+                vector_id
+                for journey_id, planned_capability_id, vector_id in planned_keys
+                if journey_id == journey.journey_id
+                and planned_capability_id == capability_id
+            }
+
+
+def test_component_only_green_cannot_satisfy_available_capability_contract() -> None:
+    registry = _registry()
+    capabilities = list(registry.capabilities)
+    index = next(
+        index
+        for index, capability in enumerate(capabilities)
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    capability = capabilities[index]
+    component_only = tuple(
+        vector
+        for vector in capability.test_vectors
+        if vector.level is TestLevel.COMPONENT
+    )
+    assert component_only
+
+    with pytest.raises(ValueError, match="component and integration"):
+        replace(capability, test_vectors=component_only)
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "python -m pytest -q tests/test_model.py",
+        "pytest tests/test_model.py",
+        "pytest -q ../tests/test_model.py",
+        "pytest -q /tmp/test_model.py",
+        "pytest -q tests/test_model.py::test_one",
+        "pytest -q tests/test_model.py; echo forged",
+        "pytest -q -k forged tests/test_model.py",
+    ),
+)
+def test_sil_vector_parser_rejects_noncanonical_or_shell_like_commands(command: str) -> None:
+    with pytest.raises(ValueError):
+        parse_vector_command(command)
+
+
+def test_sil_vector_parser_translates_checked_in_pytest_vector_without_shell() -> None:
+    argv = parse_vector_command(
+        "pytest -q tests/test_checkpointing.py tests/test_checkpoint_corruption_fail_closed.py"
+    )
+
+    assert argv[1:4] == ("-m", "pytest", "-q")
+    assert argv[-2:] == (
+        "tests/test_checkpointing.py",
+        "tests/test_checkpoint_corruption_fail_closed.py",
+    )
+
+
+def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdict() -> None:
+    registry = _registry()
+    scenario = _scenario()
+
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=b"[project]\nname='twelve-six-ai'\n",
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+
+    assert evidence["git_sha"] == _GIT_SHA
+    assert evidence["verdict"] == "PASS"
+    assert evidence["available_journey_ids"]
+    assert evidence["executions"]
+    assert all(item["return_code"] == 0 for item in evidence["executions"])
+    assert "journey=" in log_text
+    for field in (
+        "package_identity_sha256",
+        "capability_registry_identity_sha256",
+        "model_spec_identity_sha256",
+        "init_spec_identity_sha256",
+        "data_identity_sha256",
+        "scenario_identity_sha256",
+        "input_identity_sha256",
+        "output_identity_sha256",
+        "log_sha256",
+        "evidence_identity_sha256",
+    ):
+        value = evidence[field]
+        assert isinstance(value, str)
+        assert len(value) == 64
+    assert evidence["scientific_boundary"] == {
+        "corpus_admission_authorized": False,
+        "tokenizer_fit_authorized": False,
+        "optimizer_updates_executed": 0,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "foreign_pretrained_weights_used": False,
+    }
+
+
+def test_sil_fail_execution_cannot_become_pass() -> None:
+    calls = 0
+
+    def fail_once(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+    ) -> CommandExecution:
+        nonlocal calls
+        calls += 1
+        result = _pass_runner(argv, cwd, timeout_seconds)
+        if calls == 1:
+            return replace(result, return_code=7, stderr="integration failure")
+        return result
+
+    evidence, _ = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=b"package",
+        command_runner=fail_once,
+        git_probe=_git_probe,
+    )
+
+    assert evidence["verdict"] == "FAIL"
+    assert any(item["return_code"] != 0 for item in evidence["executions"])
+
+
+def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
+    registry = _registry()
+    scenario = _scenario()
+
+    with pytest.raises(ValueError, match="exact-head mismatch"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=b"package",
+            command_runner=_pass_runner,
+            git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
+        )
+
+    with pytest.raises(ValueError, match="dirty"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=registry,
+            scenario=scenario,
+            package_bytes=b"package",
+            command_runner=_pass_runner,
+            git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
+        )
+
+
+def test_unavailable_journeys_are_evidenced_as_blocked_not_simulated() -> None:
+    registry = _registry()
+    plan = build_sil_plan(registry, _scenario())
+
+    expected_unavailable = {
+        journey.journey_id
+        for journey in registry.journeys
+        if not registry.journey_available(journey.journey_id)
+    }
+    observed = {item.journey_id for item in plan.unavailable_journeys}
+    assert observed == expected_unavailable
+    for item in plan.unavailable_journeys:
+        assert item.blocking_capability_ids
+        assert all(item.reasons)
+
+
+def test_strict_sil_scenario_rejects_duplicate_unknown_and_bool_timeout(tmp_path: Path) -> None:
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_bytes(
+        b'{"schema_version":1,"schema_version":1,"scenario_id":"x",'
+        b'"journey_selector":"ALL_AVAILABLE","fixture_policy":"DETERMINISTIC_SYNTHETIC",'
+        b'"synthetic_data_utf8":"x","timeout_seconds_per_vector":1}'
+    )
+    with pytest.raises(ValueError, match="strict unambiguous"):
+        load_sil_scenario(duplicate)
+
+    payload = json.loads(_SCENARIO.read_text(encoding="utf-8"))
+    payload["forged"] = True
+    unknown = tmp_path / "unknown.json"
+    unknown.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="fields"):
+        load_sil_scenario(unknown)
+
+    del payload["forged"]
+    payload["timeout_seconds_per_vector"] = True
+    bool_timeout = tmp_path / "bool-timeout.json"
+    bool_timeout.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="timeout_seconds_per_vector"):
+        load_sil_scenario(bool_timeout)
+
+
+def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) -> None:
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=b"package",
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    evidence_path = tmp_path / "evidence.json"
+    log_path = tmp_path / "sil.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    verified = verify_sil_evidence(
+        evidence_path,
+        log_path,
+        expected_git_sha=_GIT_SHA,
+    )
+    assert verified["verdict"] == "PASS"
+
+    log_path.write_text(log_text + "forged", encoding="utf-8")
+    with pytest.raises(ValueError, match="log identity"):
+        verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
+
+    log_path.write_text(log_text, encoding="utf-8")
+    resealed = dict(evidence)
+    resealed["scenario_id"] = "forged-scenario"
+    _write_evidence(evidence_path, resealed)
+    with pytest.raises(ValueError, match="evidence identity"):
+        verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
