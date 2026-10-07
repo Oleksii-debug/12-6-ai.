@@ -548,3 +548,115 @@ def test_replacement_receipt_cross_binds_core_snapshots() -> None:
         CoreReplacementReceipt(
             **{**common, "candidate_core_identity_sha256": _sha("forged-candidate")}
         )
+
+def test_closed_architecture_schemas_reject_behavioral_subclasses() -> None:
+    architecture = canonical_system_architecture_v1()
+    shell = canonical_runtime_shell_v1()
+
+    class ForgedInterfaceContract(InterfaceContract):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["name"] = "twelve_six.forged"
+            return payload
+
+    forged_interface = ForgedInterfaceContract("twelve_six.model_gateway", 1)
+    with pytest.raises(ValueError, match="interface must be an InterfaceContract"):
+        TypedBoundary(
+            "base_to_gateway",
+            SystemPlane.BASE_MODEL,
+            SystemPlane.MODEL_GATEWAY,
+            forged_interface,
+        )
+
+    class ForgedTypedBoundary(TypedBoundary):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["name"] = "forged_boundary"
+            return payload
+
+    first = architecture.boundaries[0]
+    forged_boundary = ForgedTypedBoundary(
+        first.name,
+        first.producer,
+        first.consumer,
+        first.interface,
+    )
+    with pytest.raises(ValueError, match="only TypedBoundary"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=architecture.planes,
+            boundaries=(forged_boundary, *architecture.boundaries[1:]),
+        )
+
+    class ForgedCore(CognitiveCoreIdentity):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["checkpoint_sha256"] = _sha("forged-checkpoint")
+            return payload
+
+    canonical_core = _core("closed-core", 20_613_440)
+    forged_core = ForgedCore(
+        model_spec_sha256=canonical_core.model_spec_sha256,
+        init_spec_sha256=canonical_core.init_spec_sha256,
+        checkpoint_sha256=canonical_core.checkpoint_sha256,
+        tokenizer_sha256=canonical_core.tokenizer_sha256,
+        parameter_count=canonical_core.parameter_count,
+    )
+    with pytest.raises(ValueError, match="core must be a CognitiveCoreIdentity"):
+        CognitiveCoreBinding(core=forged_core, gateway_api=shell.gateway_api)
+
+
+def test_closed_architecture_roots_reject_container_and_product_subclasses() -> None:
+    architecture = canonical_system_architecture_v1()
+    shell = canonical_runtime_shell_v1()
+    assembly = _assembly("closed-root", 20_613_440)
+
+    class ForgedTuple(tuple):
+        pass
+
+    with pytest.raises(ValueError, match="immutable tuple of SystemPlane"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=ForgedTuple(architecture.planes),
+            boundaries=architecture.boundaries,
+        )
+
+    class ForgedShell(RuntimeShellContract):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["memory_api"] = InterfaceContract("twelve_six.memory", 99).to_dict()
+            return payload
+
+    forged_shell = ForgedShell(
+        gateway_api=shell.gateway_api,
+        memory_api=shell.memory_api,
+        tools_api=shell.tools_api,
+        voice_api=shell.voice_api,
+        ui_api=shell.ui_api,
+        orchestration_api=shell.orchestration_api,
+    )
+    with pytest.raises(ValueError, match="shell must be a RuntimeShellContract"):
+        ProductAssembly(
+            architecture=architecture,
+            shell=forged_shell,
+            core_binding=assembly.core_binding,
+        )
+
+    class ForgedAssembly(ProductAssembly):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["shell_identity_sha256"] = _sha("forged-shell")
+            return payload
+
+    forged_assembly = ForgedAssembly(
+        architecture=assembly.architecture,
+        shell=assembly.shell,
+        core_binding=assembly.core_binding,
+    )
+    candidate = CognitiveCoreBinding(
+        core=_core("closed-candidate", 200_000_000),
+        gateway_api=assembly.shell.gateway_api,
+    )
+    with pytest.raises(ValueError, match="assembly must be a ProductAssembly"):
+        replace_cognitive_core(forged_assembly, candidate)
+
