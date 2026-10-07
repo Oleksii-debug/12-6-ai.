@@ -34,6 +34,7 @@ from twelve_six.capability_map import load_capability_registry
 from twelve_six.sil_qualification import (
     CommandExecution,
     GitState,
+    build_package_manifest_bytes,
     load_sil_scenario,
     qualify_sil,
 )
@@ -49,6 +50,10 @@ _CANDIDATE_SHA = "b" * 40
 
 def _policy():
     return load_ai_qa_policy(_POLICY)
+
+
+def _package_bytes() -> bytes:
+    return build_package_manifest_bytes(_ROOT)
 
 
 def _ci_observation(*, physical: bool = False) -> ExternalObservation:
@@ -219,7 +224,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         expected_git_sha=_FAIL_SHA,
         registry=load_capability_registry(_CAPABILITIES),
         scenario=load_sil_scenario(_SCENARIO),
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=fail_first,
         git_probe=lambda _: GitState(sha=_FAIL_SHA, tracked_clean=True),
     )
@@ -244,7 +249,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         log_path,
         defect_id="sil-integration-defect",
         policy=_policy(),
-        expected_package_bytes=b"package",
+        expected_package_bytes=_package_bytes(),
         expected_registry=load_capability_registry(_CAPABILITIES),
         expected_scenario=load_sil_scenario(_SCENARIO),
     )
