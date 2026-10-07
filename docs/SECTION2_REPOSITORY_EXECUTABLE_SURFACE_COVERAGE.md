@@ -29,8 +29,8 @@ The rule authority preserves the terminally qualified product baseline:
 
 It also pins the repository main observed for this candidate:
 
-- current `main@330fb46aa3199e26d8b7e49968ee93fb12447560`;
-- exact current tree `20559f951b6e2c744832ce0cd1cb324e2e1c2eea`;
+- current `main@e5dbb7107d5b54f09a26d07d59f093ac05ede9c7`;
+- exact current tree `429a9933512f3d0c17f42d80193365e5df3f195a`;
 - the validator requires that SHA to equal the live `origin/main`/local `main` ref;
 - all **233 capability-bearing blobs** across `src/twelve_six/**/*.py`, `tools/`,
   workflows and `pyproject.toml` must have an identical path→blob-SHA map between the
@@ -39,7 +39,7 @@ It also pins the repository main observed for this candidate:
 The only baseline→current-main changes are coordination-only `AGENTS.md` and
 `SEQUENTIAL_CLOSURE_STATE.md`; neither is a capability-bearing product/executable surface.
 Therefore the older terminal CI remains evidence for the unchanged product baseline without
-falsely claiming that CI ran on `330fb46aa3199e26d8b7e49968ee93fb12447560`.
+falsely claiming that CI ran on `e5dbb7107d5b54f09a26d07d59f093ac05ede9c7`.
 
 The external executable/control classification covers:
 
