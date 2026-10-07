@@ -455,15 +455,15 @@ class TestVector:
         ):
             raise ValueError("test vector command must be canonical pytest -q test paths")
         for token in tokens[2:]:
-            path = PurePosixPath(token)
+            parts = token.split("/")
             if (
                 "\\" in token
-                or path.is_absolute()
-                or len(path.parts) < 2
-                or path.parts[0] != "tests"
-                or ".." in path.parts
-                or path.as_posix() != token
-                or path.suffix != ".py"
+                or token.startswith("/")
+                or len(parts) < 2
+                or parts[0] != "tests"
+                or any(part in {"", ".", ".."} for part in parts)
+                or not parts[-1].endswith(".py")
+                or parts[-1] == ".py"
             ):
                 raise ValueError(
                     "test vector command may reference only canonical tests/*.py paths"
@@ -682,15 +682,15 @@ class SourceSurface:
             "modified_candidate",
         }:
             raise ValueError("source surface origin is unsupported")
-        path = PurePosixPath(self.path)
+        parts = self.path.split("/")
         if (
             "\\" in self.path
-            or path.is_absolute()
-            or len(path.parts) < 3
-            or path.parts[:2] != ("src", "twelve_six")
-            or ".." in path.parts
-            or path.as_posix() != self.path
-            or path.suffix != ".py"
+            or self.path.startswith("/")
+            or len(parts) < 3
+            or parts[:2] != ["src", "twelve_six"]
+            or any(part in {"", ".", ".."} for part in parts)
+            or not parts[-1].endswith(".py")
+            or parts[-1] == ".py"
         ):
             raise ValueError(
                 "source surface path must be a canonical Python path under src/twelve_six"
