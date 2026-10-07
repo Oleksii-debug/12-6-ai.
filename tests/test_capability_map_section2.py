@@ -1276,6 +1276,40 @@ def test_capability_terminal_text_truth_ignores_require_text_rebinding(
     with pytest.raises(ValueError, match="unavailable_reason must be non-empty text"):
         registry.identity_sha256()
 
+    registry = _load()
+    unavailable = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+    )
+    object.__setattr__(unavailable, "component_contract", "")
+
+    with pytest.raises(ValueError, match="component_contract must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "title", "")
+
+    with pytest.raises(ValueError, match="title must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if any(target.evidence_id != "main-ci" for target in item.evidence_targets)
+    )
+    evidence = next(
+        target
+        for target in capability.evidence_targets
+        if target.evidence_id != "main-ci"
+    )
+    object.__setattr__(evidence, "target", "")
+
+    with pytest.raises(ValueError, match="target must be non-empty text"):
+        registry.identity_sha256()
+
 
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
