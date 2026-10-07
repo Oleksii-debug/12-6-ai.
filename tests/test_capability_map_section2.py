@@ -201,6 +201,12 @@ def test_registry_rejects_available_capability_with_unavailable_dependency() -> 
         if capability.capability_id == "unified-generation-identity"
     )
     target = capabilities[target_index]
+    main_ci_target = next(
+        evidence
+        for capability in registry.capabilities
+        for evidence in capability.evidence_targets
+        if evidence.evidence_id == "main-ci"
+    )
     capabilities[target_index] = replace(
         target,
         status=CapabilityStatus.AVAILABLE,
@@ -210,6 +216,7 @@ def test_registry_rejects_available_capability_with_unavailable_dependency() -> 
             replace(environment, supported=True)
             for environment in target.environments
         ),
+        evidence_targets=(main_ci_target,),
     )
 
     with pytest.raises(ValueError, match="depends on UNAVAILABLE"):
@@ -1073,10 +1080,10 @@ def test_registry_accessors_revalidate_mutated_journey_state() -> None:
     journey = registry.journeys[0]
     object.__setattr__(journey, "title", "")
 
-    with pytest.raises(ValueError, match="title must be a non-empty string"):
+    with pytest.raises(ValueError, match="title must be non-empty text"):
         registry.journey_available(journey.journey_id)
 
-    with pytest.raises(ValueError, match="title must be a non-empty string"):
+    with pytest.raises(ValueError, match="title must be non-empty text"):
         registry.acceptance_path(registry.capabilities[0].capability_id)
 
 

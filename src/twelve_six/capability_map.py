@@ -761,7 +761,14 @@ def resolve_component_contract(component_contract: str) -> object:
         try:
             imported_module = importlib.import_module(module_name)
         except ModuleNotFoundError as exc:
-            if exc.name != module_name:
+            missing_name = exc.name
+            if (
+                not isinstance(missing_name, str)
+                or not (
+                    module_name == missing_name
+                    or module_name.startswith(f"{missing_name}.")
+                )
+            ):
                 raise ValueError(
                     f"component contract import failed inside module: {module_name}"
                 ) from exc
