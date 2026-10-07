@@ -667,7 +667,7 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
         ParentBinding(
             role=ForgedStr("corpus"),
             artifact=parent.artifact,
-            parent_manifest_identity_sha256=parent.identity_sha256(),
+            parent_manifest_identity_sha256=parent.manifest_identity_sha256(),
         )
 
     with pytest.raises(ValueError, match="manifest input must be bytes"):
@@ -726,4 +726,17 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             manifest,
             expected_parents=ForgedDict(parents),
         )
+
+def test_artifact_kind_enum_singleton_value_mutation_fails_closed() -> None:
+    generation = _generation("enum-sealed")
+    refs = _refs("enum-sealed-new")
+    original_value = ArtifactKind.MODEL_SPEC.value
+    object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", "forged_model_spec")
+    try:
+        with pytest.raises(ValueError, match="kind order or set is non-canonical"):
+            generation.identity_sha256()
+        with pytest.raises(ValueError, match="kind order or set is non-canonical"):
+            build_generation_identity_manifest(refs)
+    finally:
+        object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", original_value)
 
