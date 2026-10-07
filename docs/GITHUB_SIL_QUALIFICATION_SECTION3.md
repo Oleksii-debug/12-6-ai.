@@ -17,16 +17,16 @@ The SIL job:
 1. checks out the exact pull-request head SHA or exact push SHA with credentials disabled;
 2. proves `git rev-parse HEAD` equals that expected SHA and that tracked, index, and
    non-ignored untracked state is clean;
-3. fetches immutable historical environment authority
+3. fetches an immutable historical lock-source candidate
    `029514654829cebc149cff6fc1fea2a8ba4fa566` from `refs/pull/402/head`, requires
-   `FETCH_HEAD` to equal that exact commit, extracts the accepted toolchain/CPU-runtime/dev
+   `FETCH_HEAD` to equal that exact commit, extracts the pinned toolchain/CPU-runtime/dev
    lock bytes, and verifies their pinned SHA-256 identities;
 4. creates a fresh CPython 3.11.16 virtual environment, installs only those exact
    `--require-hashes --no-deps` locks, then installs the exact candidate editable package
    with `--no-deps --no-build-isolation` so no dependency resolver can silently select newer
    package bytes;
 5. validates the exact final distribution/version set and emits a canonical environment receipt
-   binding Python version, authority commit, lock identities, installed versions, and receipt
+   binding Python version, lock-source commit, lock identities, installed versions, and receipt
    identity;
 6. loads the current Section-2 capability registry and derives **all journeys whose
    capabilities are currently AVAILABLE**;
@@ -59,7 +59,7 @@ access, or a substitute for later physical/device qualification.
 - tracked package-source manifest identity over `pyproject.toml`, `src/twelve_six`, and
   packaged `configs/research` files;
 - deterministic environment-receipt identity over CPython 3.11.16, immutable historical
-  authority commit, exact accepted lock SHA-256 values, and exact installed distribution
+  lock-source commit, exact pinned lock SHA-256 values, and exact installed distribution
   versions;
 - canonical capability-registry identity;
 - deterministic synthetic ModelSpec and InitSpec identities;
@@ -86,7 +86,7 @@ or advances HEAD invalidates the run immediately, so later vectors cannot silent
 different tree under the original SHA receipt.
 
 The verifier rebuilds the exact tracked package-source manifest, loads and validates the
-canonical environment receipt against the accepted historical lock authority and current
+canonical environment receipt against the pinned historical lock-source contract and current
 interpreter/distribution set, reloads the capability registry and SIL scenario, recomputes
 package/environment/registry/model/init/data/scenario identities, reconstructs the complete SIL
 plan (including all end-to-end contracts) and input identity, requires every execution record
@@ -94,7 +94,7 @@ to match that plan exactly, parses
 the strict JSONL log and cross-checks its return code/input binding/stdout/stderr/duration
 against each evidence execution, then recomputes the evidence identity, output identity and
 log hash. It rejects exact-SHA mismatch,
-authority resealing, a widened scientific boundary and FAIL evidence when PASS is required.
+lock-source resealing, a widened scientific boundary and FAIL evidence when PASS is required.
 
 ## Durable surfaces
 
@@ -102,7 +102,7 @@ authority resealing, a widened scientific boundary and FAIL evidence when PASS i
 - `src/twelve_six/sil_qualification.py`
 - `tests/test_sil_qualification_section3.py`
 - shared `.github/workflows/ci.yml`
-- immutable environment authority commit `029514654829cebc149cff6fc1fea2a8ba4fa566`
+- immutable historical lock-source commit `029514654829cebc149cff6fc1fea2a8ba4fa566`
   (toolchain, CPU-runtime, and dev hash locks are reconstructed from that Git object at run time)
 - `SEQUENTIAL_CLOSURE_STATE.md`
 
