@@ -375,7 +375,12 @@ class GenerationIdentityManifest:
     schema_version: int
     artifacts: tuple[ArtifactManifest, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_parent_policy: Mapping[ArtifactKind, Mapping[str, ArtifactKind]] = (
+            _GENERATION_PARENT_POLICY
+        ),
+    ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
@@ -396,7 +401,7 @@ class GenerationIdentityManifest:
 
         for kind in CANONICAL_ARTIFACT_KINDS:
             manifest = by_kind[kind]
-            expected_policy = _GENERATION_PARENT_POLICY[kind]
+            expected_policy = _sealed_parent_policy[kind]
             observed = manifest.parent_bindings_by_role()
             if tuple(observed) != tuple(sorted(expected_policy)):
                 raise ValueError(f"{kind.value} parent role set is non-canonical")

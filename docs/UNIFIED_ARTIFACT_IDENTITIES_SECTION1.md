@@ -63,8 +63,9 @@ artifact to point to the exact selected parent artifact and transitive parent-ma
 identity for that generation.
 
 The canonical parent policy is runtime-immutable: both the outer kind map and every nested
-role map are sealed after module initialization, so validation/build semantics cannot be
-silently rewritten in-process before an identity is built or checked.
+role map are sealed after module initialization. The validator also captures that sealed
+mapping at class definition, so later rebinding of the module-global policy cannot silently
+change acceptance semantics; a builder influenced by such a rebind fails closed at validation.
 
 The canonical graph is:
 
