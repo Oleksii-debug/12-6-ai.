@@ -1232,6 +1232,7 @@ def test_closed_ai_qa_schema_rejects_behavioral_subclasses() -> None:
             policy=policy,
         )
 
+
 def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) -> None:
     class ForgedStr(str):
         pass
@@ -1315,6 +1316,33 @@ def test_closed_ai_qa_entry_points_reject_behavioral_containers(tmp_path: Path) 
             expected_candidate_identity_sha256=candidate_identity,
             trusted_receipts=ForgedTuple((receipt,)),
         )
+
+
+def test_aiqa_enum_wire_value_mutation_fails_closed() -> None:
+    failure = _failure()
+    original_source_value = FailureSource.CI.value
+    object.__setattr__(FailureSource.CI, "_value_", "FORGED_CI")
+    try:
+        with pytest.raises(ValueError, match="failure source wire value is non-canonical"):
+            failure.identity_sha256()
+    finally:
+        object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+
+    receipt = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "d" * 64,
+        "component-certifier",
+    )
+    original_verdict_value = GateVerdict.PASS.value
+    object.__setattr__(GateVerdict.PASS, "_value_", "FORGED_PASS")
+    try:
+        with pytest.raises(ValueError, match="gate verdict wire value is non-canonical"):
+            receipt.to_dict()
+    finally:
+        object.__setattr__(GateVerdict.PASS, "_value_", original_verdict_value)
+
 
 def test_aiqa_identity_objects_revalidate_after_post_construction_mutation() -> None:
     failure = _failure()
