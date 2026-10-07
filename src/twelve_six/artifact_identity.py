@@ -132,6 +132,21 @@ def _require_canonical_artifact_kind(
     raise ValueError("kind must be a canonical ArtifactKind")
 
 
+def _artifact_kind_from_wire_value(
+    value: object,
+    _sealed_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_ARTIFACT_KIND_VALUES,
+) -> ArtifactKind:
+    if not _is_exact_type(value, str):
+        raise ValueError("ArtifactRef kind must be an exact string")
+    try:
+        index = _sealed_values.index(value)
+    except ValueError as exc:
+        raise ValueError("ArtifactRef kind is unsupported") from exc
+    kind = _sealed_kinds[index]
+    return _require_canonical_artifact_kind(kind)
+
+
 _GENERATION_PARENT_POLICY_SOURCE: dict[ArtifactKind, dict[str, ArtifactKind]] = {
     ArtifactKind.MODEL_SPEC: {},
     ArtifactKind.INIT_SPEC: {},
@@ -220,13 +235,7 @@ class ArtifactRef:
             value,
             {"kind", "schema_version", "identity_sha256"},
         )
-        kind_value = value["kind"]
-        if not _is_exact_type(kind_value, str):
-            raise ValueError("ArtifactRef kind must be an exact string")
-        try:
-            kind = ArtifactKind(kind_value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("ArtifactRef kind is unsupported") from exc
+        kind = _artifact_kind_from_wire_value(value["kind"])
         return cls(
             kind=kind,
             schema_version=value["schema_version"],

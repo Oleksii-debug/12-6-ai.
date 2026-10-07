@@ -764,6 +764,24 @@ def test_closed_schema_from_dict_rejects_behavioral_field_keys_before_set_lookup
         ForgedKey.armed = False
 
 
+
+def test_artifact_ref_from_dict_ignores_poisoned_enum_value_lookup_table() -> None:
+    value_map = ArtifactKind._value2member_map_
+    original = value_map["model_spec"]
+    value_map["model_spec"] = ArtifactKind.CORPUS
+    try:
+        decoded = ArtifactRef.from_dict(
+            {
+                "kind": "model_spec",
+                "schema_version": 1,
+                "identity_sha256": _sha("poisoned-enum-map"),
+            }
+        )
+        assert decoded.kind is ArtifactKind.MODEL_SPEC
+    finally:
+        value_map["model_spec"] = original
+
+
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
     object.__setattr__(ref, "schema_version", 0)
