@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
@@ -32,6 +32,7 @@ _MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 _MAX_PACKET_LIFETIME_SECONDS = 24 * 60 * 60
 _MAX_RESOURCE_PROBE_BYTES = 64 * 1024
 _READ_CHUNK_BYTES = 64 * 1024
+_VERIFIED_PACKET_TOKEN = object()
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -353,8 +354,15 @@ class VerifiedSignedPacket:
     signing_key_id: str
     signature_sha256: str
     signed_bundle_identity_sha256: str
+    _verification_token: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
+        if self._verification_token is not _VERIFIED_PACKET_TOKEN:
+            raise ValueError("verified packet must be created by signature verification")
         if not _is_exact_type(self.packet, QualificationPacket):
             raise ValueError("verified packet must contain an exact QualificationPacket")
         _require_id("signing_key_id", self.signing_key_id)
@@ -510,6 +518,7 @@ def load_verified_signed_packet(
         signing_key_id=key_id,
         signature_sha256=_sha256_bytes(signature_bytes),
         signed_bundle_identity_sha256=_sha256_bytes(_canonical_json_bytes(payload)),
+        _verification_token=_VERIFIED_PACKET_TOKEN,
     )
 
 
