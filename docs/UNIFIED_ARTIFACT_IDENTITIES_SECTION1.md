@@ -114,6 +114,10 @@ but differently ordered/whitespace-encoded JSON. The parsed object must re-satis
 complete generation graph before it is accepted. The generation identity is the SHA-256 of
 those exact canonical bytes.
 
+Direct `from_dict()` schema entry points also require exact built-in `dict`/`list`
+containers. Behavioral container subclasses are rejected before lookup or iteration, so a
+validation-facing shape cannot later expose different deserialization content.
+
 ## Truth boundary
 
 This Section grants no corpus admission, tokenizer fitting, training, optimizer execution,
