@@ -583,7 +583,7 @@ class CapabilityRegistry:
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
             if capability.status is CapabilityStatus.AVAILABLE:
-                resolve_component_contract(capability.component_contract)
+                _SEALED_RESOLVE_COMPONENT_CONTRACT(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
@@ -926,6 +926,12 @@ def resolve_component_contract(component_contract: str) -> object:
     raise ValueError(f"component contract module does not exist: {contract}")
 
 
+# Seal the repository-owned contract resolver against rebinding of the public helper.
+# Stored registry authority must not depend on a later replacement of
+# `resolve_component_contract`.
+_SEALED_RESOLVE_COMPONENT_CONTRACT = resolve_component_contract
+
+
 def validate_available_component_contracts(registry: CapabilityRegistry) -> None:
     """Prove every AVAILABLE capability begins at a live repository contract."""
 
@@ -934,7 +940,7 @@ def validate_available_component_contracts(registry: CapabilityRegistry) -> None
     _validate_capability_registry_stored(registry)
     for capability in registry.capabilities:
         if capability.status is CapabilityStatus.AVAILABLE:
-            resolve_component_contract(capability.component_contract)
+            _SEALED_RESOLVE_COMPONENT_CONTRACT(capability.component_contract)
 
 
 def load_capability_registry(path: str | Path) -> CapabilityRegistry:
