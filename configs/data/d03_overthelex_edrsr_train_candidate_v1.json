@@ -1,0 +1,93 @@
+{
+  "schema_version": "12-6.d03-overthelex-edrsr-train-candidate.v1",
+  "execution_profile": "LOCAL_FREE",
+  "source": {
+    "dataset": "overthelex/ua-case-outcome",
+    "revision": "a175ffa122b1f5b04d25ed415a30a925d692b5a9",
+    "file": "train.parquet",
+    "split": "train",
+    "url": "https://huggingface.co/datasets/overthelex/ua-case-outcome/resolve/a175ffa122b1f5b04d25ed415a30a925d692b5a9/train.parquet",
+    "sha256": "e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793",
+    "bytes": 49826322,
+    "rows": 11561,
+    "license": "CC-BY-4.0",
+    "attribution": "Volodymyr Ovcharov / overthelex; source: Unified State Register of Court Decisions of Ukraine (EDRSR)",
+    "family": "ua.edrsr.case-outcome.train"
+  },
+  "excluded_evaluation_surfaces": [
+    {
+      "file": "validation.parquet",
+      "split": "validation",
+      "sha256": "45559c8e6465f6ef7909674ca94edf2a3a917c60c864d7afde11256fa1cd7d27",
+      "bytes": 6412051
+    },
+    {
+      "file": "test.parquet",
+      "split": "test",
+      "sha256": "c569b8c6c6a386e75951c5bfc66b436e7e0606a3b55ad642e988d22b9c65654f",
+      "bytes": 6283692
+    }
+  ],
+  "selection": {
+    "text_column": "facts",
+    "id_column": "doc_id",
+    "order": "numeric_doc_id_ascending_after_privacy_quality_pass",
+    "max_candidate_normalized_bytes": 6000000
+  },
+  "parquet_schema": {
+    "required_fields": [
+      "doc_id",
+      "justice_kind",
+      "justice_kind_name",
+      "judgment_code",
+      "category_code",
+      "court_code",
+      "judge",
+      "adjudication_date",
+      "facts",
+      "dispositive",
+      "outcome",
+      "epoch",
+      "year",
+      "full_text_length"
+    ],
+    "reject_extra_fields": true
+  },
+  "privacy": {
+    "source_claims_personal_data_anonymized": true,
+    "normalized_placeholder_tokens": ["[PERSON]", "[ADDRESS]", "[NUMBER]", "[INFO]"],
+    "reject_legacy_anonymization_markers": true,
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_control_characters": true,
+    "universal_pii_absence_claimed": false,
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false
+  },
+  "quality": {
+    "min_chars": 200,
+    "min_cyrillic_alpha_ratio": 0.70,
+    "require_ukrainian_specific_letter": true
+  },
+  "evaluation_boundary": {
+    "source_has_benchmark_intended_use": true,
+    "training_split_only": true,
+    "excluded_splits": ["validation", "test"],
+    "reserved_evaluation_decontamination_required": true,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false
+  },
+  "runtime": {
+    "pyarrow": "17.0.0"
+  },
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "research_corpus_v1_released": false,
+    "paid_compute_used": false
+  }
+}

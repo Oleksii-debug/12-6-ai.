@@ -1,0 +1,634 @@
+"""Fail-closed authority facade for expanded D03 global dedup V9.
+
+The original V9 implementation is retained verbatim in the private implementation
+module so this repair does not fork matcher semantics.  This facade closes the
+independent-audit trust-boundary findings before delegating to that implementation:
+
+* Rada matcher rows must be the exact semantic parse of the authenticated JSONL;
+* the injected matcher must be the exact terminal #824/V3 semantic closure;
+* the reconstructed full V8 graph must reproduce the sealed nested V3 report before
+  any expanded matching; and
+* every selected V8 survivor is cross-bound to the sealed stable-origin/object,
+  normalized-payload and comparison/provenance projection before use.
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import importlib.util
+import json
+import marshal
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from types import FunctionType, ModuleType
+from typing import Any
+
+from twelve_six.data import _expanded_global_dedup_v9_impl as _impl
+
+# Preserve the incumbent implementation/API surface.  Hardened definitions below
+# intentionally override only the trust-boundary entry points.
+for _name in dir(_impl):
+    if not _name.startswith("__") and _name not in {"validate_rada_rows", "run_expanded_dedup"}:
+        globals()[_name] = getattr(_impl, _name)
+
+# Static aliases for the authority primitives used by this facade.  The loop above
+# keeps the incumbent import surface intact; these aliases keep Ruff/F821 honest.
+ExpandedDedupError = _impl.ExpandedDedupError
+V8_NESTED_V3_SHA256 = _impl.V8_NESTED_V3_SHA256
+_canonical = _impl._canonical
+_require = _impl._require
+_sha256 = _impl._sha256
+
+_LEGACY_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
+_LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+
+# Exact Git blob identities from terminal V7 head
+# d3333ec1b4a508df232a5aefccd6686adda745fb.  Together these files are the
+# complete non-stdlib semantic closure used by cross_source_capacity_audit_v3.
+_EXPECTED_MATCHER_BLOBS = {
+    "twelve_six.data.cross_source_capacity_audit_v3": "11490b1803e0aa2266d8ac0053676efcfb0f91ba",
+    "twelve_six.data.cross_source_capacity_audit": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
+    "twelve_six.data._data232_decontamination_matching": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
+}
+_V3_RUNTIME_FUNCTIONS = (
+    "_validate_inventory",
+    "_as_v1_inventory",
+    "_strip_fenced_code",
+    "_rust_book_prose_payload",
+    "_comparison_payload",
+    "_fingerprint",
+    "_lineage_matches",
+    "_summary_for_ids",
+    "audit_payloads",
+    "verify_report",
+)
+_V1_RUNTIME_FUNCTIONS = (
+    "_canonical_bytes",
+    "_sha256",
+    "_git_blob_sha1",
+    "_shingles",
+    "_jaccard",
+    "_containment",
+    "_validate_inventory",
+    "_verify_payload",
+    "_fingerprint",
+    "_publisher_boilerplate",
+    "_pair_matches",
+    "_components",
+)
+_DATA232_RUNTIME_FUNCTIONS = (
+    "normalize_for_contamination",
+    "code_skeleton_tokens",
+)
+_DATA232_VALUE_GLOBALS = (
+    "DEFAULT_THRESHOLDS",
+    "INVISIBLE",
+    "KEYWORDS",
+)
+_DATA232_REGEX_GLOBALS = (
+    "TOKEN_RE",
+    "CODE_TOKEN_RE",
+    "LINE_COMMENT",
+    "BLOCK_COMMENT",
+    "STRING",
+)
+_V3_VALUE_GLOBALS = (
+    "SCHEMA",
+    "INVENTORY_SCHEMA",
+    "ALGORITHM",
+    "TERMINAL_STATUSES",
+    "RUST_BOOK_PROSE_POLICY",
+    "RELATION_MATCH_TYPES",
+    "LINEAGE_COLLAPSE_MATCH_TYPES",
+)
+_V1_VALUE_GLOBALS = (
+    "SCHEMA",
+    "ALGORITHM",
+    "COLLAPSE_MATCH_TYPES",
+    "STATUS_SCOPES",
+)
+_V3_IDENTITY_GLOBALS = (
+    "html",
+    "re",
+    "unicodedata",
+    "Counter",
+    "defaultdict",
+    "Mapping",
+)
+_V1_IDENTITY_GLOBALS = (
+    "hashlib",
+    "json",
+    "re",
+    "defaultdict",
+    "Mapping",
+)
+_DATA232_IDENTITY_GLOBALS = (
+    "re",
+    "unicodedata",
+)
+_V8_SURVIVOR_BINDING_FIELDS = (
+    "source_family",
+    "modality",
+    "declared_capacity_bytes",
+    "verified_raw_sha256",
+    "normalized_sha256",
+    "stable_origin_id_sha256",
+    "stable_object_id_sha256",
+)
+
+
+def _git_blob_sha1(raw: bytes) -> str:
+    prefix = f"blob {len(raw)}\0".encode("ascii")
+    return hashlib.sha1(prefix + raw).hexdigest()
+
+
+def _module_source_blob(module: ModuleType) -> str:
+    source = getattr(module, "__file__", None)
+    _require(isinstance(source, str) and source, f"matcher module has no source: {module.__name__}")
+    path = Path(source)
+    _require(path.is_file() and not path.is_symlink(), f"matcher module source is not a regular file: {path}")
+    return _git_blob_sha1(path.read_bytes())
+
+
+def _load_reference_module(module: ModuleType, *, label: str) -> ModuleType:
+    """Execute verified source bytes in a fresh namespace for runtime-code comparison."""
+
+    source = getattr(module, "__file__", None)
+    _require(isinstance(source, str) and source, f"{label} module has no source")
+    path = Path(source)
+    _require(path.is_file() and not path.is_symlink(), f"{label} source is not a regular file")
+    spec = importlib.util.spec_from_file_location(f"_twelve_six_{label}_reference", path)
+    _require(spec is not None and spec.loader is not None, f"cannot load {label} reference module")
+    reference = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(reference)
+    except Exception as exc:
+        raise ExpandedDedupError(f"cannot execute {label} reference module: {exc}") from exc
+    return reference
+
+
+def _runtime_code_identity(function: FunctionType) -> str:
+    return hashlib.sha256(marshal.dumps(function.__code__)).hexdigest()
+
+
+def _verify_runtime_functions(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            isinstance(current, FunctionType) and isinstance(expected, FunctionType),
+            f"{label} runtime function missing/replaced: {name}",
+        )
+        _require(
+            current.__globals__ is module.__dict__,
+            f"{label} runtime function globals replaced: {name}",
+        )
+        _require(
+            current.__module__ == module.__name__,
+            f"{label} runtime function module replaced: {name}",
+        )
+        _require(
+            _runtime_code_identity(current) == _runtime_code_identity(expected),
+            f"{label} runtime function code replaced: {name}",
+        )
+        _require(
+            current.__defaults__ == expected.__defaults__
+            and current.__kwdefaults__ == expected.__kwdefaults__,
+            f"{label} runtime function defaults replaced: {name}",
+        )
+
+
+def _exact_builtin_value_equal(current: Any, expected: Any) -> bool:
+    """Compare semantic values without invoking attacker-controlled equality/coercion."""
+
+    if type(current) is not type(expected):
+        return False
+    value_type = type(expected)
+    if value_type in {type(None), bool, int, str, bytes}:
+        return bool(current == expected)
+    if value_type is float:
+        return current.hex() == expected.hex()
+    if value_type in {list, tuple}:
+        return len(current) == len(expected) and all(
+            _exact_builtin_value_equal(current_item, expected_item)
+            for current_item, expected_item in zip(current, expected, strict=True)
+        )
+    if value_type is dict:
+        if len(current) != len(expected):
+            return False
+        remaining = list(current.items())
+        for expected_key, expected_value in expected.items():
+            for index, (current_key, current_value) in enumerate(remaining):
+                if _exact_builtin_value_equal(
+                    current_key, expected_key
+                ) and _exact_builtin_value_equal(current_value, expected_value):
+                    remaining.pop(index)
+                    break
+            else:
+                return False
+        return not remaining
+    if value_type in {set, frozenset}:
+        if len(current) != len(expected):
+            return False
+        remaining = list(current)
+        for expected_item in expected:
+            for index, current_item in enumerate(remaining):
+                if _exact_builtin_value_equal(current_item, expected_item):
+                    remaining.pop(index)
+                    break
+            else:
+                return False
+        return not remaining
+    return False
+
+
+def _verify_runtime_values(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            _exact_builtin_value_equal(current, expected),
+            f"{label} runtime value replaced: {name}",
+        )
+
+
+def _verify_regex_values(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        current = getattr(module, name, None)
+        expected = getattr(reference, name, None)
+        _require(
+            type(current) is type(expected)
+            and getattr(current, "pattern", None) == getattr(expected, "pattern", None)
+            and getattr(current, "flags", None) == getattr(expected, "flags", None),
+            f"{label} runtime regex replaced: {name}",
+        )
+
+
+def _verify_identity_globals(
+    module: ModuleType,
+    reference: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    for name in names:
+        _require(
+            getattr(module, name, None) is getattr(reference, name, None),
+            f"{label} runtime dependency object replaced: {name}",
+        )
+
+
+def _verify_matcher_semantic_closure(
+    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+    matcher_verify: Callable[[Mapping[str, Any]], None],
+) -> None:
+    """Bind executable matcher callbacks to the exact terminal #824/V3 closure."""
+
+    audit_module_name = getattr(matcher_audit, "__module__", None)
+    verify_module_name = getattr(matcher_verify, "__module__", None)
+    _require(
+        audit_module_name == "twelve_six.data.cross_source_capacity_audit_v3"
+        and verify_module_name == audit_module_name,
+        "expanded matcher callbacks are not terminal V3",
+    )
+    v3 = sys.modules.get(str(audit_module_name))
+    _require(isinstance(v3, ModuleType), "terminal V3 matcher module is not loaded")
+    _require(getattr(v3, "audit_payloads", None) is matcher_audit, "matcher audit callback was replaced")
+    _require(getattr(v3, "verify_report", None) is matcher_verify, "matcher verifier callback was replaced")
+
+    canonical_v1_name = "twelve_six.data.cross_source_capacity_audit"
+    canonical_data232_name = "twelve_six.data._data232_decontamination_matching"
+    v1 = getattr(v3, "v1", None)
+    canonical_v1 = sys.modules.get(canonical_v1_name)
+    _require(isinstance(canonical_v1, ModuleType), "canonical V1 matcher module is not loaded")
+    _require(
+        v1 is canonical_v1,
+        "terminal V3 base matcher dependency object replaced",
+    )
+
+    canonical_data232 = sys.modules.get(canonical_data232_name)
+    _require(isinstance(canonical_data232, ModuleType), "canonical DATA-232 matcher module is not loaded")
+    for name in (
+        "normalize_for_contamination",
+        "code_skeleton_tokens",
+        "DEFAULT_THRESHOLDS",
+        "TOKEN_RE",
+    ):
+        _require(
+            getattr(canonical_v1, name, None) is getattr(canonical_data232, name, None),
+            f"terminal V1 DATA-232 dependency object replaced: {name}",
+        )
+
+    for module_name, expected_blob in _EXPECTED_MATCHER_BLOBS.items():
+        module = sys.modules.get(module_name)
+        _require(isinstance(module, ModuleType), f"matcher dependency is not loaded: {module_name}")
+        _require(
+            _module_source_blob(module) == expected_blob,
+            f"matcher implementation authority drift: {module_name}",
+        )
+
+    # AUDIT1055-003: file identity is not executable-object identity.  Re-execute
+    # only the already hash-verified source files in fresh private namespaces and
+    # compare the complete V3/V1 runtime closure that can affect audit_payloads()
+    # or verify_report().  This adds no matcher behavior; it rejects in-memory
+    # monkeypatches before the sealed-V8 preflight or any Rada-containing pair.
+    reference_data232 = _load_reference_module(canonical_data232, label="data232")
+    reference_v1 = _load_reference_module(canonical_v1, label="v1")
+    reference_v3 = _load_reference_module(v3, label="v3")
+
+    _verify_runtime_functions(
+        canonical_data232,
+        reference_data232,
+        _DATA232_RUNTIME_FUNCTIONS,
+        label="DATA-232",
+    )
+    _verify_runtime_values(
+        canonical_data232,
+        reference_data232,
+        _DATA232_VALUE_GLOBALS,
+        label="DATA-232",
+    )
+    _verify_regex_values(
+        canonical_data232,
+        reference_data232,
+        _DATA232_REGEX_GLOBALS,
+        label="DATA-232",
+    )
+    _verify_identity_globals(
+        canonical_data232,
+        reference_data232,
+        _DATA232_IDENTITY_GLOBALS,
+        label="DATA-232",
+    )
+
+    _verify_runtime_functions(canonical_v1, reference_v1, _V1_RUNTIME_FUNCTIONS, label="V1")
+    _verify_runtime_values(canonical_v1, reference_v1, _V1_VALUE_GLOBALS, label="V1")
+    _verify_identity_globals(canonical_v1, reference_v1, _V1_IDENTITY_GLOBALS, label="V1")
+
+    _verify_runtime_functions(v3, reference_v3, _V3_RUNTIME_FUNCTIONS, label="V3")
+    _verify_runtime_values(v3, reference_v3, _V3_VALUE_GLOBALS, label="V3")
+    _verify_identity_globals(v3, reference_v3, _V3_IDENTITY_GLOBALS, label="V3")
+    expected_capacity_collapse_match_types = set(reference_v1.COLLAPSE_MATCH_TYPES) | set(
+        reference_v3.LINEAGE_COLLAPSE_MATCH_TYPES
+    )
+    _require(
+        _exact_builtin_value_equal(
+            getattr(v3, "CAPACITY_COLLAPSE_MATCH_TYPES", None),
+            expected_capacity_collapse_match_types,
+        ),
+        "V3 runtime value replaced: CAPACITY_COLLAPSE_MATCH_TYPES",
+    )
+
+
+def _parse_authenticated_rada_jsonl(raw_jsonl: bytes) -> list[dict[str, Any]]:
+    _require(isinstance(raw_jsonl, bytes) and raw_jsonl, "Rada output JSONL is empty")
+    rows: list[dict[str, Any]] = []
+    for line_no, raw_line in enumerate(raw_jsonl.splitlines(), 1):
+        _require(bool(raw_line.strip()), f"blank authenticated Rada JSONL line: {line_no}")
+        try:
+            text = raw_line.decode("utf-8", errors="strict")
+            value = json.loads(text)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ExpandedDedupError(f"invalid authenticated Rada JSONL row {line_no}: {exc}") from exc
+        _require(isinstance(value, dict), f"authenticated Rada JSONL row {line_no} must be object")
+        rows.append(value)
+    _require(bool(rows), "authenticated Rada JSONL contains no rows")
+    return rows
+
+
+def validate_rada_rows(
+    rows: Sequence[Mapping[str, Any]], raw_jsonl: bytes, report: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Return only rows proven to be the exact semantic parse of authenticated bytes."""
+
+    parsed = _parse_authenticated_rada_jsonl(raw_jsonl)
+    _require(
+        isinstance(rows, Sequence) and not isinstance(rows, (str, bytes, bytearray)),
+        "Rada rows must be a sequence",
+    )
+    supplied: list[dict[str, Any]] = []
+    for row in rows:
+        _require(isinstance(row, Mapping), "supplied Rada row must be an object")
+        supplied.append(dict(row))
+    _require(
+        supplied == parsed,
+        "supplied Rada rows do not match authenticated output JSONL",
+    )
+    # Reuse all incumbent row/hash/byte/privacy/partial-unit invariants, but run them
+    # over the rows parsed from the authenticated bytes rather than caller objects.
+    _LEGACY_VALIDATE_RADA_ROWS(parsed, raw_jsonl, report)
+    return parsed
+
+
+def _index_source_rows(rows: Any, *, label: str) -> dict[str, Mapping[str, Any]]:
+    _require(isinstance(rows, list) and rows, f"{label} source rows missing")
+    result: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        _require(isinstance(row, Mapping), f"{label} source row must be object")
+        source_id = row.get("source_id")
+        _require(
+            isinstance(source_id, str) and source_id and source_id not in result,
+            f"{label} source id invalid/duplicate",
+        )
+        result[source_id] = row
+    return result
+
+
+def _validate_reconstructed_v8_against_preflight(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    survivor_authority: Mapping[str, Any],
+    preflight_report: Mapping[str, Any],
+) -> None:
+    """Cross-bind reconstructed semantic metadata to sealed V8 authority."""
+
+    _require(
+        preflight_report.get("report_sha256") == V8_NESTED_V3_SHA256,
+        "reconstructed V8 matcher report identity drift",
+    )
+    reconstructed = _index_source_rows(inventory.get("sources"), label="reconstructed V8")
+    preflight = _index_source_rows(preflight_report.get("sources"), label="preflight V8")
+    survivor_rows = survivor_authority.get("survivors")
+    _require(isinstance(survivor_rows, list) and survivor_rows, "V8 survivor rows missing")
+
+    for survivor in survivor_rows:
+        _require(isinstance(survivor, Mapping), "V8 survivor row must be object")
+        source_id = survivor.get("source_id")
+        _require(isinstance(source_id, str) and source_id, "V8 survivor source id missing")
+        source = reconstructed.get(source_id)
+        projection = preflight.get(source_id)
+        payload = payloads.get(source_id)
+        _require(source is not None and projection is not None, f"V8 survivor unavailable: {source_id}")
+        _require(isinstance(payload, bytes), f"V8 survivor payload unavailable: {source_id}")
+
+        for field in _V8_SURVIVOR_BINDING_FIELDS:
+            _require(
+                survivor.get(field) == projection.get(field),
+                f"V8 survivor {field} is not bound to reconstructed matcher semantics: {source_id}",
+            )
+
+        _require(
+            projection.get("verified_raw_bytes") == len(payload)
+            and projection.get("verified_raw_sha256") == _sha256(payload),
+            f"V8 preflight raw payload drift: {source_id}",
+        )
+        stable_origin = source.get("stable_origin_id")
+        stable_object = source.get("stable_object_id")
+        _require(
+            isinstance(stable_origin, str)
+            and _sha256(stable_origin.encode("utf-8")) == projection.get("stable_origin_id_sha256"),
+            f"V8 stable origin authority drift: {source_id}",
+        )
+        _require(
+            isinstance(stable_object, str)
+            and _sha256(stable_object.encode("utf-8")) == projection.get("stable_object_id_sha256"),
+            f"V8 stable object authority drift: {source_id}",
+        )
+
+        comparison_policy = projection.get("comparison_policy")
+        if comparison_policy == "DATA232_GENERIC_FROM_RAW":
+            _require(
+                source.get("comparison_normalization") is None,
+                f"V8 generic comparison metadata substituted: {source_id}",
+            )
+            _require(
+                projection.get("comparison_payload_bytes") == len(payload)
+                and projection.get("comparison_payload_sha256") == _sha256(payload),
+                f"V8 generic comparison projection drift: {source_id}",
+            )
+        else:
+            _require(
+                source.get("comparison_normalization") == comparison_policy,
+                f"V8 comparison policy substituted: {source_id}",
+            )
+            _require(
+                source.get("expected_comparison_bytes") == projection.get("comparison_payload_bytes")
+                and source.get("expected_comparison_sha256")
+                == projection.get("comparison_payload_sha256"),
+                f"V8 comparison payload authority drift: {source_id}",
+            )
+
+
+def _restrict_lineage_to_survivors(
+    inventory: Mapping[str, Any], survivor_authority: Mapping[str, Any]
+) -> dict[str, Any]:
+    prepared = copy.deepcopy(dict(inventory))
+    survivor_rows = survivor_authority.get("survivors")
+    _require(isinstance(survivor_rows, list) and survivor_rows, "V8 survivor rows missing")
+    survivor_ids = {str(row["source_id"]) for row in survivor_rows if isinstance(row, Mapping)}
+    _require(len(survivor_ids) == len(survivor_rows), "V8 survivor source ids invalid/duplicate")
+
+    edges = prepared.get("lineage_edges", [])
+    _require(isinstance(edges, list), "reconstructed V8 lineage_edges must be a list")
+    retained: list[dict[str, Any]] = []
+    for edge in edges:
+        _require(isinstance(edge, Mapping), "reconstructed V8 lineage edge must be object")
+        left = edge.get("left_source_id")
+        right = edge.get("right_source_id")
+        _require(isinstance(left, str) and isinstance(right, str), "V8 lineage edge endpoints malformed")
+        if left in survivor_ids and right in survivor_ids:
+            retained.append(copy.deepcopy(dict(edge)))
+    prepared["lineage_edges"] = retained
+    return prepared
+
+
+def run_expanded_dedup(
+    *,
+    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+    matcher_verify: Callable[[Mapping[str, Any]], None],
+    reconstructed_v8_inventory: Mapping[str, Any],
+    reconstructed_v8_payloads: Mapping[str, bytes],
+    v8_survivor_authority: Mapping[str, Any],
+    data526_evidence: Mapping[str, Any],
+    data526_record_inventory: Mapping[str, Any],
+    rada_language_report: Mapping[str, Any],
+    rada_quality_privacy_report: Mapping[str, Any],
+    expected_rada_report_sha256: str,
+    rada_rows: Sequence[Mapping[str, Any]],
+    rada_raw_jsonl: bytes,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Hardened V9 entry point; no expanded matcher call occurs before authority proof."""
+
+    verified_rada_rows = validate_rada_rows(
+        rada_rows,
+        rada_raw_jsonl,
+        rada_quality_privacy_report,
+    )
+    _verify_matcher_semantic_closure(matcher_audit, matcher_verify)
+
+    # Reconstruct the exact sealed V8 semantic result before adding any Rada unit.
+    # This binds stable IDs, normalization, comparison metadata, thresholds and all
+    # lineage-derived matches to the already sealed nested V3 authority.
+    preflight = matcher_audit(
+        copy.deepcopy(dict(reconstructed_v8_inventory)),
+        dict(reconstructed_v8_payloads),
+    )
+    _require(isinstance(preflight, Mapping), "V8 semantic preflight returned non-object report")
+    matcher_verify(preflight)
+    _validate_reconstructed_v8_against_preflight(
+        reconstructed_v8_inventory,
+        reconstructed_v8_payloads,
+        v8_survivor_authority,
+        preflight,
+    )
+
+    prepared_inventory = _restrict_lineage_to_survivors(
+        reconstructed_v8_inventory,
+        v8_survivor_authority,
+    )
+    report, survivors = _LEGACY_RUN_EXPANDED_DEDUP(
+        matcher_audit=matcher_audit,
+        matcher_verify=matcher_verify,
+        reconstructed_v8_inventory=prepared_inventory,
+        reconstructed_v8_payloads=reconstructed_v8_payloads,
+        v8_survivor_authority=v8_survivor_authority,
+        data526_evidence=data526_evidence,
+        data526_record_inventory=data526_record_inventory,
+        rada_language_report=rada_language_report,
+        rada_quality_privacy_report=rada_quality_privacy_report,
+        expected_rada_report_sha256=expected_rada_report_sha256,
+        rada_rows=verified_rada_rows,
+        rada_raw_jsonl=rada_raw_jsonl,
+    )
+
+    # Durable outer evidence now states the exact semantic authorities enforced by
+    # this facade; this does not grant any additional corpus or training credit.
+    report = copy.deepcopy(report)
+    report["matcher_execution_authority"] = {
+        "terminal_v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+        "nested_v3_report_sha256": V8_NESTED_V3_SHA256,
+        "v3_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
+            "twelve_six.data.cross_source_capacity_audit_v3"
+        ],
+        "v1_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
+            "twelve_six.data.cross_source_capacity_audit"
+        ],
+        "data232_matching_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
+            "twelve_six.data._data232_decontamination_matching"
+        ],
+        "authenticated_rada_rows_only": True,
+        "sealed_v8_semantic_preflight_required": True,
+    }
+    core = dict(report)
+    core.pop("report_sha256", None)
+    report["report_sha256"] = _sha256(_canonical(core))
+    return report, survivors

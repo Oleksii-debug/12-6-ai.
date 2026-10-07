@@ -1,0 +1,95 @@
+{
+  "schema_version": "12-6.d03-arxiv-postrights-source-admission.v1",
+  "authority_id": "D03-ARXIV-POSTRIGHTS-SOURCE-ADMISSION-V1",
+  "status": "PAYLOAD_SOURCE_ADMISSION_EXECUTED_ZERO_CREDIT",
+  "execution_profile": "LOCAL_FREE",
+  "swarm": {
+    "control_issue": 723,
+    "worker_issue": 1368,
+    "lane_key": "D03|ARXIV|POST-RIGHTS-PAYLOAD-ADMISSION|CURRENT-MAIN-CONVERGENCE|V1"
+  },
+  "historical_execution": {
+    "product_pr": 1078,
+    "product_head_sha": "a4c8be72a7b7ba3a22fc49d8968d7becef1ac325",
+    "execution_head_sha": "37289b5af224c58f0b169f55f4e0f8b466b90f6d",
+    "run_id": 34563405053,
+    "receipt_path": "evidence/d03-arxiv-real-execution-v1.json",
+    "receipt_blob_sha1": "d3927dd87110aae0b1cb879498757812a3c7087d",
+    "receipt_validator_path": "src/twelve_six/d03_arxiv_execution_receipt.py",
+    "receipt_validator_blob_sha1": "4b7af5cd0e141cdb9fcefe957f2772f9a48ad73b",
+    "materializer_path": "tools/materialize_d03_common_pile_arxiv_abstracts_v1.py",
+    "materializer_blob_sha1": "38c244a5a2da40ed4fb67f801f02e625bc040564"
+  },
+  "rights_authority": {
+    "merged_pr": 1361,
+    "policy_path": "configs/data/d03_common_pile_arxiv_abstracts_source_rights_v1.json",
+    "policy_blob_sha1": "31544961a99310487b2b2310adec10069065ac1c",
+    "policy_identity_sha256": "b667a71cf476282d45476babc71b9d401ffdaaa38e03b9fac8a6319614b57442",
+    "module_path": "src/twelve_six/common_pile_arxiv_abstracts_rights.py",
+    "module_blob_sha1": "d4f48237ceae57606d69ef4eaddc2a5c4366c5dd",
+    "decision": "CONDITIONAL_SOURCE_ADMISSION",
+    "scope": "DESCRIPTIVE_METADATA_INCLUDING_ABSTRACT"
+  },
+  "record_contract": {
+    "source_value": "arxiv-abstracts",
+    "expected_metadata_license": "Creative Commons Zero - Public Domain - https://creativecommons.org/publicdomain/zero/1.0/",
+    "required_row_fields": [
+      "id",
+      "text",
+      "source",
+      "created",
+      "added",
+      "metadata"
+    ],
+    "rights_scope": "DESCRIPTIVE_METADATA_INCLUDING_ABSTRACT"
+  },
+  "admitted_candidate": {
+    "source_sha256": "3d781bf7617fd9a6840211227c6c8831280dba457a6d9c79a2a5a357e025a8b7",
+    "source_bytes": 232616926,
+    "rows_scanned": 4096,
+    "candidate_sha256": "21304338039306b2df175bbb71a1aed9a443c2416f3858f3cc63ca208e9c7327",
+    "retained_records": 1024,
+    "retained_normalized_bytes": 1139552,
+    "payload_rematerialized_in_this_package": false
+  },
+  "proof": {
+    "historical_receipt_validated": true,
+    "historical_materializer_blob_verified": true,
+    "historical_source_predicate_verified": true,
+    "historical_license_predicate_verified": true,
+    "rights_policy_repository_bindings_validated": true,
+    "rights_decision_applied_post_hoc_to_exact_historical_lineage": true,
+    "real_data_execution_repeated": false
+  },
+  "truth_boundary": {
+    "payload_source_admission_executed": true,
+    "source_admitted_candidate_records": 1024,
+    "source_admitted_candidate_bytes": 1139552,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "family_credit_added": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "learned_weights_created": false,
+    "evaluation_authorized_bytes": 0,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "downstream_required": [
+    "current_global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting",
+    "positive_training_authority"
+  ]
+}

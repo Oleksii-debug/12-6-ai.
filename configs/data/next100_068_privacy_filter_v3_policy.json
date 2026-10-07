@@ -1,0 +1,33 @@
+{
+  "schema_version": "12-6.next100-068-privacy-filter-v3-policy.v1",
+  "worker_id": "NEXT100-068-PRIVACY-FILTER-V3",
+  "execution_class": "LOCAL_FREE",
+  "fixture_policy": "SYNTHETIC_ADVERSARIAL_ONLY",
+  "required_detector_classes": [
+    "api_token",
+    "cloud_credential",
+    "authorization_header",
+    "credential_url",
+    "private_filesystem_path",
+    "email",
+    "phone",
+    "sensitive_id",
+    "ssh_material",
+    "database_url",
+    "environment_secret_assignment"
+  ],
+  "metric_gate": {
+    "false_negative": 0,
+    "false_positive": 0,
+    "minimum_positive_fixtures_per_class": 2,
+    "minimum_negative_fixtures": 20
+  },
+  "real_source_evidence": {
+    "source_text_retained": false,
+    "matched_values_retained": false,
+    "matched_value_hashes_retained": false,
+    "whole_source_sha256_allowed": true,
+    "detector_counts_allowed": true
+  },
+  "coverage_claim": "deterministic high-confidence patterns; zero findings is not proof of zero PII/secrets"
+}

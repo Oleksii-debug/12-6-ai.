@@ -1,0 +1,55 @@
+{
+  "claim_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "corpus_frozen": false,
+    "evaluation_decontamination_complete": false,
+    "final_test_accessed": false,
+    "foreign_pretrained_weights": false,
+    "global_cross_source_dedup_complete": false,
+    "learned_weights_created": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "source_capacity_materialized": true,
+    "tokenizer_fit_executed": false,
+    "training_authorized_bytes": 0,
+    "unique_loss_positions_authorized": 0
+  },
+  "claim_issue": 1181,
+  "convergence": {
+    "base_main_at_claim": "7c14db5f6e43d369bf859cb5c6803024c929943c",
+    "current_main_shared_ci_required": true,
+    "fresh_independent_audit_required": true,
+    "historical_workflow_transplanted": false,
+    "scientific_bytes_byte_identical_to_historical_product": true
+  },
+  "evidence_identity_sha256": "23ad2d93d3e4f1d830feeed0ef446e52bffa201ae517590accf08c679ba3c14c",
+  "historical_product": {
+    "head": "df2d750f7e262759f3cc54c04662ffe208286dc2",
+    "pr": 467,
+    "scientific_git_blobs": {
+      "configs/data/next100_037_python_docs_source_authority_v1.json": "b15abac8744ccda9fe58d1351f7925b6ab328034",
+      "docs/NEXT100_037_PYTHON_DOCS_SOURCE_AUTHORITY.md": "701790c6826aca9cda1a57100762ab3dbd33627c",
+      "tools/materialize_next100_037_python_docs_accepted_chunks.py": "0635bb18cec8b9db2d339b044485aa8ab5c28847",
+      "tools/validate_next100_037_python_docs_source_authority.py": "9b2f7e7895fc620e5f152c00d893866c28afdcc1"
+    }
+  },
+  "historical_real_execution": {
+    "accepted_chunk_count": 14,
+    "accepted_normalized_utf8_bytes": 15540,
+    "artifact_digest": "sha256:2f14c5db49ee1cfd280bc922f6ec778509ead78e3dc566afc25595ac71e7acfa",
+    "artifact_id": 9624065504,
+    "chunk_count": 16,
+    "conclusion": "success",
+    "ledger_identity_sha256": "fa16cb7e4015480500ba74fb28ecfa6af60e5f0685c90a5c822db04d480b44c2",
+    "normalized_source_sha256": "64a4ec4fd7574ba4c22e615a032b157e446b9c7f5a7917cb7f10fa214a05bd1a",
+    "raw_sha256": "cf1674daf9568abeb5fc22f62a991e17751fea4deb06f598362ce6e7de264808",
+    "rejected_chunk_count": 2,
+    "rejection_reasons": {
+      "pii_phone": 2
+    },
+    "source_authority_identity_sha256": "46a00dc70db690ae2b3c4495a75283e7e752bdccb1047d4318c2ebadfa392f0d",
+    "workflow_run": 33006886741
+  },
+  "schema_version": "12-6.d03-cpython-docs-current-main-convergence.v1"
+}
