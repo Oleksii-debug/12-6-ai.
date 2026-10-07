@@ -48,7 +48,9 @@ Only exact Git-index-tracked regular \`tests/...\` pytest files are accepted. Th
 rejects untracked lookalikes, symlinks and repository escapes before launching pytest. Shell command
 strings, parent traversal and arbitrary executables are outside the v1 packet language. Evidence
 binds the exact host \`sys.executable\` from host inventory rather than a generic \`python\` alias.
-Action count, timeout, captured stdout/stderr and artifact count/bytes are capped.
+Action count, timeout, captured stdout/stderr and artifact count/bytes are capped. Packet/evidence JSON,
+JSONL logs and artifact hashing enforce those byte ceilings while reading; oversized sparse or hostile files
+are rejected after at most the configured bound plus one byte instead of being loaded fully first.
 
 The agent probes the exact Git SHA and tracked/index cleanliness before the run and before/after
 every action. A dirty checkout, changed HEAD, output overflow, non-zero test exit, missing required

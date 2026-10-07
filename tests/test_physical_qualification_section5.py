@@ -739,3 +739,73 @@ def test_duplicate_json_members_are_rejected(tmp_path: Path) -> None:
             signature_verifier=_fake_verify,
             now_epoch_seconds=150,
         )
+
+def test_json_and_artifact_limits_are_enforced_without_unbounded_path_reads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    oversized_json = tmp_path / "oversized.json"
+    with oversized_json.open("wb") as stream:
+        stream.truncate(physical_qualification._MAX_JSON_BYTES + 1)
+
+    oversized_artifact = tmp_path / "oversized.bin"
+    with oversized_artifact.open("wb") as stream:
+        stream.truncate(physical_qualification._MAX_ARTIFACT_BYTES + 1)
+
+    def forbid_read_bytes(self: Path) -> bytes:
+        raise AssertionError(f"unbounded Path.read_bytes() used for {self}")
+
+    monkeypatch.setattr(Path, "read_bytes", forbid_read_bytes)
+
+    with pytest.raises(ValueError, match="exceeds maximum encoded size"):
+        physical_qualification._strict_json_object(
+            oversized_json,
+            label="bounded-json",
+        )
+    with pytest.raises(ValueError, match="artifacts exceed total byte bound"):
+        physical_qualification._collect_artifacts(
+            tmp_path,
+            ("oversized.bin",),
+        )
+
+
+def test_evidence_verifier_streams_bounded_files_without_path_read_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    verified = _load(tmp_path, _packet())
+    evidence, log_bytes = execute_qualification(
+        verified,
+        repo_root=tmp_path,
+        host_inventory=_inventory(),
+        action_runner=_pass_runner,
+        git_probe=_git_probe,
+        agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
+    )
+    evidence_path = tmp_path / "bounded-evidence.json"
+    log_path = tmp_path / "bounded-run.jsonl"
+    write_evidence_bundle(
+        evidence_path,
+        log_path,
+        evidence=evidence,
+        log_bytes=log_bytes,
+    )
+
+    def forbid_read_bytes(self: Path) -> bytes:
+        raise AssertionError(f"unbounded Path.read_bytes() used for {self}")
+
+    monkeypatch.setattr(Path, "read_bytes", forbid_read_bytes)
+
+    checked = verify_qualification_evidence(
+        evidence_path,
+        log_path,
+        verified_packet=verified,
+        agent_source_bytes=_AGENT_BYTES,
+        artifact_root=tmp_path,
+        require_real_pass=True,
+        evidence_signature_verifier=_fake_evidence_verify,
+    )
+    assert checked["verdict"] == QualificationVerdict.PASS.value
+

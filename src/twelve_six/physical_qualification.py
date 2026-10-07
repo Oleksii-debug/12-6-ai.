@@ -31,6 +31,7 @@ _MAX_ARTIFACTS = 64
 _MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 _MAX_PACKET_LIFETIME_SECONDS = 24 * 60 * 60
 _MAX_RESOURCE_PROBE_BYTES = 64 * 1024
+_READ_CHUNK_BYTES = 64 * 1024
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -74,10 +75,58 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return value
 
 
+def _read_bounded_file(
+    path: str | Path,
+    *,
+    max_bytes: int,
+    overflow_message: str,
+) -> bytes:
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError("bounded file read limit must be a non-negative integer")
+    chunks: list[bytes] = []
+    total = 0
+    with Path(path).open("rb") as stream:
+        while True:
+            remaining = max_bytes - total
+            chunk = stream.read(min(_READ_CHUNK_BYTES, remaining + 1))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError(overflow_message)
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _bounded_file_sha256(
+    path: str | Path,
+    *,
+    max_bytes: int,
+    overflow_message: str,
+) -> tuple[int, str]:
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError("bounded file hash limit must be a non-negative integer")
+    total = 0
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        while True:
+            remaining = max_bytes - total
+            chunk = stream.read(min(_READ_CHUNK_BYTES, remaining + 1))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError(overflow_message)
+            digest.update(chunk)
+    return total, digest.hexdigest()
+
+
 def _strict_json_object(path: str | Path, *, label: str) -> dict[str, Any]:
-    raw = Path(path).read_bytes()
-    if len(raw) > _MAX_JSON_BYTES:
-        raise ValueError(f"{label} exceeds maximum encoded size")
+    raw = _read_bounded_file(
+        path,
+        max_bytes=_MAX_JSON_BYTES,
+        overflow_message=f"{label} exceeds maximum encoded size",
+    )
     try:
         value = json.loads(
             raw.decode("utf-8", errors="strict"),
@@ -866,15 +915,17 @@ def _collect_artifacts(repo_root: Path, paths: tuple[str, ...]) -> tuple[dict[st
         resolved = target.resolve()
         if root not in resolved.parents:
             raise ValueError(f"qualification artifact escapes repository: {relative}")
-        raw = target.read_bytes()
-        total_bytes += len(raw)
-        if total_bytes > _MAX_ARTIFACT_BYTES:
-            raise ValueError("qualification artifacts exceed total byte bound")
+        artifact_bytes, artifact_sha256 = _bounded_file_sha256(
+            target,
+            max_bytes=_MAX_ARTIFACT_BYTES - total_bytes,
+            overflow_message="qualification artifacts exceed total byte bound",
+        )
+        total_bytes += artifact_bytes
         collected.append(
             {
                 "path": relative,
-                "bytes": len(raw),
-                "sha256": _sha256_bytes(raw),
+                "bytes": artifact_bytes,
+                "sha256": artifact_sha256,
             }
         )
     return tuple(collected)
@@ -1272,10 +1323,25 @@ def verify_qualification_evidence(
             if resource_values[resource] is not ResourceObservation.REAL_PROBED:
                 raise ValueError("physical PASS contains an unproven required resource")
 
-    log_bytes = Path(log_path).read_bytes()
+    claimed_log_bytes = evidence["log_bytes"]
+    max_log_bytes = sum(
+        2048 + 8 * ((action.max_output_bytes + 2) // 3)
+        for action in packet.actions
+    )
+    if (
+        type(claimed_log_bytes) is not int
+        or claimed_log_bytes < 0
+        or claimed_log_bytes > max_log_bytes
+    ):
+        raise ValueError("physical evidence log byte count exceeds signed action bounds")
+    log_bytes = _read_bounded_file(
+        log_path,
+        max_bytes=max_log_bytes,
+        overflow_message="physical evidence log exceeds signed action bounds",
+    )
     if _sha256_bytes(log_bytes) != evidence["log_sha256"]:
         raise ValueError("physical evidence log hash mismatch")
-    if len(log_bytes) != evidence["log_bytes"]:
+    if len(log_bytes) != claimed_log_bytes:
         raise ValueError("physical evidence log byte count mismatch")
     log_rows: list[dict[str, Any]] = []
     for raw_line in log_bytes.splitlines():
@@ -1407,12 +1473,14 @@ def verify_qualification_evidence(
         resolved = target.resolve()
         if root not in resolved.parents:
             raise ValueError("physical artifact escapes repository")
-        raw = target.read_bytes()
-        total_bytes += len(raw)
-        if total_bytes > _MAX_ARTIFACT_BYTES:
-            raise ValueError("physical artifacts exceed byte bound")
+        artifact_bytes, artifact_sha256 = _bounded_file_sha256(
+            target,
+            max_bytes=_MAX_ARTIFACT_BYTES - total_bytes,
+            overflow_message="physical artifacts exceed byte bound",
+        )
+        total_bytes += artifact_bytes
         item = by_path[relative]
-        if item.get("bytes") != len(raw) or item.get("sha256") != _sha256_bytes(raw):
+        if item.get("bytes") != artifact_bytes or item.get("sha256") != artifact_sha256:
             raise ValueError("physical artifact hash/size mismatch")
 
     return evidence
