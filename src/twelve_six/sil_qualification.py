@@ -28,6 +28,29 @@ _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _MAX_SCENARIO_BYTES = 64 * 1024
 _MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
 
+# Section 3.1 requires journey-level end-to-end execution, not merely a bag of
+# integration-green capabilities.  This sealed policy is the explicit accepted
+# declaration of which ordered integration steps jointly constitute each
+# currently AVAILABLE journey under one shared SIL input envelope.  build_sil_plan()
+# captures this object as a default argument so a module-global rebind cannot
+# reseal end-to-end semantics in an already-loaded validator.
+_CANONICAL_JOURNEY_E2E_VECTOR_POLICY = (
+    ("developer-model-contract", ("model-resource-receipt",)),
+    (
+        "researcher-prepare-training-inputs",
+        ("tokenizer-migration", "packing-stream"),
+    ),
+    ("operator-resume-checkpoint", ("checkpoint-roundtrip",)),
+    ("operator-windows-cli", ("windows-cli-packaging",)),
+    ("researcher-training-mechanics", ("trainer-preflight",)),
+    ("data-curator-governance", ("data-clean-dedup-decontam",)),
+    ("operator-learned20m-readiness", ("learned20m-lease-control",)),
+    ("operator-portable-run", ("portable-run-binding",)),
+    ("operator-scale141-recovery", ("scale141-content-addressed",)),
+    ("researcher-split-validation", ("split-robustness-manifest",)),
+    ("maintainer-project-control", ("swarm-protocol",)),
+)
+
 
 def _canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
@@ -275,6 +298,7 @@ class UnavailableJourney:
 class SILPlan:
     available_journey_ids: tuple[str, ...]
     unavailable_journeys: tuple[UnavailableJourney, ...]
+    journey_end_to_end_contracts: tuple[tuple[str, tuple[str, ...]], ...]
     vectors: tuple[PlannedVector, ...]
 
     def __post_init__(self) -> None:
@@ -282,11 +306,47 @@ class SILPlan:
             raise ValueError("SIL plan needs at least one AVAILABLE journey")
         if not self.vectors:
             raise ValueError("SIL plan needs at least one integration vector")
+        if (
+            not isinstance(self.journey_end_to_end_contracts, tuple)
+            or not self.journey_end_to_end_contracts
+        ):
+            raise ValueError("SIL plan needs explicit end-to-end journey contracts")
+        contract_journey_ids: list[str] = []
+        for item in self.journey_end_to_end_contracts:
+            if (
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or _ID_RE.fullmatch(item[0]) is None
+                or not isinstance(item[1], tuple)
+                or not item[1]
+                or any(
+                    not isinstance(vector_id, str)
+                    or _ID_RE.fullmatch(vector_id) is None
+                    for vector_id in item[1]
+                )
+                or len(set(item[1])) != len(item[1])
+            ):
+                raise ValueError("SIL end-to-end journey contract is non-canonical")
+            contract_journey_ids.append(item[0])
+        if tuple(contract_journey_ids) != self.available_journey_ids:
+            raise ValueError(
+                "SIL end-to-end contracts must exactly match AVAILABLE journey order"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "available_journey_ids": list(self.available_journey_ids),
             "unavailable_journeys": [item.to_dict() for item in self.unavailable_journeys],
+            "journey_end_to_end_contracts": [
+                {
+                    "journey_id": journey_id,
+                    "execution_mode": "SEQUENTIAL_SHARED_INPUT_ENVELOPE",
+                    "completion_rule": "ALL_DECLARED_STEPS_PASS_IN_ORDER",
+                    "vector_ids": list(vector_ids),
+                }
+                for journey_id, vector_ids in self.journey_end_to_end_contracts
+            ],
             "vectors": [item.to_dict() for item in self.vectors],
         }
 
@@ -312,7 +372,13 @@ def parse_vector_command(command: str) -> tuple[str, ...]:
     return (sys.executable, "-m", "pytest", "-q", *test_paths)
 
 
-def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPlan:
+def build_sil_plan(
+    registry: CapabilityRegistry,
+    scenario: SILScenario,
+    _sealed_e2e_policy: tuple[tuple[str, tuple[str, ...]], ...] = (
+        _CANONICAL_JOURNEY_E2E_VECTOR_POLICY
+    ),
+) -> SILPlan:
     if not isinstance(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
     if not isinstance(scenario, SILScenario):
@@ -320,13 +386,37 @@ def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPl
     if scenario.journey_selector != "ALL_AVAILABLE":
         raise ValueError("unsupported journey selection")
 
+    if (
+        not isinstance(_sealed_e2e_policy, tuple)
+        or any(
+            not isinstance(item, tuple)
+            or len(item) != 2
+            or not isinstance(item[0], str)
+            or not isinstance(item[1], tuple)
+            for item in _sealed_e2e_policy
+        )
+    ):
+        raise ValueError("SIL end-to-end policy is non-canonical")
+    policy_journey_ids = tuple(item[0] for item in _sealed_e2e_policy)
+    if len(set(policy_journey_ids)) != len(policy_journey_ids):
+        raise ValueError("SIL end-to-end policy journey ids must be unique")
+    policy_by_journey = dict(_sealed_e2e_policy)
+
     available: list[str] = []
     unavailable: list[UnavailableJourney] = []
+    journey_contracts: list[tuple[str, tuple[str, ...]]] = []
     vectors: list[PlannedVector] = []
 
     for journey in registry.journeys:
         if registry.journey_available(journey.journey_id):
             available.append(journey.journey_id)
+            declared_vector_ids = policy_by_journey.get(journey.journey_id)
+            if declared_vector_ids is None:
+                raise ValueError(
+                    f"AVAILABLE journey lacks explicit end-to-end contract: "
+                    f"{journey.journey_id}"
+                )
+            journey_vectors: list[PlannedVector] = []
             for capability_id in journey.capability_ids:
                 capability = registry.capability(capability_id)
                 if capability.status is not CapabilityStatus.AVAILABLE:
@@ -341,7 +431,7 @@ def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPl
                         f"AVAILABLE capability lacks an integration vector: {capability_id}"
                     )
                 for vector in integration_vectors:
-                    vectors.append(
+                    journey_vectors.append(
                         PlannedVector(
                             journey_id=journey.journey_id,
                             capability_id=capability_id,
@@ -349,6 +439,18 @@ def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPl
                             argv=parse_vector_command(vector.command),
                         )
                     )
+            observed_vector_ids = tuple(
+                vector.vector_id for vector in journey_vectors
+            )
+            if observed_vector_ids != declared_vector_ids:
+                raise ValueError(
+                    "AVAILABLE journey integration vectors do not match its explicit "
+                    f"end-to-end contract: {journey.journey_id}"
+                )
+            journey_contracts.append(
+                (journey.journey_id, declared_vector_ids)
+            )
+            vectors.extend(journey_vectors)
             continue
 
         blockers = tuple(
@@ -366,9 +468,15 @@ def build_sil_plan(registry: CapabilityRegistry, scenario: SILScenario) -> SILPl
             )
         )
 
+    if tuple(available) != policy_journey_ids:
+        raise ValueError(
+            "SIL end-to-end policy must exactly match the current AVAILABLE journeys"
+        )
+
     return SILPlan(
         available_journey_ids=tuple(available),
         unavailable_journeys=tuple(unavailable),
+        journey_end_to_end_contracts=tuple(journey_contracts),
         vectors=tuple(vectors),
     )
 
