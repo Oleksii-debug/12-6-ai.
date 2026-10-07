@@ -183,7 +183,7 @@ def test_closed_and_reopened_predecessor_capability_truth_is_explicit() -> None:
     assert reopened.integrated_result is None
     assert reopened.unavailable_reason
 
-    assert registry.journey_available("developer-replace-cognitive-core") is True
+    assert registry.journey_available("developer-replace-cognitive-core") is False
 
 
 def test_mechanics_are_not_resealed_as_physical_windows_acceptance() -> None:
