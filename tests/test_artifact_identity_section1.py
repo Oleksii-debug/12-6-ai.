@@ -725,7 +725,6 @@ def test_artifact_ref_from_dict_rejects_behavioral_kind_string_before_enum_looku
         ArtifactRef.from_dict(payload)
 
 
-
 def test_closed_schema_from_dict_rejects_behavioral_field_keys_before_set_lookup() -> None:
     class ForgedKey(str):
         armed = False
@@ -795,7 +794,6 @@ def test_closed_schema_from_dict_rejects_behavioral_field_keys_before_set_lookup
         ForgedKey.armed = False
 
 
-
 def test_artifact_ref_from_dict_ignores_poisoned_enum_value_lookup_table() -> None:
     value_map = ArtifactKind._value2member_map_
     original = value_map["model_spec"]
@@ -811,7 +809,6 @@ def test_artifact_ref_from_dict_ignores_poisoned_enum_value_lookup_table() -> No
         assert decoded.kind is ArtifactKind.MODEL_SPEC
     finally:
         value_map["model_spec"] = original
-
 
 
 def test_closed_schema_from_dict_rejects_inherited_subclass_decoder() -> None:
@@ -917,7 +914,6 @@ def test_manifest_hash_helper_rebinding_cannot_reseal_identity(
     assert generation.identity_sha256() == expected_generation_identity
     assert release.manifest_identity_sha256() == expected_release_identity
     assert _generation("hash-helper-rebind").identity_sha256() == expected_generation_identity
-
 
 
 def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
