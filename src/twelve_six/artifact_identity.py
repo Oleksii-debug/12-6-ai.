@@ -358,8 +358,11 @@ class ArtifactManifest:
             "parents": [parent.to_dict() for parent in self.parents],
         }
 
-    def manifest_identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def manifest_identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
     def parents_by_role(self) -> dict[str, ArtifactRef]:
         ArtifactManifest.__post_init__(self)
@@ -541,8 +544,11 @@ class GenerationIdentityManifest:
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
     def artifact_ref(
         self,
