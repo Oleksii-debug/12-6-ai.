@@ -503,7 +503,8 @@ class Capability:
             )
         ):
             raise ValueError("capability_id must be a canonical identifier")
-        _require_positive_int("schema_version", self.schema_version)
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         _require_capability_status(self.status)
         if (
             type(self.component_contract) is not str
@@ -693,7 +694,8 @@ class SourceSurfaceInventory:
     surfaces: tuple[SourceSurface, ...]
 
     def __post_init__(self) -> None:
-        _require_positive_int("schema_version", self.schema_version)
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         if (
             type(self.schema_version) is not int
             or self.schema_version != 1
@@ -708,13 +710,20 @@ class SourceSurfaceInventory:
         _require_text("source_root", self.source_root)
         if self.source_root != "src/twelve_six":
             raise ValueError("source_root must be canonical src/twelve_six")
-        _require_positive_int("source_surface_count", self.source_surface_count)
-        _require_positive_int(
-            "accepted_main_surface_count", self.accepted_main_surface_count
-        )
-        _require_nonnegative_int(
-            "candidate_overlay_surface_count", self.candidate_overlay_surface_count
-        )
+        if type(self.source_surface_count) is not int or self.source_surface_count <= 0:
+            raise ValueError("source_surface_count must be a positive integer")
+        if (
+            type(self.accepted_main_surface_count) is not int
+            or self.accepted_main_surface_count <= 0
+        ):
+            raise ValueError("accepted_main_surface_count must be a positive integer")
+        if (
+            type(self.candidate_overlay_surface_count) is not int
+            or self.candidate_overlay_surface_count < 0
+        ):
+            raise ValueError(
+                "candidate_overlay_surface_count must be a non-negative integer"
+            )
         if type(self.surfaces) is not tuple or not self.surfaces:
             raise ValueError("surfaces must be a non-empty tuple")
         if any(type(item) is not SourceSurface for item in self.surfaces):
@@ -751,9 +760,10 @@ def _build_capability_registry_post_init() -> Any:
     sealed_resolve_component_contract = _SEALED_RESOLVE_COMPONENT_CONTRACT
 
     def validate(self: Any) -> None:
-        _require_positive_int("schema_version", self.schema_version)
+        if type(self.schema_version) is not int or self.schema_version <= 0:
+            raise ValueError("schema_version must be a positive integer")
         if (
-            not _is_exact_type(self.schema_version, int)
+            type(self.schema_version) is not int
             or self.schema_version != 1
         ):
             raise ValueError("unsupported CapabilityRegistry schema_version")
@@ -761,7 +771,11 @@ def _build_capability_registry_post_init() -> Any:
             self.observed_main_sha
         ) is None:
             raise ValueError("observed_main_sha must be a lowercase 40-hex Git SHA")
-        _require_positive_int("observed_main_ci_run_id", self.observed_main_ci_run_id)
+        if (
+            type(self.observed_main_ci_run_id) is not int
+            or self.observed_main_ci_run_id <= 0
+        ):
+            raise ValueError("observed_main_ci_run_id must be a positive integer")
         _require_text("observed_main_ci_conclusion", self.observed_main_ci_conclusion)
         if self.observed_main_ci_conclusion != "success":
             raise ValueError("observed main CI must be terminal success")
