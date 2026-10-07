@@ -101,7 +101,6 @@ def test_modelspec_and_initspec_existing_identities_plug_into_unified_refs() -> 
     assert init_ref.identity_sha256 == init.identity_sha256()
 
 
-
 def test_bind_artifact_canonicalizes_parent_role_order() -> None:
     generation = _generation("a")
     packing = generation.artifact_ref(ArtifactKind.PACKING)
@@ -188,6 +187,7 @@ def test_verify_parent_bindings_rejects_role_and_identity_resealing() -> None:
             },
         )
 
+
 def test_generation_manifest_cross_binds_every_derived_artifact() -> None:
     generation = _generation("a")
 
@@ -221,7 +221,6 @@ def test_generation_manifest_cross_binds_every_derived_artifact() -> None:
         "evaluation": generation.artifact_ref(ArtifactKind.EVALUATION),
         "export": generation.artifact_ref(ArtifactKind.EXPORT),
     }
-
 
 
 def test_generation_manifest_rejects_cross_generation_packing_parent() -> None:
