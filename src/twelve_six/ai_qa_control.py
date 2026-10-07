@@ -535,6 +535,39 @@ def _git_command(
 CandidateParentProbe = Callable[[Path, str], tuple[str, ...]]
 
 
+def _validate_repair_index_entries(raw_diff: str) -> None:
+    """Reject repair deltas that materialize non-regular Git entries."""
+
+    if not isinstance(raw_diff, str):
+        raise ValueError("repair index diff must be text")
+    for line in raw_diff.splitlines():
+        if not line:
+            continue
+        try:
+            metadata, _path = line.split("\t", 1)
+            fields = metadata.split()
+            old_mode, new_mode = fields[0][1:], fields[1]
+            old_sha, new_sha = fields[2], fields[3]
+            status = fields[4]
+        except (IndexError, ValueError) as exc:
+            raise ValueError("repair index emitted a non-canonical raw diff record") from exc
+        if (
+            len(fields) != 5
+            or not old_mode.isdigit()
+            or not new_mode.isdigit()
+            or _SHA40_RE.fullmatch(old_sha) is None
+            or _SHA40_RE.fullmatch(new_sha) is None
+            or not status
+        ):
+            raise ValueError("repair index emitted a non-canonical raw diff record")
+        if status.startswith("D"):
+            if new_mode != "000000":
+                raise ValueError("deleted repair entry has a non-canonical Git mode")
+            continue
+        if new_mode not in {"100644", "100755"}:
+            raise ValueError("repair candidate may materialize only regular Git files")
+
+
 def probe_candidate_parents(
     repo_root: Path,
     candidate_git_sha: str,
@@ -642,6 +675,21 @@ def materialize_local_repair_candidate(
             raise ValueError("isolated repair patch produces no staged change")
         if staged.returncode != 1:
             raise ValueError("cannot verify isolated repair staged delta")
+
+        raw_diff = _git_command(
+            root,
+            "diff",
+            "--cached",
+            "--raw",
+            "--no-renames",
+            base_sha,
+            "--",
+            check=False,
+            env=index_env,
+        )
+        if raw_diff.returncode != 0:
+            raise ValueError("cannot inspect isolated repair Git entry modes")
+        _validate_repair_index_entries(raw_diff.stdout)
 
         tree_result = _git_command(root, "write-tree", check=False, env=index_env)
         if tree_result.returncode != 0:
