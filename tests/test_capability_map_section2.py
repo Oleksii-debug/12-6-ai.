@@ -741,6 +741,41 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
+def test_source_surface_coverage_ignores_public_capability_lookup_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    target = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/artifact_identity.py"
+    )
+    assert registry.capability(target.capability_id).status is CapabilityStatus.AVAILABLE
+
+    object.__setattr__(target, "origin", "modified_candidate")
+    object.__setattr__(
+        inventory,
+        "accepted_main_surface_count",
+        inventory.accepted_main_surface_count - 1,
+    )
+    object.__setattr__(
+        inventory,
+        "candidate_overlay_surface_count",
+        inventory.candidate_overlay_surface_count + 1,
+    )
+    unavailable = registry.capability("executable-capability-map")
+    assert unavailable.status is CapabilityStatus.UNAVAILABLE
+    monkeypatch.setattr(
+        CapabilityRegistry,
+        "capability",
+        lambda _self, _capability_id: unavailable,
+    )
+
+    with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
 def test_source_surface_inventory_accepts_zero_candidate_overlay_after_integration(
     tmp_path: Path,
 ) -> None:
