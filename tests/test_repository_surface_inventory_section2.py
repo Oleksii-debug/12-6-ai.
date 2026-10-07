@@ -201,6 +201,22 @@ def test_repository_surface_coverage_accepts_equivalent_historical_main_receipt(
     assert result["current_repository_main_tree_sha"] == payload["observed_main_tree_sha"]
 
 
+def test_repository_surface_coverage_rejects_non_equivalent_historical_receipt(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["current_repository_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
+    payload["current_repository_main_tree_sha"] = "95ad101c8965fd49c1711027146253a093fce2f8"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="pinned current-main receipt capability-bearing surface drift",
+    ):
+        _validate(inventory)
+
+
 def test_repository_surface_coverage_rejects_current_main_tree_reseal(
     tmp_path: Path,
 ) -> None:
