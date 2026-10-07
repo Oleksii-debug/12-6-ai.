@@ -36,7 +36,8 @@ The registry is bound to accepted
 `main@019944d5fe12334791f05f1232d13de4a12e37d3` and its terminal successful push
 CI run `37248299503`. Candidate Section-0/1 behavior is not resealed as accepted main truth.
 
-The first registry intentionally distinguishes mechanics from complete product claims.
+The first registry intentionally distinguishes mechanics from complete product claims. It is an initial truthful slice, not yet an exhaustive Section-2.1 inventory. Section 2 therefore remains IN_PROGRESS until current product capabilities and user/operator journeys are exhaustively enumerated and mechanically checked for coverage.
+
 Examples:
 
 - ModelSpec identity, byte-tokenizer runtime, deterministic packing mechanics,
@@ -96,4 +97,4 @@ authority.
 
 Its only purpose is to make current capability truth executable and machine-readable so later
 functionality must enter the graph as AVAILABLE with evidence or remain explicitly
-UNAVAILABLE.
+UNAVAILABLE. The present branch does not claim Section-2.1 exhaustive coverage yet.
