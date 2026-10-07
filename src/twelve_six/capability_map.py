@@ -4,6 +4,7 @@ import hashlib
 import importlib
 import json
 import math
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -16,6 +17,16 @@ from typing import Any
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_REGISTRY_BYTES = 1024 * 1024
+
+
+def _git_subprocess_env() -> dict[str, str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    return env
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -875,6 +886,7 @@ def _python_source_blob_map(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError(f"cannot enumerate source blobs for {treeish}")
@@ -932,6 +944,7 @@ def _worktree_python_source_drift(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError("cannot inspect Python source worktree drift")
@@ -1011,6 +1024,7 @@ def validate_source_surface_coverage(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if tree_check.returncode != 0:
         raise ValueError("cannot resolve observed_main_sha in repository checkout")
