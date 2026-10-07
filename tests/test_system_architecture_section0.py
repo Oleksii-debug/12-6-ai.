@@ -788,6 +788,7 @@ def test_closed_scalar_fields_reject_behavioral_subclasses() -> None:
             parameter_count=ForgedInt(canonical.parameter_count),
         )
 
+
 def test_closed_snapshots_revalidate_after_object_setattr_mutation() -> None:
     contract = InterfaceContract("twelve_six.memory", 1)
     object.__setattr__(contract, "schema_version", 0)
