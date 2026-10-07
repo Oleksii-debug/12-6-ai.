@@ -169,8 +169,10 @@ class QualificationAction:
         ):
             raise ValueError("required_resources must use canonical lexical order")
 
-    def logical_argv(self) -> tuple[str, ...]:
-        return ("python", "-m", "pytest", "-q", *self.pytest_targets)
+    def logical_argv(self, python_executable: str = "python") -> tuple[str, ...]:
+        if not isinstance(python_executable, str) or not python_executable:
+            raise ValueError("python_executable must be a non-empty string")
+        return (python_executable, "-m", "pytest", "-q", *self.pytest_targets)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -377,6 +379,7 @@ class HostInventory:
     platform_release: str
     machine: str
     python_version: str
+    python_executable: str
     cpu_logical_count: int | None
     ram_total_bytes: int | None
     disk_total_bytes: int
@@ -393,6 +396,7 @@ class HostInventory:
             ("platform_release", self.platform_release),
             ("machine", self.machine),
             ("python_version", self.python_version),
+            ("python_executable", self.python_executable),
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
@@ -426,6 +430,7 @@ class HostInventory:
             "platform_release": self.platform_release,
             "machine": self.machine,
             "python_version": self.python_version,
+            "python_executable": self.python_executable,
             "cpu_logical_count": self.cpu_logical_count,
             "ram_total_bytes": self.ram_total_bytes,
             "disk_total_bytes": self.disk_total_bytes,
@@ -446,6 +451,7 @@ def _host_inventory_from_dict(value: object) -> HostInventory:
         "platform_release",
         "machine",
         "python_version",
+        "python_executable",
         "cpu_logical_count",
         "ram_total_bytes",
         "disk_total_bytes",
@@ -465,6 +471,7 @@ def _host_inventory_from_dict(value: object) -> HostInventory:
         platform_release=value["platform_release"],
         machine=value["machine"],
         python_version=value["python_version"],
+        python_executable=value["python_executable"],
         cpu_logical_count=value["cpu_logical_count"],
         ram_total_bytes=value["ram_total_bytes"],
         disk_total_bytes=value["disk_total_bytes"],
@@ -532,6 +539,7 @@ def inventory_host(repo_root: str | Path) -> HostInventory:
         platform_release=platform.release(),
         machine=platform.machine(),
         python_version=platform.python_version(),
+        python_executable=sys.executable,
         cpu_logical_count=os.cpu_count(),
         ram_total_bytes=_probe_ram_total_bytes(),
         disk_total_bytes=int(disk.total),
@@ -591,6 +599,34 @@ class ActionExecution:
 ActionRunner = Callable[[QualificationAction, Path], ActionExecution]
 
 
+def _validate_checked_in_pytest_targets(
+    action: QualificationAction,
+    repo_root: Path,
+) -> None:
+    root = repo_root.resolve()
+    for relative in action.pytest_targets:
+        target = root / relative
+        if target.is_symlink() or not target.is_file():
+            raise ValueError(f"physical pytest target is not a regular file: {relative}")
+        resolved = target.resolve()
+        if root not in resolved.parents:
+            raise ValueError(f"physical pytest target escapes repository: {relative}")
+        result = subprocess.run(
+            ("git", "--literal-pathspecs", "ls-files", "--error-unmatch", "-z", "--", relative),
+            cwd=root,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+            shell=False,
+        )
+        expected = relative.encode("utf-8") + b"\0"
+        if result.returncode != 0 or result.stdout != expected:
+            raise ValueError(f"physical pytest target is not exactly tracked: {relative}")
+
+
 def _popen_process_group_kwargs() -> dict[str, Any]:
     if sys.platform == "win32":
         creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", None)
@@ -637,6 +673,7 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
 def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionExecution:
     """Execute one pytest action while enforcing the signed capture bound in flight."""
 
+    _validate_checked_in_pytest_targets(action, repo_root)
     argv = (sys.executable, "-m", "pytest", "-q", *action.pytest_targets)
     started = time.monotonic_ns()
     process = subprocess.Popen(
@@ -826,7 +863,7 @@ def execute_qualification(
         action_evidence.append(
             {
                 "action_id": action.action_id,
-                "argv": list(action.logical_argv()),
+                "argv": list(action.logical_argv(inventory.python_executable)),
                 "return_code": execution.return_code,
                 "duration_ms": execution.duration_ms,
                 "stdout_sha256": _sha256_bytes(stdout),
@@ -1110,7 +1147,7 @@ def verify_qualification_evidence(
             raise ValueError("physical log fields are non-canonical")
         if actual.get("action_id") != expected.action_id:
             raise ValueError("physical action evidence order/id mismatch")
-        if actual.get("argv") != list(expected.logical_argv()):
+        if actual.get("argv") != list(expected.logical_argv(inventory.python_executable)):
             raise ValueError("physical action argv mismatch")
         if actual.get("pre_git_sha") != packet.target_git_sha:
             raise ValueError("physical action pre-run Git SHA mismatch")
