@@ -884,6 +884,13 @@ def verify_sil_evidence(
             raise ValueError(f"SIL evidence timing {field} must be a non-negative integer")
     if timings["finished_unix_ns"] < timings["started_unix_ns"]:
         raise ValueError("SIL evidence wall-clock timings are inverted")
+    execution_duration_sum = sum(
+        execution["duration_ms"] for execution in executions
+    )
+    if timings["duration_ms"] < execution_duration_sum:
+        raise ValueError(
+            "SIL evidence total duration is shorter than sequential execution durations"
+        )
 
     expected_verdict = (
         "PASS"
