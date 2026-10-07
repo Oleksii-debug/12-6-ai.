@@ -368,6 +368,8 @@ class ProductAssembly:
 class CoreReplacementReceipt:
     previous_core_identity_sha256: str
     candidate_core_identity_sha256: str
+    previous_core: CognitiveCoreIdentity
+    candidate_core: CognitiveCoreIdentity
     shell_identity_sha256_before: str
     shell_identity_sha256_after: str
     preserved_surface_identities: tuple[tuple[str, str], ...]
@@ -382,6 +384,14 @@ class CoreReplacementReceipt:
             ("shell_identity_sha256_after", self.shell_identity_sha256_after),
         ):
             _require_sha256(name, value)
+        if not isinstance(self.previous_core, CognitiveCoreIdentity):
+            raise ValueError("previous_core must be a CognitiveCoreIdentity")
+        if not isinstance(self.candidate_core, CognitiveCoreIdentity):
+            raise ValueError("candidate_core must be a CognitiveCoreIdentity")
+        if self.previous_core_identity_sha256 != self.previous_core.identity_sha256():
+            raise ValueError("replacement receipt previous core identity does not match snapshot")
+        if self.candidate_core_identity_sha256 != self.candidate_core.identity_sha256():
+            raise ValueError("replacement receipt candidate core identity does not match snapshot")
         if not isinstance(self.preserved_surface_identities, tuple) or any(
             not isinstance(item, tuple) or len(item) != 2
             for item in self.preserved_surface_identities
@@ -412,6 +422,8 @@ class CoreReplacementReceipt:
         return {
             "previous_core_identity_sha256": self.previous_core_identity_sha256,
             "candidate_core_identity_sha256": self.candidate_core_identity_sha256,
+            "previous_core": self.previous_core.to_dict(),
+            "candidate_core": self.candidate_core.to_dict(),
             "shell_identity_sha256_before": self.shell_identity_sha256_before,
             "shell_identity_sha256_after": self.shell_identity_sha256_after,
             "preserved_surface_identities": [
@@ -515,6 +527,8 @@ def replace_cognitive_core(
     receipt = CoreReplacementReceipt(
         previous_core_identity_sha256=assembly.core_binding.core.identity_sha256(),
         candidate_core_identity_sha256=candidate.core.identity_sha256(),
+        previous_core=assembly.core_binding.core,
+        candidate_core=candidate.core,
         shell_identity_sha256_before=shell_before,
         shell_identity_sha256_after=shell_after,
         preserved_surface_identities=assembly.shell.surface_identities(),

@@ -69,9 +69,10 @@ remain independently versioned.
 
 `replace_cognitive_core()` accepts a new checkpoint or scale only when its gateway contract
 is exactly compatible with the shell. The replacement receipt binds the old and new core
-identities and the unchanged shell/surface identities. It also carries the immutable preserved
-shell contract and cross-checks the shell hash plus every surface hash against that snapshot, so
-a resealed receipt cannot claim unrelated surface identities. A gateway generation mismatch
+identities and the unchanged shell/surface identities. It carries immutable snapshots of both
+cores and the preserved shell, cross-checking each claimed core hash, the shell hash, and every
+surface hash against those snapshots so a resealed receipt cannot rename either core or claim
+unrelated surface identities. A gateway generation mismatch
 fails closed before the assembly is changed.
 
 The regression suite proves both important replacement classes:
