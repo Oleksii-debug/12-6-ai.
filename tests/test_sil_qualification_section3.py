@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.sil_qualification as sil_qualification
+from twelve_six import sil_qualification
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
@@ -20,9 +20,9 @@ from twelve_six.sil_qualification import (
     GitState,
     SILScenario,
     build_package_manifest_bytes,
+    build_sil_plan,
     canonical_sil_environment_receipt_v1,
     load_sil_environment_receipt,
-    build_sil_plan,
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
