@@ -14,4 +14,4 @@ This file is the durable GitHub mirror for ordered Section/Subsection closure.
 
 | Section / Subsection | State | Canonical evidence / lineage | Accepted source / build | Notes |
 | --- | --- | --- | --- | --- |
-| _Backfill only from exact current evidence; do not guess historical closure._ | OPEN | — | — | Reconcile from the canonical plan and live repository before adding DONE entries. |
+| Section 0 — Цільова архітектура 12-6 як повної AI-системи | IN_PROGRESS | PR #3074; branch `section/0-system-architecture-contract-v1`; converged from `main@03296d2d33bdeec9167649067af94ef392bdebe3` | — | Candidate architecture implementation exists; Section 0 is not DONE until accepted integration and terminal exact-head CI on the integrated candidate. |
