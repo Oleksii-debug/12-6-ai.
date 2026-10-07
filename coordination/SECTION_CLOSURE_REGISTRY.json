@@ -113,8 +113,25 @@
     {
       "number": 4,
       "title": "AI QA і автономний defect → repair → retest plane",
-      "status": "UNVERIFIED",
-      "evidence": null
+      "status": "IN_PROGRESS",
+      "evidence": {
+        "candidate_branch": "section/4-ai-qa-control-v1",
+        "predecessor_candidate_sha": "11197438c505863e8324b9539e056d9108718499",
+        "implementation_paths": [
+          "configs/control/ai_qa_policy_v1.json",
+          "src/twelve_six/ai_qa_control.py",
+          "tests/test_ai_qa_control_section4.py",
+          "docs/AI_QA_CONTROL_SECTION4.md"
+        ],
+        "integrated_main_sha": null,
+        "pull_request": null,
+        "terminal_ci": null,
+        "remaining_closure_requirements": [
+          "live defect-to-repair-to-retest round-trip evidence",
+          "authorized isolated repair lineage mutation adapter",
+          "independent promotion evidence"
+        ]
+      }
     },
     {
       "number": 5,
