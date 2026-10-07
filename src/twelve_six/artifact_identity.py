@@ -207,8 +207,11 @@ class ArtifactRef:
             "identity_sha256",
         }:
             raise ValueError("ArtifactRef fields mismatch")
+        kind_value = value["kind"]
+        if not _is_exact_type(kind_value, str):
+            raise ValueError("ArtifactRef kind must be an exact string")
         try:
-            kind = ArtifactKind(value["kind"])
+            kind = ArtifactKind(kind_value)
         except (TypeError, ValueError) as exc:
             raise ValueError("ArtifactRef kind is unsupported") from exc
         return cls(

@@ -674,6 +674,23 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
         parse_generation_identity_manifest(ForgedBytes(b"{}"))
 
 
+def test_artifact_ref_from_dict_rejects_behavioral_kind_string_before_enum_lookup() -> None:
+    class ForgedKind(str):
+        def __hash__(self) -> int:
+            raise AssertionError("behavioral kind hash must not run")
+
+        def __eq__(self, other: object) -> bool:
+            raise AssertionError("behavioral kind equality must not run")
+
+    payload = {
+        "kind": ForgedKind("model_spec"),
+        "schema_version": 1,
+        "identity_sha256": _sha("kind-discriminator"),
+    }
+    with pytest.raises(ValueError, match="kind must be an exact string"):
+        ArtifactRef.from_dict(payload)
+
+
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
     object.__setattr__(ref, "schema_version", 0)
