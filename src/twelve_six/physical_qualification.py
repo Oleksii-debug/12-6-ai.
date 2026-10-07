@@ -796,6 +796,7 @@ def _bounded_pytest_env() -> dict[str, str]:
     )
     return env
 
+
 def _popen_process_group_kwargs() -> dict[str, Any]:
     if sys.platform == "win32":
         creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", None)

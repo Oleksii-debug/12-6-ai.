@@ -534,7 +534,7 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
     (tests_dir / "test_must_execute.py").write_text(
-        "def test_must_execute() -> None:\\n    assert False\\n",
+        "def test_must_execute() -> None:\n    assert False\n",
         encoding="utf-8",
     )
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
@@ -563,6 +563,7 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
     execution = run_bounded_pytest(action, tmp_path)
 
     assert execution.return_code != 0
+
 
 def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
     tmp_path: Path,
