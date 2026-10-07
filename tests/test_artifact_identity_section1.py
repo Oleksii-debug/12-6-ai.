@@ -900,6 +900,26 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
         )
 
 
+def test_manifest_hash_helper_rebinding_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("hash-helper-rebind")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    expected_generation_identity = generation.identity_sha256()
+    expected_release_identity = release.manifest_identity_sha256()
+
+    monkeypatch.setattr(
+        artifact_identity_module,
+        "_canonical_json_sha256",
+        lambda _payload: "0" * 64,
+    )
+
+    assert generation.identity_sha256() == expected_generation_identity
+    assert release.manifest_identity_sha256() == expected_release_identity
+    assert _generation("hash-helper-rebind").identity_sha256() == expected_generation_identity
+
+
+
 def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

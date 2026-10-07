@@ -138,8 +138,11 @@ class InterfaceContract:
             "schema_version": self.schema_version,
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,8 +247,11 @@ class SystemArchitectureManifest:
             "boundaries": [boundary.to_dict() for boundary in self.boundaries],
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,8 +281,11 @@ class CognitiveCoreIdentity:
             "parameter_count": self.parameter_count,
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,8 +329,11 @@ class RuntimeShellContract:
             "orchestration_api": self.orchestration_api.to_dict(),
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
     def surface_identities(self) -> tuple[tuple[str, str], ...]:
         RuntimeShellContract.__post_init__(self)
@@ -407,8 +419,11 @@ class ProductAssembly:
             "core_binding": self.core_binding.to_dict(),
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -485,8 +500,11 @@ class CoreReplacementReceipt:
             "shell_rewrite_required": self.shell_rewrite_required,
         }
 
-    def identity_sha256(self) -> str:
-        return _canonical_json_sha256(self.to_dict())
+    def identity_sha256(
+        self,
+        _sealed_hash_payload=_canonical_json_sha256,
+    ) -> str:
+        return _sealed_hash_payload(self.to_dict())
 
 
 def canonical_system_architecture_v1() -> SystemArchitectureManifest:
