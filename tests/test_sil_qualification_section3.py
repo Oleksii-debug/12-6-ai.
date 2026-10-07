@@ -31,7 +31,6 @@ from twelve_six.sil_qualification import (
     verify_sil_evidence,
 )
 
-
 _ROOT = Path(__file__).parents[1]
 _REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
 _SCENARIO = _ROOT / "configs" / "control" / "sil_scenario_v1.json"

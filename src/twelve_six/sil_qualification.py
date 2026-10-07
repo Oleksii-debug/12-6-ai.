@@ -11,9 +11,10 @@ import shlex
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.capability_map import (
     CapabilityRegistry,
@@ -22,7 +23,6 @@ from twelve_six.capability_map import (
     load_capability_registry,
 )
 from twelve_six.model import InitSpec, ModelSpec
-
 
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -225,7 +225,7 @@ def _require_git_sha(name: str, value: object) -> str:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # SIL evidence schemas reject behavioral subclasses that can reseal validated state.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
