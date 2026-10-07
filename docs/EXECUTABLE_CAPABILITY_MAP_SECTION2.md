@@ -7,10 +7,11 @@ This delta prepares the current canonical:
 - **Section 2 — Executable capability map і acceptance graph**
 - plan document `16KotBqgSyf3A0FEWpN8Pnobgf2ZJ1ecT8MLgHoQXibY`
 - observed plan revision
-  `AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw`
+  `ANLCKQnXY8VKCJDDnoyswSWTUVvktY41ODOKs8vJB9_b2whb1GpVUU2nUEZxcqkQXTS7YYo7IcAlrRhEcbUHlYiysiUA00rP9QpL5qUJ0A`
 
-Sections 0 and 1 are now terminally closed on accepted main. Section 2 is the numerical
-PRIMARY and this candidate refreshes its evidence against that accepted predecessor state.
+Section 0 is terminally closed on accepted main. Section 1 is currently REOPENED and is the
+numerical PRIMARY; Section 2 is the SECONDARY repair front and cannot return to canonical DONE
+until the repaired Section-1 predecessor is terminally qualified and integrated.
 
 ## 2.1 — machine-readable current capability registry
 
@@ -73,6 +74,11 @@ For an AVAILABLE capability, the schema requires all of the following:
 Required test levels are evaluated from sealed canonical wire strings rather than Enum
 `__eq__` / `__hash__` behavior. Runtime dunder rebinding therefore cannot make one test
 level satisfy both the component and integration acceptance requirements.
+
+Repository-owned component-contract resolution is likewise sealed away from the public
+`resolve_component_contract` binding when registry authority is validated. Rebinding that
+public helper after construction therefore cannot make a mutated/nonexistent contract pass
+registry construction, identity, acceptance-path, or available-contract revalidation.
 
 `CapabilityRegistry.acceptance_path()` returns that contract → tests → evidence →
 integrated-result path.
