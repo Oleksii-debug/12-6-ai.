@@ -694,6 +694,126 @@ def test_artifact_ref_from_dict_rejects_behavioral_kind_string_before_enum_looku
         ArtifactRef.from_dict(payload)
 
 
+
+def test_closed_schema_from_dict_rejects_behavioral_field_keys_before_set_lookup() -> None:
+    class ForgedKey(str):
+        armed = False
+
+        def __new__(cls, actual: str, canonical: str):
+            obj = super().__new__(cls, actual)
+            obj.canonical = canonical
+            return obj
+
+        def __hash__(self) -> int:
+            if type(self).armed:
+                raise AssertionError("behavioral field-key hash must not run")
+            return hash(self.canonical)
+
+        def __eq__(self, other: object) -> bool:
+            if type(self).armed:
+                raise AssertionError("behavioral field-key equality must not run")
+            return other == self.canonical
+
+    ref_key = ForgedKey("not_kind", "kind")
+    parent_key = ForgedKey("not_role", "role")
+    manifest_key = ForgedKey("not_schema_version", "schema_version")
+    generation_key = ForgedKey("also_not_schema_version", "schema_version")
+    payloads = (
+        (
+            ArtifactRef.from_dict,
+            {
+                ref_key: "model_spec",
+                "schema_version": 1,
+                "identity_sha256": _sha("forged-key-ref"),
+            },
+            "ArtifactRef fields mismatch",
+        ),
+        (
+            ParentBinding.from_dict,
+            {
+                parent_key: "corpus",
+                "artifact": _ref(ArtifactKind.CORPUS, "forged-key-parent").to_dict(),
+                "parent_manifest_identity_sha256": _sha("forged-key-parent-manifest"),
+            },
+            "ParentBinding fields mismatch",
+        ),
+        (
+            ArtifactManifest.from_dict,
+            {
+                manifest_key: 1,
+                "artifact": _ref(ArtifactKind.CORPUS, "forged-key-manifest").to_dict(),
+                "parents": [],
+            },
+            "ArtifactManifest fields mismatch",
+        ),
+        (
+            GenerationIdentityManifest.from_dict,
+            {
+                generation_key: 1,
+                "artifacts": [],
+            },
+            "GenerationIdentityManifest fields mismatch",
+        ),
+    )
+    ForgedKey.armed = True
+    try:
+        for parser, payload, message in payloads:
+            with pytest.raises(ValueError, match=message):
+                parser(payload)
+    finally:
+        ForgedKey.armed = False
+
+
+
+def test_artifact_ref_from_dict_ignores_poisoned_enum_value_lookup_table() -> None:
+    value_map = ArtifactKind._value2member_map_
+    original = value_map["model_spec"]
+    value_map["model_spec"] = ArtifactKind.CORPUS
+    try:
+        decoded = ArtifactRef.from_dict(
+            {
+                "kind": "model_spec",
+                "schema_version": 1,
+                "identity_sha256": _sha("poisoned-enum-map"),
+            }
+        )
+        assert decoded.kind is ArtifactKind.MODEL_SPEC
+    finally:
+        value_map["model_spec"] = original
+
+
+
+def test_closed_schema_from_dict_rejects_inherited_subclass_decoder() -> None:
+    generation = _generation("decoder-class")
+    corpus = generation.artifact_manifest(ArtifactKind.CORPUS)
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    release_parent = release.parents[0]
+
+    class ForgedArtifactRef(ArtifactRef):
+        pass
+
+    class ForgedParentBinding(ParentBinding):
+        pass
+
+    class ForgedArtifactManifest(ArtifactManifest):
+        pass
+
+    class ForgedGenerationIdentityManifest(GenerationIdentityManifest):
+        pass
+
+    with pytest.raises(ValueError, match="ArtifactRef decoder class must be exact"):
+        ForgedArtifactRef.from_dict(corpus.artifact.to_dict())
+    with pytest.raises(ValueError, match="ParentBinding decoder class must be exact"):
+        ForgedParentBinding.from_dict(release_parent.to_dict())
+    with pytest.raises(ValueError, match="ArtifactManifest decoder class must be exact"):
+        ForgedArtifactManifest.from_dict(release.to_dict())
+    with pytest.raises(
+        ValueError,
+        match="GenerationIdentityManifest decoder class must be exact",
+    ):
+        ForgedGenerationIdentityManifest.from_dict(generation.to_dict())
+
+
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
     object.__setattr__(ref, "schema_version", 0)
