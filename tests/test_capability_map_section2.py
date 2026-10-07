@@ -902,8 +902,8 @@ def test_modified_candidate_requires_exact_changed_source_set(
         for surface in payload["surfaces"]
         if surface["path"] == "src/twelve_six/__init__.py"
     )
+    assert target["capability_id"] == "package-runtime"
     target["origin"] = "modified_candidate"
-    target["capability_id"] = "learned-20m-base"
     payload["accepted_main_surface_count"] -= 1
     payload["candidate_overlay_surface_count"] += 1
     path = tmp_path / "surface-inventory.json"
