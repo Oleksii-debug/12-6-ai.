@@ -48,20 +48,24 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _is_exact_type(value: object, expected: type[object]) -> bool:
+    return type(value) is expected  # noqa: E721
+
+
 def _require_sha256(name: str, value: object) -> str:
-    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+    if not _is_exact_type(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be an exact lowercase SHA-256")
     return value
 
 
 def _require_git_sha(name: str, value: object) -> str:
-    if not isinstance(value, str) or _GIT_SHA_RE.fullmatch(value) is None:
+    if not _is_exact_type(value, str) or _GIT_SHA_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be an exact lowercase 40-hex Git SHA")
     return value
 
 
 def _require_id(name: str, value: object) -> str:
-    if not isinstance(value, str) or _ID_RE.fullmatch(value) is None:
+    if not _is_exact_type(value, str) or _ID_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be a canonical identifier")
     return value
 
@@ -137,13 +141,13 @@ def _strict_json_object(path: str | Path, *, label: str) -> dict[str, Any]:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{label} is not strict unambiguous UTF-8 JSON") from exc
-    if not isinstance(value, dict):
+    if not _is_exact_type(value, dict):
         raise ValueError(f"{label} root must be a JSON object")
     return value
 
 
 def _safe_repo_path(value: object, *, label: str) -> str:
-    if not isinstance(value, str) or not value or "\\" in value:
+    if not _is_exact_type(value, str) or not value or "\\" in value:
         raise ValueError(f"{label} must be a non-empty POSIX repository path")
     path = Path(value)
     if path.is_absolute() or ".." in path.parts or "." in path.parts:
@@ -199,8 +203,20 @@ class QualificationAction:
 
     def __post_init__(self) -> None:
         _require_id("action_id", self.action_id)
-        if not self.pytest_targets or len(self.pytest_targets) > 64:
+        if (
+            not _is_exact_type(self.pytest_targets, tuple)
+            or not self.pytest_targets
+            or len(self.pytest_targets) > 64
+        ):
             raise ValueError("pytest_targets must contain 1..64 targets")
+        if (
+            not _is_exact_type(self.required_resources, tuple)
+            or any(
+                not _is_exact_type(item, ResourceKind)
+                for item in self.required_resources
+            )
+        ):
+            raise ValueError("required_resources must contain exact ResourceKind values")
         for target in self.pytest_targets:
             _safe_repo_path(target, label="pytest target")
             if not target.startswith("tests/"):
@@ -225,7 +241,7 @@ class QualificationAction:
             raise ValueError("required_resources must use canonical lexical order")
 
     def logical_argv(self, python_executable: str = "python") -> tuple[str, ...]:
-        if not isinstance(python_executable, str) or not python_executable:
+        if not _is_exact_type(python_executable, str) or not python_executable:
             raise ValueError("python_executable must be a non-empty string")
         return (python_executable, "-m", "pytest", "-q", *self.pytest_targets)
 
@@ -253,8 +269,34 @@ class QualificationPacket:
     artifact_paths: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if self.schema_version != "12-6.physical-qualification-packet.v1":
+        if (
+            not _is_exact_type(self.schema_version, str)
+            or self.schema_version != "12-6.physical-qualification-packet.v1"
+        ):
             raise ValueError("unsupported physical qualification packet schema")
+        if not _is_exact_type(self.execution_mode, ExecutionMode):
+            raise ValueError("execution_mode must be an ExecutionMode")
+        if (
+            not _is_exact_type(self.allowed_os_families, tuple)
+            or any(
+                not _is_exact_type(item, str)
+                for item in self.allowed_os_families
+            )
+        ):
+            raise ValueError("allowed_os_families must be an immutable string tuple")
+        if (
+            not _is_exact_type(self.actions, tuple)
+            or any(
+                not _is_exact_type(item, QualificationAction)
+                for item in self.actions
+            )
+        ):
+            raise ValueError("actions must contain exact QualificationAction values")
+        if (
+            not _is_exact_type(self.artifact_paths, tuple)
+            or any(not _is_exact_type(item, str) for item in self.artifact_paths)
+        ):
+            raise ValueError("artifact_paths must be an immutable string tuple")
         _require_id("packet_id", self.packet_id)
         _require_git_sha("target_git_sha", self.target_git_sha)
         _require_sha256("agent_source_sha256", self.agent_source_sha256)
@@ -312,6 +354,16 @@ class VerifiedSignedPacket:
     signature_sha256: str
     signed_bundle_identity_sha256: str
 
+    def __post_init__(self) -> None:
+        if not _is_exact_type(self.packet, QualificationPacket):
+            raise ValueError("verified packet must contain an exact QualificationPacket")
+        _require_id("signing_key_id", self.signing_key_id)
+        _require_sha256("signature_sha256", self.signature_sha256)
+        _require_sha256(
+            "signed_bundle_identity_sha256",
+            self.signed_bundle_identity_sha256,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ExternalResourceEvidence:
@@ -320,10 +372,13 @@ class ExternalResourceEvidence:
     evidence: bytes
 
     def __post_init__(self) -> None:
-        if self.resource not in _EXTERNAL_RESOURCE_KINDS:
+        if (
+            not _is_exact_type(self.resource, ResourceKind)
+            or self.resource not in _EXTERNAL_RESOURCE_KINDS
+        ):
             raise ValueError("external evidence is only valid for NETWORK/MODEL/PROVIDER")
         _require_id("external resource adapter id", self.adapter_id)
-        if not isinstance(self.evidence, bytes):
+        if not _is_exact_type(self.evidence, bytes):
             raise ValueError("external resource evidence must be bytes")
         if not self.evidence or len(self.evidence) > _MAX_RESOURCE_PROBE_BYTES:
             raise ValueError("external resource evidence size is invalid or unbounded")
@@ -352,13 +407,13 @@ def _action_from_dict(value: object) -> QualificationAction:
         "max_output_bytes",
         "required_resources",
     }
-    if not isinstance(value, dict) or set(value) != expected:
+    if not _is_exact_type(value, dict) or set(value) != expected:
         raise ValueError("qualification action fields are non-canonical")
     targets = value["pytest_targets"]
     resources = value["required_resources"]
-    if not isinstance(targets, list) or not all(isinstance(item, str) for item in targets):
+    if not _is_exact_type(targets, list) or not all(_is_exact_type(item, str) for item in targets):
         raise ValueError("pytest_targets must be a string array")
-    if not isinstance(resources, list) or not all(isinstance(item, str) for item in resources):
+    if not _is_exact_type(resources, list) or not all(_is_exact_type(item, str) for item in resources):
         raise ValueError("required_resources must be a string array")
     return QualificationAction(
         action_id=value["action_id"],
@@ -382,16 +437,16 @@ def _packet_from_dict(value: object) -> QualificationPacket:
         "actions",
         "artifact_paths",
     }
-    if not isinstance(value, dict) or set(value) != expected:
+    if not _is_exact_type(value, dict) or set(value) != expected:
         raise ValueError("qualification packet fields are non-canonical")
     allowed = value["allowed_os_families"]
     actions = value["actions"]
     artifacts = value["artifact_paths"]
-    if not isinstance(allowed, list) or not all(isinstance(item, str) for item in allowed):
+    if not _is_exact_type(allowed, list) or not all(_is_exact_type(item, str) for item in allowed):
         raise ValueError("allowed_os_families must be a string array")
-    if not isinstance(actions, list):
+    if not _is_exact_type(actions, list):
         raise ValueError("actions must be an array")
-    if not isinstance(artifacts, list) or not all(isinstance(item, str) for item in artifacts):
+    if not _is_exact_type(artifacts, list) or not all(_is_exact_type(item, str) for item in artifacts):
         raise ValueError("artifact_paths must be a string array")
     return QualificationPacket(
         schema_version=value["schema_version"],
@@ -419,7 +474,7 @@ def load_verified_signed_packet(
     if payload["schema_version"] != "12-6.signed-physical-qualification-packet.v1":
         raise ValueError("unsupported signed packet schema")
     signature = payload["signature"]
-    if not isinstance(signature, dict) or set(signature) != {
+    if not _is_exact_type(signature, dict) or set(signature) != {
         "algorithm",
         "key_id",
         "signature_b64",
@@ -471,8 +526,13 @@ class HostInventory:
     cuda_device_names: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if self.os_family not in {"WINDOWS", "LINUX", "OTHER"}:
+        if (
+            not _is_exact_type(self.os_family, str)
+            or self.os_family not in {"WINDOWS", "LINUX", "OTHER"}
+        ):
             raise ValueError("invalid host os_family")
+        if not _is_exact_type(self.cuda_device_names, tuple):
+            raise ValueError("cuda_device_names must be an immutable tuple")
         for name, value in (
             ("platform_system", self.platform_system),
             ("platform_release", self.platform_release),
@@ -480,11 +540,11 @@ class HostInventory:
             ("python_version", self.python_version),
             ("python_executable", self.python_executable),
         ):
-            if not isinstance(value, str) or not value:
+            if not _is_exact_type(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
-        if self.torch_version is not None and not isinstance(self.torch_version, str):
+        if self.torch_version is not None and not _is_exact_type(self.torch_version, str):
             raise ValueError("torch_version must be a string or null")
-        if not all(isinstance(item, str) and item for item in self.cuda_device_names):
+        if not all(_is_exact_type(item, str) and item for item in self.cuda_device_names):
             raise ValueError("CUDA device names must be non-empty strings")
         for name, value in (
             ("disk_total_bytes", self.disk_total_bytes),
@@ -542,10 +602,10 @@ def _host_inventory_from_dict(value: object) -> HostInventory:
         "cuda_available",
         "cuda_device_names",
     }
-    if not isinstance(value, dict) or set(value) != expected:
+    if not _is_exact_type(value, dict) or set(value) != expected:
         raise ValueError("host inventory fields are non-canonical")
     names = value["cuda_device_names"]
-    if not isinstance(names, list) or not all(isinstance(item, str) for item in names):
+    if not _is_exact_type(names, list) or not all(_is_exact_type(item, str) for item in names):
         raise ValueError("cuda_device_names must be a string array")
     return HostInventory(
         os_family=value["os_family"],
@@ -742,7 +802,7 @@ class ActionExecution:
     def __post_init__(self) -> None:
         if type(self.return_code) is not int:
             raise ValueError("return_code must be an integer")
-        if not isinstance(self.stdout, bytes) or not isinstance(self.stderr, bytes):
+        if not _is_exact_type(self.stdout, bytes) or not _is_exact_type(self.stderr, bytes):
             raise ValueError("action output must be bytes")
         if type(self.duration_ms) is not int or self.duration_ms < 0:
             raise ValueError("duration_ms must be a non-negative integer")
@@ -970,6 +1030,12 @@ def execute_qualification(
     resource_probes: dict[ResourceKind, ExternalResourceProbe] | None = None,
     resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
+    if not _is_exact_type(verified, VerifiedSignedPacket):
+        raise ValueError("verified must be an exact VerifiedSignedPacket")
+    if host_inventory is not None and not _is_exact_type(host_inventory, HostInventory):
+        raise ValueError("host_inventory must be an exact HostInventory")
+    if agent_source_bytes is not None and not _is_exact_type(agent_source_bytes, bytes):
+        raise ValueError("agent_source_bytes must be exact bytes")
     packet = verified.packet
     signing_key_id = _require_id("evidence signing key id", evidence_signing_key_id)
     root = Path(repo_root).resolve()
@@ -1113,7 +1179,7 @@ def execute_qualification(
     evidence_message = _canonical_json_bytes(body)
     evidence_identity = _sha256_bytes(evidence_message)
     evidence_signature = evidence_signer(signing_key_id, evidence_message)
-    if not isinstance(evidence_signature, bytes) or len(evidence_signature) != 64:
+    if not _is_exact_type(evidence_signature, bytes) or len(evidence_signature) != 64:
         raise ValueError("host evidence signer must return one 64-byte ED25519 signature")
     body["evidence_identity_sha256"] = evidence_identity
     body["evidence_attestation"] = {
@@ -1132,6 +1198,10 @@ def write_evidence_bundle(
     evidence: dict[str, Any],
     log_bytes: bytes,
 ) -> None:
+    if not _is_exact_type(evidence, dict):
+        raise ValueError("evidence must be an exact dict")
+    if not _is_exact_type(log_bytes, bytes):
+        raise ValueError("log_bytes must be exact bytes")
     expected_identity = evidence.get("evidence_identity_sha256")
     body = dict(evidence)
     body.pop("evidence_identity_sha256", None)
@@ -1157,6 +1227,12 @@ def verify_qualification_evidence(
     evidence_signature_verifier: SignatureVerifier,
     resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
 ) -> dict[str, Any]:
+    if not _is_exact_type(verified_packet, VerifiedSignedPacket):
+        raise ValueError("verified_packet must be an exact VerifiedSignedPacket")
+    if not _is_exact_type(agent_source_bytes, bytes):
+        raise ValueError("agent_source_bytes must be exact bytes")
+    if type(require_real_pass) is not bool:
+        raise ValueError("require_real_pass must be a bool")
     evidence = _strict_json_object(evidence_path, label="physical qualification evidence")
     expected_fields = {
         "schema_version",
