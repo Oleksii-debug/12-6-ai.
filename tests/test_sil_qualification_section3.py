@@ -1030,6 +1030,7 @@ def test_command_execution_contract_rejects_bool_return_code_and_bad_consumed_ha
     with pytest.raises(ValueError, match="consumed_input_identity_sha256"):
         CommandExecution(0, "", "", 0, "not-a-sha")
 
+
 def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses() -> None:
     class ForgedStr(str):
         def strip(self) -> str:
@@ -1068,4 +1069,3 @@ def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses
 
     with pytest.raises(ValueError, match="SIL log must be non-empty bytes"):
         sil_qualification._load_sil_log_records(ForgedBytes(b"{}\n"))
-
