@@ -635,7 +635,8 @@ jobs:
           lock_dir="$RUNNER_TEMP/sil-locks"
           venv_dir="$RUNNER_TEMP/sil-venv"
           mkdir -p "$lock_dir"
-          git cat-file -e "$SIL_ENV_AUTHORITY_COMMIT^{commit}"
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"
 
           git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/locks/linux-x86_64/toolchain.lock.txt" \
             > "$lock_dir/toolchain.lock.txt"
