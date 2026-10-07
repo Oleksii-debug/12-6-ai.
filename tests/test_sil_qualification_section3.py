@@ -43,14 +43,20 @@ def _pass_runner(
     argv: tuple[str, ...],
     cwd: Path,
     timeout_seconds: int,
+    input_envelope_bytes: bytes,
+    expected_input_identity_sha256: str,
 ) -> CommandExecution:
     assert cwd
     assert timeout_seconds == 300
+    assert hashlib.sha256(input_envelope_bytes).hexdigest() == (
+        expected_input_identity_sha256
+    )
     return CommandExecution(
         return_code=0,
         stdout="PASS " + " ".join(argv),
         stderr="",
         duration_ms=1,
+        consumed_input_identity_sha256=expected_input_identity_sha256,
     )
 
 
@@ -348,7 +354,7 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     resealed["scenario_id"] = "forged-scenario"
     _write_evidence(evidence_path, resealed)
     with pytest.raises(ValueError, match="evidence identity"):
-        verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
+        _verify_evidence(evidence_path, log_path)
 
 
 def test_verifier_rejects_self_consistent_package_authority_reseal(
