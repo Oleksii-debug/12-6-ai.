@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 import re
 import shlex
 import subprocess
@@ -27,6 +29,50 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _MAX_SCENARIO_BYTES = 64 * 1024
 _MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
+_MAX_ENVIRONMENT_RECEIPT_BYTES = 256 * 1024
+
+_SIL_ENVIRONMENT_AUTHORITY_COMMIT = "029514654829cebc149cff6fc1fea2a8ba4fa566"
+_SIL_ENVIRONMENT_LOCKS = (
+    (
+        "toolchain",
+        "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3",
+    ),
+    (
+        "cpu_runtime",
+        "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+        "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+    ),
+    (
+        "dev",
+        "requirements/locks/linux-x86_64/dev.lock.txt",
+        "1869e05c5eeaf056813df1c99dc63c7e5febb9794351ec640d265f62efaeac28",
+    ),
+)
+_SIL_ENVIRONMENT_PACKAGES = (
+    ("filelock", "3.32.4"),
+    ("fsspec", "2026.7.0"),
+    ("iniconfig", "2.3.0"),
+    ("jinja2", "3.1.6"),
+    ("markupsafe", "3.0.3"),
+    ("mpmath", "1.3.0"),
+    ("networkx", "3.6.1"),
+    ("numpy", "2.4.6"),
+    ("packaging", "26.3"),
+    ("pip", "26.2.1"),
+    ("pluggy", "1.6.0"),
+    ("pygments", "2.21.0"),
+    ("pytest", "9.1.1"),
+    ("ruff", "0.16.4"),
+    ("safetensors", "0.8.0"),
+    ("setuptools", "84.0.0"),
+    ("sympy", "1.14.0"),
+    ("torch", "2.13.0+cpu"),
+    ("twelve-six-ai", "0.2.0.dev0"),
+    ("typing-extensions", "4.16.0"),
+    ("wheel", "0.48.0"),
+)
+_DIST_NAME_RE = re.compile(r"[-_.]+")
 
 # Section 3.1 requires journey-level end-to-end execution, not merely a bag of
 # integration-green capabilities.  This sealed policy is the explicit accepted
@@ -201,6 +247,95 @@ def _strict_json_object(data: bytes, *, maximum_bytes: int, label: str) -> dict[
     if not isinstance(value, dict):
         raise ValueError(f"{label} root must be a JSON object")
     return value
+
+
+def _canonical_distribution_name(value: str) -> str:
+    return _DIST_NAME_RE.sub("-", value.strip()).lower()
+
+
+def canonical_sil_environment_receipt_v1() -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema_version": "12-6.sil-environment-receipt.v1",
+        "python": {
+            "implementation": "cpython",
+            "version": "3.11.16",
+        },
+        "authority_commit": _SIL_ENVIRONMENT_AUTHORITY_COMMIT,
+        "locks": [
+            {
+                "role": role,
+                "path": path,
+                "sha256": digest,
+            }
+            for role, path, digest in _SIL_ENVIRONMENT_LOCKS
+        ],
+        "packages": [
+            {"name": name, "version": version}
+            for name, version in _SIL_ENVIRONMENT_PACKAGES
+        ],
+    }
+    payload["identity_sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def _validate_sil_environment_receipt(payload: dict[str, Any]) -> dict[str, Any]:
+    expected = canonical_sil_environment_receipt_v1()
+    if payload != expected:
+        raise ValueError("SIL environment receipt does not match exact accepted authority")
+    return payload
+
+
+def load_sil_environment_receipt(path: str | Path) -> dict[str, Any]:
+    raw = Path(path).read_bytes()
+    payload = _strict_json_object(
+        raw,
+        maximum_bytes=_MAX_ENVIRONMENT_RECEIPT_BYTES,
+        label="SIL environment receipt",
+    )
+    if raw != _canonical_json_bytes(payload) + b"\n":
+        raise ValueError("SIL environment receipt bytes are non-canonical")
+    return _validate_sil_environment_receipt(payload)
+
+
+def _installed_distribution_versions() -> dict[str, str]:
+    observed: dict[str, str] = {}
+    for distribution in importlib.metadata.distributions():
+        raw_name = distribution.metadata.get("Name")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ValueError("installed distribution has no canonical Name metadata")
+        name = _canonical_distribution_name(raw_name)
+        if name in observed:
+            raise ValueError(f"duplicate installed distribution name: {name}")
+        observed[name] = distribution.version
+    return observed
+
+
+def require_current_sil_environment(
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    receipt = _validate_sil_environment_receipt(receipt)
+    if sys.implementation.name != receipt["python"]["implementation"]:
+        raise ValueError("SIL Python implementation does not match environment receipt")
+    if platform.python_version() != receipt["python"]["version"]:
+        raise ValueError("SIL Python version does not match environment receipt")
+    expected_packages = {
+        item["name"]: item["version"] for item in receipt["packages"]
+    }
+    observed_packages = _installed_distribution_versions()
+    if observed_packages != expected_packages:
+        missing = sorted(set(expected_packages) - set(observed_packages))
+        unexpected = sorted(set(observed_packages) - set(expected_packages))
+        version_drift = sorted(
+            name
+            for name in set(expected_packages) & set(observed_packages)
+            if expected_packages[name] != observed_packages[name]
+        )
+        raise ValueError(
+            "SIL installed distribution set does not match environment receipt: "
+            f"missing={missing}, unexpected={unexpected}, "
+            f"version_drift={version_drift}"
+        )
+    return receipt
 
 
 @dataclass(frozen=True, slots=True)
@@ -646,12 +781,14 @@ def qualify_sil(
     registry: CapabilityRegistry,
     scenario: SILScenario,
     package_bytes: bytes,
+    environment_receipt: dict[str, Any],
     command_runner: CommandRunner = run_command,
     git_probe: GitProbe = probe_git_state,
 ) -> tuple[dict[str, Any], str]:
     expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
     if not isinstance(package_bytes, bytes) or not package_bytes:
         raise ValueError("package_bytes must be non-empty bytes")
+    environment_receipt = _validate_sil_environment_receipt(environment_receipt)
 
     root = Path(repo_root)
     expected_package_bytes = build_package_manifest_bytes(root)
@@ -670,6 +807,7 @@ def qualify_sil(
 
     plan = build_sil_plan(registry, scenario)
     package_identity = _sha256_bytes(package_bytes)
+    environment_identity = environment_receipt["identity_sha256"]
     registry_identity = registry.identity_sha256()
     model_identity, init_identity = _synthetic_model_identities()
     data_identity = _sha256_bytes(scenario.synthetic_data_utf8.encode("utf-8"))
@@ -679,6 +817,7 @@ def qualify_sil(
         "schema_version": "12-6.github-sil-input.v1",
         "git_sha": expected_git_sha,
         "package_identity_sha256": package_identity,
+        "environment_identity_sha256": environment_identity,
         "capability_registry_identity_sha256": registry_identity,
         "model_spec_identity_sha256": model_identity,
         "init_spec_identity_sha256": init_identity,
@@ -781,6 +920,7 @@ def qualify_sil(
         "schema_version": "12-6.github-sil-evidence.v1",
         "git_sha": expected_git_sha,
         "package_identity_sha256": package_identity,
+        "environment_identity_sha256": environment_identity,
         "capability_registry_identity_sha256": registry_identity,
         "model_spec_identity_sha256": model_identity,
         "init_spec_identity_sha256": init_identity,
@@ -822,6 +962,7 @@ _EVIDENCE_FIELDS = {
     "schema_version",
     "git_sha",
     "package_identity_sha256",
+    "environment_identity_sha256",
     "capability_registry_identity_sha256",
     "model_spec_identity_sha256",
     "init_spec_identity_sha256",
@@ -887,6 +1028,7 @@ def verify_sil_evidence(
     log_path: str | Path,
     *,
     expected_package_bytes: bytes,
+    expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
     expected_git_sha: str | None = None,
@@ -908,6 +1050,7 @@ def verify_sil_evidence(
         raise ValueError("SIL evidence Git SHA mismatch")
     for field in (
         "package_identity_sha256",
+        "environment_identity_sha256",
         "capability_registry_identity_sha256",
         "model_spec_identity_sha256",
         "init_spec_identity_sha256",
@@ -922,6 +1065,9 @@ def verify_sil_evidence(
 
     if not isinstance(expected_package_bytes, bytes) or not expected_package_bytes:
         raise ValueError("expected_package_bytes must be non-empty bytes")
+    expected_environment_receipt = _validate_sil_environment_receipt(
+        expected_environment_receipt
+    )
     if not isinstance(expected_registry, CapabilityRegistry):
         raise ValueError("expected_registry must be a CapabilityRegistry")
     if not isinstance(expected_scenario, SILScenario):
@@ -930,6 +1076,9 @@ def verify_sil_evidence(
     expected_model_identity, expected_init_identity = _synthetic_model_identities()
     expected_identities = {
         "package_identity_sha256": _sha256_bytes(expected_package_bytes),
+        "environment_identity_sha256": expected_environment_receipt[
+            "identity_sha256"
+        ],
         "capability_registry_identity_sha256": expected_registry.identity_sha256(),
         "model_spec_identity_sha256": expected_model_identity,
         "init_spec_identity_sha256": expected_init_identity,
@@ -1009,6 +1158,9 @@ def verify_sil_evidence(
         "schema_version": "12-6.github-sil-input.v1",
         "git_sha": payload["git_sha"],
         "package_identity_sha256": expected_identities["package_identity_sha256"],
+        "environment_identity_sha256": expected_identities[
+            "environment_identity_sha256"
+        ],
         "capability_registry_identity_sha256": expected_identities[
             "capability_registry_identity_sha256"
         ],
@@ -1141,8 +1293,29 @@ def _write_run_outputs(
     log_path.write_text(log_text, encoding="utf-8")
 
 
+def _environment_receipt_cli(args: argparse.Namespace) -> int:
+    receipt = canonical_sil_environment_receipt_v1()
+    require_current_sil_environment(receipt)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(_canonical_json_bytes(receipt) + b"\n")
+    print(
+        json.dumps(
+            {
+                "identity_sha256": receipt["identity_sha256"],
+                "authority_commit": receipt["authority_commit"],
+                "package_count": len(receipt["packages"]),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def _run_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
+    environment_receipt = load_sil_environment_receipt(args.environment_receipt)
+    require_current_sil_environment(environment_receipt)
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
     package_bytes = build_package_manifest_bytes(root)
@@ -1152,6 +1325,7 @@ def _run_cli(args: argparse.Namespace) -> int:
         registry=registry,
         scenario=scenario,
         package_bytes=package_bytes,
+        environment_receipt=environment_receipt,
     )
     _write_run_outputs(
         evidence,
@@ -1178,6 +1352,8 @@ def _run_cli(args: argparse.Namespace) -> int:
 def _verify_cli(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     require_exact_clean_git_state(root, args.expected_git_sha)
+    environment_receipt = load_sil_environment_receipt(args.environment_receipt)
+    require_current_sil_environment(environment_receipt)
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
     package_bytes = build_package_manifest_bytes(root)
@@ -1185,6 +1361,7 @@ def _verify_cli(args: argparse.Namespace) -> int:
         args.evidence,
         args.log,
         expected_package_bytes=package_bytes,
+        expected_environment_receipt=environment_receipt,
         expected_registry=registry,
         expected_scenario=scenario,
         expected_git_sha=args.expected_git_sha,
@@ -1210,11 +1387,16 @@ def main() -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    environment_parser = subparsers.add_parser("environment-receipt")
+    environment_parser.add_argument("--output", required=True)
+    environment_parser.set_defaults(func=_environment_receipt_cli)
+
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("--repo-root", required=True)
     run_parser.add_argument("--expected-git-sha", required=True)
     run_parser.add_argument("--capability-registry", required=True)
     run_parser.add_argument("--scenario", required=True)
+    run_parser.add_argument("--environment-receipt", required=True)
     run_parser.add_argument("--evidence-output", required=True)
     run_parser.add_argument("--log-output", required=True)
     run_parser.set_defaults(func=_run_cli)
@@ -1223,6 +1405,7 @@ def main() -> int:
     verify_parser.add_argument("--repo-root", required=True)
     verify_parser.add_argument("--capability-registry", required=True)
     verify_parser.add_argument("--scenario", required=True)
+    verify_parser.add_argument("--environment-receipt", required=True)
     verify_parser.add_argument("--evidence", required=True)
     verify_parser.add_argument("--log", required=True)
     verify_parser.add_argument("--expected-git-sha", required=True)
