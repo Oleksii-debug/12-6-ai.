@@ -30,6 +30,7 @@ from twelve_six.ai_qa_control import (
     load_gate_receipt_bundle,
     load_repair_candidate,
     materialize_local_repair_candidate,
+    verify_candidate_sil_evidence,
 )
 from twelve_six.capability_map import load_capability_registry
 from twelve_six.sil_qualification import (
@@ -265,6 +266,52 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
     assert packet.source_evidence_identity_sha256 == evidence[
         "evidence_identity_sha256"
     ]
+
+
+def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
+    tmp_path: Path,
+) -> None:
+    registry = load_capability_registry(_CAPABILITIES)
+    scenario = load_sil_scenario(_SCENARIO)
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_CANDIDATE_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        command_runner=_pass_runner,
+        git_probe=lambda _: GitState(sha=_CANDIDATE_SHA, tracked_clean=True),
+    )
+    evidence_path = tmp_path / "candidate-sil-evidence.json"
+    log_path = tmp_path / "candidate-sil.log"
+    evidence_path.write_text(
+        json.dumps(
+            evidence,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log_path.write_text(log_text, encoding="utf-8")
+
+    states = iter(
+        (
+            GitState(sha=_CANDIDATE_SHA, tracked_clean=True),
+            GitState(sha=_CANDIDATE_SHA, tracked_clean=False),
+        )
+    )
+    with pytest.raises(ValueError, match="dirty"):
+        verify_candidate_sil_evidence(
+            evidence_path,
+            log_path,
+            repo_root=_ROOT,
+            candidate_git_sha=_CANDIDATE_SHA,
+            expected_registry=registry,
+            expected_scenario=scenario,
+            git_probe=lambda _: next(states),
+        )
 
 
 def test_repair_candidate_is_bound_to_failure_patch_and_exact_candidate_sha() -> None:

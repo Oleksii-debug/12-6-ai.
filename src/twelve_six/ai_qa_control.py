@@ -21,6 +21,7 @@ from twelve_six.sil_qualification import (
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
+    require_exact_clean_git_state,
     run_command,
     verify_sil_evidence,
 )
@@ -1284,19 +1285,51 @@ def _regression_cli(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
+def verify_candidate_sil_evidence(
+    evidence_path: str | Path,
+    log_path: str | Path,
+    *,
+    repo_root: str | Path,
+    candidate_git_sha: str,
+    expected_registry: CapabilityRegistry,
+    expected_scenario: SILScenario,
+    git_probe: GitProbe = probe_git_state,
+) -> dict[str, Any]:
+    root = Path(repo_root).resolve()
+    require_exact_clean_git_state(
+        root,
+        candidate_git_sha,
+        git_probe=git_probe,
+    )
+    evidence = verify_sil_evidence(
+        evidence_path,
+        log_path,
+        expected_package_bytes=build_package_manifest_bytes(root),
+        expected_registry=expected_registry,
+        expected_scenario=expected_scenario,
+        expected_git_sha=candidate_git_sha,
+        require_pass=False,
+    )
+    require_exact_clean_git_state(
+        root,
+        candidate_git_sha,
+        git_probe=git_probe,
+    )
+    return evidence
+
+
 def _sil_receipt_cli(args: argparse.Namespace) -> int:
     candidate = load_repair_candidate(args.candidate)
     root = Path(args.repo_root).resolve()
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
-    evidence = verify_sil_evidence(
+    evidence = verify_candidate_sil_evidence(
         args.evidence,
         args.log,
-        expected_package_bytes=build_package_manifest_bytes(root),
+        repo_root=root,
+        candidate_git_sha=candidate.candidate_git_sha,
         expected_registry=registry,
         expected_scenario=scenario,
-        expected_git_sha=candidate.candidate_git_sha,
-        require_pass=False,
     )
     receipt = GateReceipt(
         gate=GateKind.SIL,
@@ -1359,14 +1392,13 @@ def _assess_cli(args: argparse.Namespace) -> int:
 
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
-    sil_evidence = verify_sil_evidence(
+    sil_evidence = verify_candidate_sil_evidence(
         args.sil_evidence,
         args.sil_log,
-        expected_package_bytes=build_package_manifest_bytes(root),
+        repo_root=root,
+        candidate_git_sha=candidate.candidate_git_sha,
         expected_registry=registry,
         expected_scenario=scenario,
-        expected_git_sha=candidate.candidate_git_sha,
-        require_pass=False,
     )
     sil_receipt = GateReceipt(
         gate=GateKind.SIL,
