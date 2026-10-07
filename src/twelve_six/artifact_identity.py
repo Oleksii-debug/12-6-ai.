@@ -248,7 +248,7 @@ class ArtifactManifest:
             raise ValueError("unsupported ArtifactManifest schema_version")
         if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("artifact must be an ArtifactRef")
-        if not isinstance(self.parents, tuple):
+        if not _is_exact_type(self.parents, tuple):
             raise ValueError("parents must be an immutable tuple")
         if any(not _is_exact_type(parent, ParentBinding) for parent in self.parents):
             raise ValueError("parents must contain only ParentBinding values")
@@ -389,7 +389,7 @@ class GenerationIdentityManifest:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
-        if not isinstance(self.artifacts, tuple):
+        if not _is_exact_type(self.artifacts, tuple):
             raise ValueError("artifacts must be an immutable tuple")
         if len(self.artifacts) != len(_sealed_artifact_kinds):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")

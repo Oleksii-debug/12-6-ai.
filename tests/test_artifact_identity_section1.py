@@ -574,3 +574,25 @@ def test_closed_schema_rejects_artifact_manifest_subclass_validation_view_reseal
 
     with pytest.raises(ValueError, match="only ArtifactManifest"):
         GenerationIdentityManifest(schema_version=1, artifacts=artifacts)
+
+
+def test_closed_schema_rejects_tuple_container_subclasses() -> None:
+    generation = _generation("tuple-container")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            return super().__iter__()
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        ArtifactManifest(
+            schema_version=release.schema_version,
+            artifact=release.artifact,
+            parents=ForgedTuple(release.parents),
+        )
+
+    with pytest.raises(ValueError, match="artifacts must be an immutable tuple"):
+        GenerationIdentityManifest(
+            schema_version=generation.schema_version,
+            artifacts=ForgedTuple(generation.artifacts),
+        )

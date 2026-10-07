@@ -70,6 +70,8 @@ The canonical parent policy is runtime-immutable: both the outer kind map and ev
 role map are sealed after module initialization. The validator also captures that sealed
 mapping at class definition, so later rebinding of the module-global policy cannot silently
 change acceptance semantics; a builder influenced by such a rebind fails closed at validation.
+Stored parent/artifact tuples are exact built-in tuples rather than behavioral subclasses, so
+validation and later canonical serialization cannot observe different container views.
 
 The canonical graph is:
 
