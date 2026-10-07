@@ -364,7 +364,8 @@ def _build_component_contract_authority() -> Any:
                     or owner_name.startswith("twelve_six.")
                 ):
                     raise ValueError(
-                        "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+                        "AVAILABLE component contract must resolve to "
+                        "repository-owned twelve_six code"
                     )
                 try:
                     owner = sealed_import_module(owner_name)
@@ -963,7 +964,6 @@ class CapabilityRegistry:
 
     def identity_sha256(self) -> str:
         return _capability_registry_identity_from_stored_state(self)
-
 
 
 def _environment_support_payload_from_stored_state(
