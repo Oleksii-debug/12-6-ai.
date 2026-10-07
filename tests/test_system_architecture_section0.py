@@ -753,6 +753,7 @@ def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> N
     with pytest.raises(ValueError, match="candidate must be a CognitiveCoreBinding"):
         replace_cognitive_core(assembly, forged_binding)
 
+
 def test_closed_scalar_fields_reject_behavioral_subclasses() -> None:
     class ForgedStr(str):
         def strip(self) -> str:
@@ -786,4 +787,3 @@ def test_closed_scalar_fields_reject_behavioral_subclasses() -> None:
             tokenizer_sha256=canonical.tokenizer_sha256,
             parameter_count=ForgedInt(canonical.parameter_count),
         )
-
