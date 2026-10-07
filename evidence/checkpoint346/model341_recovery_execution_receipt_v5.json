@@ -1,0 +1,109 @@
+{
+  "artifact": {
+    "environment_file_sha256": "59ce6298fe03214a1f0e872efc379e398b40eefc975e241bbfdbd114b0a3b718",
+    "id": 10176452651,
+    "name": "checkpoint346-model341-recovery-qualification",
+    "result_file_sha256": "1c3040dbbec8887df2595ccb4789e66cc2608fe379b91b3ee813dcbebb9e7bd8",
+    "zip_sha256": "a29e2944def1ed11940f16ea740ca0d81a8ac5610906f1f199572c41cd63b268"
+  },
+  "baseline_step2": {
+    "loss": 2.29952073097229,
+    "micro_step": 2,
+    "model_state_sha256": "06adf99174a10c95f45f435c0eafb0688ffad053d17daf442a92a334fcfcf0e0",
+    "optimizer_state_sha256": "e729a4b1e5d3a996268e01bb19f938b3b4a6afc0e604d3975bd1224c1c7625d0",
+    "optimizer_step": 2,
+    "rng_probe_before_step": {
+      "numpy": [
+        0.9156608528511911,
+        0.22292021517272698
+      ],
+      "python": [
+        0.5111102493209799,
+        0.8162418900301913
+      ],
+      "torch_cpu": [
+        0.4091787338256836,
+        0.7866764664649963
+      ]
+    },
+    "tokens_seen": 2,
+    "trainer_state_sha256": "7b53cd830b9fdfcd9d00f0a44b50914bd8ce467f948ffffe101e3c86435c2bbb",
+    "update_loss": 2.29952073097229
+  },
+  "carrier_git_blobs": {
+    "candidate": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "checkpoint_core": "8bff5f2cad79f64532f60dce3b413aa5e385d97a",
+    "model": "d0823aa666883ddb5c445a438730043ef8b50ff1",
+    "trainer": "049394ae119a5a5ac301ceded6ae6dfcae66c020"
+  },
+  "environment_identity_sha256": "bd236abf8f1bdb7a53c41be029afc5c84485643e313ae3f52ccd100378f4e299",
+  "executed_head_sha": "c49bea6caf2858a4bf63203f6d85f05ca9aa8af7",
+  "executed_pr": 426,
+  "execution": {
+    "binding_mismatch_failed_closed": true,
+    "checkpoint_step": 1,
+    "device": "cpu",
+    "final_step": 2,
+    "fresh_child_pid": 2454,
+    "fresh_process_distinct": true,
+    "fresh_process_resumed_updates": 1,
+    "local_free": true,
+    "optimizer_updates_total": 3,
+    "parent_pid": 2447,
+    "parent_updates": 2,
+    "precision": "fp32",
+    "rng_scope_restored": {
+      "numpy": true,
+      "python": true,
+      "torch_cpu": true
+    },
+    "same_next_step_equal": true,
+    "synthetic_mechanics_only": true
+  },
+  "execution_workflow_git_blob_sha": "30a92252f57d9407b846ee35326b83a06a419059",
+  "execution_workflow_path": ".github/workflows/checkpoint346-20m-recovery-qualification.yml",
+  "execution_workflow_removed_from_final_head": true,
+  "historical_v4_immutable": true,
+  "model341_carrier_sha": "82c43005bb5db153482ae5b20a31d59240faaebc",
+  "result_identity_sha256": "19b232ce895b9059a766a77bed9f0fd23e00fafb7cc6b1e599f83eab05b022f3",
+  "resumed_step2": {
+    "loss": 2.29952073097229,
+    "micro_step": 2,
+    "model_state_sha256": "06adf99174a10c95f45f435c0eafb0688ffad053d17daf442a92a334fcfcf0e0",
+    "optimizer_state_sha256": "e729a4b1e5d3a996268e01bb19f938b3b4a6afc0e604d3975bd1224c1c7625d0",
+    "optimizer_step": 2,
+    "rng_probe_before_step": {
+      "numpy": [
+        0.9156608528511911,
+        0.22292021517272698
+      ],
+      "python": [
+        0.5111102493209799,
+        0.8162418900301913
+      ],
+      "torch_cpu": [
+        0.4091787338256836,
+        0.7866764664649963
+      ]
+    },
+    "tokens_seen": 2,
+    "trainer_state_sha256": "7b53cd830b9fdfcd9d00f0a44b50914bd8ce467f948ffffe101e3c86435c2bbb",
+    "update_loss": 2.29952073097229
+  },
+  "runner_git_blob_sha": "2d0098e6914a1ec90091f1455736d42d8107d7ed",
+  "runner_path": "tools/run_checkpoint346_model341_recovery.py",
+  "schema": "checkpoint346.model341-recovery-execution-receipt.v1",
+  "scientific_credit": {
+    "final_test_read": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "model_training_credit": false,
+    "optimized_target_exposure": 0,
+    "paid_compute_used": false,
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false
+  },
+  "verdict": "PASS_MODEL341_RECOVERY_MECHANICS",
+  "workflow_job_id": 103075876817,
+  "workflow_run_id": 34538615652
+}

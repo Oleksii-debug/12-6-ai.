@@ -1,0 +1,601 @@
+{
+  "schema_version": 1,
+  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+  "observed_main_tree_sha": "c727add7897dd94bdb02493e0cd7a565be7e8d9f",
+  "source_root": "src/twelve_six",
+  "source_surface_count": 118,
+  "surfaces": [
+    {
+      "path": "src/twelve_six/__init__.py",
+      "capability_id": "package-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/accelerated_scaling.py",
+      "capability_id": "accelerated-scaling-research",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/artifact_identity.py",
+      "capability_id": "unified-generation-identity",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/capability_map.py",
+      "capability_id": "executable-capability-map",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/__init__.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/core.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/d04_resume_binding.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/durability.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/hf_export.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/pinned_directory.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/progress_binding.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/progress_trainer.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/recovery_lock.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/retention.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/root_snapshot.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/run_binding.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/schema_validation.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/selection.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/state_tree.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/trainer_adapter.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/transactional_rng.py",
+      "capability_id": "checkpoint-integrity-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/ci_workflow_policy.py",
+      "capability_id": "project-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/common_pile_arxiv_abstracts_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/common_pile_foodista_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/common_pile_loc_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/common_pile_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/culturax_bounded_acquisition.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/d03_arxiv_execution_receipt.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/d03_arxiv_postrights_admission.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/d03_cpython_stdlib_postrights_admission.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/d03_languk_postexecution_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/d03_loc_postrights_admission.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/_data232_decontamination_matching.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/_expanded_global_dedup_v9_impl.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/balanced_split_application_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/caselaw_source_admitted_dedup_intake.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/clean_g05_g06_successor_authority_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/common_pile_loc_intake.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/current_clean_execution_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/current_reserved_decontamination_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/data526_v8_reserved_decontamination_terminal_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/data526_v8_reserved_decontamination_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/decontamination_authority_v2.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/deterministic_double_pack.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/deterministic_exposure_order.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/document_quality.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/eval233_final_test_resolver_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/eval303_selection_payload_resolver_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/eval647_current_corpus_overlap_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/eval647_future_training_exclusion_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/eval647_reserved_decontamination_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/expanded_global_dedup_v10.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/expanded_global_dedup_v9.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/final_g05_g06_coverage_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/franko1901_dedup_intake.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/identity_safe_exposure_guard.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/incumbent_dedup_indexed_execution.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/loss_bearing_content_binding_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/ordered_exposure_resume.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/pep_intake.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/post_admission_dedup_intake_v2.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/post_g05_g06_materialization_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/post_g05_g06_materialization_v2.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postdecontam_balance_projection_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postdecontam_next100_adapter_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postdedup_decontam_handoff_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postdedup_inventory_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postdedup_survivor_binding_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/privacy_execution_authority.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/privacy_filter_v3.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/quality_execution_authority.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/quality_granularity.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/rada_laws_qp_dedup_adapter.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/rada_two_clean_dedup_execution.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/split_postpack_binding_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/trusted_family_authority_v1.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/data/unique_loss_ledger_v2.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_capacity_sufficiency_v1.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_current_run_authority.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_evaluation_firewall.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_global_training_lease.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_launch_input.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_readiness.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_recipe.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/learned20m_training_lease.py",
+      "capability_id": "learned20m-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/model.py",
+      "capability_id": "model-spec-identity",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/__init__.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/core.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/jsonl.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/loss_materialization.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/manifest.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/measure.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/packing/two_clean_build.py",
+      "capability_id": "deterministic-packing-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/portable_run_binding.py",
+      "capability_id": "portable-run-authority",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/portable_run_packet.py",
+      "capability_id": "portable-run-authority",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/scale141_recovery.py",
+      "capability_id": "scale141-recovery",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/scale141_resume_sidecar.py",
+      "capability_id": "scale141-recovery",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/scale141_strict_json.py",
+      "capability_id": "scale141-recovery",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/sil_qualification.py",
+      "capability_id": "github-sil-qualification",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/split_robustness.py",
+      "capability_id": "split-robustness",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/swarm_protocol_v2.py",
+      "capability_id": "project-control-plane",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/system_architecture.py",
+      "capability_id": "replaceable-cognitive-core-shell",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/tokenization/__init__.py",
+      "capability_id": "byte-tokenizer-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/tokenization/base.py",
+      "capability_id": "byte-tokenizer-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/tokenization/byte.py",
+      "capability_id": "byte-tokenizer-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/tokenization/decision_authority.py",
+      "capability_id": "byte-tokenizer-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/tokenization/migration_compatibility.py",
+      "capability_id": "byte-tokenizer-runtime",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/training/__init__.py",
+      "capability_id": "training-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/training/config.py",
+      "capability_id": "training-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/training/loss.py",
+      "capability_id": "training-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/training/trainer.py",
+      "capability_id": "training-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/ubuntu_irc_execution_rights_crossbind.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/ubuntu_irc_rights.py",
+      "capability_id": "data-governance-mechanics",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/windows_operator_cli.py",
+      "capability_id": "windows-operator-cli-packaging",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/windows_operator_preflight.py",
+      "capability_id": "windows-operator-cli-packaging",
+      "origin": "accepted_main"
+    }
+  ],
+  "accepted_main_surface_count": 114,
+  "candidate_overlay_surface_count": 4
+}

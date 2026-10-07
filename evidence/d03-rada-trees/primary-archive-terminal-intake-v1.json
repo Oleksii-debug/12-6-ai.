@@ -1,0 +1,63 @@
+{
+  "schema_version": "12-6.d03-rada-trees-primary-terminal-intake.v1",
+  "worker_id": "D03-RADA-TREES-PRIMARY-REAL-INTAKE-20260907",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_path": "Rada_Trees.7z",
+    "git_blob_oid": "7779f8a2ce74fa207acac884c688ed6e6511704b",
+    "xet_hash": "a31d24710d417246fb7e48028baaf6b9efb9a199983d78264f7997c69e42a801",
+    "content_sha256": "5e53939cd255276c58190569aebfaa6c90fb085fb10063e3e5f661747749719d",
+    "compressed_bytes": 535681407
+  },
+  "execution": {
+    "head_sha": "eb6d7ed537b2cb037e82b581029f1d22197fdab2",
+    "workflow_run": 34118846597,
+    "workflow_job": 101731933582,
+    "conclusion": "success",
+    "artifact_id": 10017423409,
+    "artifact_digest": "sha256:1bfe5fd04ec35958b54e7ffdd9b7708fb8f7c224e4c9be7966161e5b9d099c49"
+  },
+  "inventory": {
+    "inventory_identity_sha256": "31bd881261e8d4ddca2fb928fdd6280f6125e7da6cac8f6f97e984f2c878b563",
+    "report_identity_sha256": "1fbf77c7b7d27bc7d3d539e4918424661b8c8555a05fe15aa6503f6eb1a181af",
+    "member_count": 4391,
+    "uncompressed_bytes": 7744245605,
+    "member_suffixes": {
+      ".conllu": 4391
+    },
+    "top_level_paths": {
+      "conllu": 4391
+    }
+  },
+  "classification": {
+    "report_sha256": "2b7fb33e0737136ba030100406e8c5f5f3573fcdad5146a88ae2797350f2d782",
+    "class_counts": {
+      "DERIVED_UD_HOLD": 4391
+    },
+    "class_bytes": {
+      "DERIVED_UD_HOLD": 7744245605
+    },
+    "plain_text_candidate_members": 0,
+    "plain_text_candidate_bytes": 0,
+    "all_members_are_conllu": true
+  },
+  "decision": {
+    "status": "PRIMARY_ARCHIVE_IS_DERIVED_UD_ZERO_CREDIT",
+    "primary_plain_text_role_rejected": true,
+    "secondary_archive_role_requires_exact_probe": true,
+    "secondary_archive_path": "rada_xtag_texts.7z"
+  },
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  },
+  "evidence_identity_sha256": "6d99309470655ca9ecc22accaedf087e29d76792eb25b5d0bd07ca85f986d92f"
+}
