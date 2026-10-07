@@ -451,6 +451,7 @@ class SourceSurface:
         if not _is_exact_type(self.origin, str) or self.origin not in {
             "accepted_main",
             "stacked_candidate",
+            "modified_candidate",
         }:
             raise ValueError("source surface origin is unsupported")
         path = PurePosixPath(self.path)
@@ -514,7 +515,7 @@ class SourceSurfaceInventory:
         if self.source_surface_count != len(self.surfaces):
             raise ValueError("source_surface_count does not match surfaces")
         accepted_count = sum(item.origin == "accepted_main" for item in self.surfaces)
-        candidate_count = sum(item.origin == "stacked_candidate" for item in self.surfaces)
+        candidate_count = sum(item.origin != "accepted_main" for item in self.surfaces)
         if accepted_count != self.accepted_main_surface_count:
             raise ValueError("accepted_main_surface_count does not match surfaces")
         if candidate_count != self.candidate_overlay_surface_count:
@@ -1228,7 +1229,7 @@ def validate_source_surface_coverage(
     premature_candidate_acceptance = sorted(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
-        if surface.origin == "stacked_candidate"
+        if surface.origin != "accepted_main"
         and registry.capability(surface.capability_id).status
         is not CapabilityStatus.UNAVAILABLE
     )
@@ -1277,7 +1278,9 @@ def validate_source_surface_coverage(
     )
     accepted_main_actual = sorted(accepted_main_blobs)
     accepted_main_expected = [
-        item.path for item in inventory.surfaces if item.origin == "accepted_main"
+        item.path
+        for item in inventory.surfaces
+        if item.origin in {"accepted_main", "modified_candidate"}
     ]
     if accepted_main_actual != accepted_main_expected:
         missing = sorted(set(accepted_main_actual).difference(accepted_main_expected))
@@ -1292,10 +1295,16 @@ def validate_source_surface_coverage(
         accepted_main_blobs,
         checkout_blobs,
     )
-    if changed_existing:
+    modified_expected = {
+        item.path
+        for item in inventory.surfaces
+        if item.origin == "modified_candidate"
+    }
+    if changed_existing != modified_expected:
         raise ValueError(
-            "accepted-main source bytes changed on candidate without explicit "
-            f"modified-overlay authority: {sorted(changed_existing)}"
+            "modified candidate source classification drift: "
+            f"unmapped_modified={sorted(changed_existing - modified_expected)}, "
+            f"stale_modified={sorted(modified_expected - changed_existing)}"
         )
 
     source_root = root / inventory.source_root
