@@ -28,9 +28,12 @@ It does not introduce a second hashing algorithm for the underlying artifact. Ea
 The unified identity vocabulary is pinned to the original twelve-kind tuple by the
 generation validator and its typed accessors. Rebinding the public module-level tuple therefore
 cannot shrink or reorder what an already loaded validator accepts as a complete generation.
-The twelve canonical `ArtifactKind` wire strings are sealed independently at module load; a
-low-level mutation of an enum singleton value is rejected before that kind can be serialized,
-hashed or accepted by generation validation.
+The twelve canonical `ArtifactKind` wire strings are sealed independently at module load.
+Canonical wire reads use the immutable underlying `str` payload and cross-check the Enum
+member's stored `_value_` without dispatching the mutable `.value` descriptor. Class-level
+descriptor rebinding therefore cannot split validation from canonical serialization, while a
+low-level mutation of an enum singleton value is still rejected before that kind can be
+serialized, hashed or accepted by generation validation.
 
 The unified identity vocabulary covers exactly:
 
