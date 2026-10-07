@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.sil_qualification as sil_qualification
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
@@ -652,6 +653,8 @@ def test_package_identity_binds_tracked_package_source_manifest() -> None:
     assert any(path.startswith("configs/research/") for path in paths)
     for item in manifest["files"]:
         source = (_ROOT / item["path"]).read_bytes()
+        assert item["git_mode"] in {"100644", "100755"}
+        assert len(item["git_blob_sha"]) == 40
         assert item["bytes"] == len(source)
         assert item["sha256"] == hashlib.sha256(source).hexdigest()
 
@@ -667,4 +670,151 @@ def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> Non
             command_runner=_pass_runner,
             git_probe=_git_probe,
         )
+
+def test_package_manifest_identity_binds_git_mode_and_blob(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "src" / "twelve_six").mkdir(parents=True)
+    pyproject = b"[project]\nname='fixture'\n"
+    module = b"VALUE = 1\n"
+    (tmp_path / "pyproject.toml").write_bytes(pyproject)
+    (tmp_path / "src" / "twelve_six" / "module.py").write_bytes(module)
+
+    def git_blob_sha(raw: bytes) -> str:
+        header = f"blob {len(raw)}\0".encode("ascii")
+        return hashlib.sha1(
+            header + raw,
+            usedforsecurity=False,
+        ).hexdigest()
+
+    mode = {"module": "100644"}
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        stdout = (
+            "100644 "
+            + git_blob_sha(pyproject)
+            + " 0\tpyproject.toml\0"
+            + mode["module"]
+            + " "
+            + git_blob_sha(module)
+            + " 0\tsrc/twelve_six/module.py\0"
+        )
+        return subprocess.CompletedProcess(
+            args=["git", "ls-files", "--stage", "-z"],
+            returncode=0,
+            stdout=stdout,
+            stderr="",
+        )
+
+    monkeypatch.setattr(sil_qualification.subprocess, "run", fake_run)
+    mode_644 = build_package_manifest_bytes(tmp_path)
+    mode["module"] = "100755"
+    mode_755 = build_package_manifest_bytes(tmp_path)
+
+    assert mode_644 != mode_755
+    manifest = json.loads(mode_755.decode("utf-8"))
+    module_entry = next(
+        item for item in manifest["files"] if item["path"].endswith("module.py")
+    )
+    assert module_entry["git_mode"] == "100755"
+    assert module_entry["git_blob_sha"] == git_blob_sha(module)
+
+
+def test_package_manifest_preserves_raw_unicode_git_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "src" / "twelve_six").mkdir(parents=True)
+    pyproject = b"[project]\nname='fixture'\n"
+    module = b"VALUE = 2\n"
+    path = "src/twelve_six/перевірка.py"
+    (tmp_path / "pyproject.toml").write_bytes(pyproject)
+    (tmp_path / path).write_bytes(module)
+
+    def git_blob_sha(raw: bytes) -> str:
+        header = f"blob {len(raw)}\0".encode("ascii")
+        return hashlib.sha1(
+            header + raw,
+            usedforsecurity=False,
+        ).hexdigest()
+
+    stdout = (
+        "100644 "
+        + git_blob_sha(pyproject)
+        + " 0\tpyproject.toml\0"
+        + "100644 "
+        + git_blob_sha(module)
+        + f" 0\t{path}\0"
+    )
+    result = subprocess.CompletedProcess(
+        args=["git", "ls-files", "--stage", "-z"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+    monkeypatch.setattr(
+        sil_qualification.subprocess,
+        "run",
+        lambda *_args, **_kwargs: result,
+    )
+
+    manifest = json.loads(build_package_manifest_bytes(tmp_path).decode("utf-8"))
+
+    assert path in [item["path"] for item in manifest["files"]]
+
+
+def test_package_manifest_rejects_worktree_bytes_not_matching_index_blob(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "src" / "twelve_six").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_bytes(b"[project]\n")
+    (tmp_path / "src" / "twelve_six" / "module.py").write_bytes(b"VALUE = 3\n")
+    stdout = (
+        "100644 "
+        + ("a" * 40)
+        + " 0\tpyproject.toml\0"
+        + "100644 "
+        + ("b" * 40)
+        + " 0\tsrc/twelve_six/module.py\0"
+    )
+    result = subprocess.CompletedProcess(
+        args=["git", "ls-files", "--stage", "-z"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+    monkeypatch.setattr(
+        sil_qualification.subprocess,
+        "run",
+        lambda *_args, **_kwargs: result,
+    )
+
+    with pytest.raises(ValueError, match="do not match Git blob"):
+        build_package_manifest_bytes(tmp_path)
+
+
+def test_package_manifest_rejects_symlink_git_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stdout = (
+        "100644 " + ("a" * 40) + " 0\tpyproject.toml\0"
+        "120000 " + ("b" * 40) + " 0\tsrc/twelve_six/forged.py\0"
+    )
+    result = subprocess.CompletedProcess(
+        args=["git", "ls-files", "--stage"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+    monkeypatch.setattr(
+        sil_qualification.subprocess,
+        "run",
+        lambda *_args, **_kwargs: result,
+    )
+
+    with pytest.raises(ValueError, match="regular Git file"):
+        build_package_manifest_bytes(tmp_path)
 
