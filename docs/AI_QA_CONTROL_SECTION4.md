@@ -1,0 +1,76 @@
+# Section 4 — AI QA defect → repair → retest control plane
+
+## Sequential position
+
+This is later-section fallback work. The canonical numerical frontier remains Section 0.
+Section 4 cannot become DONE or merge ahead of Sections 0–3.
+
+## Implemented control loop
+
+`src/twelve_six/ai_qa_control.py` adds a fail-closed control protocol around the existing
+Section-3 SIL plane instead of creating a second routing/swarm framework.
+
+The control layer can:
+
+1. ingest native Section-3 SIL FAIL evidence or a strict normalized CI/physical observation;
+2. classify the failure deterministically as TEST, TIMEOUT, ENVIRONMENT, INTEGRITY, PHYSICAL,
+   or UNKNOWN;
+3. derive a minimal checked-in pytest reproducer through the Section-3 no-shell command parser;
+4. bind the defect to an exact failing SHA and source-evidence identity;
+5. bind an isolated repair candidate to base SHA, candidate SHA, patch SHA-256, proposer identity
+   and the exact failure-packet identity;
+6. execute component and adversarial regressions on the exact clean candidate checkout;
+7. ingest a native SIL receipt bound to the exact candidate SHA;
+8. require an explicit physical PASS when physical scope is REQUIRED, or an explicit independent
+   NOT_APPLICABLE scope receipt when physical scope is NONE; and
+9. allow promotion only when all four gates are represented and an independent certifier, not the
+   repair proposer, makes the final decision.
+
+The durable command surface supports failure-packet creation, candidate formation, automated
+regression execution, native SIL receipt creation, software-only physical-scope receipt creation,
+and independent promotion assessment.
+
+## Gate chain
+
+Canonical gate order:
+
+1. component reproducer;
+2. adversarial regression;
+3. Section-3 SIL journey evidence;
+4. corresponding physical gate or explicit software-only NOT_APPLICABLE scope.
+
+Component/adversarial execution reuses `sil_qualification.parse_vector_command` and never invokes
+a shell. Exact candidate SHA and tracked-clean state are mandatory before execution.
+
+A gate receipt is bound to candidate SHA, evidence identity and actor identity. Missing, duplicate,
+wrong-SHA or FAIL receipts block promotion. SIL/physical evidence produced by the same repair
+proposer also blocks promotion.
+
+## Current closure boundary
+
+The deterministic control protocol and executable CLI are implemented, but Section 4 is not
+closure-ready yet. Before READY/DONE, current authority still needs:
+
+- exact-head shared CI for this candidate;
+- convergence on accepted predecessor Sections;
+- at least one live failure round-trip showing failure evidence → minimal reproducer → isolated
+  repair commit → component/adversarial retest → SIL → applicable physical decision;
+- an authorized GitHub mutation adapter or equivalent current project mechanism that actually
+  creates/updates the isolated repair lineage instead of merely binding an already-created
+  candidate SHA; and
+- independent evidence that the final promotion decision was not produced by the repair proposer.
+
+## Durable surfaces
+
+- `configs/control/ai_qa_policy_v1.json`
+- `src/twelve_six/ai_qa_control.py`
+- `tests/test_ai_qa_control_section4.py`
+- `docs/AI_QA_CONTROL_SECTION4.md`
+- `coordination/SECTION_CLOSURE_REGISTRY.json`
+
+## Truth boundary
+
+This control plane does not grant corpus admission, tokenizer-fit, optimizer/training,
+learned-weight, final-test, paid-compute, physical-device, release or scale-promotion authority.
+A repair candidate is not promoted merely because its proposer reports confidence or local green
+tests.
