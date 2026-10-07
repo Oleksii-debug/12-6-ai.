@@ -182,7 +182,7 @@ def test_repository_surface_rules_are_nonambiguous_on_exact_main() -> None:
     _validate()
 
 
-def test_repository_surface_coverage_rejects_resealed_current_main(
+def test_repository_surface_coverage_accepts_equivalent_historical_main_receipt(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
@@ -191,8 +191,9 @@ def test_repository_surface_coverage_rejects_resealed_current_main(
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="does not match the live repository main ref"):
-        _validate(inventory)
+    result = _validate(inventory)
+    assert result["current_repository_main_sha"] == payload["observed_main_sha"]
+    assert result["current_repository_main_tree_sha"] == payload["observed_main_tree_sha"]
 
 
 def test_repository_surface_coverage_rejects_current_main_tree_reseal(
