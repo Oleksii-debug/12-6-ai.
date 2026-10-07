@@ -330,3 +330,23 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     _write_evidence(evidence_path, resealed)
     with pytest.raises(ValueError, match="evidence identity"):
         verify_sil_evidence(evidence_path, log_path, expected_git_sha=_GIT_SHA)
+
+
+def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
+    workflow_dir = _ROOT / ".github" / "workflows"
+    workflows = sorted(
+        path.name
+        for path in workflow_dir.iterdir()
+        if path.suffix in {".yml", ".yaml"}
+    )
+    assert workflows == ["ci.yml"]
+
+    workflow = (workflow_dir / "ci.yml").read_text(encoding="utf-8")
+    assert "  sil-current-capability-journeys:" in workflow
+    assert "needs: bootstrap" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in workflow
+    assert "python -m twelve_six.sil_qualification run" in workflow
+    assert "python -m twelve_six.sil_qualification verify" in workflow
+    assert "continue-on-error: true" in workflow
+    assert "if: always()" in workflow
