@@ -9,8 +9,8 @@ This delta prepares the current canonical:
 - observed plan revision
   `AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw`
 
-This branch is prepared only under the emergency later-section ladder while Sections 0 and 1
-remain the numerical frontier. It cannot become canonical DONE before either predecessor.
+Sections 0 and 1 are now terminally closed on accepted main. Section 2 is the numerical
+PRIMARY and this candidate refreshes its evidence against that accepted predecessor state.
 
 ## 2.1 — machine-readable current capability registry
 
@@ -32,16 +32,14 @@ Each capability binds:
 - evidence targets;
 - either an integrated result or an explicit unavailable reason.
 
-The registry's AVAILABLE evidence remains bound to the terminally qualified product baseline
-`main@019944d5fe12334791f05f1232d13de4a12e37d3` and CI run `37248299503`.
-That evidence is not reassigned to a newer SHA. A separate machine-checkable repository-main
-equivalence gate pins live `main@e5dbb7107d5b54f09a26d07d59f093ac05ede9c7` and proves all 233 capability-bearing
-`src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are byte-identical to
-the qualified baseline. Current-main coordination-only changes therefore do not silently create
-or remove Product capabilities. Candidate Section-0/1 behavior is still not resealed as accepted
-main truth.
+The registry's AVAILABLE evidence is refreshed to accepted Section-1 merge
+`main@9c34e8f321c3b174bee74de33ebe115332defdb7` / tree `7426abb05e0847e5b75e4a572ad7343c158cf254`. That tree is byte-identical to the
+exact-head qualified Section-1 candidate `8594b0987bc2948145a84010cd5b1c9fa650690b`,
+whose CI run `37607396874` is terminal SUCCESS. Live `main@64f0d2fba572122d216b8c6882ff036e3a665920` is the
+subsequent ledger-only commit; the repository equivalence gate proves all 235 capability-bearing
+`src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are unchanged.
 
-The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface, while separately classifying stacked Section-0/1/2 candidate overlays. At this candidate head the coverage is 114 accepted-main surfaces + 3 candidate overlays = 117/117 current stacked Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
+The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface, while separately classifying the Section-2 candidate overlay. At this candidate head the coverage is 116 accepted-main surfaces + 1 candidate overlay = 117/117 current Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
 
 Examples:
 
@@ -49,8 +47,8 @@ Examples:
   checkpoint-integrity mechanics and the Python Windows-oriented operator CLI mechanics are
   AVAILABLE with concrete checked-in test commands and main-CI evidence.
 - physical Windows 11 support is **not** inferred from Python CLI tests;
-- the replaceable cognitive-core shell remains UNAVAILABLE until Section 0 is integrated;
-- unified generation identity remains UNAVAILABLE until Section 1 is integrated;
+- the replaceable cognitive-core shell is AVAILABLE from terminally closed Section 0;
+- unified generation identity is AVAILABLE from terminally closed Section 1;
 - learned-20M Base remains UNAVAILABLE because canonical learned weights do not yet exist;
 - the packaged Windows/NVDA whole-product journey remains UNAVAILABLE pending its later
   physical gates.
@@ -106,8 +104,9 @@ Permanent regressions in `tests/test_capability_map_section2.py` cover:
 
 ## Truth boundary
 
-This Section-2 candidate does not make Section 0 or Section 1 DONE and does not create learned
-weights, corpus admission, tokenizer-fit authority, optimizer exposure, final-test access,
+This Section-2 candidate consumes the already-DONE Section 0 and Section 1 truth without
+reopening or widening it, and does not create learned weights, corpus admission, tokenizer-fit
+authority, optimizer exposure, final-test access,
 paid-compute authority, Windows/NVDA physical acceptance, server acceptance or release
 authority.
 

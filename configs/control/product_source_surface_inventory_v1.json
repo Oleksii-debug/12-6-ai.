@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
-  "observed_main_tree_sha": "c727add7897dd94bdb02493e0cd7a565be7e8d9f",
+  "observed_main_sha": "9c34e8f321c3b174bee74de33ebe115332defdb7",
+  "observed_main_tree_sha": "7426abb05e0847e5b75e4a572ad7343c158cf254",
   "source_root": "src/twelve_six",
   "source_surface_count": 117,
   "surfaces": [
@@ -18,7 +18,7 @@
     {
       "path": "src/twelve_six/artifact_identity.py",
       "capability_id": "unified-generation-identity",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/capability_map.py",
@@ -523,7 +523,7 @@
     {
       "path": "src/twelve_six/system_architecture.py",
       "capability_id": "replaceable-cognitive-core-shell",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/tokenization/__init__.py",
@@ -591,6 +591,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 114,
-  "candidate_overlay_surface_count": 3
+  "accepted_main_surface_count": 116,
+  "candidate_overlay_surface_count": 1
 }

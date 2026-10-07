@@ -36,11 +36,11 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
-    assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
-    assert result["current_repository_main_sha"] == "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
-    assert result["current_repository_main_tree_sha"] == "429a9933512f3d0c17f42d80193365e5df3f195a"
-    assert result["qualified_current_equivalent_surface_count"] == 233
+    assert result["observed_main_sha"] == "9c34e8f321c3b174bee74de33ebe115332defdb7"
+    assert result["observed_main_tree_sha"] == "7426abb05e0847e5b75e4a572ad7343c158cf254"
+    assert result["current_repository_main_sha"] == "64f0d2fba572122d216b8c6882ff036e3a665920"
+    assert result["current_repository_main_tree_sha"] == "568d0b865afa46452f2390a1b1734a5d3fbb1d37"
+    assert result["qualified_current_equivalent_surface_count"] == 235
     assert result["accepted_main_surface_count"] == 119
     assert result["candidate_overlay_surface_count"] == 1
     assert result["checkout_surface_count"] == 120
@@ -199,7 +199,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
+    payload["observed_main_sha"] = "64f0d2fba572122d216b8c6882ff036e3a665920"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 
