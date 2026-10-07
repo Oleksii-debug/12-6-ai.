@@ -212,6 +212,29 @@ def load_ai_qa_policy(path: str | Path) -> AIQAPolicy:
     )
 
 
+def _require_canonical_pytest_argv(
+    name: str,
+    value: object,
+) -> tuple[str, ...]:
+    """Require the exact no-shell pytest argv emitted by parse_vector_command."""
+
+    if (
+        not isinstance(value, tuple)
+        or len(value) < 5
+        or not all(isinstance(item, str) for item in value)
+    ):
+        raise ValueError(f"{name} must be a canonical pytest argv tuple")
+    try:
+        expected = parse_vector_command("pytest -q " + " ".join(value[4:]))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a canonical pytest argv tuple") from exc
+    if value != expected:
+        raise ValueError(
+            f"{name} must use the current interpreter and canonical tests/*.py paths"
+        )
+    return value
+
+
 def classify_failure(source: FailureSource, summary: str) -> FailureClass:
     if not isinstance(source, FailureSource):
         raise ValueError("source must be a FailureSource")
@@ -278,10 +301,7 @@ class FailurePacket:
             raise ValueError("failure_summary must be non-empty")
         if _sha256_bytes(self.failure_summary.encode("utf-8")) != self.failure_summary_sha256:
             raise ValueError("failure_summary_sha256 does not match failure_summary")
-        if not self.reproducer_argv:
-            raise ValueError("a minimal checked-in reproducer is required")
-        if self.reproducer_argv[1:4] != ("-m", "pytest", "-q"):
-            raise ValueError("reproducer_argv is not a canonical pytest vector")
+        _require_canonical_pytest_argv("reproducer_argv", self.reproducer_argv)
         if self.physical_scope is PhysicalScope.REQUIRED:
             if self.physical_gate_id is None:
                 raise ValueError("physical_gate_id is required for physical scope")
@@ -805,9 +825,8 @@ class RegressionChain:
         _require_sha256("candidate_identity_sha256", self.candidate_identity_sha256)
         _require_git_sha("base_git_sha", self.base_git_sha)
         _require_git_sha("candidate_git_sha", self.candidate_git_sha)
-        for argv in (self.component_argv, self.adversarial_argv):
-            if not argv or argv[1:4] != ("-m", "pytest", "-q"):
-                raise ValueError("regression chain commands must be canonical pytest vectors")
+        _require_canonical_pytest_argv("component_argv", self.component_argv)
+        _require_canonical_pytest_argv("adversarial_argv", self.adversarial_argv)
         if self.physical_scope is PhysicalScope.REQUIRED:
             if self.physical_gate_id is None:
                 raise ValueError("physical regression gate identity is required")

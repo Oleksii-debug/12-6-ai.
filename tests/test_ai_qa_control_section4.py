@@ -612,6 +612,59 @@ def test_durable_failure_candidate_and_receipt_bundles_reject_resealing(
         )
 
 
+@pytest.mark.parametrize(
+    "bad_argv",
+    [
+        (
+            "/bin/sh",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_ai_qa_control_section4.py",
+        ),
+        (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "../outside.py",
+        ),
+        (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--maxfail=1",
+            "tests/test_ai_qa_control_section4.py",
+        ),
+    ],
+)
+def test_durable_failure_packet_rejects_self_consistent_noncanonical_reproducer(
+    tmp_path: Path,
+    bad_argv: tuple[str, ...],
+) -> None:
+    failure = _failure()
+    payload = failure.to_dict()
+    payload["reproducer_argv"] = list(bad_argv)
+    payload["failure_packet_identity_sha256"] = hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    path = tmp_path / "forged-failure.json"
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="canonical pytest argv|current interpreter"):
+        load_failure_packet(path)
+
+
 def test_receipt_bundle_cannot_promote_hand_authored_pass_hash(tmp_path: Path) -> None:
     candidate = _candidate(_failure())
     trusted = _pass_receipt(GateKind.SIL, actor_id="independent-sil")
