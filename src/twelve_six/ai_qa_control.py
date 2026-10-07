@@ -735,6 +735,276 @@ def evaluate_promotion(
     )
 
 
+
+def load_failure_packet(path: str | Path) -> FailurePacket:
+    payload = _strict_json_object(path, label="AI QA failure packet")
+    expected = {
+        "schema_version",
+        "defect_id",
+        "source",
+        "failure_class",
+        "failing_git_sha",
+        "source_evidence_identity_sha256",
+        "failure_summary",
+        "failure_summary_sha256",
+        "reproducer_argv",
+        "physical_scope",
+        "physical_gate_id",
+        "failure_packet_identity_sha256",
+    }
+    if set(payload) != expected:
+        raise ValueError("failure packet fields are non-canonical")
+    argv = payload["reproducer_argv"]
+    if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
+        raise ValueError("failure packet reproducer_argv must be a string array")
+    packet = FailurePacket(
+        schema_version=payload["schema_version"],
+        defect_id=payload["defect_id"],
+        source=FailureSource(payload["source"]),
+        failure_class=FailureClass(payload["failure_class"]),
+        failing_git_sha=payload["failing_git_sha"],
+        source_evidence_identity_sha256=payload["source_evidence_identity_sha256"],
+        failure_summary=payload["failure_summary"],
+        failure_summary_sha256=payload["failure_summary_sha256"],
+        reproducer_argv=tuple(argv),
+        physical_scope=PhysicalScope(payload["physical_scope"]),
+        physical_gate_id=payload["physical_gate_id"],
+    )
+    identity = _require_sha256(
+        "failure_packet_identity_sha256",
+        payload["failure_packet_identity_sha256"],
+    )
+    if packet.identity_sha256() != identity:
+        raise ValueError("failure packet identity mismatch")
+    return packet
+
+
+def load_repair_candidate(path: str | Path) -> RepairCandidate:
+    payload = _strict_json_object(path, label="AI QA repair candidate")
+    expected = {
+        "schema_version",
+        "defect_id",
+        "base_git_sha",
+        "candidate_git_sha",
+        "patch_sha256",
+        "proposer_actor_id",
+        "failure_packet_identity_sha256",
+        "candidate_identity_sha256",
+    }
+    if set(payload) != expected:
+        raise ValueError("repair candidate fields are non-canonical")
+    candidate = RepairCandidate(
+        schema_version=payload["schema_version"],
+        defect_id=payload["defect_id"],
+        base_git_sha=payload["base_git_sha"],
+        candidate_git_sha=payload["candidate_git_sha"],
+        patch_sha256=payload["patch_sha256"],
+        proposer_actor_id=payload["proposer_actor_id"],
+        failure_packet_identity_sha256=payload["failure_packet_identity_sha256"],
+    )
+    identity = _require_sha256(
+        "candidate_identity_sha256",
+        payload["candidate_identity_sha256"],
+    )
+    if candidate.identity_sha256() != identity:
+        raise ValueError("repair candidate identity mismatch")
+    return candidate
+
+
+def _receipt_from_dict(value: object) -> GateReceipt:
+    if not isinstance(value, dict) or set(value) != {
+        "gate",
+        "verdict",
+        "git_sha",
+        "evidence_identity_sha256",
+        "actor_id",
+        "reason",
+    }:
+        raise ValueError("gate receipt fields are non-canonical")
+    return GateReceipt(
+        gate=GateKind(value["gate"]),
+        verdict=GateVerdict(value["verdict"]),
+        git_sha=value["git_sha"],
+        evidence_identity_sha256=value["evidence_identity_sha256"],
+        actor_id=value["actor_id"],
+        reason=value["reason"],
+    )
+
+
+def load_gate_receipt_bundle(
+    path: str | Path,
+    *,
+    expected_candidate_identity_sha256: str,
+) -> tuple[GateReceipt, ...]:
+    payload = _strict_json_object(path, label="AI QA gate receipt bundle")
+    if set(payload) != {
+        "schema_version",
+        "candidate_identity_sha256",
+        "receipts",
+    }:
+        raise ValueError("gate receipt bundle fields are non-canonical")
+    if payload["schema_version"] != "12-6.aiqa-gate-receipts.v1":
+        raise ValueError("unsupported gate receipt bundle schema")
+    expected_identity = _require_sha256(
+        "expected_candidate_identity_sha256",
+        expected_candidate_identity_sha256,
+    )
+    if payload["candidate_identity_sha256"] != expected_identity:
+        raise ValueError("gate receipt bundle candidate identity mismatch")
+    receipts = payload["receipts"]
+    if not isinstance(receipts, list) or not receipts:
+        raise ValueError("gate receipt bundle must contain receipts")
+    return tuple(_receipt_from_dict(item) for item in receipts)
+
+
+def _write_receipt_bundle(
+    path: str | Path,
+    candidate: RepairCandidate,
+    receipts: tuple[GateReceipt, ...],
+) -> None:
+    if not receipts:
+        raise ValueError("receipt bundle cannot be empty")
+    _write_json(
+        path,
+        {
+            "schema_version": "12-6.aiqa-gate-receipts.v1",
+            "candidate_identity_sha256": candidate.identity_sha256(),
+            "receipts": [receipt.to_dict() for receipt in receipts],
+        },
+    )
+
+
+def _candidate_cli(args: argparse.Namespace) -> int:
+    policy = load_ai_qa_policy(args.policy)
+    failure = load_failure_packet(args.failure)
+    candidate = build_repair_candidate(
+        failure,
+        base_git_sha=args.base_git_sha,
+        candidate_git_sha=args.candidate_git_sha,
+        patch_bytes=Path(args.patch_file).read_bytes(),
+        proposer_actor_id=args.proposer_actor_id,
+        policy=policy,
+    )
+    payload = candidate.to_dict()
+    payload["candidate_identity_sha256"] = candidate.identity_sha256()
+    _write_json(args.output, payload)
+    print(
+        json.dumps(
+            {
+                "defect_id": candidate.defect_id,
+                "candidate_git_sha": candidate.candidate_git_sha,
+                "candidate_identity_sha256": candidate.identity_sha256(),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _regression_cli(args: argparse.Namespace) -> int:
+    failure = load_failure_packet(args.failure)
+    candidate = load_repair_candidate(args.candidate)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command=args.adversarial_command,
+    )
+    receipts = execute_automated_regressions(
+        chain,
+        repo_root=args.repo_root,
+        actor_id=args.actor_id,
+        timeout_seconds=args.timeout_seconds,
+    )
+    _write_receipt_bundle(args.output, candidate, receipts)
+    passed = all(receipt.verdict is GateVerdict.PASS for receipt in receipts)
+    print(
+        json.dumps(
+            {
+                "candidate_git_sha": candidate.candidate_git_sha,
+                "component": receipts[0].verdict.value,
+                "adversarial": receipts[1].verdict.value,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if passed else 1
+
+
+def _sil_receipt_cli(args: argparse.Namespace) -> int:
+    candidate = load_repair_candidate(args.candidate)
+    evidence = verify_sil_evidence(
+        args.evidence,
+        args.log,
+        expected_git_sha=candidate.candidate_git_sha,
+        require_pass=False,
+    )
+    receipt = GateReceipt(
+        gate=GateKind.SIL,
+        verdict=(
+            GateVerdict.PASS
+            if evidence["verdict"] == "PASS"
+            else GateVerdict.FAIL
+        ),
+        git_sha=candidate.candidate_git_sha,
+        evidence_identity_sha256=evidence["evidence_identity_sha256"],
+        actor_id=args.actor_id,
+        reason=None if evidence["verdict"] == "PASS" else "SIL evidence verdict is FAIL",
+    )
+    _write_receipt_bundle(args.output, candidate, (receipt,))
+    return 0 if receipt.verdict is GateVerdict.PASS else 1
+
+
+def _physical_scope_receipt_cli(args: argparse.Namespace) -> int:
+    failure = load_failure_packet(args.failure)
+    candidate = load_repair_candidate(args.candidate)
+    if failure.physical_scope is not PhysicalScope.NONE:
+        raise ValueError("required physical scope cannot be replaced by NOT_APPLICABLE")
+    receipt_payload = {
+        "candidate_identity_sha256": candidate.identity_sha256(),
+        "candidate_git_sha": candidate.candidate_git_sha,
+        "failure_packet_identity_sha256": failure.identity_sha256(),
+        "physical_scope": failure.physical_scope.value,
+        "reason": args.reason,
+        "actor_id": args.actor_id,
+    }
+    receipt = GateReceipt(
+        gate=GateKind.PHYSICAL,
+        verdict=GateVerdict.NOT_APPLICABLE,
+        git_sha=candidate.candidate_git_sha,
+        evidence_identity_sha256=_canonical_sha256(receipt_payload),
+        actor_id=args.actor_id,
+        reason=args.reason,
+    )
+    _write_receipt_bundle(args.output, candidate, (receipt,))
+    return 0
+
+
+def _assess_cli(args: argparse.Namespace) -> int:
+    policy = load_ai_qa_policy(args.policy)
+    failure = load_failure_packet(args.failure)
+    candidate = load_repair_candidate(args.candidate)
+    receipts: list[GateReceipt] = []
+    for bundle in args.receipt_bundle:
+        receipts.extend(
+            load_gate_receipt_bundle(
+                bundle,
+                expected_candidate_identity_sha256=candidate.identity_sha256(),
+            )
+        )
+    decision = evaluate_promotion(
+        failure,
+        candidate,
+        tuple(receipts),
+        certifier_actor_id=args.certifier_actor_id,
+        policy=policy,
+    )
+    payload = decision.to_dict()
+    payload["decision_identity_sha256"] = decision.identity_sha256()
+    _write_json(args.output, payload)
+    print(json.dumps(payload, sort_keys=True))
+    return 0 if decision.decision == "PROMOTE" else 1
+
+
 def _sil_failure_cli(args: argparse.Namespace) -> int:
     policy = load_ai_qa_policy(args.policy)
     packet = failure_packet_from_sil(
@@ -788,6 +1058,51 @@ def main() -> int:
     observation.add_argument("--policy", required=True)
     observation.add_argument("--output", required=True)
     observation.set_defaults(func=_observation_cli)
+
+    candidate = subparsers.add_parser("candidate")
+    candidate.add_argument("--failure", required=True)
+    candidate.add_argument("--policy", required=True)
+    candidate.add_argument("--base-git-sha", required=True)
+    candidate.add_argument("--candidate-git-sha", required=True)
+    candidate.add_argument("--patch-file", required=True)
+    candidate.add_argument("--proposer-actor-id", required=True)
+    candidate.add_argument("--output", required=True)
+    candidate.set_defaults(func=_candidate_cli)
+
+    regression = subparsers.add_parser("run-regression")
+    regression.add_argument("--failure", required=True)
+    regression.add_argument("--candidate", required=True)
+    regression.add_argument("--repo-root", required=True)
+    regression.add_argument("--adversarial-command", required=True)
+    regression.add_argument("--actor-id", required=True)
+    regression.add_argument("--timeout-seconds", type=int, default=300)
+    regression.add_argument("--output", required=True)
+    regression.set_defaults(func=_regression_cli)
+
+    sil_receipt = subparsers.add_parser("sil-receipt")
+    sil_receipt.add_argument("--candidate", required=True)
+    sil_receipt.add_argument("--evidence", required=True)
+    sil_receipt.add_argument("--log", required=True)
+    sil_receipt.add_argument("--actor-id", required=True)
+    sil_receipt.add_argument("--output", required=True)
+    sil_receipt.set_defaults(func=_sil_receipt_cli)
+
+    physical_scope = subparsers.add_parser("physical-scope-receipt")
+    physical_scope.add_argument("--failure", required=True)
+    physical_scope.add_argument("--candidate", required=True)
+    physical_scope.add_argument("--actor-id", required=True)
+    physical_scope.add_argument("--reason", required=True)
+    physical_scope.add_argument("--output", required=True)
+    physical_scope.set_defaults(func=_physical_scope_receipt_cli)
+
+    assess = subparsers.add_parser("assess")
+    assess.add_argument("--failure", required=True)
+    assess.add_argument("--candidate", required=True)
+    assess.add_argument("--policy", required=True)
+    assess.add_argument("--receipt-bundle", action="append", required=True)
+    assess.add_argument("--certifier-actor-id", required=True)
+    assess.add_argument("--output", required=True)
+    assess.set_defaults(func=_assess_cli)
 
     args = parser.parse_args()
     return int(args.func(args))
