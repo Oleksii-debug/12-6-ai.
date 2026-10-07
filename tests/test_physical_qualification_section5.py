@@ -409,6 +409,7 @@ def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
     assert len(execution.stderr) <= 1025
     assert 1025 in {len(execution.stdout), len(execution.stderr)}
 
+
 def test_run_bounded_pytest_rejects_untracked_test_lookalike(tmp_path: Path) -> None:
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
