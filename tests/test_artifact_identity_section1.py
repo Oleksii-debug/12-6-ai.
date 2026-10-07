@@ -1146,3 +1146,34 @@ def test_generation_method_rebinding_cannot_reseal_incomplete_generation(
     ):
         generation.identity_sha256()
 
+
+
+def test_public_identity_apis_do_not_accept_seal_override_hooks() -> None:
+    ref = _ref(ArtifactKind.CORPUS, "public-seal-override")
+    parent = bind_artifact(ref)
+    generation = _generation("public-seal-override")
+
+    with pytest.raises(TypeError):
+        ref.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.manifest_identity_sha256(  # type: ignore[call-arg]
+            _sealed_hash_payload=lambda _value: "0" * 64
+        )
+    with pytest.raises(TypeError):
+        generation.identity_sha256(  # type: ignore[call-arg]
+            _sealed_to_dict=lambda _value: {"forged": True}
+        )
+    with pytest.raises(TypeError):
+        bind_artifact(  # type: ignore[call-arg]
+            _ref(ArtifactKind.TOKENIZER, "public-seal-override"),
+            parents={"corpus": parent},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
+    with pytest.raises(TypeError):
+        verify_parent_bindings(  # type: ignore[call-arg]
+            parent,
+            expected_parents={},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
