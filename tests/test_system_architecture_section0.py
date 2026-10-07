@@ -426,6 +426,7 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             shell_rewrite_required=True,
         )
 
+
 def test_manifest_rejects_mutable_boundary_container() -> None:
     canonical = canonical_system_architecture_v1()
 
@@ -436,6 +437,7 @@ def test_manifest_rejects_mutable_boundary_container() -> None:
             boundaries=list(canonical.boundaries),  # type: ignore[arg-type]
         )
 
+
 def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
     canonical = canonical_system_architecture_v1()
 
@@ -445,6 +447,7 @@ def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
             planes=canonical.planes,
             boundaries=(*canonical.boundaries[:-1], None),  # type: ignore[arg-type]
         )
+
 
 def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() -> None:
     surfaces = canonical_runtime_shell_v1().surface_identities()
@@ -468,7 +471,6 @@ def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() ->
             **common,
             preserved_surface_identities=(*surfaces[:-1], ("ui-only",)),  # type: ignore[arg-type]
         )
-
 
 
 def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> None:

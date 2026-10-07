@@ -218,7 +218,6 @@ def test_sil_plan_executes_every_current_available_journey_with_integration_vect
             }
 
 
-
 def test_sil_plan_binds_explicit_end_to_end_contracts_to_exact_journey_steps() -> None:
     registry = _registry()
     plan = build_sil_plan(registry, _scenario())
@@ -791,6 +790,7 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "continue-on-error: true" in sil_job
     assert "if: always()" in sil_job
 
+
 def test_package_identity_binds_tracked_package_source_manifest() -> None:
     raw = _package_bytes()
     manifest = json.loads(raw.decode("utf-8"))
@@ -821,6 +821,7 @@ def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> Non
             command_runner=_pass_runner,
             git_probe=_git_probe,
         )
+
 
 def test_package_manifest_identity_binds_git_mode_and_blob(
     monkeypatch: pytest.MonkeyPatch,
