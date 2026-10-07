@@ -658,3 +658,58 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
 
     with pytest.raises(ValueError, match="manifest input must be bytes"):
         parse_generation_identity_manifest(ForgedBytes(b"{}"))
+
+def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
+    ref = _ref(ArtifactKind.CORPUS, "stale-ref")
+    object.__setattr__(ref, "schema_version", 0)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        ref.to_dict()
+
+    manifest = bind_artifact(_ref(ArtifactKind.CORPUS, "stale-manifest"))
+    object.__setattr__(manifest.artifact, "identity_sha256", "0" * 63)
+
+    with pytest.raises(ValueError, match="identity_sha256 must be an exact lowercase SHA-256"):
+        manifest.manifest_identity_sha256()
+
+
+def test_generation_accessors_revalidate_mutated_nested_manifests() -> None:
+    generation = _generation("stale-generation")
+    corpus = generation.artifacts[2]
+    object.__setattr__(corpus, "schema_version", 0)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        generation.identity_sha256()
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        generation.artifact_ref(ArtifactKind.CORPUS)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        generation.artifact_manifest(ArtifactKind.CORPUS)
+
+
+def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
+    class ForgedDict(dict):
+        def items(self):
+            raise AssertionError("behavioral mapping methods must not run")
+
+    refs = _refs("mapping-closed")
+    with pytest.raises(ValueError, match="refs must be an exact dict mapping"):
+        build_generation_identity_manifest(ForgedDict(refs))
+
+    generation = _generation("mapping-parent")
+    packing = generation.artifact_ref(ArtifactKind.PACKING)
+    parents = {
+        "split": generation.artifact_manifest(ArtifactKind.SPLIT),
+        "tokenizer": generation.artifact_manifest(ArtifactKind.TOKENIZER),
+    }
+    with pytest.raises(ValueError, match="parents must be an exact dict mapping"):
+        bind_artifact(packing, parents=ForgedDict(parents))
+
+    manifest = bind_artifact(packing, parents=parents)
+    with pytest.raises(ValueError, match="expected_parents must be an exact dict mapping"):
+        verify_parent_bindings(
+            manifest,
+            expected_parents=ForgedDict(parents),
+        )
+
