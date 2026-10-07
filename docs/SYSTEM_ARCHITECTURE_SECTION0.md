@@ -49,6 +49,10 @@ cross-checked against the Enum member's stored `_value_` without dispatching the
 `.value` descriptor. This prevents class-level descriptor rebinding from creating a
 validation/serialization split while still failing closed on low-level Enum value mutation.
 
+Authority-bearing gateway compatibility uses revalidated exact scalar contract signatures
+rather than dispatchable dataclass equality. Rebinding `InterfaceContract.__eq__` therefore
+cannot make an incompatible core gateway appear compatible with the persistent shell.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`
