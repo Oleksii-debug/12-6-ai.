@@ -335,7 +335,16 @@ class EnvironmentSupport:
     supported: bool
 
     def __post_init__(self) -> None:
-        _require_id("environment_id", self.environment_id)
+        if (
+            type(self.environment_id) is not str
+            or not 1 <= len(self.environment_id) <= 96
+            or self.environment_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.environment_id[1:]
+            )
+        ):
+            raise ValueError("environment_id must be a canonical identifier")
         if not _is_exact_type(self.supported, bool):
             raise ValueError("supported must be boolean")
 
@@ -350,7 +359,16 @@ class TestVector:
     command: str
 
     def __post_init__(self) -> None:
-        _require_id("vector_id", self.vector_id)
+        if (
+            type(self.vector_id) is not str
+            or not 1 <= len(self.vector_id) <= 96
+            or self.vector_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.vector_id[1:]
+            )
+        ):
+            raise ValueError("vector_id must be a canonical identifier")
         _require_test_level(self.level)
         _require_text("command", self.command)
         tokens = self.command.split()
@@ -385,7 +403,16 @@ class EvidenceTarget:
     target: str
 
     def __post_init__(self) -> None:
-        _require_id("evidence_id", self.evidence_id)
+        if (
+            type(self.evidence_id) is not str
+            or not 1 <= len(self.evidence_id) <= 96
+            or self.evidence_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.evidence_id[1:]
+            )
+        ):
+            raise ValueError("evidence_id must be a canonical identifier")
         if type(self.target) is not str or not self.target.strip():
             raise ValueError("target must be non-empty text")
 
@@ -408,7 +435,16 @@ class Capability:
     unavailable_reason: str | None
 
     def __post_init__(self) -> None:
-        _require_id("capability_id", self.capability_id)
+        if (
+            type(self.capability_id) is not str
+            or not 1 <= len(self.capability_id) <= 96
+            or self.capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.capability_id[1:]
+            )
+        ):
+            raise ValueError("capability_id must be a canonical identifier")
         _require_positive_int("schema_version", self.schema_version)
         _require_capability_status(self.status)
         if (
@@ -424,7 +460,16 @@ class Capability:
             if not _is_exact_type(values, tuple):
                 raise ValueError(f"{name} must be an immutable tuple")
             for value in values:
-                _require_id(name, value)
+                if (
+                    type(value) is not str
+                    or not 1 <= len(value) <= 96
+                    or value[0] not in "abcdefghijklmnopqrstuvwxyz"
+                    or any(
+                        char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                        for char in value[1:]
+                    )
+                ):
+                    raise ValueError(f"{name} must be a canonical identifier")
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must be unique")
 
@@ -504,13 +549,31 @@ class Journey:
     capability_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        _require_id("journey_id", self.journey_id)
+        if (
+            type(self.journey_id) is not str
+            or not 1 <= len(self.journey_id) <= 96
+            or self.journey_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.journey_id[1:]
+            )
+        ):
+            raise ValueError("journey_id must be a canonical identifier")
         if type(self.title) is not str or not self.title.strip():
             raise ValueError("title must be non-empty text")
         if not _is_exact_type(self.capability_ids, tuple) or not self.capability_ids:
             raise ValueError("journey capability_ids must be a non-empty tuple")
         for capability_id in self.capability_ids:
-            _require_id("journey capability_id", capability_id)
+            if (
+                type(capability_id) is not str
+                or not 1 <= len(capability_id) <= 96
+                or capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+                or any(
+                    char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                    for char in capability_id[1:]
+                )
+            ):
+                raise ValueError("journey capability_id must be a canonical identifier")
         if len(self.capability_ids) != len(set(self.capability_ids)):
             raise ValueError("journey capability_ids must be unique")
 
@@ -526,7 +589,16 @@ class SourceSurface:
 
     def __post_init__(self) -> None:
         _require_text("source surface path", self.path)
-        _require_id("source surface capability_id", self.capability_id)
+        if (
+            type(self.capability_id) is not str
+            or not 1 <= len(self.capability_id) <= 96
+            or self.capability_id[0] not in "abcdefghijklmnopqrstuvwxyz"
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+                for char in self.capability_id[1:]
+            )
+        ):
+            raise ValueError("source surface capability_id must be a canonical identifier")
         if not _is_exact_type(self.origin, str) or self.origin not in {
             "accepted_main",
             "stacked_candidate",
