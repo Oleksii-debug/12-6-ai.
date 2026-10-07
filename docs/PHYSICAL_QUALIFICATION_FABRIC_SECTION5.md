@@ -88,7 +88,8 @@ states, JSONL output hashes and artifact bytes.
 
 Section 5 stays IN_PROGRESS. No real Windows/Linux/server device has been qualified by this draft.
 Closure still needs predecessor Sections 0–4, exact-head shared CI, production ED25519 trust-store
-integration, hardened host-service memory/disk quotas, real Windows/Linux/server runs, and authoritative
+integration, hardened host-service memory/disk quotas, real Windows/Linux/server runs, and
+authoritative
 NETWORK/MODEL/PROVIDER adapters where those resources are required.
 
 This code creates no corpus/tokenizer/training/final-test/paid-compute/scale-promotion authority and
