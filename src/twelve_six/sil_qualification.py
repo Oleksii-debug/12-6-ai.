@@ -1143,12 +1143,15 @@ def _qualify_sil_with_backends(
     command_execution_validator: Callable[[CommandExecution], None] = (
         CommandExecution.__post_init__
     ),
+    environment_receipt_validator: Callable[
+        [dict[str, Any]], dict[str, Any]
+    ] = _validate_sil_environment_receipt,
 ) -> tuple[dict[str, Any], str]:
     """Internal deterministic harness; not a canonical evidence authority."""
     expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
     if not _is_exact_type(package_bytes, bytes) or not package_bytes:
         raise ValueError("package_bytes must be non-empty bytes")
-    environment_receipt = _validate_sil_environment_receipt(environment_receipt)
+    environment_receipt = environment_receipt_validator(environment_receipt)
 
     root = Path(repo_root)
     expected_package_bytes = package_manifest_builder(root)
@@ -1357,6 +1360,7 @@ def _build_qualify_sil_authority():
     sealed_plan_payload_builder = _sil_plan_payload_from_stored_state
     sealed_git_state_validator = GitState.__post_init__
     sealed_command_execution_validator = CommandExecution.__post_init__
+    sealed_environment_receipt_validator = _validate_sil_environment_receipt
 
     def canonical(
         *,
@@ -1383,6 +1387,7 @@ def _build_qualify_sil_authority():
             plan_payload_builder=sealed_plan_payload_builder,
             git_state_validator=sealed_git_state_validator,
             command_execution_validator=sealed_command_execution_validator,
+            environment_receipt_validator=sealed_environment_receipt_validator,
         )
 
     return canonical
@@ -1470,6 +1475,9 @@ def _verify_sil_evidence_with_authorities(
     registry_identity_builder: Callable[[CapabilityRegistry], str],
     scenario_identity_builder: Callable[[SILScenario], str],
     plan_payload_builder: Callable[[SILPlan], dict[str, Any]],
+    environment_receipt_validator: Callable[
+        [dict[str, Any]], dict[str, Any]
+    ] = _validate_sil_environment_receipt,
 ) -> dict[str, Any]:
     payload = _strict_json_object(
         Path(evidence_path).read_bytes(),
@@ -1500,7 +1508,7 @@ def _verify_sil_evidence_with_authorities(
 
     if not _is_exact_type(expected_package_bytes, bytes) or not expected_package_bytes:
         raise ValueError("expected_package_bytes must be non-empty bytes")
-    expected_environment_receipt = _validate_sil_environment_receipt(
+    expected_environment_receipt = environment_receipt_validator(
         expected_environment_receipt
     )
     if not _is_exact_type(expected_registry, CapabilityRegistry):
@@ -1720,6 +1728,7 @@ def _build_verify_sil_evidence_authority():
     sealed_registry_identity_builder = CapabilityRegistry.identity_sha256
     sealed_scenario_identity_builder = _sil_scenario_identity_from_stored_state
     sealed_plan_payload_builder = _sil_plan_payload_from_stored_state
+    sealed_environment_receipt_validator = _validate_sil_environment_receipt
 
     def canonical(
         evidence_path: str | Path,
@@ -1745,6 +1754,7 @@ def _build_verify_sil_evidence_authority():
             registry_identity_builder=sealed_registry_identity_builder,
             scenario_identity_builder=sealed_scenario_identity_builder,
             plan_payload_builder=sealed_plan_payload_builder,
+            environment_receipt_validator=sealed_environment_receipt_validator,
         )
 
     return canonical
