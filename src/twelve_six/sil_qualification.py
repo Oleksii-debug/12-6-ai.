@@ -345,9 +345,17 @@ def probe_git_state(repo_root: str | Path) -> GitState:
     )
     sha = sha_result.stdout.strip()
     _require_git_sha("observed git SHA", sha)
-    worktree = subprocess.run(["git", "diff", "--quiet", "HEAD", "--"], cwd=root)
-    index = subprocess.run(["git", "diff", "--cached", "--quiet", "HEAD", "--"], cwd=root)
-    return GitState(sha=sha, tracked_clean=worktree.returncode == 0 and index.returncode == 0)
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if status.returncode != 0:
+        raise ValueError("cannot establish SIL checkout cleanliness")
+    return GitState(sha=sha, tracked_clean=not status.stdout.strip())
 
 
 _INPUT_VERIFICATION_PREFIX = "SIL_INPUT_VERIFIED_SHA256="
