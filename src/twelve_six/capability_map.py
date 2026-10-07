@@ -271,8 +271,7 @@ class EnvironmentSupport:
             raise ValueError("supported must be boolean")
 
     def to_dict(self) -> dict[str, Any]:
-        EnvironmentSupport.__post_init__(self)
-        return {"environment_id": self.environment_id, "supported": self.supported}
+        return _environment_support_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,12 +307,7 @@ class TestVector:
                 )
 
     def to_dict(self) -> dict[str, Any]:
-        TestVector.__post_init__(self)
-        return {
-            "vector_id": self.vector_id,
-            "level": _test_level_wire_value(self.level),
-            "command": self.command,
-        }
+        return _test_vector_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,8 +320,7 @@ class EvidenceTarget:
         _require_text("target", self.target)
 
     def to_dict(self) -> dict[str, str]:
-        EvidenceTarget.__post_init__(self)
-        return {"evidence_id": self.evidence_id, "target": self.target}
+        return _evidence_target_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -424,20 +417,7 @@ class Capability:
                 raise ValueError("UNAVAILABLE capability cannot claim an integrated_result")
 
     def to_dict(self) -> dict[str, Any]:
-        Capability.__post_init__(self)
-        return {
-            "capability_id": self.capability_id,
-            "schema_version": self.schema_version,
-            "status": _capability_status_wire_value(self.status),
-            "component_contract": self.component_contract,
-            "dependencies": list(self.dependencies),
-            "journey_ids": list(self.journey_ids),
-            "environments": [item.to_dict() for item in self.environments],
-            "test_vectors": [item.to_dict() for item in self.test_vectors],
-            "evidence_targets": [item.to_dict() for item in self.evidence_targets],
-            "integrated_result": self.integrated_result,
-            "unavailable_reason": self.unavailable_reason,
-        }
+        return _capability_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,12 +437,7 @@ class Journey:
             raise ValueError("journey capability_ids must be unique")
 
     def to_dict(self) -> dict[str, Any]:
-        Journey.__post_init__(self)
-        return {
-            "journey_id": self.journey_id,
-            "title": self.title,
-            "capability_ids": list(self.capability_ids),
-        }
+        return _journey_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,12 +469,7 @@ class SourceSurface:
             )
 
     def to_dict(self) -> dict[str, str]:
-        SourceSurface.__post_init__(self)
-        return {
-            "path": self.path,
-            "capability_id": self.capability_id,
-            "origin": self.origin,
-        }
+        return _source_surface_payload_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,20 +529,10 @@ class SourceSurfaceInventory:
             raise ValueError("source surface paths must be unique")
 
     def to_dict(self) -> dict[str, Any]:
-        SourceSurfaceInventory.__post_init__(self)
-        return {
-            "schema_version": self.schema_version,
-            "observed_main_sha": self.observed_main_sha,
-            "observed_main_tree_sha": self.observed_main_tree_sha,
-            "source_root": self.source_root,
-            "source_surface_count": self.source_surface_count,
-            "accepted_main_surface_count": self.accepted_main_surface_count,
-            "candidate_overlay_surface_count": self.candidate_overlay_surface_count,
-            "surfaces": [item.to_dict() for item in self.surfaces],
-        }
+        return _source_surface_inventory_payload_from_stored_state(self)
 
     def identity_sha256(self) -> str:
-        return _canonical_sha256(self.to_dict())
+        return _source_surface_inventory_identity_from_stored_state(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -688,7 +648,7 @@ class CapabilityRegistry:
             visit(capability_id)
 
     def capability(self, capability_id: str) -> Capability:
-        CapabilityRegistry.__post_init__(self)
+        _validate_capability_registry_stored(self)
         _require_id("capability_id", capability_id)
         for capability in self.capabilities:
             if capability.capability_id == capability_id:
@@ -696,7 +656,7 @@ class CapabilityRegistry:
         raise KeyError(capability_id)
 
     def journey_available(self, journey_id: str) -> bool:
-        CapabilityRegistry.__post_init__(self)
+        _validate_capability_registry_stored(self)
         _require_id("journey_id", journey_id)
         journey = next(
             (item for item in self.journeys if item.journey_id == journey_id),
@@ -704,14 +664,25 @@ class CapabilityRegistry:
         )
         if journey is None:
             raise KeyError(journey_id)
+        by_capability = {item.capability_id: item for item in self.capabilities}
         return all(
-            self.capability(capability_id).status is CapabilityStatus.AVAILABLE
+            by_capability[capability_id].status is CapabilityStatus.AVAILABLE
             for capability_id in journey.capability_ids
         )
 
     def acceptance_path(self, capability_id: str) -> dict[str, Any]:
-        CapabilityRegistry.__post_init__(self)
-        capability = self.capability(capability_id)
+        _validate_capability_registry_stored(self)
+        _require_id("capability_id", capability_id)
+        capability = next(
+            (
+                item
+                for item in self.capabilities
+                if item.capability_id == capability_id
+            ),
+            None,
+        )
+        if capability is None:
+            raise KeyError(capability_id)
         if capability.status is CapabilityStatus.UNAVAILABLE:
             return {
                 "capability_id": capability.capability_id,
@@ -724,26 +695,174 @@ class CapabilityRegistry:
             "capability_id": capability.capability_id,
             "status": _capability_status_wire_value(capability.status),
             "component_contract": capability.component_contract,
-            "test_vectors": [item.to_dict() for item in capability.test_vectors],
-            "evidence_targets": [item.to_dict() for item in capability.evidence_targets],
+            "test_vectors": [
+                _test_vector_payload_from_stored_state(item)
+                for item in capability.test_vectors
+            ],
+            "evidence_targets": [
+                _evidence_target_payload_from_stored_state(item)
+                for item in capability.evidence_targets
+            ],
             "integrated_result": capability.integrated_result,
         }
 
     def to_dict(self) -> dict[str, Any]:
-        CapabilityRegistry.__post_init__(self)
-        return {
-            "schema_version": self.schema_version,
-            "observed_main_sha": self.observed_main_sha,
-            "observed_main_ci": {
-                "run_id": self.observed_main_ci_run_id,
-                "conclusion": self.observed_main_ci_conclusion,
-            },
-            "capabilities": [item.to_dict() for item in self.capabilities],
-            "journeys": [item.to_dict() for item in self.journeys],
-        }
+        return _capability_registry_payload_from_stored_state(self)
 
     def identity_sha256(self) -> str:
-        return _canonical_sha256(self.to_dict())
+        return _capability_registry_identity_from_stored_state(self)
+
+
+
+def _environment_support_payload_from_stored_state(
+    value: EnvironmentSupport,
+    _sealed_validate=EnvironmentSupport.__post_init__,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {"environment_id": value.environment_id, "supported": value.supported}
+
+
+def _test_vector_payload_from_stored_state(
+    value: TestVector,
+    _sealed_validate=TestVector.__post_init__,
+    _sealed_level_wire=_test_level_wire_value,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {
+        "vector_id": value.vector_id,
+        "level": _sealed_level_wire(value.level),
+        "command": value.command,
+    }
+
+
+def _evidence_target_payload_from_stored_state(
+    value: EvidenceTarget,
+    _sealed_validate=EvidenceTarget.__post_init__,
+) -> dict[str, str]:
+    _sealed_validate(value)
+    return {"evidence_id": value.evidence_id, "target": value.target}
+
+
+def _capability_payload_from_stored_state(
+    value: Capability,
+    _sealed_validate=Capability.__post_init__,
+    _sealed_status_wire=_capability_status_wire_value,
+    _sealed_environment_payload=_environment_support_payload_from_stored_state,
+    _sealed_vector_payload=_test_vector_payload_from_stored_state,
+    _sealed_evidence_payload=_evidence_target_payload_from_stored_state,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {
+        "capability_id": value.capability_id,
+        "schema_version": value.schema_version,
+        "status": _sealed_status_wire(value.status),
+        "component_contract": value.component_contract,
+        "dependencies": list(value.dependencies),
+        "journey_ids": list(value.journey_ids),
+        "environments": [
+            _sealed_environment_payload(item) for item in value.environments
+        ],
+        "test_vectors": [
+            _sealed_vector_payload(item) for item in value.test_vectors
+        ],
+        "evidence_targets": [
+            _sealed_evidence_payload(item) for item in value.evidence_targets
+        ],
+        "integrated_result": value.integrated_result,
+        "unavailable_reason": value.unavailable_reason,
+    }
+
+
+def _journey_payload_from_stored_state(
+    value: Journey,
+    _sealed_validate=Journey.__post_init__,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {
+        "journey_id": value.journey_id,
+        "title": value.title,
+        "capability_ids": list(value.capability_ids),
+    }
+
+
+def _source_surface_payload_from_stored_state(
+    value: SourceSurface,
+    _sealed_validate=SourceSurface.__post_init__,
+) -> dict[str, str]:
+    _sealed_validate(value)
+    return {
+        "path": value.path,
+        "capability_id": value.capability_id,
+        "origin": value.origin,
+    }
+
+
+def _source_surface_inventory_payload_from_stored_state(
+    value: SourceSurfaceInventory,
+    _sealed_validate=SourceSurfaceInventory.__post_init__,
+    _sealed_surface_payload=_source_surface_payload_from_stored_state,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {
+        "schema_version": value.schema_version,
+        "observed_main_sha": value.observed_main_sha,
+        "observed_main_tree_sha": value.observed_main_tree_sha,
+        "source_root": value.source_root,
+        "source_surface_count": value.source_surface_count,
+        "accepted_main_surface_count": value.accepted_main_surface_count,
+        "candidate_overlay_surface_count": value.candidate_overlay_surface_count,
+        "surfaces": [_sealed_surface_payload(item) for item in value.surfaces],
+    }
+
+
+def _source_surface_inventory_identity_from_stored_state(
+    value: SourceSurfaceInventory,
+    _sealed_hash=_canonical_sha256,
+    _sealed_payload=_source_surface_inventory_payload_from_stored_state,
+) -> str:
+    return _sealed_hash(_sealed_payload(value))
+
+
+def _validate_capability_registry_stored(
+    value: CapabilityRegistry,
+    _sealed_registry_validate=CapabilityRegistry.__post_init__,
+    _sealed_capability_payload=_capability_payload_from_stored_state,
+    _sealed_journey_payload=_journey_payload_from_stored_state,
+) -> None:
+    _sealed_registry_validate(value)
+    for capability in value.capabilities:
+        _sealed_capability_payload(capability)
+    for journey in value.journeys:
+        _sealed_journey_payload(journey)
+
+
+def _capability_registry_payload_from_stored_state(
+    value: CapabilityRegistry,
+    _sealed_validate=_validate_capability_registry_stored,
+    _sealed_capability_payload=_capability_payload_from_stored_state,
+    _sealed_journey_payload=_journey_payload_from_stored_state,
+) -> dict[str, Any]:
+    _sealed_validate(value)
+    return {
+        "schema_version": value.schema_version,
+        "observed_main_sha": value.observed_main_sha,
+        "observed_main_ci": {
+            "run_id": value.observed_main_ci_run_id,
+            "conclusion": value.observed_main_ci_conclusion,
+        },
+        "capabilities": [
+            _sealed_capability_payload(item) for item in value.capabilities
+        ],
+        "journeys": [_sealed_journey_payload(item) for item in value.journeys],
+    }
+
+
+def _capability_registry_identity_from_stored_state(
+    value: CapabilityRegistry,
+    _sealed_hash=_canonical_sha256,
+    _sealed_payload=_capability_registry_payload_from_stored_state,
+) -> str:
+    return _sealed_hash(_sealed_payload(value))
 
 
 def resolve_component_contract(component_contract: str) -> object:
@@ -808,7 +927,7 @@ def validate_available_component_contracts(registry: CapabilityRegistry) -> None
 
     if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
-    CapabilityRegistry.__post_init__(registry)
+    _validate_capability_registry_stored(registry)
     for capability in registry.capabilities:
         if capability.status is CapabilityStatus.AVAILABLE:
             resolve_component_contract(capability.component_contract)
@@ -1092,8 +1211,8 @@ def validate_source_surface_coverage(
         raise ValueError("registry must be a CapabilityRegistry")
     if not _is_exact_type(inventory, SourceSurfaceInventory):
         raise ValueError("inventory must be a SourceSurfaceInventory")
-    CapabilityRegistry.__post_init__(registry)
-    SourceSurfaceInventory.__post_init__(inventory)
+    _validate_capability_registry_stored(registry)
+    _source_surface_inventory_payload_from_stored_state(inventory)
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
 
