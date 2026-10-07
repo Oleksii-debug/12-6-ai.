@@ -1062,6 +1062,18 @@ def qualify_sil(
             }
         )
 
+    final_state = git_probe(root)
+    if not _is_exact_type(final_state, GitState):
+        raise ValueError("git probe must return exact GitState")
+    GitState.__post_init__(final_state)
+    if final_state.sha != expected_git_sha:
+        raise ValueError(
+            "exact-head changed before SIL evidence sealing: "
+            f"expected {expected_git_sha}, observed {final_state.sha}"
+        )
+    if not final_state.tracked_clean:
+        raise ValueError("tracked checkout is dirty before SIL evidence sealing")
+
     finished_monotonic_ns = time.monotonic_ns()
     finished_unix_ns = time.time_ns()
     log_text = "".join(
