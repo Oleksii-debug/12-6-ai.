@@ -36,13 +36,13 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
-    assert result["observed_main_tree_sha"] == "f1717c60acf917cf5c6a59336b00a223342529c2"
-    assert result["current_repository_main_sha"] == "c27f78fea59148c51f40d1d86c1b263e1a7f98ef"
-    assert result["current_repository_main_tree_sha"] == "62d8ff938583c80ccd09ab04573aa593d8597514"
-    assert result["qualified_current_equivalent_surface_count"] == 237
+    assert result["observed_main_sha"] == "698531883661e57bbca6e005d571a467fad552ea"
+    assert result["observed_main_tree_sha"] == "6e91af737d92cd17ee34404fd86e8e0074d53171"
+    assert result["current_repository_main_sha"] == "14bac89097ba9c1a6ed1b348ed0065afac34859d"
+    assert result["current_repository_main_tree_sha"] == "2a91aed55fed370e4d17e3022a1bb1809fbd6619"
+    assert result["qualified_current_equivalent_surface_count"] == 238
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 1
+    assert result["candidate_overlay_surface_count"] == 0
     assert result["checkout_surface_count"] == 120
 
 
@@ -64,15 +64,10 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
     }
 
 
-def test_section3_workflow_is_only_candidate_overlay_and_section2_rule_stays_integrated() -> None:
+def test_section3_workflow_is_integrated_and_section2_rule_stays_integrated() -> None:
     payload = _load_strict_json(_INVENTORY)
 
-    assert payload["candidate_overrides"] == [
-        {
-            "path": ".github/workflows/ci.yml",
-            "capability_id": "project-control-plane",
-        }
-    ]
+    assert payload["candidate_overrides"] == []
     assert {
         "rule_id": "section2-surface-validator",
         "selector": "exact",
@@ -102,13 +97,13 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    assert payload["candidate_overrides"] == [
+    assert payload["candidate_overrides"] == []
+    payload["candidate_overrides"] = [
         {
             "path": ".github/workflows/ci.yml",
-            "capability_id": "project-control-plane",
+            "capability_id": "model-spec-identity",
         }
     ]
-    payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
