@@ -626,12 +626,47 @@ jobs:
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
 
-      - name: Install project runtime and qualification dependencies
+      - name: Reconstruct accepted deterministic SIL environment
         shell: bash
+        env:
+          SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
+          lock_dir="$RUNNER_TEMP/sil-locks"
+          venv_dir="$RUNNER_TEMP/sil-venv"
+          mkdir -p "$lock_dir"
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"
+
+          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/locks/linux-x86_64/toolchain.lock.txt" \
+            > "$lock_dir/toolchain.lock.txt"
+          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/execution/linux-x86_64/cpu-runtime.lock.txt" \
+            > "$lock_dir/cpu-runtime.lock.txt"
+          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/locks/linux-x86_64/dev.lock.txt" \
+            > "$lock_dir/dev.lock.txt"
+
+          test "$(sha256sum "$lock_dir/toolchain.lock.txt" | cut -d' ' -f1)" = \
+            "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3"
+          test "$(sha256sum "$lock_dir/cpu-runtime.lock.txt" | cut -d' ' -f1)" = \
+            "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a"
+          test "$(sha256sum "$lock_dir/dev.lock.txt" | cut -d' ' -f1)" = \
+            "1869e05c5eeaf056813df1c99dc63c7e5febb9794351ec640d265f62efaeac28"
+
+          python -m venv "$venv_dir"
+          sil_python="$venv_dir/bin/python"
+          "$sil_python" -m pip install --disable-pip-version-check \
+            --require-hashes --no-deps -r "$lock_dir/toolchain.lock.txt"
+          "$sil_python" -m pip install --disable-pip-version-check \
+            --require-hashes --no-deps \
+            --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple \
+            -r "$lock_dir/cpu-runtime.lock.txt"
+          "$sil_python" -m pip install --disable-pip-version-check \
+            --require-hashes --no-deps -r "$lock_dir/dev.lock.txt"
+          "$sil_python" -m pip install --disable-pip-version-check \
+            --no-deps --no-build-isolation -e .
+          "$sil_python" -m twelve_six.sil_qualification environment-receipt \
+            --output "$RUNNER_TEMP/sil-environment.json"
 
       - name: Execute all currently AVAILABLE capability journeys
         id: sil
@@ -639,11 +674,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m twelve_six.sil_qualification run \
+          "$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification run \
             --repo-root . \
             --expected-git-sha "$SIL_EXPECTED_SHA" \
             --capability-registry configs/control/product_capabilities_v1.json \
             --scenario configs/control/sil_scenario_v1.json \
+            --environment-receipt "$RUNNER_TEMP/sil-environment.json" \
             --evidence-output "$RUNNER_TEMP/sil-evidence.json" \
             --log-output "$RUNNER_TEMP/sil.log"
 
@@ -652,10 +688,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m twelve_six.sil_qualification verify \
+          "$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification verify \
             --repo-root . \
             --capability-registry configs/control/product_capabilities_v1.json \
             --scenario configs/control/sil_scenario_v1.json \
+            --environment-receipt "$RUNNER_TEMP/sil-environment.json" \
             --evidence "$RUNNER_TEMP/sil-evidence.json" \
             --log "$RUNNER_TEMP/sil.log" \
             --expected-git-sha "$SIL_EXPECTED_SHA"
@@ -666,6 +703,7 @@ jobs:
         with:
           name: section3-sil-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
+            ${{ runner.temp }}/sil-environment.json
             ${{ runner.temp }}/sil-evidence.json
             ${{ runner.temp }}/sil.log
           if-no-files-found: warn

@@ -20,6 +20,8 @@ from twelve_six.sil_qualification import (
     GitState,
     SILScenario,
     build_package_manifest_bytes,
+    canonical_sil_environment_receipt_v1,
+    load_sil_environment_receipt,
     build_sil_plan,
     load_sil_scenario,
     parse_vector_command,
@@ -46,6 +48,10 @@ def _scenario() -> SILScenario:
 
 def _package_bytes() -> bytes:
     return build_package_manifest_bytes(_ROOT)
+
+
+def _environment_receipt() -> dict[str, object]:
+    return canonical_sil_environment_receipt_v1()
 
 
 def _pass_runner(
@@ -102,10 +108,57 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
         evidence_path,
         log_path,
         expected_package_bytes=_package_bytes(),
+        expected_environment_receipt=_environment_receipt(),
         expected_registry=_registry(),
         expected_scenario=_scenario(),
         expected_git_sha=_GIT_SHA,
     )
+
+
+def test_canonical_environment_receipt_binds_accepted_historical_locks(
+    tmp_path: Path,
+) -> None:
+    receipt = _environment_receipt()
+
+    assert receipt["authority_commit"] == "029514654829cebc149cff6fc1fea2a8ba4fa566"
+    assert receipt["python"] == {
+        "implementation": "cpython",
+        "version": "3.11.16",
+    }
+    assert [item["role"] for item in receipt["locks"]] == [
+        "toolchain",
+        "cpu_runtime",
+        "dev",
+    ]
+    assert len(receipt["packages"]) == 21
+
+    path = tmp_path / "environment.json"
+    path.write_text(
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    assert load_sil_environment_receipt(path) == receipt
+
+
+def test_environment_receipt_rejects_byte_or_authority_reseal(tmp_path: Path) -> None:
+    receipt = _environment_receipt()
+    path = tmp_path / "environment.json"
+
+    path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="bytes are non-canonical"):
+        load_sil_environment_receipt(path)
+
+    forged = dict(receipt)
+    forged["authority_commit"] = "b" * 40
+    unsigned = dict(forged)
+    unsigned.pop("identity_sha256")
+    forged["identity_sha256"] = _canonical_hash(unsigned)
+    path.write_text(
+        json.dumps(forged, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="exact accepted authority"):
+        load_sil_environment_receipt(path)
 
 
 def test_independent_verifier_requires_exact_clean_checkout() -> None:
@@ -291,6 +344,7 @@ def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdic
         registry=registry,
         scenario=scenario,
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -359,6 +413,7 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=fail_once,
         git_probe=_git_probe,
     )
@@ -393,6 +448,7 @@ def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=consume_wrong_identity,
         git_probe=_git_probe,
     )
@@ -421,6 +477,7 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
             registry=_registry(),
             scenario=_scenario(),
             package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
             command_runner=_pass_runner,
             git_probe=lambda _: next(states),
         )
@@ -469,6 +526,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
             registry=registry,
             scenario=scenario,
             package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
         )
@@ -480,6 +538,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
             registry=registry,
             scenario=scenario,
             package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
         )
@@ -533,6 +592,7 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -565,6 +625,7 @@ def test_verifier_rejects_resealed_invalid_timings(
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -595,6 +656,7 @@ def test_verifier_rejects_total_duration_shorter_than_execution_sum(
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -622,6 +684,7 @@ def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
         registry=_registry(),
         scenario=_scenario(),
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -657,6 +720,7 @@ def test_verifier_rejects_self_consistent_package_authority_reseal(
         registry=registry,
         scenario=scenario,
         package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -699,14 +763,33 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert workflows == ["ci.yml"]
 
     workflow = (workflow_dir / "ci.yml").read_text(encoding="utf-8")
-    assert "  sil-current-capability-journeys:" in workflow
-    assert "needs: bootstrap" in workflow
-    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
-    assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in workflow
-    assert "python -m twelve_six.sil_qualification run" in workflow
-    assert "python -m twelve_six.sil_qualification verify" in workflow
-    assert "continue-on-error: true" in workflow
-    assert "if: always()" in workflow
+    marker = "  sil-current-capability-journeys:"
+    assert marker in workflow
+    sil_job = marker + workflow.split(marker, 1)[1]
+    assert "needs: bootstrap" in sil_job
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in sil_job
+    assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in sil_job
+    assert (
+        'SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"'
+        in sil_job
+    )
+    assert "git fetch --no-tags origin refs/pull/402/head" in sil_job
+    assert 'test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"' in sil_job
+    assert "requirements/locks/linux-x86_64/toolchain.lock.txt" in sil_job
+    assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
+    assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
+    assert "--require-hashes --no-deps" in sil_job
+    assert "--no-deps --no-build-isolation -e ." in sil_job
+    assert "python -m pip install --upgrade pip" not in sil_job
+    assert "pip install -e .[dev]" not in sil_job
+    assert '"$sil_python" -m twelve_six.sil_qualification environment-receipt' in sil_job
+    assert sil_job.count(
+        '--environment-receipt "$RUNNER_TEMP/sil-environment.json"'
+    ) == 2
+    assert '"$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification run' in sil_job
+    assert '"$RUNNER_TEMP/sil-venv/bin/python" -m twelve_six.sil_qualification verify' in sil_job
+    assert "continue-on-error: true" in sil_job
+    assert "if: always()" in sil_job
 
 def test_package_identity_binds_tracked_package_source_manifest() -> None:
     raw = _package_bytes()
@@ -734,6 +817,7 @@ def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> Non
             registry=_registry(),
             scenario=_scenario(),
             package_bytes=b"opaque-unbound-package",
+            environment_receipt=_environment_receipt(),
             command_runner=_pass_runner,
             git_probe=_git_probe,
         )
