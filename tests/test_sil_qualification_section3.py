@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.sil_qualification as sil_qualification
+from twelve_six import sil_qualification
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
@@ -20,9 +20,9 @@ from twelve_six.sil_qualification import (
     GitState,
     SILScenario,
     build_package_manifest_bytes,
+    build_sil_plan,
     canonical_sil_environment_receipt_v1,
     load_sil_environment_receipt,
-    build_sil_plan,
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
@@ -30,7 +30,6 @@ from twelve_six.sil_qualification import (
     require_exact_clean_git_state,
     verify_sil_evidence,
 )
-
 
 _ROOT = Path(__file__).parents[1]
 _REGISTRY = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
@@ -216,6 +215,16 @@ def test_sil_plan_executes_every_current_available_journey_with_integration_vect
                 if journey_id == journey.journey_id
                 and planned_capability_id == capability_id
             }
+
+
+def test_sil_policy_predeclares_closed_predecessor_journey_contract() -> None:
+    policy = dict(sil_qualification._CANONICAL_JOURNEY_E2E_VECTOR_POLICY)
+
+    assert policy["developer-replace-cognitive-core"] == (
+        "section0-product-stack",
+        "section1-stack",
+    )
+    assert policy["maintainer-capability-qualification"] == ("section2-stack",)
 
 
 def test_sil_plan_binds_explicit_end_to_end_contracts_to_exact_journey_steps() -> None:

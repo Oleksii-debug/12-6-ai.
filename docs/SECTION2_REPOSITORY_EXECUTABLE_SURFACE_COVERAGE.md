@@ -20,26 +20,27 @@ Permanent adversarial coverage is:
 
 ## Qualified baseline and current-main equivalence
 
-The rule authority preserves the terminally qualified product baseline:
+The rule authority binds the qualified repaired Section-1 baseline:
 
-- qualified `main@019944d5fe12334791f05f1232d13de4a12e37d3`;
-- exact baseline tree `c727add7897dd94bdb02493e0cd7a565be7e8d9f`;
-- terminal baseline CI remains the separately recorded run `37248299503` and is **not**
-  reassigned to a newer commit.
+- accepted `main@49218c0c581b73bcd0985646f48bf35300b1948c`;
+- exact baseline tree `2f8c32273994595b0bd466a293ee727d6f56d2ef`;
+- that tree is identical to exact-head qualified candidate
+  `49218c0c581b73bcd0985646f48bf35300b1948c`, whose CI run `37608406911`
+  is terminal SUCCESS.
 
-It also pins the repository main observed for this candidate:
+It also pins the live repository main observed for this candidate:
 
-- current `main@e5dbb7107d5b54f09a26d07d59f093ac05ede9c7`;
-- exact current tree `429a9933512f3d0c17f42d80193365e5df3f195a`;
+- current `main@5c041ca56edda55a5c3334f722361754051e121c`;
+- exact current tree `95ad101c8965fd49c1711027146253a093fce2f8`;
 - the validator requires that SHA to equal the live `origin/main`/local `main` ref;
-- all **233 capability-bearing blobs** across `src/twelve_six/**/*.py`, `tools/`,
+- all **235 capability-bearing blobs** across `src/twelve_six/**/*.py`, `tools/`,
   workflows and `pyproject.toml` must have an identical path→blob-SHA map between the
-  qualified baseline and current main.
+  qualified accepted tree and current main.
 
-The only baseline→current-main changes are coordination-only `AGENTS.md` and
-`SEQUENTIAL_CLOSURE_STATE.md`; neither is a capability-bearing product/executable surface.
-Therefore the older terminal CI remains evidence for the unchanged product baseline without
-falsely claiming that CI ran on `e5dbb7107d5b54f09a26d07d59f093ac05ede9c7`.
+The accepted merge→current-main change is the Section-1 terminal ledger update in
+`SEQUENTIAL_CLOSURE_STATE.md`, which is not a capability-bearing product/executable surface.
+The exact candidate CI is used only through proven tree equivalence; this does not claim that CI
+ran on the later ledger-only SHA.
 
 The external executable/control classification covers:
 
