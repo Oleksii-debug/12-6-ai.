@@ -735,3 +735,78 @@ def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="unmapped_checkout"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_closed_schema_rejects_test_vector_subclass_serialization_resealing() -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+
+    class ForgedTestVector(capability_map_module.TestVector):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["command"] = "pytest -q tests/forged_serialized_target.py"
+            return payload
+
+    forged = ForgedTestVector(vector.vector_id, vector.level, vector.command)
+    with pytest.raises(ValueError, match="test_vectors must contain TestVector values"):
+        replace(
+            capability,
+            test_vectors=(forged, *capability.test_vectors[1:]),
+        )
+
+
+def test_closed_schema_rejects_capability_subclass_registry_resealing() -> None:
+    registry = _load()
+    capability = registry.capabilities[0]
+
+    class ForgedCapability(capability_map_module.Capability):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["component_contract"] = "forged.outside.accepted.contract"
+            return payload
+
+    forged = ForgedCapability(
+        capability.capability_id,
+        capability.schema_version,
+        capability.status,
+        capability.component_contract,
+        capability.dependencies,
+        capability.journey_ids,
+        capability.environments,
+        capability.test_vectors,
+        capability.evidence_targets,
+        capability.integrated_result,
+        capability.unavailable_reason,
+    )
+    capabilities = tuple(
+        forged if item.capability_id == capability.capability_id else item
+        for item in registry.capabilities
+    )
+
+    with pytest.raises(ValueError, match="capabilities must contain only Capability values"):
+        capability_map_module.CapabilityRegistry(
+            registry.schema_version,
+            registry.observed_main_sha,
+            registry.observed_main_ci_run_id,
+            registry.observed_main_ci_conclusion,
+            capabilities,
+            registry.journeys,
+        )
+
+
+def test_closed_schema_rejects_source_surface_subclass_resealing() -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+
+    class ForgedSourceSurface(capability_map_module.SourceSurface):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["capability_id"] = "forged-capability"
+            return payload
+
+    forged = ForgedSourceSurface(surface.path, surface.capability_id, surface.origin)
+    surfaces = (forged, *inventory.surfaces[1:])
+
+    with pytest.raises(ValueError, match="surfaces must contain only SourceSurface values"):
+        replace(inventory, surfaces=surfaces)
