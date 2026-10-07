@@ -23,7 +23,7 @@ def _git_subprocess_env() -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("GIT_")
+        if not key.upper().startswith("GIT_")
     }
     env["GIT_OPTIONAL_LOCKS"] = "0"
     return env
