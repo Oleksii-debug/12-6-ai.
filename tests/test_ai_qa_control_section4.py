@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six import ai_qa_control
+from twelve_six import ai_qa_control, sil_qualification
 from twelve_six.ai_qa_control import (
     ExternalObservation,
     FailureClass,
@@ -41,7 +41,6 @@ from twelve_six.sil_qualification import (
     build_package_manifest_bytes,
     canonical_sil_environment_receipt_v1,
     load_sil_scenario,
-    qualify_sil,
 )
 
 _ROOT = Path(__file__).parents[1]
@@ -231,7 +230,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
             expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=load_capability_registry(_CAPABILITIES),
@@ -321,7 +320,7 @@ def test_sil_failure_packet_uses_exact_failed_log_record_and_utf8_byte_bound(
             expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=load_capability_registry(_CAPABILITIES),
@@ -399,7 +398,7 @@ def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
             consumed_input_identity_sha256=expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=registry,
@@ -443,7 +442,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
 ) -> None:
     registry = load_capability_registry(_CAPABILITIES)
     scenario = load_sil_scenario(_SCENARIO)
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_CANDIDATE_SHA,
         registry=registry,
@@ -564,6 +563,7 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             actor_id="regression-automation",
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha="d" * 40, tracked_clean=True),
+            candidate_parent_probe=_candidate_parent_probe,
         )
     with pytest.raises(ValueError, match="direct child"):
         ai_qa_control._execute_automated_regressions_with_backends(
@@ -581,6 +581,7 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             actor_id="regression-automation",
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha=_CANDIDATE_SHA, tracked_clean=False),
+            candidate_parent_probe=_candidate_parent_probe,
         )
 
 
@@ -1080,6 +1081,10 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     )
     tests_dir = repo / "tests"
     tests_dir.mkdir()
+    (repo / ".gitignore").write_text(
+        ".pytest_cache/\n__pycache__/\n",
+        encoding="utf-8",
+    )
     (repo / "payload.txt").write_text("broken\n", encoding="utf-8")
     (tests_dir / "test_payload.py").write_text(
         "from pathlib import Path\n\n"
@@ -1483,6 +1488,7 @@ def test_aiqa_enum_policy_global_rebind_cannot_reseal_identity(
             failure.identity_sha256()
     finally:
         object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+        monkeypatch.undo()
 
     assert failure.identity_sha256() == baseline_identity
 
