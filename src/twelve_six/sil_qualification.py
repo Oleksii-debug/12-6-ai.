@@ -139,9 +139,12 @@ def build_package_manifest_bytes(repo_root: str | Path) -> bytes:
             "configs/research",
         ],
         cwd=root,
+        env=_qualification_subprocess_env(),
+        stdin=subprocess.DEVNULL,
         check=False,
         capture_output=True,
         text=True,
+        shell=False,
     )
     if listed.returncode != 0:
         raise ValueError("cannot enumerate tracked package source files")
@@ -728,14 +731,39 @@ class GitState:
             raise ValueError("GitState.tracked_clean must be boolean")
 
 
+def _qualification_subprocess_env() -> dict[str, str]:
+    """Build the bounded environment used by SIL Git and journey subprocesses."""
+
+    blocked_prefixes = ("GIT_", "PYTHON", "PYTEST")
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith(blocked_prefixes)
+    }
+    env.update(
+        {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONUTF8": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        }
+    )
+    return env
+
+
 def probe_git_state(repo_root: str | Path) -> GitState:
     root = Path(repo_root)
     sha_result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=root,
+        env=_qualification_subprocess_env(),
+        stdin=subprocess.DEVNULL,
         check=True,
         capture_output=True,
         text=True,
+        shell=False,
     )
     sha = sha_result.stdout.strip()
     _require_git_sha("observed git SHA", sha)
@@ -853,7 +881,7 @@ def run_command(
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
-            env=os.environ.copy(),
+            env=_qualification_subprocess_env(),
         )
         return_code = result.returncode
         stdout = result.stdout
