@@ -1562,3 +1562,55 @@ def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
             _sealed_resolve_component_contract=lambda _contract: object()
         )
 
+
+
+def test_component_resolver_ignores_import_authority_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    real_package = importlib.import_module("twelve_six")
+    forged_module = ModuleType("twelve_six")
+    forged_module.__file__ = real_package.__file__
+    forged_module.__spec__ = real_package.__spec__
+
+    class ForgedImportlib:
+        @staticmethod
+        def import_module(_name: str) -> ModuleType:
+            return forged_module
+
+    monkeypatch.setattr(capability_map_module, "importlib", ForgedImportlib)
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_repository_module_origin",
+        lambda _module: _ROOT,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_text",
+        lambda _name, value: value,
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
