@@ -776,6 +776,33 @@ def test_source_surface_coverage_ignores_public_capability_lookup_rebinding(
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
+def test_source_surface_coverage_rejects_capability_remap_of_existing_source(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/capability_map.py"
+    )
+    assert target["origin"] == "modified_candidate"
+    assert target["capability_id"] == "executable-capability-map"
+    replacement = next(
+        capability.capability_id
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+        and capability.capability_id != target["capability_id"]
+    )
+    target["capability_id"] = replacement
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="source capability mapping drift"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
 def test_source_surface_inventory_accepts_zero_candidate_overlay_after_integration(
     tmp_path: Path,
 ) -> None:
