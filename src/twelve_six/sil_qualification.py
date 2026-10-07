@@ -220,6 +220,11 @@ def _require_git_sha(name: str, value: object) -> str:
     return value
 
 
+def _is_exact_type(value: object, expected: type[object]) -> bool:
+    # SIL evidence schemas reject behavioral subclasses that can reseal validated state.
+    return type(value) is expected  # noqa: E721
+
+
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
@@ -406,6 +411,36 @@ class PlannedVector:
     vector_id: str
     argv: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("journey_id", self.journey_id),
+            ("capability_id", self.capability_id),
+            ("vector_id", self.vector_id),
+        ):
+            if not isinstance(value, str) or _ID_RE.fullmatch(value) is None:
+                raise ValueError(f"{name} must be a canonical identifier")
+        if (
+            not isinstance(self.argv, tuple)
+            or len(self.argv) < 5
+            or self.argv[:4] != (sys.executable, "-m", "pytest", "-q")
+        ):
+            raise ValueError("planned vector argv must be canonical no-shell pytest argv")
+        for token in self.argv[4:]:
+            if not isinstance(token, str) or not token:
+                raise ValueError("planned vector test path must be non-empty text")
+            path = PurePosixPath(token)
+            if (
+                "\\" in token
+                or token.startswith("-")
+                or path.is_absolute()
+                or ".." in path.parts
+                or len(path.parts) < 2
+                or path.parts[0] != "tests"
+                or path.suffix != ".py"
+                or path.as_posix() != token
+            ):
+                raise ValueError("planned vector may reference only canonical tests/*.py paths")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "journey_id": self.journey_id,
@@ -420,6 +455,24 @@ class UnavailableJourney:
     journey_id: str
     blocking_capability_ids: tuple[str, ...]
     reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.journey_id, str) or _ID_RE.fullmatch(self.journey_id) is None:
+            raise ValueError("unavailable journey_id must be a canonical identifier")
+        if (
+            not isinstance(self.blocking_capability_ids, tuple)
+            or not self.blocking_capability_ids
+            or not isinstance(self.reasons, tuple)
+            or len(self.reasons) != len(self.blocking_capability_ids)
+        ):
+            raise ValueError("unavailable journey blockers and reasons are non-canonical")
+        for capability_id in self.blocking_capability_ids:
+            if not isinstance(capability_id, str) or _ID_RE.fullmatch(capability_id) is None:
+                raise ValueError("blocking capability id must be canonical")
+        if len(set(self.blocking_capability_ids)) != len(self.blocking_capability_ids):
+            raise ValueError("blocking capability ids must be unique")
+        if any(not isinstance(reason, str) or not reason.strip() for reason in self.reasons):
+            raise ValueError("unavailable journey reasons must be non-empty text")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -437,10 +490,41 @@ class SILPlan:
     vectors: tuple[PlannedVector, ...]
 
     def __post_init__(self) -> None:
-        if not self.available_journey_ids:
-            raise ValueError("SIL plan needs at least one AVAILABLE journey")
-        if not self.vectors:
-            raise ValueError("SIL plan needs at least one integration vector")
+        if (
+            not isinstance(self.available_journey_ids, tuple)
+            or not self.available_journey_ids
+            or any(
+                not isinstance(journey_id, str)
+                or _ID_RE.fullmatch(journey_id) is None
+                for journey_id in self.available_journey_ids
+            )
+            or len(set(self.available_journey_ids)) != len(self.available_journey_ids)
+        ):
+            raise ValueError("SIL plan AVAILABLE journey ids are non-canonical")
+        if (
+            not isinstance(self.unavailable_journeys, tuple)
+            or any(
+                not _is_exact_type(item, UnavailableJourney)
+                for item in self.unavailable_journeys
+            )
+        ):
+            raise ValueError("SIL plan unavailable journeys are non-canonical")
+        unavailable_ids = tuple(item.journey_id for item in self.unavailable_journeys)
+        if len(set(unavailable_ids)) != len(unavailable_ids):
+            raise ValueError("SIL plan unavailable journey ids must be unique")
+        if set(unavailable_ids).intersection(self.available_journey_ids):
+            raise ValueError("SIL plan journey cannot be both AVAILABLE and UNAVAILABLE")
+        if (
+            not isinstance(self.vectors, tuple)
+            or not self.vectors
+            or any(not _is_exact_type(item, PlannedVector) for item in self.vectors)
+        ):
+            raise ValueError("SIL plan integration vectors are non-canonical")
+        if any(
+            vector.journey_id not in self.available_journey_ids
+            for vector in self.vectors
+        ):
+            raise ValueError("SIL plan vector references a non-AVAILABLE journey")
         if (
             not isinstance(self.journey_end_to_end_contracts, tuple)
             or not self.journey_end_to_end_contracts
@@ -468,6 +552,17 @@ class SILPlan:
             raise ValueError(
                 "SIL end-to-end contracts must exactly match AVAILABLE journey order"
             )
+        for journey_id, declared_vector_ids in self.journey_end_to_end_contracts:
+            observed_vector_ids = tuple(
+                vector.vector_id
+                for vector in self.vectors
+                if vector.journey_id == journey_id
+            )
+            if observed_vector_ids != declared_vector_ids:
+                raise ValueError(
+                    "SIL plan actual vectors do not match declared end-to-end contract: "
+                    f"{journey_id}"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -514,9 +609,9 @@ def build_sil_plan(
         _CANONICAL_JOURNEY_E2E_VECTOR_POLICY
     ),
 ) -> SILPlan:
-    if not isinstance(registry, CapabilityRegistry):
+    if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
-    if not isinstance(scenario, SILScenario):
+    if not _is_exact_type(scenario, SILScenario):
         raise ValueError("scenario must be a SILScenario")
     if scenario.journey_selector != "ALL_AVAILABLE":
         raise ValueError("unsupported journey selection")
@@ -621,6 +716,11 @@ class GitState:
     sha: str
     tracked_clean: bool
 
+    def __post_init__(self) -> None:
+        _require_git_sha("GitState.sha", self.sha)
+        if not isinstance(self.tracked_clean, bool):
+            raise ValueError("GitState.tracked_clean must be boolean")
+
 
 def probe_git_state(repo_root: str | Path) -> GitState:
     root = Path(repo_root)
@@ -668,6 +768,19 @@ class CommandExecution:
     duration_ms: int
     consumed_input_identity_sha256: str | None
 
+    def __post_init__(self) -> None:
+        if type(self.return_code) is not int:
+            raise ValueError("CommandExecution.return_code must be an integer")
+        if not isinstance(self.stdout, str) or not isinstance(self.stderr, str):
+            raise ValueError("CommandExecution stdout/stderr must be text")
+        if type(self.duration_ms) is not int or self.duration_ms < 0:
+            raise ValueError("CommandExecution.duration_ms must be a non-negative integer")
+        if self.consumed_input_identity_sha256 is not None:
+            _require_sha256(
+                "CommandExecution.consumed_input_identity_sha256",
+                self.consumed_input_identity_sha256,
+            )
+
 
 CommandRunner = Callable[
     [tuple[str, ...], Path, int, bytes, str],
@@ -685,7 +798,7 @@ def require_exact_clean_git_state(
     expected = _require_git_sha("expected_git_sha", expected_git_sha)
     probe = probe_git_state if git_probe is None else git_probe
     state = probe(repo_root)
-    if not isinstance(state, GitState):
+    if not _is_exact_type(state, GitState):
         raise ValueError("git probe must return GitState")
     if state.sha != expected:
         raise ValueError(
@@ -798,6 +911,8 @@ def qualify_sil(
         )
 
     state = git_probe(root)
+    if not _is_exact_type(state, GitState):
+        raise ValueError("git probe must return exact GitState")
     if state.sha != expected_git_sha:
         raise ValueError(
             f"exact-head mismatch: expected {expected_git_sha}, observed {state.sha}"
@@ -836,6 +951,8 @@ def qualify_sil(
 
     for vector in plan.vectors:
         pre_vector_state = git_probe(root)
+        if not _is_exact_type(pre_vector_state, GitState):
+            raise ValueError("git probe must return exact GitState")
         if pre_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed before SIL vector execution: "
@@ -851,8 +968,12 @@ def qualify_sil(
             input_envelope_bytes,
             input_identity,
         )
+        if not _is_exact_type(result, CommandExecution):
+            raise ValueError("command runner must return exact CommandExecution")
 
         post_vector_state = git_probe(root)
+        if not _is_exact_type(post_vector_state, GitState):
+            raise ValueError("git probe must return exact GitState")
         if post_vector_state.sha != expected_git_sha:
             raise ValueError(
                 "exact-head changed during SIL vector execution: "
@@ -1068,9 +1189,9 @@ def verify_sil_evidence(
     expected_environment_receipt = _validate_sil_environment_receipt(
         expected_environment_receipt
     )
-    if not isinstance(expected_registry, CapabilityRegistry):
+    if not _is_exact_type(expected_registry, CapabilityRegistry):
         raise ValueError("expected_registry must be a CapabilityRegistry")
-    if not isinstance(expected_scenario, SILScenario):
+    if not _is_exact_type(expected_scenario, SILScenario):
         raise ValueError("expected_scenario must be a SILScenario")
 
     expected_model_identity, expected_init_identity = _synthetic_model_identities()
