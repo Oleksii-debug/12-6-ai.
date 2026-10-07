@@ -498,6 +498,38 @@ def test_generation_builder_rejects_missing_kind_and_key_ref_mismatch() -> None:
         build_generation_identity_manifest(refs)
 
 
+def test_closed_schema_from_dict_rejects_behavioral_dict_before_lookup() -> None:
+    generation = _generation("a")
+    corpus = generation.artifact_ref(ArtifactKind.CORPUS)
+
+    class ForgedDict(dict):
+        def __getitem__(self, key):
+            raise AssertionError("behavioral dict must not be indexed")
+
+    forged = ForgedDict(corpus.to_dict())
+    with pytest.raises(ValueError, match="ArtifactRef fields mismatch"):
+        ArtifactRef.from_dict(forged)
+
+
+def test_closed_schema_from_dict_rejects_behavioral_lists_before_iteration() -> None:
+    generation = _generation("a")
+    generation_payload = generation.to_dict()
+
+    class ForgedList(list):
+        def __iter__(self):
+            raise AssertionError("behavioral list must not be iterated")
+
+    generation_payload["artifacts"] = ForgedList(generation_payload["artifacts"])
+    with pytest.raises(ValueError, match="artifacts must be a JSON array"):
+        GenerationIdentityManifest.from_dict(generation_payload)
+
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    release_payload = release.to_dict()
+    release_payload["parents"] = ForgedList(release_payload["parents"])
+    with pytest.raises(ValueError, match="parents must be a JSON array"):
+        ArtifactManifest.from_dict(release_payload)
+
+
 def test_closed_schema_rejects_artifact_ref_subclass_serialization_resealing() -> None:
     class ForgedArtifactRef(ArtifactRef):
         def to_dict(self) -> dict[str, object]:
@@ -574,3 +606,55 @@ def test_closed_schema_rejects_artifact_manifest_subclass_validation_view_reseal
 
     with pytest.raises(ValueError, match="only ArtifactManifest"):
         GenerationIdentityManifest(schema_version=1, artifacts=artifacts)
+
+
+def test_closed_schema_rejects_tuple_container_subclasses() -> None:
+    generation = _generation("tuple-container")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            return super().__iter__()
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        ArtifactManifest(
+            schema_version=release.schema_version,
+            artifact=release.artifact,
+            parents=ForgedTuple(release.parents),
+        )
+
+    with pytest.raises(ValueError, match="artifacts must be an immutable tuple"):
+        GenerationIdentityManifest(
+            schema_version=generation.schema_version,
+            artifacts=ForgedTuple(generation.artifacts),
+        )
+
+
+def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedInt(int):
+        pass
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass decode must never run")
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        ArtifactRef(ArtifactKind.CORPUS, ForgedInt(1), _sha("scalar-version"))
+
+    with pytest.raises(ValueError, match="identity_sha256 must be an exact lowercase SHA-256"):
+        ArtifactRef(ArtifactKind.CORPUS, 1, ForgedStr(_sha("scalar-hash")))
+
+    parent = _generation("scalar-parent").artifact_manifest(ArtifactKind.CORPUS)
+    with pytest.raises(ValueError, match="parent role must be canonical lower_snake_case"):
+        ParentBinding(
+            role=ForgedStr("corpus"),
+            artifact=parent.artifact,
+            parent_manifest_identity_sha256=parent.identity_sha256(),
+        )
+
+    with pytest.raises(ValueError, match="manifest input must be bytes"):
+        parse_generation_identity_manifest(ForgedBytes(b"{}"))

@@ -37,7 +37,7 @@ def _finite_json_float(value: str) -> float:
 
 
 def _strict_json_object(data: bytes) -> dict[str, Any]:
-    if not isinstance(data, bytes):
+    if not _is_exact_type(data, bytes):
         raise ValueError("manifest input must be bytes")
     if len(data) > _MAX_MANIFEST_BYTES:
         raise ValueError("manifest exceeds maximum encoded size")
@@ -51,7 +51,7 @@ def _strict_json_object(data: bytes) -> dict[str, Any]:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError("manifest is not strict unambiguous UTF-8 JSON") from exc
-    if not isinstance(value, dict):
+    if not _is_exact_type(value, dict):
         raise ValueError("manifest root must be a JSON object")
     return value
 
@@ -68,13 +68,13 @@ def _canonical_json_sha256(value: Any) -> str:
 
 
 def _require_positive_int(name: str, value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    if not _is_exact_type(value, int) or value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return value
 
 
 def _require_sha256(name: str, value: object) -> str:
-    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+    if not _is_exact_type(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be an exact lowercase SHA-256")
     return value
 
@@ -163,7 +163,7 @@ class ArtifactRef:
     identity_sha256: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.kind, ArtifactKind):
+        if not _is_exact_type(self.kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
         _require_positive_int("schema_version", self.schema_version)
         _require_sha256("identity_sha256", self.identity_sha256)
@@ -177,7 +177,7 @@ class ArtifactRef:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactRef:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "kind",
             "schema_version",
             "identity_sha256",
@@ -203,7 +203,7 @@ class ParentBinding:
     parent_manifest_identity_sha256: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.role, str) or _ROLE_RE.fullmatch(self.role) is None:
+        if not _is_exact_type(self.role, str) or _ROLE_RE.fullmatch(self.role) is None:
             raise ValueError("parent role must be canonical lower_snake_case")
         if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("parent artifact must be an ArtifactRef")
@@ -221,7 +221,7 @@ class ParentBinding:
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "role",
             "artifact",
             "parent_manifest_identity_sha256",
@@ -248,7 +248,7 @@ class ArtifactManifest:
             raise ValueError("unsupported ArtifactManifest schema_version")
         if not _is_exact_type(self.artifact, ArtifactRef):
             raise ValueError("artifact must be an ArtifactRef")
-        if not isinstance(self.parents, tuple):
+        if not _is_exact_type(self.parents, tuple):
             raise ValueError("parents must be an immutable tuple")
         if any(not _is_exact_type(parent, ParentBinding) for parent in self.parents):
             raise ValueError("parents must contain only ParentBinding values")
@@ -283,14 +283,14 @@ class ArtifactManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "schema_version",
             "artifact",
             "parents",
         }:
             raise ValueError("ArtifactManifest fields mismatch")
         parents = value["parents"]
-        if not isinstance(parents, list):
+        if not _is_exact_type(parents, list):
             raise ValueError("ArtifactManifest parents must be a JSON array")
         return cls(
             schema_version=value["schema_version"],
@@ -315,7 +315,7 @@ def bind_artifact(
             raise ValueError("parents must be a mapping")
         normalized = {}
         for role, parent in parents.items():
-            if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
+            if not _is_exact_type(role, str) or _ROLE_RE.fullmatch(role) is None:
                 raise ValueError("parent role must be canonical lower_snake_case")
             if not _is_exact_type(parent, ArtifactManifest):
                 raise ValueError("parent mapping values must be ArtifactManifest values")
@@ -351,7 +351,7 @@ def verify_parent_bindings(
 
     normalized: dict[str, ArtifactManifest] = {}
     for role, parent in expected_parents.items():
-        if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
+        if not _is_exact_type(role, str) or _ROLE_RE.fullmatch(role) is None:
             raise ValueError("expected parent role must be canonical lower_snake_case")
         if not _is_exact_type(parent, ArtifactManifest):
             raise ValueError("expected parent values must be ArtifactManifest values")
@@ -389,7 +389,7 @@ class GenerationIdentityManifest:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported GenerationIdentityManifest schema_version")
-        if not isinstance(self.artifacts, tuple):
+        if not _is_exact_type(self.artifacts, tuple):
             raise ValueError("artifacts must be an immutable tuple")
         if len(self.artifacts) != len(_sealed_artifact_kinds):
             raise ValueError("generation must contain exactly one artifact of every canonical kind")
@@ -444,7 +444,7 @@ class GenerationIdentityManifest:
         kind: ArtifactKind,
         _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
     ) -> ArtifactRef:
-        if not isinstance(kind, ArtifactKind):
+        if not _is_exact_type(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
         return self.artifacts[_sealed_artifact_kinds.index(kind)].artifact
 
@@ -453,7 +453,7 @@ class GenerationIdentityManifest:
         kind: ArtifactKind,
         _sealed_artifact_kinds: tuple[ArtifactKind, ...] = CANONICAL_ARTIFACT_KINDS,
     ) -> ArtifactManifest:
-        if not isinstance(kind, ArtifactKind):
+        if not _is_exact_type(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
         return self.artifacts[_sealed_artifact_kinds.index(kind)]
 
@@ -468,10 +468,10 @@ class GenerationIdentityManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> GenerationIdentityManifest:
-        if not isinstance(value, dict) or set(value) != {"schema_version", "artifacts"}:
+        if not _is_exact_type(value, dict) or set(value) != {"schema_version", "artifacts"}:
             raise ValueError("GenerationIdentityManifest fields mismatch")
         artifacts = value["artifacts"]
-        if not isinstance(artifacts, list):
+        if not _is_exact_type(artifacts, list):
             raise ValueError("GenerationIdentityManifest artifacts must be a JSON array")
         return cls(
             schema_version=value["schema_version"],
@@ -495,7 +495,7 @@ def build_generation_identity_manifest(
 
     if not isinstance(refs, Mapping):
         raise ValueError("refs must be a mapping")
-    if any(not isinstance(kind, ArtifactKind) for kind in refs):
+    if any(not _is_exact_type(kind, ArtifactKind) for kind in refs):
         raise ValueError("refs keys must be ArtifactKind values")
     if set(refs) != set(CANONICAL_ARTIFACT_KINDS):
         raise ValueError("refs must contain exactly every canonical artifact kind")
