@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "automated_gate_order": [
+    "component",
+    "adversarial"
+  ],
+  "promotion_gate_order": [
+    "component",
+    "adversarial",
+    "sil",
+    "physical"
+  ],
+  "require_independent_certifier": true,
+  "require_exact_candidate_sha": true,
+  "physical_not_applicable_requires_explicit_scope": true,
+  "max_failure_summary_bytes": 16384,
+  "max_patch_bytes": 1048576
+}
