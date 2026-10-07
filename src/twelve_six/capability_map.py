@@ -345,7 +345,14 @@ class Capability:
     integrated_result: str | None
     unavailable_reason: str | None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_test_level_wire: Any = _test_level_wire_value,
+        _sealed_required_level_values: tuple[str, str] = (
+            _CANONICAL_TEST_LEVEL_VALUES[0],
+            _CANONICAL_TEST_LEVEL_VALUES[1],
+        ),
+    ) -> None:
         _require_id("capability_id", self.capability_id)
         _require_positive_int("schema_version", self.schema_version)
         _require_capability_status(self.status)
@@ -400,8 +407,13 @@ class Capability:
             _require_text("integrated_result", self.integrated_result)
             if not any(item.supported for item in self.environments):
                 raise ValueError("AVAILABLE capability needs a supported environment")
-            levels = {item.level for item in self.test_vectors}
-            if TestLevel.COMPONENT not in levels or TestLevel.INTEGRATION not in levels:
+            levels = {
+                _sealed_test_level_wire(item.level) for item in self.test_vectors
+            }
+            if any(
+                required_level not in levels
+                for required_level in _sealed_required_level_values
+            ):
                 raise ValueError(
                     "AVAILABLE capability needs component and integration test vectors"
                 )

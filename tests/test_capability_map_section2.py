@@ -14,6 +14,8 @@ import twelve_six.capability_map as capability_map_module
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
+    TestLevel,
+    TestVector,
     _changed_existing_source_paths,
     _worktree_python_source_drift,
     _python_source_blob_map,
@@ -1089,4 +1091,25 @@ def test_source_inventory_revalidates_mutated_surface_state() -> None:
 
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         validate_source_surface_coverage(_load(), inventory, repo_root=_ROOT)
+
+def test_available_level_gate_ignores_testlevel_dunder_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    target = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    end_to_end_only = TestVector(
+        vector_id="poisoned_end_to_end_only",
+        level=TestLevel.END_TO_END,
+        command=target.test_vectors[0].command,
+    )
+
+    monkeypatch.setattr(TestLevel, "__hash__", lambda _self: 0)
+    monkeypatch.setattr(TestLevel, "__eq__", lambda _self, _other: True)
+
+    with pytest.raises(ValueError, match="component and integration"):
+        replace(target, test_vectors=(end_to_end_only,))
 
