@@ -8,7 +8,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -128,13 +128,26 @@ class TestVector:
             raise ValueError("level must be a TestLevel")
         _require_text("command", self.command)
         tokens = self.command.split()
-        if tokens[:2] != ["pytest", "-q"] or len(tokens) < 3:
-            raise ValueError("test vector command must be canonical pytest -q test paths")
-        if any(
-            not token.startswith("tests/") or not token.endswith(".py")
-            for token in tokens[2:]
+        if (
+            tokens[:2] != ["pytest", "-q"]
+            or len(tokens) < 3
+            or self.command != " ".join(tokens)
         ):
-            raise ValueError("test vector command may reference only tests/*.py paths")
+            raise ValueError("test vector command must be canonical pytest -q test paths")
+        for token in tokens[2:]:
+            path = PurePosixPath(token)
+            if (
+                "\\" in token
+                or path.is_absolute()
+                or len(path.parts) < 2
+                or path.parts[0] != "tests"
+                or ".." in path.parts
+                or path.as_posix() != token
+                or path.suffix != ".py"
+            ):
+                raise ValueError(
+                    "test vector command may reference only canonical tests/*.py paths"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
