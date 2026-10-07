@@ -523,7 +523,7 @@ def test_regression_chain_runs_component_then_adversarial_on_exact_candidate() -
         adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
     )
 
-    component, adversarial = execute_automated_regressions(
+    component, adversarial = ai_qa_control._execute_automated_regressions_with_backends(
         chain,
         repo_root=_ROOT,
         actor_id="regression-automation",
@@ -559,7 +559,7 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
         adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
     )
     with pytest.raises(ValueError, match="SHA mismatch"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -567,7 +567,7 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             git_probe=lambda _: GitState(sha="d" * 40, tracked_clean=True),
         )
     with pytest.raises(ValueError, match="direct child"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -576,7 +576,7 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             candidate_parent_probe=lambda _root, _sha: ("d" * 40,),
         )
     with pytest.raises(ValueError, match="dirty"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -602,7 +602,7 @@ def test_regression_chain_rejects_checkout_mutation_during_gate() -> None:
     )
 
     with pytest.raises(ValueError, match="became dirty during component gate"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -1527,7 +1527,7 @@ def test_aiqa_regression_loop_revalidates_mutated_git_state() -> None:
     object.__setattr__(state, "tracked_clean", "yes")
 
     with pytest.raises(ValueError, match="tracked_clean must be boolean"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-agent",
@@ -1564,11 +1564,30 @@ def test_aiqa_regression_loop_revalidates_mutated_command_result() -> None:
         return result
 
     with pytest.raises(ValueError, match="duration_ms must be a non-negative integer"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-agent",
             command_runner=stale_runner,
+            git_probe=_candidate_git_probe,
+            candidate_parent_probe=_candidate_parent_probe,
+        )
+
+def test_public_automated_regression_authority_rejects_caller_backends() -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
+    )
+
+    with pytest.raises(TypeError):
+        execute_automated_regressions(  # type: ignore[call-arg]
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-agent",
+            command_runner=_pass_runner,
             git_probe=_candidate_git_probe,
             candidate_parent_probe=_candidate_parent_probe,
         )
