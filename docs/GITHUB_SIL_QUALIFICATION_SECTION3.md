@@ -38,7 +38,7 @@ access, or a substitute for later physical/device qualification.
 `src/twelve_six/sil_qualification.py` emits a closed evidence envelope that binds:
 
 - exact Git SHA;
-- `pyproject.toml` package identity;
+- tracked package-source manifest identity over `pyproject.toml`, `src/twelve_six`, and packaged `configs/research` files;
 - canonical capability-registry identity;
 - deterministic synthetic ModelSpec and InitSpec identities;
 - synthetic data identity;
@@ -60,7 +60,7 @@ tracked/index cleanliness. A vector that mutates tracked source or advances HEAD
 the run immediately, so later vectors cannot silently execute a different tree under the
 original SHA receipt.
 
-The verifier reloads the exact-head package metadata, capability registry and SIL scenario,
+The verifier rebuilds the exact tracked package-source manifest, reloads the capability registry and SIL scenario,
 recomputes package/registry/model/init/data/scenario identities, reconstructs the complete SIL
 plan and input identity, requires every execution record to match that plan exactly, parses
 the strict JSONL log and cross-checks its return code/input binding/stdout/stderr/duration
