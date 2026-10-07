@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tools.validate_section2_repository_surface_coverage import (
+    _candidate_surface_paths,
     _load_strict_json,
     validate_repository_surface_coverage,
 )
@@ -21,11 +22,14 @@ _INVENTORY = (
 _CAPABILITIES = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
 
 
-def _validate(inventory: Path = _INVENTORY) -> dict[str, object]:
+def _validate(
+    inventory: Path = _INVENTORY,
+    capabilities: Path = _CAPABILITIES,
+) -> dict[str, object]:
     return validate_repository_surface_coverage(
         repo_root=_ROOT,
         inventory_path=inventory,
-        capability_registry_path=_CAPABILITIES,
+        capability_registry_path=capabilities,
     )
 
 
@@ -68,6 +72,23 @@ def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
             "capability_id": "executable-capability-map",
         }
     ]
+
+
+def test_candidate_surface_paths_include_changed_existing_surface() -> None:
+    current_main_blobs = {
+        ".github/workflows/ci.yml": "a" * 40,
+        "tools/existing.py": "b" * 40,
+    }
+    checkout_blobs = {
+        ".github/workflows/ci.yml": "c" * 40,
+        "tools/existing.py": "b" * 40,
+        "tools/new.py": "d" * 40,
+    }
+
+    assert _candidate_surface_paths(current_main_blobs, checkout_blobs) == {
+        ".github/workflows/ci.yml",
+        "tools/new.py",
+    }
 
 
 def test_repository_surface_coverage_rejects_missing_candidate_override(
@@ -148,3 +169,16 @@ def test_repository_surface_coverage_rejects_current_main_tree_reseal(
 
     with pytest.raises(ValueError, match="does not match current_repository_main_sha"):
         _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_duplicate_capability_ids(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["capabilities"].append(dict(payload["capabilities"][0]))
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="capability ids must be unique"):
+        _validate(capabilities=capabilities)
+

@@ -81,6 +81,12 @@ def _require_positive_int(name: str, value: object) -> int:
     return value
 
 
+def _require_nonnegative_int(name: str, value: object) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
 def _canonical_sha256(value: Any) -> str:
     raw = json.dumps(
         value,
@@ -351,7 +357,7 @@ class SourceSurfaceInventory:
         _require_positive_int(
             "accepted_main_surface_count", self.accepted_main_surface_count
         )
-        _require_positive_int(
+        _require_nonnegative_int(
             "candidate_overlay_surface_count", self.candidate_overlay_surface_count
         )
         if not isinstance(self.surfaces, tuple) or not self.surfaces:
@@ -770,6 +776,56 @@ def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
     )
 
 
+def _python_source_blob_map(
+    repo_root: Path,
+    treeish: str,
+    source_root: str,
+) -> dict[str, str]:
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-tree",
+            "-r",
+            treeish,
+            "--",
+            source_root,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise ValueError(f"cannot enumerate source blobs for {treeish}")
+
+    blobs: dict[str, str] = {}
+    prefix = f"{source_root}/"
+    for line in completed.stdout.splitlines():
+        try:
+            metadata, path = line.split("\t", 1)
+            _mode, kind, blob_sha = metadata.split()
+        except ValueError as exc:
+            raise ValueError("git ls-tree emitted a non-canonical source record") from exc
+        if kind != "blob" or not path.startswith(prefix) or not path.endswith(".py"):
+            continue
+        if _SHA40_RE.fullmatch(blob_sha) is None:
+            raise ValueError("git ls-tree emitted a malformed source blob SHA")
+        blobs[path] = blob_sha
+    return blobs
+
+
+def _changed_existing_source_paths(
+    accepted_main_blobs: dict[str, str],
+    checkout_blobs: dict[str, str],
+) -> set[str]:
+    return {
+        path
+        for path, blob_sha in accepted_main_blobs.items()
+        if path in checkout_blobs and checkout_blobs[path] != blob_sha
+    }
+
+
 def validate_source_surface_coverage(
     registry: CapabilityRegistry,
     inventory: SourceSurfaceInventory,
@@ -844,6 +900,22 @@ def validate_source_surface_coverage(
         raise ValueError(
             "accepted-main source inventory drift: "
             f"unmapped_main={missing}, stale_main_inventory={stale}"
+        )
+
+    accepted_main_blobs = _python_source_blob_map(
+        root,
+        inventory.observed_main_tree_sha,
+        inventory.source_root,
+    )
+    checkout_blobs = _python_source_blob_map(root, "HEAD", inventory.source_root)
+    changed_existing = _changed_existing_source_paths(
+        accepted_main_blobs,
+        checkout_blobs,
+    )
+    if changed_existing:
+        raise ValueError(
+            "accepted-main source bytes changed on candidate without explicit "
+            f"modified-overlay authority: {sorted(changed_existing)}"
         )
 
     source_root = root / inventory.source_root
