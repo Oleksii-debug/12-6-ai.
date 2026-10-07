@@ -55,48 +55,60 @@ class SystemPlane(str, Enum):
     EVOLUTION_PLANE = "evolution_plane"
 
 
+def _system_plane_wire_value(value: object) -> str:
+    if not _is_exact_type(value, SystemPlane):
+        raise ValueError("system plane must be a SystemPlane")
+    raw_value = str.__str__(value)
+    stored_value = object.__getattribute__(value, "_value_")
+    if not _is_exact_type(stored_value, str) or stored_value != raw_value:
+        raise ValueError("system architecture plane order or set is non-canonical")
+    return raw_value
+
+
 _REQUIRED_PLANES = tuple(SystemPlane)
-_REQUIRED_PLANE_VALUES = tuple(plane.value for plane in _REQUIRED_PLANES)
+_REQUIRED_PLANE_VALUES = tuple(
+    _system_plane_wire_value(plane) for plane in _REQUIRED_PLANES
+)
 _BOUNDARY_SPECS_SOURCE: dict[str, tuple[str, str, str, int]] = {
     "base_to_gateway": (
-        SystemPlane.BASE_MODEL.value,
-        SystemPlane.MODEL_GATEWAY.value,
+        _system_plane_wire_value(SystemPlane.BASE_MODEL),
+        _system_plane_wire_value(SystemPlane.MODEL_GATEWAY),
         "twelve_six.model_gateway",
         1,
     ),
     "post_base_to_base": (
-        SystemPlane.POST_BASE_LEARNING.value,
-        SystemPlane.BASE_MODEL.value,
+        _system_plane_wire_value(SystemPlane.POST_BASE_LEARNING),
+        _system_plane_wire_value(SystemPlane.BASE_MODEL),
         "twelve_six.descendant_model",
         1,
     ),
     "gateway_to_cognition": (
-        SystemPlane.MODEL_GATEWAY.value,
-        SystemPlane.PERSISTENT_COGNITION.value,
+        _system_plane_wire_value(SystemPlane.MODEL_GATEWAY),
+        _system_plane_wire_value(SystemPlane.PERSISTENT_COGNITION),
         "twelve_six.inference_exchange",
         1,
     ),
     "cognition_to_tools": (
-        SystemPlane.PERSISTENT_COGNITION.value,
-        SystemPlane.TOOLS.value,
+        _system_plane_wire_value(SystemPlane.PERSISTENT_COGNITION),
+        _system_plane_wire_value(SystemPlane.TOOLS),
         "twelve_six.tool_invocation",
         1,
     ),
     "cognition_to_live_agent": (
-        SystemPlane.PERSISTENT_COGNITION.value,
-        SystemPlane.LIVE_AGENT_PLANE.value,
+        _system_plane_wire_value(SystemPlane.PERSISTENT_COGNITION),
+        _system_plane_wire_value(SystemPlane.LIVE_AGENT_PLANE),
         "twelve_six.cognition_state",
         1,
     ),
     "evolution_to_post_base": (
-        SystemPlane.EVOLUTION_PLANE.value,
-        SystemPlane.POST_BASE_LEARNING.value,
+        _system_plane_wire_value(SystemPlane.EVOLUTION_PLANE),
+        _system_plane_wire_value(SystemPlane.POST_BASE_LEARNING),
         "twelve_six.training_candidate",
         1,
     ),
     "evolution_to_gateway": (
-        SystemPlane.EVOLUTION_PLANE.value,
-        SystemPlane.MODEL_GATEWAY.value,
+        _system_plane_wire_value(SystemPlane.EVOLUTION_PLANE),
+        _system_plane_wire_value(SystemPlane.MODEL_GATEWAY),
         "twelve_six.model_promotion",
         1,
     ),
@@ -130,6 +142,16 @@ class InterfaceContract:
         return _canonical_json_sha256(self.to_dict())
 
 
+def _same_interface_contract(left: object, right: object) -> bool:
+    if not _is_exact_type(left, InterfaceContract) or not _is_exact_type(
+        right, InterfaceContract
+    ):
+        return False
+    InterfaceContract.__post_init__(left)
+    InterfaceContract.__post_init__(right)
+    return left.name == right.name and left.schema_version == right.schema_version
+
+
 @dataclass(frozen=True, slots=True)
 class TypedBoundary:
     """One directed contract edge between two system planes."""
@@ -155,8 +177,8 @@ class TypedBoundary:
         TypedBoundary.__post_init__(self)
         return {
             "name": self.name,
-            "producer": self.producer.value,
-            "consumer": self.consumer.value,
+            "producer": _system_plane_wire_value(self.producer),
+            "consumer": _system_plane_wire_value(self.consumer),
             "interface": self.interface.to_dict(),
         }
 
@@ -193,7 +215,7 @@ class SystemArchitectureManifest:
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):
             raise ValueError("system architecture planes must be unique")
-        if tuple(plane.value for plane in self.planes) != _sealed_plane_values:
+        if tuple(_system_plane_wire_value(plane) for plane in self.planes) != _sealed_plane_values:
             raise ValueError("system architecture plane order or set is non-canonical")
 
         if any(not _is_exact_type(boundary, TypedBoundary) for boundary in self.boundaries):
@@ -214,8 +236,8 @@ class SystemArchitectureManifest:
 
         observed_specs = {
             boundary.name: (
-                boundary.producer.value,
-                boundary.consumer.value,
+                _system_plane_wire_value(boundary.producer),
+                _system_plane_wire_value(boundary.consumer),
                 boundary.interface.name,
                 boundary.interface.schema_version,
             )
@@ -228,7 +250,7 @@ class SystemArchitectureManifest:
         SystemArchitectureManifest.__post_init__(self)
         return {
             "schema_version": self.schema_version,
-            "planes": [plane.value for plane in self.planes],
+            "planes": [_system_plane_wire_value(plane) for plane in self.planes],
             "boundaries": [boundary.to_dict() for boundary in self.boundaries],
         }
 
@@ -370,9 +392,11 @@ class ProductAssembly:
             for boundary in self.architecture.boundaries
             if boundary.name == "base_to_gateway"
         )
-        if self.shell.gateway_api != architecture_gateway:
+        if not _same_interface_contract(self.shell.gateway_api, architecture_gateway):
             raise ValueError("runtime shell gateway contract is incompatible with architecture")
-        if self.core_binding.gateway_api != self.shell.gateway_api:
+        if not _same_interface_contract(
+            self.core_binding.gateway_api, self.shell.gateway_api
+        ):
             raise ValueError("cognitive core gateway contract is incompatible with runtime shell")
 
     def to_dict(self) -> dict[str, Any]:
@@ -540,7 +564,7 @@ def replace_cognitive_core(
         raise ValueError("candidate must be a CognitiveCoreBinding")
     ProductAssembly.__post_init__(assembly)
     CognitiveCoreBinding.__post_init__(candidate)
-    if candidate.gateway_api != assembly.shell.gateway_api:
+    if not _same_interface_contract(candidate.gateway_api, assembly.shell.gateway_api):
         raise ValueError("candidate cognitive core is incompatible with runtime shell gateway")
 
     shell_before = assembly.shell.identity_sha256()
