@@ -199,7 +199,7 @@ def test_sil_plan_rejects_missing_or_resealed_end_to_end_policy() -> None:
     scenario = _scenario()
     plan = build_sil_plan(registry, scenario)
 
-    with pytest.raises(ValueError, match="exactly match"):
+    with pytest.raises(ValueError, match="lacks explicit end-to-end contract"):
         build_sil_plan(
             registry,
             scenario,
