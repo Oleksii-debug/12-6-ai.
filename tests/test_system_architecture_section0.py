@@ -661,3 +661,94 @@ def test_closed_architecture_roots_reject_container_and_product_subclasses() -> 
     with pytest.raises(ValueError, match="assembly must be a ProductAssembly"):
         replace_cognitive_core(forged_assembly, candidate)
 
+def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> None:
+    assembly = _assembly("closed-evidence", 20_613_440)
+    shell = assembly.shell
+    previous_core = assembly.core_binding.core
+    candidate_core = _core("closed-evidence-candidate", 200_000_000)
+
+    class ForgedInterface(InterfaceContract):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["schema_version"] = 99
+            return payload
+
+    forged_memory = ForgedInterface("twelve_six.memory", 1)
+    with pytest.raises(ValueError, match="memory_api must be an InterfaceContract"):
+        RuntimeShellContract(
+            gateway_api=shell.gateway_api,
+            memory_api=forged_memory,
+            tools_api=shell.tools_api,
+            voice_api=shell.voice_api,
+            ui_api=shell.ui_api,
+            orchestration_api=shell.orchestration_api,
+        )
+
+    class ForgedCore(CognitiveCoreIdentity):
+        def identity_sha256(self) -> str:
+            raise AssertionError("subclass identity must not run before exact-type rejection")
+
+    forged_previous = ForgedCore(
+        model_spec_sha256=previous_core.model_spec_sha256,
+        init_spec_sha256=previous_core.init_spec_sha256,
+        checkpoint_sha256=previous_core.checkpoint_sha256,
+        tokenizer_sha256=previous_core.tokenizer_sha256,
+        parameter_count=previous_core.parameter_count,
+    )
+    with pytest.raises(ValueError, match="previous_core must be a CognitiveCoreIdentity"):
+        CoreReplacementReceipt(
+            previous_core_identity_sha256=previous_core.identity_sha256(),
+            candidate_core_identity_sha256=candidate_core.identity_sha256(),
+            previous_core=forged_previous,
+            candidate_core=candidate_core,
+            shell_identity_sha256_before=shell.identity_sha256(),
+            shell_identity_sha256_after=shell.identity_sha256(),
+            preserved_surface_identities=shell.surface_identities(),
+            preserved_shell=shell,
+            shell_rewrite_required=False,
+        )
+
+    class ForgedShell(RuntimeShellContract):
+        def identity_sha256(self) -> str:
+            raise AssertionError("subclass shell identity must not run before exact-type rejection")
+
+    forged_shell = ForgedShell(
+        gateway_api=shell.gateway_api,
+        memory_api=shell.memory_api,
+        tools_api=shell.tools_api,
+        voice_api=shell.voice_api,
+        ui_api=shell.ui_api,
+        orchestration_api=shell.orchestration_api,
+    )
+    with pytest.raises(ValueError, match="preserved_shell must be a RuntimeShellContract"):
+        CoreReplacementReceipt(
+            previous_core_identity_sha256=previous_core.identity_sha256(),
+            candidate_core_identity_sha256=candidate_core.identity_sha256(),
+            previous_core=previous_core,
+            candidate_core=candidate_core,
+            shell_identity_sha256_before=shell.identity_sha256(),
+            shell_identity_sha256_after=shell.identity_sha256(),
+            preserved_surface_identities=shell.surface_identities(),
+            preserved_shell=forged_shell,
+            shell_rewrite_required=False,
+        )
+
+    class ForgedBinding(CognitiveCoreBinding):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["core"] = previous_core.to_dict()
+            return payload
+
+    forged_binding = ForgedBinding(
+        core=candidate_core,
+        gateway_api=shell.gateway_api,
+    )
+    with pytest.raises(ValueError, match="core_binding must be a CognitiveCoreBinding"):
+        ProductAssembly(
+            architecture=assembly.architecture,
+            shell=shell,
+            core_binding=forged_binding,
+        )
+    with pytest.raises(ValueError, match="candidate must be a CognitiveCoreBinding"):
+        replace_cognitive_core(assembly, forged_binding)
+
