@@ -607,7 +607,10 @@ class CapabilityRegistry:
     capabilities: tuple[Capability, ...]
     journeys: tuple[Journey, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _sealed_resolve_component_contract=_SEALED_RESOLVE_COMPONENT_CONTRACT,
+    ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if (
             not _is_exact_type(self.schema_version, int)
@@ -646,7 +649,7 @@ class CapabilityRegistry:
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
             if capability.status is CapabilityStatus.AVAILABLE:
-                _SEALED_RESOLVE_COMPONENT_CONTRACT(capability.component_contract)
+                _sealed_resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
