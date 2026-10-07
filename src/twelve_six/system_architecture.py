@@ -159,6 +159,13 @@ class SystemArchitectureManifest:
         if self.schema_version != 1:
             raise ValueError("unsupported system architecture schema_version")
 
+        if not isinstance(self.planes, tuple) or any(
+            not isinstance(plane, SystemPlane) for plane in self.planes
+        ):
+            raise ValueError(
+                "system architecture planes must be an immutable tuple of SystemPlane values"
+            )
+
         if len(self.planes) != len(_REQUIRED_PLANES):
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):

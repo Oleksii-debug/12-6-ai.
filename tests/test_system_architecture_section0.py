@@ -63,6 +63,18 @@ def test_section0_manifest_contains_exact_required_planes() -> None:
     }
 
 
+def test_manifest_rejects_raw_string_plane_type_aliases() -> None:
+    canonical = canonical_system_architecture_v1()
+    raw_string_planes = tuple(plane.value for plane in canonical.planes)
+
+    with pytest.raises(ValueError, match="SystemPlane"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=raw_string_planes,  # type: ignore[arg-type]
+            boundaries=canonical.boundaries,
+        )
+
+
 def test_section0_manifest_contains_exact_typed_boundary_set() -> None:
     manifest = canonical_system_architecture_v1()
 
