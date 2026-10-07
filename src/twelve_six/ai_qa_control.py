@@ -8,10 +8,11 @@ import re
 import shlex
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.capability_map import CapabilityRegistry, load_capability_registry
 from twelve_six.sil_qualification import (
@@ -27,7 +28,6 @@ from twelve_six.sil_qualification import (
     run_command,
     verify_sil_evidence,
 )
-
 
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -82,7 +82,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_sha256(name: str, value: object) -> str:
@@ -205,7 +205,7 @@ def _require_sealed_enum(
     )
     if canonical_members is None or sealed_members is not canonical_members:
         raise ValueError(wire_error)
-    if type(value) is not enum_type:  # noqa: E721
+    if type(value) is not enum_type:
         raise ValueError(type_error)
     for member, wire_value in canonical_members:
         if value is member:
