@@ -845,3 +845,34 @@ def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclas
     surface = inventory.surfaces[0]
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         replace(surface, origin=ForgedStr(surface.origin))
+
+def test_registry_revalidates_post_construction_nested_mutation() -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python -c print-pass")
+
+    with pytest.raises(ValueError, match="test vector command"):
+        registry.identity_sha256()
+
+
+def test_registry_accessors_revalidate_mutated_journey_state() -> None:
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "title", "")
+
+    with pytest.raises(ValueError, match="title must be a non-empty string"):
+        registry.journey_available(journey.journey_id)
+
+    with pytest.raises(ValueError, match="title must be a non-empty string"):
+        registry.acceptance_path(registry.capabilities[0].capability_id)
+
+
+def test_source_inventory_revalidates_mutated_surface_state() -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", "forged")
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
