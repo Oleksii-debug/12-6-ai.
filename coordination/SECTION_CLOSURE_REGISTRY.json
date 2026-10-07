@@ -83,12 +83,16 @@
           "configs/control/product_capabilities_v1.json",
           "configs/control/product_source_surface_inventory_v1.json",
           "tests/test_capability_map_section2.py",
-          "docs/EXECUTABLE_CAPABILITY_MAP_SECTION2.md"
+          "docs/EXECUTABLE_CAPABILITY_MAP_SECTION2.md",
+          "configs/control/product_repository_executable_surface_rules_v1.json",
+          "tools/validate_section2_repository_surface_coverage.py",
+          "tests/test_repository_surface_inventory_section2.py",
+          "docs/SECTION2_REPOSITORY_EXECUTABLE_SURFACE_COVERAGE.md"
         ],
         "integrated_main_sha": null,
         "pull_request": null,
         "terminal_ci": null,
-        "qualification_blocker": "Static source/capability/journey coverage is complete for the current stack, but exact-head shared CI is not terminal PASS and Sections 0-1 remain unfinished predecessors."
+        "qualification_blocker": "Static package-source and repository executable/control capability coverage is complete on the current candidate, but exact-head shared CI is not terminal PASS and Sections 0-1 remain unfinished predecessors."
       }
     },
     {
@@ -97,7 +101,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/3-github-sil-qualification-v1",
-        "predecessor_candidate_sha": "93b47319c1dd9bec02fbfb0e455a6c92a5647c93",
+        "predecessor_candidate_sha": "7d9c987de5b4f4caa1283e35bacc12f5d3a98f2b",
         "implementation_paths": [
           "src/twelve_six/sil_qualification.py",
           "configs/control/sil_scenario_v1.json",
