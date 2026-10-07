@@ -549,6 +549,7 @@ def test_replacement_receipt_cross_binds_core_snapshots() -> None:
             **{**common, "candidate_core_identity_sha256": _sha("forged-candidate")}
         )
 
+
 def test_closed_architecture_schemas_reject_behavioral_subclasses() -> None:
     architecture = canonical_system_architecture_v1()
     shell = canonical_runtime_shell_v1()
