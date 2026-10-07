@@ -36,13 +36,13 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert result["observed_main_tree_sha"] == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
-    assert result["current_repository_main_sha"] == "5c041ca56edda55a5c3334f722361754051e121c"
-    assert result["current_repository_main_tree_sha"] == "95ad101c8965fd49c1711027146253a093fce2f8"
-    assert result["qualified_current_equivalent_surface_count"] == 235
-    assert result["accepted_main_surface_count"] == 119
-    assert result["candidate_overlay_surface_count"] == 1
+    assert result["observed_main_sha"] == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
+    assert result["observed_main_tree_sha"] == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
+    assert result["current_repository_main_sha"] == "213fe5c41fe9310e325b9c38c863d75eb6a5bb47"
+    assert result["current_repository_main_tree_sha"] == "30ebc206bc2064f622bf0a7a106356366e54a7c4"
+    assert result["qualified_current_equivalent_surface_count"] == 237
+    assert result["accepted_main_surface_count"] == 120
+    assert result["candidate_overlay_surface_count"] == 0
     assert result["checkout_surface_count"] == 120
 
 
@@ -55,6 +55,7 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
         "checkpoint-integrity-mechanics": 1,
         "data-governance-mechanics": 102,
         "deterministic-packing-mechanics": 2,
+        "executable-capability-map": 1,
         "learned20m-control-plane": 5,
         "model-spec-identity": 2,
         "package-runtime": 1,
@@ -63,15 +64,16 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
     }
 
 
-def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
+def test_section2_validator_is_integrated_into_qualified_baseline() -> None:
     payload = _load_strict_json(_INVENTORY)
 
-    assert payload["candidate_overrides"] == [
-        {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
-            "capability_id": "executable-capability-map",
-        }
-    ]
+    assert payload["candidate_overrides"] == []
+    assert {
+        "rule_id": "section2-surface-validator",
+        "selector": "exact",
+        "pattern": "tools/validate_section2_repository_surface_coverage.py",
+        "capability_id": "executable-capability-map",
+    } in payload["rules"]
 
 
 def test_candidate_surface_paths_include_changed_existing_surface() -> None:
@@ -95,7 +97,12 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
+    payload["candidate_overrides"] = [
+        {
+            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "capability_id": "model-spec-identity",
+        }
+    ]
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -104,8 +111,25 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
 
 
 def test_repository_surface_coverage_rejects_missing_candidate_override(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    original_surface_blob_map = surface_validator._surface_blob_map
+
+    def drifted_surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
+        blobs = original_surface_blob_map(root, treeish)
+        if treeish == "HEAD":
+            blobs = dict(blobs)
+            path = "tools/validate_section2_repository_surface_coverage.py"
+            mode, _blob_sha = blobs[path].split(":", 1)
+            blobs[path] = f"{mode}:{'f' * 40}"
+        return blobs
+
+    monkeypatch.setattr(
+        surface_validator,
+        "_surface_blob_map",
+        drifted_surface_blob_map,
+    )
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["candidate_overrides"] = []
     inventory = tmp_path / "inventory.json"
@@ -199,7 +223,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
+    payload["observed_main_sha"] = "213fe5c41fe9310e325b9c38c863d75eb6a5bb47"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 
