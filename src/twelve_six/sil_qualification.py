@@ -992,6 +992,7 @@ def _qualify_sil_with_backends(
     environment_receipt: dict[str, Any],
     command_runner: CommandRunner,
     git_probe: GitProbe,
+    package_manifest_builder: Callable[[str | Path], bytes] = build_package_manifest_bytes,
 ) -> tuple[dict[str, Any], str]:
     """Internal deterministic harness; not a canonical evidence authority."""
     expected_git_sha = _require_git_sha("expected_git_sha", expected_git_sha)
@@ -1000,7 +1001,7 @@ def _qualify_sil_with_backends(
     environment_receipt = _validate_sil_environment_receipt(environment_receipt)
 
     root = Path(repo_root)
-    expected_package_bytes = build_package_manifest_bytes(root)
+    expected_package_bytes = package_manifest_builder(root)
     if package_bytes != expected_package_bytes:
         raise ValueError(
             "package_bytes do not match exact tracked package source manifest"
@@ -1198,6 +1199,7 @@ def _build_qualify_sil_authority():
     sealed_impl = _qualify_sil_with_backends
     sealed_runner = run_command
     sealed_probe = probe_git_state
+    sealed_package_manifest_builder = build_package_manifest_bytes
 
     def canonical(
         *,
@@ -1217,6 +1219,7 @@ def _build_qualify_sil_authority():
             environment_receipt=environment_receipt,
             command_runner=sealed_runner,
             git_probe=sealed_probe,
+            package_manifest_builder=sealed_package_manifest_builder,
         )
 
     return canonical
