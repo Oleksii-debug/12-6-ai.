@@ -498,6 +498,38 @@ def test_generation_builder_rejects_missing_kind_and_key_ref_mismatch() -> None:
         build_generation_identity_manifest(refs)
 
 
+def test_closed_schema_from_dict_rejects_behavioral_dict_before_lookup() -> None:
+    generation = _generation("a")
+    corpus = generation.artifact_ref(ArtifactKind.CORPUS)
+
+    class ForgedDict(dict):
+        def __getitem__(self, key):
+            raise AssertionError("behavioral dict must not be indexed")
+
+    forged = ForgedDict(corpus.to_dict())
+    with pytest.raises(ValueError, match="ArtifactRef fields mismatch"):
+        ArtifactRef.from_dict(forged)
+
+
+def test_closed_schema_from_dict_rejects_behavioral_lists_before_iteration() -> None:
+    generation = _generation("a")
+    generation_payload = generation.to_dict()
+
+    class ForgedList(list):
+        def __iter__(self):
+            raise AssertionError("behavioral list must not be iterated")
+
+    generation_payload["artifacts"] = ForgedList(generation_payload["artifacts"])
+    with pytest.raises(ValueError, match="artifacts must be a JSON array"):
+        GenerationIdentityManifest.from_dict(generation_payload)
+
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    release_payload = release.to_dict()
+    release_payload["parents"] = ForgedList(release_payload["parents"])
+    with pytest.raises(ValueError, match="parents must be a JSON array"):
+        ArtifactManifest.from_dict(release_payload)
+
+
 def test_closed_schema_rejects_artifact_ref_subclass_serialization_resealing() -> None:
     class ForgedArtifactRef(ArtifactRef):
         def to_dict(self) -> dict[str, object]:
