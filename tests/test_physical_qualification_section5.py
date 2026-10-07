@@ -893,3 +893,76 @@ def test_evidence_verifier_streams_bounded_files_without_path_read_bytes(
     )
     assert checked["verdict"] == QualificationVerdict.PASS.value
 
+def test_closed_signed_qualification_schemas_reject_behavioral_subclasses(tmp_path: Path) -> None:
+    class ForgedStr(str):
+        pass
+
+    class ForgedBytes(bytes):
+        pass
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("behavioral tuple must not be iterated")
+
+    with pytest.raises(ValueError, match="exact lowercase SHA-256"):
+        physical_qualification._require_sha256("identity", ForgedStr("a" * 64))
+
+    with pytest.raises(ValueError, match="pytest_targets must contain"):
+        QualificationAction(
+            action_id="closed-action",
+            pytest_targets=ForgedTuple(
+                ("tests/test_physical_qualification_section5.py",)
+            ),
+            timeout_seconds=60,
+            max_output_bytes=1024,
+            required_resources=(ResourceKind.CPU,),
+        )
+
+    packet = _packet()
+    with pytest.raises(ValueError, match="execution_mode must be an ExecutionMode"):
+        QualificationPacket(
+            schema_version=packet.schema_version,
+            packet_id=packet.packet_id,
+            target_git_sha=packet.target_git_sha,
+            agent_source_sha256=packet.agent_source_sha256,
+            execution_mode="REAL_HOST",
+            allowed_os_families=packet.allowed_os_families,
+            not_before_epoch_seconds=packet.not_before_epoch_seconds,
+            expires_epoch_seconds=packet.expires_epoch_seconds,
+            actions=packet.actions,
+            artifact_paths=packet.artifact_paths,
+        )
+
+    with pytest.raises(ValueError, match="external resource evidence must be bytes"):
+        ExternalResourceEvidence(
+            ResourceKind.NETWORK,
+            "network-adapter",
+            ForgedBytes(b"probe"),
+        )
+
+    with pytest.raises(ValueError, match="action output must be bytes"):
+        ActionExecution(0, ForgedBytes(b"out"), b"", 1)
+
+    verified = _load(tmp_path, packet)
+
+    class ForgedVerified(physical_qualification.VerifiedSignedPacket):
+        pass
+
+    forged_verified = ForgedVerified(
+        verified.packet,
+        verified.signing_key_id,
+        verified.signature_sha256,
+        verified.signed_bundle_identity_sha256,
+    )
+    with pytest.raises(ValueError, match="exact VerifiedSignedPacket"):
+        execute_qualification(
+            forged_verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=_pass_runner,
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+        )
+
