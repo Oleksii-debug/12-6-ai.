@@ -5,6 +5,7 @@ import importlib
 import json
 import math
 import re
+import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -723,11 +724,41 @@ def validate_source_surface_coverage(
         raise ValueError(f"source inventory maps unknown capability ids: {unknown}")
 
     root = Path(repo_root)
-    source_root = root / inventory.source_root
+    tree_check = subprocess.run(
+        ["git", "-C", str(root), "show", "-s", "--format=%T", inventory.observed_main_sha],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if tree_check.returncode != 0:
+        raise ValueError("cannot resolve observed_main_sha in repository checkout")
+    resolved_tree_sha = tree_check.stdout.strip()
+    if resolved_tree_sha != inventory.observed_main_tree_sha:
+        raise ValueError(
+            "source inventory observed_main_tree_sha does not match observed_main_sha"
+        )
+
+    listing = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            inventory.observed_main_tree_sha,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listing.returncode != 0:
+        raise ValueError("cannot enumerate observed main source tree")
+    prefix = f"{inventory.source_root}/"
     actual_paths = sorted(
-        path.relative_to(root).as_posix()
-        for path in source_root.rglob("*.py")
-        if path.is_file()
+        line.strip()
+        for line in listing.stdout.splitlines()
+        if line.strip().startswith(prefix) and line.strip().endswith(".py")
     )
     expected_paths = [item.path for item in inventory.surfaces]
     if actual_paths != expected_paths:
