@@ -1214,6 +1214,37 @@ def test_available_level_gate_ignores_testlevel_dunder_rebinding(
         replace(target, test_vectors=(end_to_end_only,))
 
 
+def test_available_level_gate_ignores_module_global_policy_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    target = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    end_to_end_only = TestVector(
+        vector_id="poisoned_end_to_end_only_global_policy",
+        level=TestLevel.END_TO_END,
+        command=target.test_vectors[0].command,
+    )
+    object.__setattr__(target, "test_vectors", (end_to_end_only,))
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_REQUIRED_LEVEL_VALUES",
+        (),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_TEST_LEVEL_WIRE",
+        lambda _value: "component",
+    )
+
+    with pytest.raises(ValueError, match="component and integration"):
+        registry.identity_sha256()
+
+
 def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
