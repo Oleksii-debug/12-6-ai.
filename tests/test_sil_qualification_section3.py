@@ -247,6 +247,30 @@ def test_independent_verifier_requires_exact_clean_checkout() -> None:
         )
 
 
+def test_public_qualify_sil_ignores_rebound_package_manifest_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forged_package = b"forged-package-manifest"
+    monkeypatch.setattr(
+        sil_qualification,
+        "build_package_manifest_bytes",
+        lambda _root: forged_package,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="package_bytes do not match exact tracked package source manifest",
+    ):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=forged_package,
+            environment_receipt=_environment_receipt(),
+        )
+
+
 def test_public_sil_authorities_reject_caller_supplied_execution_backends() -> None:
     registry = _registry()
     scenario = _scenario()
