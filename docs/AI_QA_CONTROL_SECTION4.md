@@ -77,7 +77,7 @@ closure-ready yet. Before READY/DONE, current authority still needs:
 - `src/twelve_six/ai_qa_control.py`
 - `tests/test_ai_qa_control_section4.py`
 - `docs/AI_QA_CONTROL_SECTION4.md`
-- `coordination/SECTION_CLOSURE_REGISTRY.json`
+- `SEQUENTIAL_CLOSURE_STATE.md`
 
 ## Truth boundary
 
