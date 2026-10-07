@@ -1393,3 +1393,8 @@ def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
     with pytest.raises(ValueError, match="component contract attribute does not exist"):
         load_capability_registry(path)
 
+    with pytest.raises(TypeError):
+        registry.__post_init__(  # type: ignore[call-arg]
+            _sealed_resolve_component_contract=lambda _contract: object()
+        )
+
