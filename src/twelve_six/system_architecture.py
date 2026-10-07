@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -42,7 +43,7 @@ def _require_sha256(name: str, value: object) -> str:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # Closed architecture schemas reject subclasses that can override identity serialization.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 class SystemPlane(str, Enum):
@@ -186,10 +187,11 @@ class SystemArchitectureManifest:
 
     def __post_init__(
         self,
-        _sealed_plane_values: tuple[str, ...] = _REQUIRED_PLANE_VALUES,
+        # These defaults intentionally freeze the authority against module rebinding.
+        _sealed_plane_values: tuple[str, ...] = _REQUIRED_PLANE_VALUES,  # noqa: RUF033
         _sealed_boundary_specs: Mapping[
             str, tuple[str, str, str, int]
-        ] = _REQUIRED_BOUNDARY_SPECS,
+        ] = _REQUIRED_BOUNDARY_SPECS,  # noqa: RUF033
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
