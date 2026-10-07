@@ -429,6 +429,7 @@ def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
             evidence_path,
             log_path,
             defect_id="sil-environment-authority-mismatch",
+            expected_git_sha=_FAIL_SHA,
             policy=_policy(),
             expected_package_bytes=_package_bytes(),
             expected_environment_receipt=forged_environment,
