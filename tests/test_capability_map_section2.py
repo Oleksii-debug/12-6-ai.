@@ -10,6 +10,7 @@ import pytest
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
+    _changed_existing_source_paths,
     load_capability_registry,
     load_source_surface_inventory,
     validate_source_surface_coverage,
@@ -466,6 +467,23 @@ def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="strict unambiguous"):
         load_capability_registry(path)
+
+
+def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
+    accepted_main_blobs = {
+        "src/twelve_six/model.py": "a" * 40,
+        "src/twelve_six/packing.py": "b" * 40,
+    }
+    checkout_blobs = {
+        "src/twelve_six/model.py": "c" * 40,
+        "src/twelve_six/packing.py": "b" * 40,
+        "src/twelve_six/new_module.py": "d" * 40,
+    }
+
+    assert _changed_existing_source_paths(
+        accepted_main_blobs,
+        checkout_blobs,
+    ) == {"src/twelve_six/model.py"}
 
 
 def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> None:
