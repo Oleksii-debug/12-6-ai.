@@ -641,12 +641,11 @@ def parse_vector_command(command: str) -> tuple[str, ...]:
     return (sys.executable, "-m", "pytest", "-q", *test_paths)
 
 
-def build_sil_plan(
+def _build_sil_plan_with_policy(
     registry: CapabilityRegistry,
     scenario: SILScenario,
-    _sealed_e2e_policy: tuple[tuple[str, tuple[str, ...]], ...] = (
-        _CANONICAL_JOURNEY_E2E_VECTOR_POLICY
-    ),
+    *,
+    e2e_policy: tuple[tuple[str, tuple[str, ...]], ...],
 ) -> SILPlan:
     if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
@@ -658,20 +657,20 @@ def build_sil_plan(
         raise ValueError("unsupported journey selection")
 
     if (
-        not _is_exact_type(_sealed_e2e_policy, tuple)
+        not _is_exact_type(e2e_policy, tuple)
         or any(
             not _is_exact_type(item, tuple)
             or len(item) != 2
             or not _is_exact_type(item[0], str)
             or not _is_exact_type(item[1], tuple)
-            for item in _sealed_e2e_policy
+            for item in e2e_policy
         )
     ):
         raise ValueError("SIL end-to-end policy is non-canonical")
-    policy_journey_ids = tuple(item[0] for item in _sealed_e2e_policy)
+    policy_journey_ids = tuple(item[0] for item in e2e_policy)
     if len(set(policy_journey_ids)) != len(policy_journey_ids):
         raise ValueError("SIL end-to-end policy journey ids must be unique")
-    policy_by_journey = dict(_sealed_e2e_policy)
+    policy_by_journey = dict(e2e_policy)
 
     available: list[str] = []
     unavailable: list[UnavailableJourney] = []
@@ -750,6 +749,29 @@ def build_sil_plan(
         journey_end_to_end_contracts=tuple(journey_contracts),
         vectors=tuple(vectors),
     )
+
+
+def _build_sil_plan_authority():
+    # Public planning authority closes over the repository-owned end-to-end
+    # journey policy. Tests may exercise the underscore-prefixed helper with
+    # alternate policies, but production callers cannot inject plan authority.
+    sealed_impl = _build_sil_plan_with_policy
+    sealed_policy = _CANONICAL_JOURNEY_E2E_VECTOR_POLICY
+
+    def canonical(
+        registry: CapabilityRegistry,
+        scenario: SILScenario,
+    ) -> SILPlan:
+        return sealed_impl(
+            registry,
+            scenario,
+            e2e_policy=sealed_policy,
+        )
+
+    return canonical
+
+
+build_sil_plan = _build_sil_plan_authority()
 
 
 @dataclass(frozen=True, slots=True)
