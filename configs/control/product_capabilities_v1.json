@@ -90,7 +90,7 @@
       "capability_id": "deterministic-packing-mechanics",
       "schema_version": 1,
       "status": "AVAILABLE",
-      "component_contract": "twelve_six.packing.manifest.PackingManifest",
+      "component_contract": "twelve_six.packing.manifest.PackedSplitManifest",
       "dependencies": [
         "byte-tokenizer-runtime"
       ],
@@ -132,7 +132,7 @@
       "capability_id": "checkpoint-integrity-mechanics",
       "schema_version": 1,
       "status": "AVAILABLE",
-      "component_contract": "twelve_six.checkpoint.core",
+      "component_contract": "twelve_six.checkpoint.core.CheckpointIdentity",
       "dependencies": [
         "model-spec-identity"
       ],
