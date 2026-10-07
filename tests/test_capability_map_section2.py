@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "0e1f301c5123b4e52c111cb94264cfd61b60bf4b"
-    assert registry.observed_main_ci_run_id == 37615156740
+    assert registry.observed_main_sha == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
+    assert registry.observed_main_ci_run_id == 37625412078
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -500,7 +500,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37615156740',
+        '"run_id": 37625412078',
         '"run_id": NaN',
         1,
     )
@@ -676,18 +676,18 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "0e1f301c5123b4e52c111cb94264cfd61b60bf4b"
-    assert inventory.observed_main_tree_sha == "4fd06e8836450e61ab47e39657c96c6b6f76792e"
-    assert inventory.accepted_main_surface_count == 116
-    assert inventory.candidate_overlay_surface_count == 1
+    assert inventory.observed_main_sha == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
+    assert inventory.observed_main_tree_sha == "f1717c60acf917cf5c6a59336b00a223342529c2"
+    assert inventory.accepted_main_surface_count == 117
+    assert inventory.candidate_overlay_surface_count == 0
     assert inventory.source_surface_count == 117
-    modified = next(
+    integrated = next(
         surface
         for surface in inventory.surfaces
         if surface.path == "src/twelve_six/capability_map.py"
     )
-    assert modified.origin == "modified_candidate"
-    assert registry.capability(modified.capability_id).status is CapabilityStatus.UNAVAILABLE
+    assert integrated.origin == "accepted_main"
+    assert registry.capability(integrated.capability_id).status is CapabilityStatus.AVAILABLE
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -702,21 +702,19 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
         assert capability.journey_ids
 
 
-def test_reopened_section2_source_is_explicit_modified_candidate() -> None:
+def test_closed_section2_source_is_integrated_accepted_main() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     modified = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 1
-    assert [(surface.path, surface.origin) for surface in modified] == [
-        ("src/twelve_six/capability_map.py", "modified_candidate")
-    ]
+    assert inventory.candidate_overlay_surface_count == 0
+    assert modified == []
     capability = registry.capability("executable-capability-map")
-    assert capability.status is CapabilityStatus.UNAVAILABLE
-    assert capability.integrated_result is None
-    assert capability.unavailable_reason
+    assert capability.status is CapabilityStatus.AVAILABLE
+    assert capability.integrated_result
+    assert capability.unavailable_reason is None
 
 
 def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(
@@ -764,7 +762,7 @@ def test_source_surface_coverage_ignores_public_capability_lookup_rebinding(
         "candidate_overlay_surface_count",
         inventory.candidate_overlay_surface_count + 1,
     )
-    unavailable = registry.capability("executable-capability-map")
+    unavailable = registry.capability("learned-20m-base")
     assert unavailable.status is CapabilityStatus.UNAVAILABLE
     monkeypatch.setattr(
         CapabilityRegistry,
@@ -786,7 +784,7 @@ def test_source_surface_coverage_rejects_capability_remap_of_existing_source(
         for surface in payload["surfaces"]
         if surface["path"] == "src/twelve_six/capability_map.py"
     )
-    assert target["origin"] == "modified_candidate"
+    assert target["origin"] == "accepted_main"
     assert target["capability_id"] == "executable-capability-map"
     replacement = next(
         capability.capability_id
