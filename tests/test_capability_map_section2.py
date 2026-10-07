@@ -810,3 +810,38 @@ def test_closed_schema_rejects_source_surface_subclass_resealing() -> None:
 
     with pytest.raises(ValueError, match="surfaces must contain only SourceSurface values"):
         replace(inventory, surfaces=surfaces)
+
+
+def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedInt(int):
+        pass
+
+    class ForgedBytes(bytes):
+        def decode(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("behavioral bytes subclass must not be decoded")
+
+    class ForgedTuple(tuple):
+        pass
+
+    with pytest.raises(ValueError, match="capability registry input must be bytes"):
+        capability_map_module._strict_json_object(ForgedBytes(b"{}"))
+
+    with pytest.raises(ValueError, match="environment_id must be a canonical identifier"):
+        capability_map_module.EnvironmentSupport(ForgedStr("windows"), True)
+
+    registry = _load()
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        replace(registry, schema_version=ForgedInt(1))
+
+    capability = registry.capabilities[0]
+    with pytest.raises(ValueError, match="dependencies must be an immutable tuple"):
+        replace(capability, dependencies=ForgedTuple(capability.dependencies))
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        replace(surface, origin=ForgedStr(surface.origin))
