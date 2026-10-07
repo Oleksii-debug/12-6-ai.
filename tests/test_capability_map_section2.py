@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert registry.observed_main_ci_run_id == 37608406911
+    assert registry.observed_main_sha == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
+    assert registry.observed_main_ci_run_id == 37609405086
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -500,7 +500,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37608406911',
+        '"run_id": 37609405086',
         '"run_id": NaN',
         1,
     )
@@ -676,8 +676,8 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert inventory.observed_main_tree_sha == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
+    assert inventory.observed_main_sha == "3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5"
+    assert inventory.observed_main_tree_sha == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
     assert inventory.accepted_main_surface_count == 116
     assert inventory.candidate_overlay_surface_count == 1
     assert inventory.source_surface_count == 117
@@ -700,7 +700,7 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     for surface in inventory.surfaces:
-        if surface.origin != "stacked_candidate":
+        if surface.origin == "accepted_main":
             continue
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
@@ -715,7 +715,7 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
+        if surface["origin"] != "accepted_main"
     )
     target["capability_id"] = "model-spec-identity"
     path = tmp_path / "surface-inventory.json"
@@ -806,7 +806,7 @@ def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) 
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
+        if surface["origin"] != "accepted_main"
     )
     payload["surfaces"].remove(target)
     payload["source_surface_count"] -= 1
