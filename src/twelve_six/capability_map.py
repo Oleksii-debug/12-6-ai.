@@ -296,6 +296,7 @@ class SourceSurfaceInventory:
     surfaces: tuple[SourceSurface, ...]
 
     def __post_init__(self) -> None:
+        _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported SourceSurfaceInventory schema_version")
         for field_name, value in (
@@ -359,6 +360,7 @@ class CapabilityRegistry:
     journeys: tuple[Journey, ...]
 
     def __post_init__(self) -> None:
+        _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
             raise ValueError("unsupported CapabilityRegistry schema_version")
         if not isinstance(self.observed_main_sha, str) or _SHA40_RE.fullmatch(

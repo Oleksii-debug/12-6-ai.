@@ -231,6 +231,16 @@ def test_registry_rejects_journey_without_capability_back_binding() -> None:
         )
 
 
+def test_registry_loader_rejects_bool_schema_version_alias(tmp_path: Path) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_capability_registry(path)
+
+
 def test_registry_loader_rejects_unknown_top_level_field(tmp_path: Path) -> None:
     payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     payload["forged_ready"] = True
@@ -377,6 +387,18 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
         assert capability.integrated_result is None
+
+
+def test_source_surface_inventory_rejects_bool_schema_version_alias(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        load_source_surface_inventory(path)
 
 
 def test_source_surface_inventory_rejects_unknown_nested_field(tmp_path: Path) -> None:
