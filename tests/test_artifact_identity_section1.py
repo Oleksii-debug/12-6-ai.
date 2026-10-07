@@ -384,6 +384,20 @@ def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
         parse_generation_identity_manifest(noncanonical)
 
 
+def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
+    generation = _generation("enum-wire")
+    corpus = generation.artifact_ref(ArtifactKind.CORPUS)
+    original_value = ArtifactKind.CORPUS.value
+    object.__setattr__(ArtifactKind.CORPUS, "_value_", "forged_corpus")
+    try:
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            corpus.to_dict()
+        with pytest.raises(ValueError, match="wire value is non-canonical"):
+            generation.identity_sha256()
+    finally:
+        object.__setattr__(ArtifactKind.CORPUS, "_value_", original_value)
+
+
 def test_generation_parent_policy_is_runtime_immutable() -> None:
     release_policy = artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE]
 
@@ -653,11 +667,12 @@ def test_closed_scalar_and_encoded_inputs_reject_behavioral_subclasses() -> None
         ParentBinding(
             role=ForgedStr("corpus"),
             artifact=parent.artifact,
-            parent_manifest_identity_sha256=parent.identity_sha256(),
+            parent_manifest_identity_sha256=parent.manifest_identity_sha256(),
         )
 
     with pytest.raises(ValueError, match="manifest input must be bytes"):
         parse_generation_identity_manifest(ForgedBytes(b"{}"))
+
 
 def test_identity_snapshots_revalidate_after_object_setattr_mutation() -> None:
     ref = _ref(ArtifactKind.CORPUS, "stale-ref")
@@ -712,4 +727,18 @@ def test_identity_builders_reject_behavioral_mapping_subclasses() -> None:
             manifest,
             expected_parents=ForgedDict(parents),
         )
+
+
+def test_artifact_kind_enum_singleton_value_mutation_fails_closed() -> None:
+    generation = _generation("enum-sealed")
+    refs = _refs("enum-sealed-new")
+    original_value = ArtifactKind.MODEL_SPEC.value
+    object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", "forged_model_spec")
+    try:
+        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
+            generation.identity_sha256()
+        with pytest.raises(ValueError, match="ArtifactKind wire value is non-canonical"):
+            build_generation_identity_manifest(refs)
+    finally:
+        object.__setattr__(ArtifactKind.MODEL_SPEC, "_value_", original_value)
 
