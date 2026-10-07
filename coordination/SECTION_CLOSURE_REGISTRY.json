@@ -69,10 +69,10 @@
     {
       "number": 2,
       "title": "Executable capability map і acceptance graph",
-      "status": "READY_AFTER_PREDECESSOR",
+      "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/2-executable-capability-map-v1",
-        "predecessor_candidate_sha": "1a50bbbf75567d331d613b6f598883e461ca5bf8",
+        "predecessor_candidate_sha": "8bfcc692c2c8fa5b6adc616cf1968fc3fb834efc",
         "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
         "observed_main_ci": {
           "run_id": 37248299503,
@@ -86,7 +86,8 @@
         ],
         "integrated_main_sha": null,
         "pull_request": null,
-        "terminal_ci": null
+        "terminal_ci": null,
+        "coverage_blocker": "Current capability registry is a truthful initial slice, not yet proven exhaustive for all current product capabilities and user/operator journeys required by Section 2.1."
       }
     },
     {
