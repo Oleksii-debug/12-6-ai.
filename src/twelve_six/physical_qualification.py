@@ -882,7 +882,7 @@ def _validate_checked_in_pytest_targets(
         result = subprocess.run(
             ("git", "--literal-pathspecs", "ls-files", "--error-unmatch", "-z", "--", relative),
             cwd=root,
-            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            env=_bounded_git_env(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -895,16 +895,41 @@ def _validate_checked_in_pytest_targets(
             raise ValueError(f"physical pytest target is not exactly tracked: {relative}")
 
 
-def _bounded_pytest_env() -> dict[str, str]:
-    """Remove host-controlled Python/pytest knobs from signed qualification execution."""
+def _bounded_git_env() -> dict[str, str]:
+    """Remove host-controlled Git redirects from physical qualification probes."""
 
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.upper().startswith(("PYTHON", "PYTEST"))
+        if not key.upper().startswith("GIT_")
     }
     env.update(
         {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+    )
+    return env
+
+
+def _bounded_pytest_env() -> dict[str, str]:
+    """Remove host-controlled Python/pytest/Git knobs from signed execution."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith(("PYTHON", "PYTEST", "GIT_"))
+    }
+    env.update(
+        {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
             "PYTHONHASHSEED": "0",
             "PYTHONNOUSERSITE": "1",
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",

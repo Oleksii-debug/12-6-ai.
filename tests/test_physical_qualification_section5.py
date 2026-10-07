@@ -587,12 +587,19 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
     monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_host_plugin")
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "host-pythonpath"))
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "host-git-dir"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "host-work-tree"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "host-index"))
     monkeypatch.setenv("TWELVE_SIX_SAFE_SENTINEL", "preserved")
 
     child_env = physical_qualification._bounded_pytest_env()
     assert "PYTEST_ADDOPTS" not in child_env
     assert "PYTEST_PLUGINS" not in child_env
     assert "PYTHONPATH" not in child_env
+    assert "GIT_DIR" not in child_env
+    assert "GIT_WORK_TREE" not in child_env
+    assert "GIT_INDEX_FILE" not in child_env
+    assert child_env["GIT_CONFIG_NOSYSTEM"] == "1"
     assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
     assert child_env["PYTHONNOUSERSITE"] == "1"
     assert child_env["PYTHONHASHSEED"] == "0"
@@ -637,6 +644,41 @@ def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
     assert len(execution.stdout) <= 1025
     assert len(execution.stderr) <= 1025
     assert 1025 in {len(execution.stdout), len(execution.stderr)}
+
+
+def test_tracked_target_check_rejects_ambient_git_repository_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "target"
+    spoof = tmp_path / "spoof"
+    for root in (target, spoof):
+        (root / "tests").mkdir(parents=True)
+        (root / "tests" / "test_redirect.py").write_text(
+            "def test_redirect() -> None:\n    assert True\n",
+            encoding="utf-8",
+        )
+        subprocess.run(("git", "init", "-q"), cwd=root, check=True)
+
+    subprocess.run(
+        ("git", "add", "--", "tests/test_redirect.py"),
+        cwd=spoof,
+        check=True,
+    )
+    monkeypatch.setenv("GIT_DIR", str(spoof / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(spoof))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(spoof / ".git" / "index"))
+
+    action = QualificationAction(
+        action_id="git-redirect-bypass",
+        pytest_targets=("tests/test_redirect.py",),
+        timeout_seconds=30,
+        max_output_bytes=1024,
+        required_resources=(),
+    )
+
+    with pytest.raises(ValueError, match="not exactly tracked"):
+        run_bounded_pytest(action, target)
 
 
 def test_run_bounded_pytest_rejects_untracked_test_lookalike(tmp_path: Path) -> None:
