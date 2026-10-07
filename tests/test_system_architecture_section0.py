@@ -520,6 +520,7 @@ def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> 
             preserved_surface_identities=changed_shell.surface_identities(),
         )
 
+
 def test_replacement_receipt_cross_binds_core_snapshots() -> None:
     shell = canonical_runtime_shell_v1()
     previous_core = _core("previous-bound", 20_613_440)
