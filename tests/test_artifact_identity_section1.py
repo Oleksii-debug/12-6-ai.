@@ -392,7 +392,9 @@ def test_generation_parent_policy_is_runtime_immutable() -> None:
         release_policy["evaluation"] = ArtifactKind.EXPORT  # type: ignore[index]
 
     with pytest.raises(TypeError):
-        artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE] = {}  # type: ignore[index]
+        artifact_identity_module._GENERATION_PARENT_POLICY[
+            ArtifactKind.RELEASE
+        ] = {}  # type: ignore[index]
 
 
 def test_generation_validation_fails_closed_after_policy_global_rebind(
@@ -407,6 +409,29 @@ def test_generation_validation_fails_closed_after_policy_global_rebind(
 
     with pytest.raises(ValueError, match=r"release\.evaluation must reference evaluation"):
         _generation("a")
+
+
+def test_generation_vocabulary_fails_closed_after_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("a")
+    monkeypatch.setattr(
+        artifact_identity_module,
+        "CANONICAL_ARTIFACT_KINDS",
+        tuple(ArtifactKind)[:3],
+    )
+
+    with pytest.raises(ValueError, match="exactly one artifact of every canonical kind"):
+        GenerationIdentityManifest(
+            schema_version=1,
+            artifacts=generation.artifacts[:3],
+        )
+
+    assert generation.artifact_ref(ArtifactKind.RELEASE).kind is ArtifactKind.RELEASE
+    assert (
+        generation.artifact_manifest(ArtifactKind.RELEASE).artifact.kind
+        is ArtifactKind.RELEASE
+    )
 
 
 def test_generation_manifest_strict_json_rejects_duplicate_members() -> None:

@@ -4,6 +4,7 @@ import hashlib
 
 import pytest
 
+import twelve_six.system_architecture as system_architecture_module
 from twelve_six.system_architecture import (
     CognitiveCoreBinding,
     CognitiveCoreIdentity,
@@ -141,7 +142,55 @@ def test_manifest_rejects_identity_ambiguous_reordering() -> None:
         SystemArchitectureManifest(
             schema_version=1,
             planes=canonical.planes,
-            boundaries=(canonical.boundaries[1], canonical.boundaries[0], *canonical.boundaries[2:]),
+            boundaries=(
+                canonical.boundaries[1],
+                canonical.boundaries[0],
+                *canonical.boundaries[2:],
+            ),
+        )
+
+
+def test_architecture_boundary_policy_is_runtime_immutable() -> None:
+    with pytest.raises(TypeError):
+        system_architecture_module._REQUIRED_BOUNDARY_SPECS[
+            "base_to_gateway"
+        ] = (  # type: ignore[index]
+            SystemPlane.BASE_MODEL,
+            SystemPlane.PERSISTENT_COGNITION,
+            "twelve_six.model_gateway",
+            1,
+        )
+
+
+def test_manifest_validation_fails_closed_after_boundary_policy_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical = canonical_system_architecture_v1()
+    first = canonical.boundaries[0]
+    forged_policy = dict(system_architecture_module._REQUIRED_BOUNDARY_SPECS)
+    forged_policy[first.name] = (
+        SystemPlane.BASE_MODEL,
+        SystemPlane.PERSISTENT_COGNITION,
+        first.interface.name,
+        first.interface.schema_version,
+    )
+    monkeypatch.setattr(
+        system_architecture_module,
+        "_REQUIRED_BOUNDARY_SPECS",
+        forged_policy,
+    )
+    resealed = TypedBoundary(
+        first.name,
+        SystemPlane.BASE_MODEL,
+        SystemPlane.PERSISTENT_COGNITION,
+        first.interface,
+    )
+
+    with pytest.raises(ValueError, match="semantics are non-canonical"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(resealed, *canonical.boundaries[1:]),
         )
 
 
@@ -298,7 +347,10 @@ def test_core_replacement_accepts_new_checkpoint_same_scale_without_shell_rewrit
 
     replacement, receipt = replace_cognitive_core(current, candidate)
 
-    assert replacement.core_binding.core.parameter_count == current.core_binding.core.parameter_count
+    assert (
+        replacement.core_binding.core.parameter_count
+        == current.core_binding.core.parameter_count
+    )
     assert (
         replacement.core_binding.core.checkpoint_sha256
         != current.core_binding.core.checkpoint_sha256
