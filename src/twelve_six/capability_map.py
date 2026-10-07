@@ -314,6 +314,10 @@ class CapabilityRegistry:
                     raise ValueError(
                         f"{capability.capability_id} has unknown journey {journey_id}"
                     )
+                if capability.capability_id not in by_journey[journey_id].capability_ids:
+                    raise ValueError(
+                        f"{capability.capability_id} is not listed by journey {journey_id}"
+                    )
 
         for journey in self.journeys:
             for capability_id in journey.capability_ids:

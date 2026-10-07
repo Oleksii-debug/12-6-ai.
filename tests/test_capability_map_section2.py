@@ -177,6 +177,33 @@ def test_registry_rejects_dependency_cycles() -> None:
         )
 
 
+def test_registry_rejects_capability_forward_binding_absent_from_journey() -> None:
+    registry = _load()
+    capabilities = list(registry.capabilities)
+    target_index = 0
+    target = capabilities[target_index]
+    foreign_journey = next(
+        journey
+        for journey in registry.journeys
+        if target.capability_id not in journey.capability_ids
+        and journey.journey_id not in target.journey_ids
+    )
+    capabilities[target_index] = replace(
+        target,
+        journey_ids=(*target.journey_ids, foreign_journey.journey_id),
+    )
+
+    with pytest.raises(ValueError, match="is not listed by journey"):
+        CapabilityRegistry(
+            schema_version=registry.schema_version,
+            observed_main_sha=registry.observed_main_sha,
+            observed_main_ci_run_id=registry.observed_main_ci_run_id,
+            observed_main_ci_conclusion=registry.observed_main_ci_conclusion,
+            capabilities=tuple(capabilities),
+            journeys=registry.journeys,
+        )
+
+
 def test_registry_rejects_journey_without_capability_back_binding() -> None:
     registry = _load()
     capabilities = list(registry.capabilities)
