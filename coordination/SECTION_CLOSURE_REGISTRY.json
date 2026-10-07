@@ -93,8 +93,21 @@
     {
       "number": 3,
       "title": "GitHub Software-in-the-Loop Live Qualification Plane",
-      "status": "UNVERIFIED",
-      "evidence": null
+      "status": "IN_PROGRESS",
+      "evidence": {
+        "candidate_branch": "section/3-github-sil-qualification-v1",
+        "predecessor_candidate_sha": "6d5f671cf7759cb139e63811aede013c0ef55f6d",
+        "implementation_paths": [
+          "src/twelve_six/sil_qualification.py",
+          "configs/control/sil_scenario_v1.json",
+          "tests/test_sil_qualification_section3.py",
+          "docs/GITHUB_SIL_QUALIFICATION_SECTION3.md",
+          ".github/workflows/ci.yml"
+        ],
+        "integrated_main_sha": null,
+        "pull_request": null,
+        "terminal_ci": null
+      }
     },
     {
       "number": 4,
