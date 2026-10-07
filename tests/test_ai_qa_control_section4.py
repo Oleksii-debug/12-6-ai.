@@ -118,6 +118,10 @@ def _candidate_git_probe(_: str | Path) -> GitState:
     return GitState(sha=_CANDIDATE_SHA, tracked_clean=True)
 
 
+def _candidate_parent_probe(_: Path, __: str) -> tuple[str, ...]:
+    return (_FAIL_SHA,)
+
+
 @pytest.mark.parametrize(
     ("source", "summary", "expected"),
     (
@@ -305,6 +309,7 @@ def test_regression_chain_runs_component_then_adversarial_on_exact_candidate() -
         actor_id="regression-automation",
         command_runner=_pass_runner,
         git_probe=_candidate_git_probe,
+        candidate_parent_probe=_candidate_parent_probe,
     )
 
     assert component.gate is GateKind.COMPONENT
@@ -341,6 +346,15 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha="d" * 40, tracked_clean=True),
         )
+    with pytest.raises(ValueError, match="direct child"):
+        execute_automated_regressions(
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-automation",
+            command_runner=_pass_runner,
+            git_probe=_candidate_git_probe,
+            candidate_parent_probe=lambda _root, _sha: ("d" * 40,),
+        )
     with pytest.raises(ValueError, match="dirty"):
         execute_automated_regressions(
             chain,
@@ -374,6 +388,7 @@ def test_regression_chain_rejects_checkout_mutation_during_gate() -> None:
             actor_id="regression-automation",
             command_runner=_pass_runner,
             git_probe=lambda _: next(states),
+            candidate_parent_probe=_candidate_parent_probe,
         )
 
 
