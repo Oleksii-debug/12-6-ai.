@@ -1357,6 +1357,92 @@ def test_sil_objects_revalidate_after_post_construction_mutation() -> None:
         plan.to_dict()
 
 
+def test_sil_stored_state_authority_ignores_class_method_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _registry()
+    scenario = _scenario()
+    baseline_evidence, baseline_log = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+
+    for cls in (
+        sil_qualification.SILScenario,
+        sil_qualification.PlannedVector,
+        sil_qualification.UnavailableJourney,
+        sil_qualification.SILPlan,
+    ):
+        monkeypatch.setattr(cls, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        sil_qualification.SILScenario,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.SILScenario,
+        "identity_sha256",
+        lambda _self: "f" * 64,
+    )
+    monkeypatch.setattr(
+        sil_qualification.PlannedVector,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.UnavailableJourney,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        sil_qualification.SILPlan,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    invalid_scenario = _scenario()
+    object.__setattr__(invalid_scenario, "timeout_seconds_per_vector", 0)
+    with pytest.raises(ValueError, match="timeout_seconds_per_vector"):
+        build_sil_plan(registry, invalid_scenario)
+
+    rebound_evidence, rebound_log = sil_qualification._qualify_sil_with_backends(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=registry,
+        scenario=scenario,
+        package_bytes=_package_bytes(),
+        environment_receipt=_environment_receipt(),
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+
+    for field in (
+        "capability_registry_identity_sha256",
+        "scenario_identity_sha256",
+        "input_identity_sha256",
+        "output_identity_sha256",
+    ):
+        assert rebound_evidence[field] == baseline_evidence[field]
+    assert rebound_log == baseline_log
+
+    evidence_path = tmp_path / "stored-state-evidence.json"
+    log_path = tmp_path / "stored-state.log"
+    _write_evidence(evidence_path, rebound_evidence)
+    log_path.write_text(rebound_log, encoding="utf-8")
+
+    verified = _verify_evidence(evidence_path, log_path)
+    assert verified["input_identity_sha256"] == baseline_evidence[
+        "input_identity_sha256"
+    ]
+
+
 def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
     state = GitState(sha=_GIT_SHA, tracked_clean=True)
     object.__setattr__(state, "tracked_clean", "yes")
