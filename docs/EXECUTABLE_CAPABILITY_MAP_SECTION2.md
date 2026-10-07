@@ -32,9 +32,14 @@ Each capability binds:
 - evidence targets;
 - either an integrated result or an explicit unavailable reason.
 
-The registry is bound to accepted
-`main@019944d5fe12334791f05f1232d13de4a12e37d3` and its terminal successful push
-CI run `37248299503`. Candidate Section-0/1 behavior is not resealed as accepted main truth.
+The registry's AVAILABLE evidence remains bound to the terminally qualified product baseline
+`main@019944d5fe12334791f05f1232d13de4a12e37d3` and CI run `37248299503`.
+That evidence is not reassigned to a newer SHA. A separate machine-checkable repository-main
+equivalence gate pins live `main@330fb46aa3199e26d8b7e49968ee93fb12447560` and proves all 233 capability-bearing
+`src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are byte-identical to
+the qualified baseline. Current-main coordination-only changes therefore do not silently create
+or remove Product capabilities. Candidate Section-0/1 behavior is still not resealed as accepted
+main truth.
 
 The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface, while separately classifying stacked Section-0/1/2 candidate overlays. At this candidate head the coverage is 114 accepted-main surfaces + 3 candidate overlays = 117/117 current stacked Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
 

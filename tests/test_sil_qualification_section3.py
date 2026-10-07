@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from twelve_six.sil_qualification import (
     build_sil_plan,
     load_sil_scenario,
     parse_vector_command,
+    probe_git_state,
     qualify_sil,
     verify_sil_evidence,
 )
@@ -331,6 +333,38 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
             command_runner=_pass_runner,
             git_probe=lambda _: next(states),
         )
+
+
+def test_probe_git_state_rejects_untracked_nonignored_checkout_drift(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=12-6 SIL test",
+            "-c",
+            "user.email=sil-test@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    clean = probe_git_state(tmp_path)
+    assert len(clean.sha) == 40
+    assert clean.tracked_clean is True
+
+    (tmp_path / "untracked-influence.py").write_text("FORGED = True\n", encoding="utf-8")
+
+    drifted = probe_git_state(tmp_path)
+    assert drifted.sha == clean.sha
+    assert drifted.tracked_clean is False
 
 
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
