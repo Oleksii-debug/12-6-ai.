@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -660,3 +661,106 @@ def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
     )
     assert repeated == candidate
     assert repeated_branch == branch_name
+
+def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "roundtrip"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Section 4 roundtrip"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "section4-roundtrip@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    tests_dir = repo / "tests"
+    tests_dir.mkdir()
+    (repo / "payload.txt").write_text("broken\n", encoding="utf-8")
+    (tests_dir / "test_payload.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_payload_is_repaired() -> None:\n"
+        "    assert Path('payload.txt').read_text(encoding='utf-8') == 'repaired\\n'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "failing fixture"], cwd=repo, check=True)
+    failing_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    failing_run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_payload.py"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert failing_run.returncode != 0
+
+    observation = ExternalObservation(
+        schema_version="12-6.aiqa-observation.v1",
+        source=FailureSource.CI,
+        git_sha=failing_sha,
+        evidence_identity_sha256=hashlib.sha256(
+            (failing_run.stdout + failing_run.stderr).encode("utf-8")
+        ).hexdigest(),
+        failure_summary="AssertionError: payload is broken",
+        reproducer_command="pytest -q tests/test_payload.py",
+        physical_gate_id=None,
+    )
+    failure = failure_packet_from_observation(
+        observation,
+        defect_id="live-local-roundtrip",
+        policy=_policy(),
+    )
+
+    payload = repo / "payload.txt"
+    payload.write_text("repaired\n", encoding="utf-8")
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "--", "payload.txt"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    subprocess.run(["git", "checkout", "--", "payload.txt"], cwd=repo, check=True)
+
+    candidate, branch_name = materialize_local_repair_candidate(
+        failure,
+        repo_root=repo,
+        patch_bytes=patch,
+        proposer_actor_id="repair-agent",
+        policy=_policy(),
+    )
+    subprocess.run(["git", "switch", branch_name], cwd=repo, check=True, capture_output=True)
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == candidate.candidate_git_sha
+
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_payload.py",
+    )
+    component, adversarial = execute_automated_regressions(
+        chain,
+        repo_root=repo,
+        actor_id="independent-regression-runner",
+        timeout_seconds=60,
+    )
+
+    assert component.verdict is GateVerdict.PASS
+    assert adversarial.verdict is GateVerdict.PASS
+    assert component.git_sha == candidate.candidate_git_sha
+    assert adversarial.git_sha == candidate.candidate_git_sha
+    assert component.evidence_identity_sha256 != adversarial.evidence_identity_sha256
+    assert payload.read_text(encoding="utf-8") == "repaired\n"
+
