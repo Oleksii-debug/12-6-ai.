@@ -152,6 +152,7 @@ def test_repository_surface_coverage_rejects_current_main_tree_reseal(
     with pytest.raises(ValueError, match="does not match current_repository_main_sha"):
         _validate(inventory)
 
+
 def test_repository_surface_coverage_rejects_duplicate_capability_ids(
     tmp_path: Path,
 ) -> None:
