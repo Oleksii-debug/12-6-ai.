@@ -395,6 +395,20 @@ def test_generation_parent_policy_is_runtime_immutable() -> None:
         artifact_identity_module._GENERATION_PARENT_POLICY[ArtifactKind.RELEASE] = {}  # type: ignore[index]
 
 
+def test_generation_validation_fails_closed_after_policy_global_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical = artifact_identity_module._GENERATION_PARENT_POLICY
+    forged = dict(canonical)
+    forged_release = dict(canonical[ArtifactKind.RELEASE])
+    forged_release["evaluation"] = ArtifactKind.EXPORT
+    forged[ArtifactKind.RELEASE] = forged_release
+    monkeypatch.setattr(artifact_identity_module, "_GENERATION_PARENT_POLICY", forged)
+
+    with pytest.raises(ValueError, match=r"release\.evaluation must reference evaluation"):
+        _generation("a")
+
+
 def test_generation_manifest_strict_json_rejects_duplicate_members() -> None:
     payload = b'{"schema_version":1,"schema_version":1,"artifacts":[]}'
 
