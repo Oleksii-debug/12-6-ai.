@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "26744c1b2c6dc502c50d6c818b7a6013011fc19e"
-    assert registry.observed_main_ci_run_id == 37609405086
+    assert registry.observed_main_sha == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
+    assert registry.observed_main_ci_run_id == 37625412078
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -183,11 +183,6 @@ def test_closed_predecessor_capabilities_are_available() -> None:
         assert capability.integrated_result
         assert capability.unavailable_reason is None
     assert registry.journey_available("developer-replace-cognitive-core") is True
-    section2 = registry.capability("executable-capability-map")
-    assert section2.status is CapabilityStatus.AVAILABLE
-    assert section2.integrated_result
-    assert section2.unavailable_reason is None
-    assert registry.journey_available("maintainer-capability-qualification") is True
 
 
 def test_mechanics_are_not_resealed_as_physical_windows_acceptance() -> None:
@@ -506,7 +501,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37609405086',
+        '"run_id": 37625412078',
         '"run_id": NaN',
         1,
     )
@@ -682,11 +677,25 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "26744c1b2c6dc502c50d6c818b7a6013011fc19e"
-    assert inventory.observed_main_tree_sha == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
+    assert inventory.observed_main_sha == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
+    assert inventory.observed_main_tree_sha == "f1717c60acf917cf5c6a59336b00a223342529c2"
     assert inventory.accepted_main_surface_count == 117
     assert inventory.candidate_overlay_surface_count == 1
     assert inventory.source_surface_count == 118
+    integrated = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/capability_map.py"
+    )
+    assert integrated.origin == "accepted_main"
+    assert registry.capability(integrated.capability_id).status is CapabilityStatus.AVAILABLE
+    candidate = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/sil_qualification.py"
+    )
+    assert candidate.origin == "stacked_candidate"
+    assert registry.capability(candidate.capability_id).status is CapabilityStatus.UNAVAILABLE
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -701,16 +710,31 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
         assert capability.journey_ids
 
 
-def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> None:
+def test_closed_section2_source_stays_integrated_with_section3_overlay() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
-    for surface in inventory.surfaces:
-        if surface.origin != "stacked_candidate":
-            continue
-        capability = registry.capability(surface.capability_id)
-        assert capability.status is CapabilityStatus.UNAVAILABLE
-        assert capability.integrated_result is None
+    candidate = [
+        surface for surface in inventory.surfaces if surface.origin != "accepted_main"
+    ]
+    assert inventory.candidate_overlay_surface_count == 1
+    assert [
+        (surface.path, surface.origin, surface.capability_id) for surface in candidate
+    ] == [
+        (
+            "src/twelve_six/sil_qualification.py",
+            "stacked_candidate",
+            "github-sil-qualification",
+        )
+    ]
+    capability = registry.capability("executable-capability-map")
+    assert capability.status is CapabilityStatus.AVAILABLE
+    assert capability.integrated_result
+    assert capability.unavailable_reason is None
+    section3 = registry.capability("github-sil-qualification")
+    assert section3.status is CapabilityStatus.UNAVAILABLE
+    assert section3.integrated_result is None
+    assert section3.unavailable_reason
 
 
 def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(
@@ -721,14 +745,79 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
+        if surface["path"] == "src/twelve_six/artifact_identity.py"
     )
+    target["origin"] = "modified_candidate"
     target["capability_id"] = "model-spec-identity"
+    payload["accepted_main_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] += 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
 
     with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_source_surface_coverage_ignores_public_capability_lookup_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    target = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/artifact_identity.py"
+    )
+    assert registry.capability(target.capability_id).status is CapabilityStatus.AVAILABLE
+
+    object.__setattr__(target, "origin", "modified_candidate")
+    object.__setattr__(
+        inventory,
+        "accepted_main_surface_count",
+        inventory.accepted_main_surface_count - 1,
+    )
+    object.__setattr__(
+        inventory,
+        "candidate_overlay_surface_count",
+        inventory.candidate_overlay_surface_count + 1,
+    )
+    unavailable = registry.capability("learned-20m-base")
+    assert unavailable.status is CapabilityStatus.UNAVAILABLE
+    monkeypatch.setattr(
+        CapabilityRegistry,
+        "capability",
+        lambda _self, _capability_id: unavailable,
+    )
+
+    with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_source_surface_coverage_rejects_capability_remap_of_existing_source(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/capability_map.py"
+    )
+    assert target["origin"] == "accepted_main"
+    assert target["capability_id"] == "executable-capability-map"
+    replacement = next(
+        capability.capability_id
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+        and capability.capability_id != target["capability_id"]
+    )
+    target["capability_id"] = replacement
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="source capability mapping drift"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -809,19 +898,37 @@ def test_source_surface_coverage_rejects_unknown_capability_mapping(tmp_path: Pa
 def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) -> None:
     registry = _load()
     payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
-    target = next(
-        surface
-        for surface in payload["surfaces"]
-        if surface["origin"] == "stacked_candidate"
-    )
-    payload["surfaces"].remove(target)
+    target = payload["surfaces"].pop(0)
+    assert target["origin"] == "accepted_main"
     payload["source_surface_count"] -= 1
-    payload["candidate_overlay_surface_count"] -= 1
+    payload["accepted_main_surface_count"] -= 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
 
-    with pytest.raises(ValueError, match="unmapped_checkout"):
+    with pytest.raises(ValueError, match="accepted-main source inventory drift"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_modified_candidate_requires_exact_changed_source_set(
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/__init__.py"
+    )
+    assert target["capability_id"] == "package-runtime"
+    target["origin"] = "modified_candidate"
+    payload["accepted_main_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] += 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    with pytest.raises(ValueError, match="modified candidate source classification drift"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -1123,4 +1230,654 @@ def test_available_level_gate_ignores_testlevel_dunder_rebinding(
 
     with pytest.raises(ValueError, match="component and integration"):
         replace(target, test_vectors=(end_to_end_only,))
+
+
+def test_available_level_gate_ignores_module_global_policy_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    target = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    end_to_end_only = TestVector(
+        vector_id="poisoned_end_to_end_only_global_policy",
+        level=TestLevel.END_TO_END,
+        command=target.test_vectors[0].command,
+    )
+    object.__setattr__(target, "test_vectors", (end_to_end_only,))
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_REQUIRED_LEVEL_VALUES",
+        (),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_TEST_LEVEL_WIRE",
+        lambda _value: "component",
+    )
+
+    with pytest.raises(ValueError, match="component and integration"):
+        registry.identity_sha256()
+
+
+def test_capability_terminal_text_truth_ignores_require_text_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    available = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(available, "integrated_result", "")
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_text",
+        lambda _name, value: value,
+    )
+
+    with pytest.raises(ValueError, match="integrated_result must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    unavailable = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+    )
+    object.__setattr__(unavailable, "unavailable_reason", "")
+
+    with pytest.raises(ValueError, match="unavailable_reason must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    unavailable = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.UNAVAILABLE
+    )
+    object.__setattr__(unavailable, "component_contract", "")
+
+    with pytest.raises(ValueError, match="component_contract must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "title", "")
+
+    with pytest.raises(ValueError, match="title must be non-empty text"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if any(target.evidence_id != "main-ci" for target in item.evidence_targets)
+    )
+    evidence = next(
+        target
+        for target in capability.evidence_targets
+        if target.evidence_id != "main-ci"
+    )
+    object.__setattr__(evidence, "target", "")
+
+    with pytest.raises(ValueError, match="target must be non-empty text"):
+        registry.identity_sha256()
+
+
+def test_stored_canonical_ids_ignore_require_id_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_id",
+        lambda _name, value: value,
+    )
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "capability_id", "FORGED")
+    with pytest.raises(ValueError, match="capability_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.environments)
+    environment = capability.environments[0]
+    object.__setattr__(environment, "environment_id", "FORGED")
+    with pytest.raises(ValueError, match="environment_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    registry = _load()
+    journey = registry.journeys[0]
+    object.__setattr__(journey, "journey_id", "FORGED")
+    with pytest.raises(ValueError, match="journey_id must be a canonical identifier"):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "capability_id", "FORGED")
+    with pytest.raises(
+        ValueError,
+        match="source surface capability_id must be a canonical identifier",
+    ):
+        inventory.identity_sha256()
+
+
+def test_stored_exact_type_boundaries_ignore_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.environments)
+    environment = capability.environments[0]
+    object.__setattr__(environment, "supported", "yes")
+    with pytest.raises(ValueError, match="supported must be boolean"):
+        registry.identity_sha256()
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "dependencies", list(capability.dependencies))
+    with pytest.raises(ValueError, match="dependencies must be an immutable tuple"):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", 1)
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
+
+def test_stored_integer_authority_ignores_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_positive_int",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_nonnegative_int",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    registry = _load()
+    capability = registry.capabilities[0]
+    object.__setattr__(capability, "schema_version", True)
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        registry.identity_sha256()
+
+    registry = _load()
+    object.__setattr__(registry, "observed_main_ci_run_id", True)
+    with pytest.raises(
+        ValueError,
+        match="observed_main_ci_run_id must be a positive integer",
+    ):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    object.__setattr__(inventory, "candidate_overlay_surface_count", True)
+    with pytest.raises(
+        ValueError,
+        match="candidate_overlay_surface_count must be a non-negative integer",
+    ):
+        inventory.identity_sha256()
+
+
+def test_capability_status_branch_ignores_module_class_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = next(
+        item
+        for item in _load().capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(capability, "integrated_result", None)
+    object.__setattr__(capability, "unavailable_reason", "forged unavailable state")
+
+    class ForgedStatus:
+        AVAILABLE = object()
+        UNAVAILABLE = object()
+
+    monkeypatch.setattr(capability_map_module, "CapabilityStatus", ForgedStatus)
+
+    with pytest.raises(ValueError, match="status must be a CapabilityStatus"):
+        capability_map_module.Capability.__post_init__(capability)
+
+
+def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(CapabilityRegistry, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(TestVector, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="test vector command"):
+        registry.identity_sha256()
+
+
+def test_registry_serializer_rebinding_cannot_reseal_identity_or_acceptance_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    expected_identity = registry.identity_sha256()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    expected_path = registry.acceptance_path(capability.capability_id)
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        TestVector,
+        "to_dict",
+        lambda _self: {"forged_vector": True},
+    )
+
+    assert registry.identity_sha256() == expected_identity
+    assert registry.acceptance_path(capability.capability_id) == expected_path
+
+
+def test_source_inventory_method_rebinding_cannot_hide_invalid_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", "forged")
+
+    monkeypatch.setattr(
+        capability_map_module.SourceSurfaceInventory,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
+
+
+def test_capability_validator_rejects_public_authority_override_arguments() -> None:
+    capability = _load().capabilities[0]
+
+    with pytest.raises(TypeError):
+        capability.__post_init__(  # type: ignore[call-arg]
+            _sealed_test_level_wire=lambda _value: "component"
+        )
+
+
+def test_registry_cycle_checker_rebinding_cannot_hide_dependency_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    available = [
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    ]
+    first, second = available[:2]
+    object.__setattr__(first, "dependencies", (second.capability_id,))
+    object.__setattr__(second, "dependencies", (first.capability_id,))
+    monkeypatch.setattr(
+        CapabilityRegistry,
+        "_reject_dependency_cycles",
+        staticmethod(lambda _by_capability: None),
+    )
+
+    with pytest.raises(ValueError, match="capability dependency cycle"):
+        registry.identity_sha256()
+
+
+def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "resolve_component_contract",
+        lambda _contract: object(),
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
+
+
+def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "resolve_component_contract",
+        lambda _contract: object(),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_RESOLVE_COMPONENT_CONTRACT",
+        lambda _contract: object(),
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
+
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    available = next(
+        item for item in payload["capabilities"] if item["status"] == "AVAILABLE"
+    )
+    available["component_contract"] = "twelve_six.__forged_missing_contract__"
+    path = tmp_path / "forged-component-contract.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="component contract attribute does not exist"):
+        load_capability_registry(path)
+
+    with pytest.raises(TypeError):
+        registry.__post_init__(  # type: ignore[call-arg]
+            _sealed_resolve_component_contract=lambda _contract: object()
+        )
+
+
+def test_component_resolver_ignores_import_authority_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    real_package = importlib.import_module("twelve_six")
+    forged_module = ModuleType("twelve_six")
+    forged_module.__file__ = real_package.__file__
+    forged_module.__spec__ = real_package.__spec__
+
+    class ForgedImportlib:
+        @staticmethod
+        def import_module(_name: str) -> ModuleType:
+            return forged_module
+
+    monkeypatch.setattr(capability_map_module, "importlib", ForgedImportlib)
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_repository_module_origin",
+        lambda _module: _ROOT,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_text",
+        lambda _name, value: value,
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
+
+
+def test_component_resolver_rejects_runtime_injected_repository_attribute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_runtime_contract__",
+    )
+
+    real_package = importlib.import_module("twelve_six")
+
+    def forged_contract() -> None:
+        return None
+
+    forged_contract.__module__ = "twelve_six"
+    monkeypatch.setattr(
+        real_package,
+        "__forged_runtime_contract__",
+        forged_contract,
+        raising=False,
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(
+            ValueError,
+            match="component contract object source does not match owner module",
+        ):
+            operation()
+
+
+def test_registry_constructor_nested_validator_rebinding_cannot_accept_corrupt_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.TestVector,
+        "__post_init__",
+        lambda _self: None,
+    )
+
+    with pytest.raises(ValueError, match="test vector command"):
+        replace(registry)
+
+
+def test_registry_constructor_status_validator_rebinding_cannot_accept_forged_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(capability, "status", "AVAILABLE")
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_capability_status",
+        lambda value: value,
+    )
+
+    with pytest.raises(ValueError, match="status must be a CapabilityStatus"):
+        replace(registry)
+
+
+def test_stored_paths_ignore_pureposixpath_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForgedPath:
+        def __init__(self, value: str) -> None:
+            self.value = value
+            self.parts = (
+                ("tests", "forged.py")
+                if value.startswith("tests/")
+                else ("src", "twelve_six", "forged.py")
+            )
+            self.suffix = ".py"
+
+        def is_absolute(self) -> bool:
+            return False
+
+        def as_posix(self) -> str:
+            return self.value
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "PurePosixPath",
+        ForgedPath,
+    )
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(
+        vector,
+        "command",
+        "pytest -q tests/../forged.py",
+    )
+    with pytest.raises(
+        ValueError,
+        match="test vector command may reference only canonical tests",
+    ):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(
+        surface,
+        "path",
+        "src/twelve_six/../../forged.py",
+    )
+    with pytest.raises(
+        ValueError,
+        match="source surface path must be a canonical Python path",
+    ):
+        inventory.identity_sha256()
+
+
+def test_capability_replace_nested_validator_rebinding_cannot_accept_corrupt_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = next(item for item in _load().capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(
+        capability_map_module.TestVector,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_require_capability_status",
+        lambda value: value,
+    )
+
+    with pytest.raises(ValueError, match="test vector command"):
+        replace(capability)
+
+
+def test_source_inventory_replace_nested_validator_rebinding_cannot_accept_bad_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    first = inventory.surfaces[0]
+    assert first.path == "src/twelve_six/__init__.py"
+    object.__setattr__(first, "path", "src/twelve_six/0forged.txt")
+
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "__post_init__",
+        lambda _self: None,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source surface path must be a canonical Python path",
+    ):
+        replace(inventory)
 
