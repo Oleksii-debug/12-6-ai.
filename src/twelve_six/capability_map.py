@@ -825,6 +825,7 @@ def _source_surface_inventory_identity_from_stored_state(
 def _validate_capability_registry_stored(
     value: CapabilityRegistry,
     _sealed_registry_validate=CapabilityRegistry.__post_init__,
+    _sealed_cycle_check=CapabilityRegistry._reject_dependency_cycles,
     _sealed_capability_payload=_capability_payload_from_stored_state,
     _sealed_journey_payload=_journey_payload_from_stored_state,
 ) -> None:
@@ -833,6 +834,9 @@ def _validate_capability_registry_stored(
         _sealed_capability_payload(capability)
     for journey in value.journeys:
         _sealed_journey_payload(journey)
+    _sealed_cycle_check(
+        {capability.capability_id: capability for capability in value.capabilities}
+    )
 
 
 def _capability_registry_payload_from_stored_state(
