@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -12,6 +14,8 @@ import twelve_six.capability_map as capability_map_module
 from twelve_six.capability_map import (
     CapabilityRegistry,
     CapabilityStatus,
+    TestLevel,
+    TestVector,
     _changed_existing_source_paths,
     _worktree_python_source_drift,
     _python_source_blob_map,
@@ -435,6 +439,36 @@ def test_registry_loader_rejects_external_symbol_reexport_as_component_contract(
         load_capability_registry(path)
 
 
+def test_registry_loader_rejects_forged_twelve_six_module_origin(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    module_name, symbol_name = target["component_contract"].rsplit(".", 1)
+    original_module = sys.modules.get(module_name)
+    forged = ModuleType(module_name)
+    forged.__file__ = str(tmp_path / "forged_component.py")
+    forged_symbol = type(symbol_name, (), {})
+    forged_symbol.__module__ = module_name
+    setattr(forged, symbol_name, forged_symbol)
+    sys.modules[module_name] = forged
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        with pytest.raises(ValueError, match="repository-owned module origin"):
+            load_capability_registry(path)
+    finally:
+        if original_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = original_module
+
+
 def test_registry_loader_rejects_unknown_nested_capability_field(tmp_path: Path) -> None:
     payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     payload["capabilities"][0]["forged_ready"] = True
@@ -521,10 +555,10 @@ def test_library_git_evidence_probes_strip_ambient_git_redirection(
     tmp_path: Path,
 ) -> None:
     hostile = {
-        "GIT_DIR": str(tmp_path / "forged.git"),
-        "GIT_WORK_TREE": str(tmp_path / "forged-worktree"),
-        "GIT_CONFIG_PARAMETERS": "'core.hooksPath=/forged'",
-        "GIT_INDEX_FILE": str(tmp_path / "forged-index"),
+        "Git_Dir": str(tmp_path / "forged.git"),
+        "git_work_tree": str(tmp_path / "forged-worktree"),
+        "gIt_CoNfIg_PaRaMeTeRs": "'core.hooksPath=/forged'",
+        "Git_Index_File": str(tmp_path / "forged-index"),
     }
     for key, value in hostile.items():
         monkeypatch.setenv(key, value)
@@ -537,8 +571,10 @@ def test_library_git_evidence_probes_strip_ambient_git_redirection(
         if command and command[0] == "git":
             env = kwargs.get("env")
             assert isinstance(env, dict)
-            for key in hostile:
-                assert key not in env
+            assert all(
+                not key.upper().startswith("GIT_") or key == "GIT_OPTIONAL_LOCKS"
+                for key in env
+            )
             assert env["GIT_OPTIONAL_LOCKS"] == "0"
             observed_commands.append(tuple(command))
         return original_run(command, *args, **kwargs)
@@ -888,6 +924,7 @@ def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclas
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         replace(surface, origin=ForgedStr(surface.origin))
 
+
 def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> None:
     registry = _load()
     status = capability_map_module.CapabilityStatus.AVAILABLE
@@ -988,6 +1025,40 @@ def test_registry_loader_ignores_poisoned_enum_value_lookup_tables(
     assert loaded_vector.level is capability_map_module.TestLevel.COMPONENT
 
 
+def test_registry_enum_policy_ignores_module_global_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    baseline_identity = registry.identity_sha256()
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_CAPABILITY_STATUSES",
+        (
+            capability_map_module.CapabilityStatus.UNAVAILABLE,
+            capability_map_module.CapabilityStatus.AVAILABLE,
+        ),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_CAPABILITY_STATUS_VALUES",
+        ("FORGED_UNAVAILABLE", "FORGED_AVAILABLE"),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_TEST_LEVELS",
+        tuple(reversed(tuple(capability_map_module.TestLevel))),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_CANONICAL_TEST_LEVEL_VALUES",
+        ("forged_end_to_end", "forged_integration", "forged_component"),
+    )
+
+    assert registry.identity_sha256() == baseline_identity
+    assert _load().identity_sha256() == baseline_identity
+
+
 def test_registry_revalidates_post_construction_nested_mutation() -> None:
     registry = _load()
     capability = next(item for item in registry.capabilities if item.test_vectors)
@@ -1020,4 +1091,26 @@ def test_source_inventory_revalidates_mutated_surface_state() -> None:
 
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         validate_source_surface_coverage(_load(), inventory, repo_root=_ROOT)
+
+
+def test_available_level_gate_ignores_testlevel_dunder_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    target = next(
+        capability
+        for capability in registry.capabilities
+        if capability.status is CapabilityStatus.AVAILABLE
+    )
+    end_to_end_only = TestVector(
+        vector_id="poisoned_end_to_end_only",
+        level=TestLevel.END_TO_END,
+        command=target.test_vectors[0].command,
+    )
+
+    monkeypatch.setattr(TestLevel, "__hash__", lambda _self: 0)
+    monkeypatch.setattr(TestLevel, "__eq__", lambda _self, _other: True)
+
+    with pytest.raises(ValueError, match="component and integration"):
+        replace(target, test_vectors=(end_to_end_only,))
 

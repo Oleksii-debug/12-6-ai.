@@ -69,6 +69,10 @@ For an AVAILABLE capability, the schema requires all of the following:
 5. at least one evidence target;
 6. a non-empty integrated result.
 
+Required test levels are evaluated from sealed canonical wire strings rather than Enum
+`__eq__` / `__hash__` behavior. Runtime dunder rebinding therefore cannot make one test
+level satisfy both the component and integration acceptance requirements.
+
 `CapabilityRegistry.acceptance_path()` returns that contract → tests → evidence →
 integrated-result path.
 
