@@ -72,6 +72,45 @@ def test_checked_in_test_vectors_reference_real_test_files() -> None:
                 )
 
 
+def test_registry_loader_rejects_noncanonical_available_test_command(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["test_vectors"][0]["command"] = "python -c print-pass"
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="test vector command"):
+        load_capability_registry(path)
+
+
+def test_registry_loader_rejects_available_evidence_not_bound_to_main_ci(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    main_ci = next(
+        evidence
+        for evidence in target["evidence_targets"]
+        if evidence["evidence_id"] == "main-ci"
+    )
+    main_ci["target"] = "github-actions:1"
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exact observed main CI"):
+        load_capability_registry(path)
+
+
 def test_unavailable_capability_never_simulates_integrated_result() -> None:
     registry = _load()
 
@@ -403,18 +442,6 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
         assert capability.integrated_result is None
-
-
-def test_source_surface_inventory_rejects_bool_schema_version_alias(
-    tmp_path: Path,
-) -> None:
-    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
-    payload["schema_version"] = True
-    path = tmp_path / "surface-inventory.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="schema_version"):
-        load_source_surface_inventory(path)
 
 
 def test_source_surface_inventory_rejects_bool_schema_version_alias(
