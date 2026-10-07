@@ -1345,6 +1345,7 @@ def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
         with pytest.raises(ValueError, match="component contract attribute does not exist"):
             operation()
 
+
 def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1373,6 +1374,7 @@ def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
     )
 
     for operation in (
+        lambda: replace(registry),
         registry.identity_sha256,
         lambda: registry.acceptance_path(capability.capability_id),
         lambda: capability_map_module.validate_available_component_contracts(registry),
