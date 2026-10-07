@@ -652,6 +652,24 @@ def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
         policy=_policy(),
     )
 
+    hooks = tmp_path / "hostile-hooks"
+    hooks.mkdir()
+    hook_sentinel = tmp_path / "hook-executed"
+    for hook_name in ("pre-commit", "post-checkout", "reference-transaction"):
+        hook = hooks / hook_name
+        hook.write_text(
+            "#!/bin/sh\\nprintf hook-ran > "
+            + str(hook_sentinel)
+            + "\\nexit 91\\n",
+            encoding="utf-8",
+        )
+        hook.chmod(0o755)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", str(hooks)],
+        cwd=repo,
+        check=True,
+    )
+
     candidate, branch_name = materialize_local_repair_candidate(
         failure,
         repo_root=repo,
@@ -670,6 +688,15 @@ def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
         text=True,
     ).stdout.strip()
     assert branch_sha == candidate.candidate_git_sha
+    parent_sha = subprocess.run(
+        ["git", "rev-parse", f"{branch_name}^"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert parent_sha == failing_sha
+    assert not hook_sentinel.exists()
     repaired = subprocess.run(
         ["git", "show", f"{branch_name}:payload.txt"],
         cwd=repo,
