@@ -461,12 +461,14 @@ class Capability:
             _require_text("integrated_result", self.integrated_result)
             if not any(item.supported for item in self.environments):
                 raise ValueError("AVAILABLE capability needs a supported environment")
-            levels = {
-                _SEALED_TEST_LEVEL_WIRE(item.level) for item in self.test_vectors
-            }
+            # The required acceptance levels are part of Section-2 authority.
+            # Do not read module-global "sealed" aliases here: they can be rebound
+            # after import. Nested TestVector state is revalidated separately on
+            # stored-state paths, and the canonical wire values are fixed literals.
+            levels = {str.__str__(item.level) for item in self.test_vectors}
             if any(
                 required_level not in levels
-                for required_level in _SEALED_REQUIRED_LEVEL_VALUES
+                for required_level in ("component", "integration")
             ):
                 raise ValueError(
                     "AVAILABLE capability needs component and integration test vectors"
