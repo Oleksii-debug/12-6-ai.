@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,7 @@ def _inventory(*, cuda: bool = False) -> HostInventory:
         platform_release="test",
         machine="x86_64",
         python_version="3.13.0",
+        python_executable="/opt/12-6/python-test",
         cpu_logical_count=8,
         ram_total_bytes=16 * 1024**3,
         disk_total_bytes=100 * 1024**3,
@@ -228,6 +230,7 @@ def test_real_host_pass_requires_exact_proven_resources(tmp_path: Path) -> None:
     assert evidence["resource_observations"]["CPU"] == "REAL_PROBED"
     assert evidence["resource_observations"]["RAM"] == "REAL_PROBED"
     assert evidence["resource_observations"]["DISK"] == "REAL_PROBED"
+    assert evidence["actions"][0]["argv"][0] == "/opt/12-6/python-test"
 
 
 def test_unproven_network_or_absent_gpu_blocks_real_pass(tmp_path: Path) -> None:
@@ -391,6 +394,8 @@ def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
         "    assert False\n",
         encoding="utf-8",
     )
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "--", "tests/test_noisy.py"), cwd=tmp_path, check=True)
     action = QualificationAction(
         action_id="bounded-noisy",
         pytest_targets=("tests/test_noisy.py",),
@@ -405,6 +410,26 @@ def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
     assert len(execution.stdout) <= 1025
     assert len(execution.stderr) <= 1025
     assert 1025 in {len(execution.stdout), len(execution.stderr)}
+
+def test_run_bounded_pytest_rejects_untracked_test_lookalike(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_untracked.py").write_text(
+        "def test_untracked() -> None:\n    assert True\n",
+        encoding="utf-8",
+    )
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    action = QualificationAction(
+        action_id="untracked-lookalike",
+        pytest_targets=("tests/test_untracked.py",),
+        timeout_seconds=30,
+        max_output_bytes=1024,
+        required_resources=(),
+    )
+
+    with pytest.raises(ValueError, match="not exactly tracked"):
+        run_bounded_pytest(action, tmp_path)
+
 
 def test_artifact_hashes_and_log_are_independently_verified(tmp_path: Path) -> None:
     artifact = tmp_path / "evidence.bin"
