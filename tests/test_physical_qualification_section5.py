@@ -740,6 +740,7 @@ def test_duplicate_json_members_are_rejected(tmp_path: Path) -> None:
             now_epoch_seconds=150,
         )
 
+
 def test_json_and_artifact_limits_are_enforced_without_unbounded_path_reads(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
