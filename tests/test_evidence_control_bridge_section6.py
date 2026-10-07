@@ -1,0 +1,387 @@
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+import twelve_six.evidence_control_bridge as bridge_module
+from twelve_six.evidence_control_bridge import (
+    CanonicalEvidenceRecord,
+    HostDispatch,
+    PhysicalExecutionReceipt,
+    RequalificationReceipt,
+    build_canonical_evidence_record,
+    build_requalification_requirement,
+    physical_failure_observation,
+    qualify_repaired_candidate,
+    write_canonical_evidence_record,
+)
+
+
+def _sha(label: str) -> str:
+    return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def _git(char: str) -> str:
+    return char * 40
+
+
+def _dispatch(
+    *,
+    git_sha: str = _git("a"),
+    package: str = _sha("package-a"),
+    scenario: str = "host-smoke",
+    gate: str = "windows-host",
+) -> HostDispatch:
+    return HostDispatch(
+        schema_version="12-6.host-dispatch.v1",
+        dispatch_id="dispatch-a",
+        target_git_sha=git_sha,
+        package_identity_sha256=package,
+        packet_identity_sha256=_sha("packet-a"),
+        signed_bundle_identity_sha256=_sha("bundle-a"),
+        scenario_id=scenario,
+        physical_gate_id=gate,
+    )
+
+
+def _receipt(
+    dispatch: HostDispatch,
+    *,
+    verdict: str,
+    evidence: str,
+    reproducer: str | None = None,
+) -> PhysicalExecutionReceipt:
+    return PhysicalExecutionReceipt(
+        schema_version="12-6.physical-execution-receipt.v1",
+        dispatch_identity_sha256=dispatch.identity_sha256(),
+        target_git_sha=dispatch.target_git_sha,
+        package_identity_sha256=dispatch.package_identity_sha256,
+        packet_identity_sha256=dispatch.packet_identity_sha256,
+        signed_bundle_identity_sha256=dispatch.signed_bundle_identity_sha256,
+        physical_evidence_identity_sha256=_sha(evidence),
+        host_inventory_identity_sha256=_sha("host-inventory"),
+        verdict=verdict,
+        scenario_id=dispatch.scenario_id,
+        physical_gate_id=dispatch.physical_gate_id,
+        reproducer_command=reproducer,
+        _verification_token=bridge_module._VERIFIED_PHYSICAL_RECEIPT,
+    )
+
+
+def test_dispatch_identity_binds_package_candidate_and_scenario() -> None:
+    base = _dispatch()
+    changed_package = _dispatch(package=_sha("package-b"))
+    changed_candidate = _dispatch(git_sha=_git("b"))
+    changed_scenario = _dispatch(scenario="server-smoke")
+
+    assert base.identity_sha256() != changed_package.identity_sha256()
+    assert base.identity_sha256() != changed_candidate.identity_sha256()
+    assert base.identity_sha256() != changed_scenario.identity_sha256()
+
+
+def test_physical_receipt_cannot_be_forged_without_verification_token() -> None:
+    dispatch = _dispatch()
+    with pytest.raises(ValueError, match="must come from evidence verification"):
+        PhysicalExecutionReceipt(
+            schema_version="12-6.physical-execution-receipt.v1",
+            dispatch_identity_sha256=dispatch.identity_sha256(),
+            target_git_sha=dispatch.target_git_sha,
+            package_identity_sha256=dispatch.package_identity_sha256,
+            packet_identity_sha256=dispatch.packet_identity_sha256,
+            signed_bundle_identity_sha256=(
+                dispatch.signed_bundle_identity_sha256
+            ),
+            physical_evidence_identity_sha256=_sha("evidence"),
+            host_inventory_identity_sha256=_sha("host"),
+            verdict="PASS",
+            scenario_id=dispatch.scenario_id,
+            physical_gate_id=dispatch.physical_gate_id,
+            reproducer_command=None,
+        )
+
+
+def test_pass_receipt_cannot_carry_failure_reproducer() -> None:
+    dispatch = _dispatch()
+    with pytest.raises(ValueError, match="PASS physical receipt"):
+        _receipt(
+            dispatch,
+            verdict="PASS",
+            evidence="pass-with-reproducer",
+            reproducer="pytest -q tests/test_x.py",
+        )
+
+
+def test_canonical_record_cross_binds_dispatch_and_verified_receipt() -> None:
+    dispatch = _dispatch()
+    receipt = _receipt(dispatch, verdict="PASS", evidence="pass")
+    record = build_canonical_evidence_record(dispatch, receipt)
+
+    assert isinstance(record, CanonicalEvidenceRecord)
+    assert record.target_git_sha == dispatch.target_git_sha
+    assert record.package_identity_sha256 == dispatch.package_identity_sha256
+    assert record.receipt_identity_sha256 == receipt.identity_sha256()
+
+
+def test_canonical_record_rejects_receipt_from_other_dispatch() -> None:
+    dispatch = _dispatch()
+    other = _dispatch(git_sha=_git("b"))
+    receipt = _receipt(other, verdict="PASS", evidence="other-pass")
+
+    with pytest.raises(ValueError, match="different dispatch"):
+        build_canonical_evidence_record(dispatch, receipt)
+
+
+def test_canonical_evidence_write_is_create_only(tmp_path) -> None:
+    dispatch = _dispatch()
+    receipt = _receipt(dispatch, verdict="PASS", evidence="write-pass")
+    record = build_canonical_evidence_record(dispatch, receipt)
+    target = tmp_path / "evidence" / "receipt.json"
+
+    write_canonical_evidence_record(target, record)
+    first = target.read_bytes()
+    assert first.endswith(b"\n")
+    assert record.identity_sha256()
+
+    with pytest.raises(FileExistsError):
+        write_canonical_evidence_record(target, record)
+
+
+def test_physical_failure_converts_to_aiqa_observation_only_with_reproducer() -> None:
+    dispatch = _dispatch()
+    receipt = _receipt(
+        dispatch,
+        verdict="FAIL",
+        evidence="test-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+    observation = physical_failure_observation(receipt)
+
+    assert observation.git_sha == dispatch.target_git_sha
+    assert observation.physical_gate_id == dispatch.physical_gate_id
+    assert observation.evidence_identity_sha256 == (
+        receipt.physical_evidence_identity_sha256
+    )
+
+
+def test_infrastructure_failure_does_not_invent_pytest_reproducer() -> None:
+    receipt = _receipt(
+        _dispatch(),
+        verdict="FAIL",
+        evidence="infrastructure-failure",
+        reproducer=None,
+    )
+    with pytest.raises(ValueError, match="no pytest reproducer"):
+        physical_failure_observation(receipt)
+
+
+def test_requalification_requires_changed_candidate_or_package() -> None:
+    dispatch = _dispatch()
+    failed = _receipt(
+        dispatch,
+        verdict="FAIL",
+        evidence="old-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+    unchanged_package = b"same-package"
+    same_dispatch = _dispatch(
+        package=hashlib.sha256(unchanged_package).hexdigest(),
+    )
+    failed_same = _receipt(
+        same_dispatch,
+        verdict="FAIL",
+        evidence="same-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+
+    with pytest.raises(ValueError, match="changed candidate or package"):
+        build_requalification_requirement(
+            failed_same,
+            repaired_candidate_git_sha=same_dispatch.target_git_sha,
+            repaired_package_manifest_bytes=unchanged_package,
+        )
+
+    requirement = build_requalification_requirement(
+        failed,
+        repaired_candidate_git_sha=_git("b"),
+        repaired_package_manifest_bytes=b"repaired-package",
+    )
+    assert requirement.repaired_candidate_git_sha == _git("b")
+
+
+def test_requalification_starts_only_from_physical_failure() -> None:
+    passed = _receipt(_dispatch(), verdict="PASS", evidence="old-pass")
+    with pytest.raises(ValueError, match="starts from a physical FAIL"):
+        build_requalification_requirement(
+            passed,
+            repaired_candidate_git_sha=_git("b"),
+            repaired_package_manifest_bytes=b"new-package",
+        )
+
+
+def test_fresh_sil_and_physical_pass_are_both_required_for_requalification() -> None:
+    old_dispatch = _dispatch()
+    failed = _receipt(
+        old_dispatch,
+        verdict="FAIL",
+        evidence="old-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+    package_bytes = b"repaired-package"
+    requirement = build_requalification_requirement(
+        failed,
+        repaired_candidate_git_sha=_git("b"),
+        repaired_package_manifest_bytes=package_bytes,
+    )
+    repaired_dispatch = HostDispatch(
+        schema_version="12-6.host-dispatch.v1",
+        dispatch_id="dispatch-b",
+        target_git_sha=requirement.repaired_candidate_git_sha,
+        package_identity_sha256=requirement.repaired_package_identity_sha256,
+        packet_identity_sha256=_sha("packet-b"),
+        signed_bundle_identity_sha256=_sha("bundle-b"),
+        scenario_id=requirement.scenario_id,
+        physical_gate_id=requirement.physical_gate_id,
+    )
+    physical_pass = _receipt(
+        repaired_dispatch,
+        verdict="PASS",
+        evidence="fresh-physical-pass",
+    )
+
+    def fake_sil_verifier(*args, **kwargs):
+        assert kwargs["expected_git_sha"] == requirement.repaired_candidate_git_sha
+        assert kwargs["require_pass"] is True
+        return {
+            "git_sha": requirement.repaired_candidate_git_sha,
+            "package_identity_sha256": requirement.repaired_package_identity_sha256,
+            "evidence_identity_sha256": _sha("fresh-sil-pass"),
+        }
+
+    receipt = qualify_repaired_candidate(
+        requirement,
+        repaired_dispatch=repaired_dispatch,
+        repaired_physical_receipt=physical_pass,
+        sil_evidence_path="sil.json",
+        sil_log_path="sil.log",
+        expected_package_bytes=package_bytes,
+        expected_environment_receipt={},
+        expected_registry=object(),  # type: ignore[arg-type]
+        expected_scenario=object(),  # type: ignore[arg-type]
+        sil_verifier=fake_sil_verifier,
+    )
+
+    assert isinstance(receipt, RequalificationReceipt)
+    assert receipt.repaired_candidate_git_sha == _git("b")
+    assert receipt.sil_evidence_identity_sha256 == _sha("fresh-sil-pass")
+
+
+def test_old_physical_pass_cannot_transfer_to_repaired_dispatch() -> None:
+    old_dispatch = _dispatch()
+    failed = _receipt(
+        old_dispatch,
+        verdict="FAIL",
+        evidence="old-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+    package_bytes = b"new-package"
+    requirement = build_requalification_requirement(
+        failed,
+        repaired_candidate_git_sha=_git("b"),
+        repaired_package_manifest_bytes=package_bytes,
+    )
+    repaired_dispatch = HostDispatch(
+        schema_version="12-6.host-dispatch.v1",
+        dispatch_id="dispatch-b",
+        target_git_sha=_git("b"),
+        package_identity_sha256=hashlib.sha256(package_bytes).hexdigest(),
+        packet_identity_sha256=_sha("packet-b"),
+        signed_bundle_identity_sha256=_sha("bundle-b"),
+        scenario_id=old_dispatch.scenario_id,
+        physical_gate_id=old_dispatch.physical_gate_id,
+    )
+    stale_pass = _receipt(old_dispatch, verdict="PASS", evidence="stale-pass")
+
+    with pytest.raises(ValueError, match="fresh dispatch"):
+        qualify_repaired_candidate(
+            requirement,
+            repaired_dispatch=repaired_dispatch,
+            repaired_physical_receipt=stale_pass,
+            sil_evidence_path="unused",
+            sil_log_path="unused",
+            expected_package_bytes=package_bytes,
+            expected_environment_receipt={},
+            expected_registry=object(),  # type: ignore[arg-type]
+            expected_scenario=object(),  # type: ignore[arg-type]
+            sil_verifier=lambda *args, **kwargs: {},
+        )
+
+
+def test_repaired_dispatch_must_preserve_same_physical_scenario() -> None:
+    old_dispatch = _dispatch()
+    failed = _receipt(
+        old_dispatch,
+        verdict="FAIL",
+        evidence="old-failure",
+        reproducer="pytest -q tests/test_bridge.py",
+    )
+    package_bytes = b"new-package"
+    requirement = build_requalification_requirement(
+        failed,
+        repaired_candidate_git_sha=_git("b"),
+        repaired_package_manifest_bytes=package_bytes,
+    )
+    changed_scenario = HostDispatch(
+        schema_version="12-6.host-dispatch.v1",
+        dispatch_id="dispatch-b",
+        target_git_sha=_git("b"),
+        package_identity_sha256=hashlib.sha256(package_bytes).hexdigest(),
+        packet_identity_sha256=_sha("packet-b"),
+        signed_bundle_identity_sha256=_sha("bundle-b"),
+        scenario_id="different-scenario",
+        physical_gate_id=old_dispatch.physical_gate_id,
+    )
+    fresh_pass = _receipt(
+        changed_scenario,
+        verdict="PASS",
+        evidence="fresh-pass",
+    )
+
+    with pytest.raises(ValueError, match="changes the physical scenario"):
+        qualify_repaired_candidate(
+            requirement,
+            repaired_dispatch=changed_scenario,
+            repaired_physical_receipt=fresh_pass,
+            sil_evidence_path="unused",
+            sil_log_path="unused",
+            expected_package_bytes=package_bytes,
+            expected_environment_receipt={},
+            expected_registry=object(),  # type: ignore[arg-type]
+            expected_scenario=object(),  # type: ignore[arg-type]
+            sil_verifier=lambda *args, **kwargs: {},
+        )
+
+
+def test_identity_hashing_is_sealed_against_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dispatch = _dispatch()
+    receipt = _receipt(dispatch, verdict="PASS", evidence="sealed-pass")
+    record = build_canonical_evidence_record(dispatch, receipt)
+    expected = (
+        dispatch.identity_sha256(),
+        receipt.identity_sha256(),
+        record.identity_sha256(),
+    )
+
+    monkeypatch.setattr(
+        bridge_module,
+        "_canonical_identity",
+        lambda _payload: "0" * 64,
+    )
+
+    assert (
+        dispatch.identity_sha256(),
+        receipt.identity_sha256(),
+        record.identity_sha256(),
+    ) == expected
