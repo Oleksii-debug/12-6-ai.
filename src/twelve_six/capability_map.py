@@ -266,66 +266,124 @@ def _test_level_from_wire_value(
     return _sealed_validator(_sealed_levels[index])
 
 
-def _resolve_component_contract_authority(component_contract: str) -> object:
-    """Resolve one repository-owned Python module or module attribute fail-closed."""
+def _build_component_contract_authority() -> Any:
+    # Capture the import/origin machinery used by the acceptance authority.
+    # Rebinding module globals after import must not manufacture a repository-owned
+    # component contract.
+    sealed_import_module = importlib.import_module
+    sealed_module_type = ModuleType
+    sealed_path_type = Path
+    sealed_package_root = _PACKAGE_ROOT.resolve()
 
-    contract = _require_text("component_contract", component_contract)
-    if not contract.startswith("twelve_six."):
-        raise ValueError(
-            "AVAILABLE component contract must be repository-owned twelve_six Python"
-        )
+    def require_module_origin(module: ModuleType, expected_name: str) -> Path:
+        if type(module) is not sealed_module_type:
+            raise ValueError("component contract owner must be an exact Python module")
+        module_name = getattr(module, "__name__", None)
+        if type(module_name) is not str or module_name != expected_name:
+            raise ValueError("component contract import resolved unexpected module")
+        if not (
+            module_name == "twelve_six" or module_name.startswith("twelve_six.")
+        ):
+            raise ValueError("component contract owner module is not canonical twelve_six code")
 
-    parts = contract.split(".")
-    for index in range(len(parts), 0, -1):
-        module_name = ".".join(parts[:index])
+        module_file = getattr(module, "__file__", None)
+        module_spec = getattr(module, "__spec__", None)
+        spec_origin = getattr(module_spec, "origin", None)
+        if type(module_file) is not str or type(spec_origin) is not str:
+            raise ValueError("component contract repository-owned module origin is unavailable")
+
+        source_path = sealed_path_type(module_file).resolve()
+        spec_path = sealed_path_type(spec_origin).resolve()
+        if source_path != spec_path or not source_path.is_file():
+            raise ValueError("component contract repository-owned module origin mismatch")
+
+        relative_parts = module_name.split(".")[1:]
+        module_stem = sealed_package_root.joinpath(*relative_parts)
+        expected_paths = {
+            module_stem.with_suffix(".py").resolve(),
+            (module_stem / "__init__.py").resolve(),
+        }
+        if source_path not in expected_paths:
+            raise ValueError("component contract repository-owned module origin is outside package")
         try:
-            imported_module = importlib.import_module(module_name)
-        except ModuleNotFoundError as exc:
-            missing_name = exc.name
-            if (
-                not isinstance(missing_name, str)
-                or not (
-                    module_name == missing_name
-                    or module_name.startswith(f"{missing_name}.")
-                )
-            ):
-                raise ValueError(
-                    f"component contract import failed inside module: {module_name}"
-                ) from exc
-            continue
-        _require_repository_module_origin(imported_module)
-        resolved: object = imported_module
-        for attribute in parts[index:]:
-            if not hasattr(resolved, attribute):
-                raise ValueError(
-                    f"component contract attribute does not exist: {contract}"
-                )
-            resolved = getattr(resolved, attribute)
+            source_path.relative_to(sealed_package_root)
+        except ValueError as exc:
+            raise ValueError(
+                "component contract repository-owned module origin escapes package root"
+            ) from exc
+        return source_path
 
-        if _is_exact_type(resolved, ModuleType):
-            owner = resolved
-        else:
-            owner_module = getattr(resolved, "__module__", None)
-            if not _is_exact_type(owner_module, str) or not (
-                owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
-            ):
-                raise ValueError(
-                    "AVAILABLE component contract must resolve to repository-owned twelve_six code"
-                )
+    def resolve(component_contract: str) -> object:
+        if type(component_contract) is not str or not component_contract.strip():
+            raise ValueError("component_contract must be non-empty text")
+        contract = component_contract
+        if not contract.startswith("twelve_six."):
+            raise ValueError(
+                "AVAILABLE component contract must be repository-owned twelve_six Python"
+            )
+
+        parts = contract.split(".")
+        for index in range(len(parts), 0, -1):
+            module_name = ".".join(parts[:index])
             try:
-                owner = importlib.import_module(owner_module)
-            except (ImportError, ValueError) as exc:
-                raise ValueError(
-                    "AVAILABLE component contract owner module cannot be resolved"
-                ) from exc
-        _require_repository_module_origin(owner)
-        return resolved
-    raise ValueError(f"component contract module does not exist: {contract}")
+                imported_module = sealed_import_module(module_name)
+            except ModuleNotFoundError as exc:
+                missing_name = exc.name
+                if (
+                    type(missing_name) is not str
+                    or not (
+                        module_name == missing_name
+                        or module_name.startswith(f"{missing_name}.")
+                    )
+                ):
+                    raise ValueError(
+                        f"component contract import failed inside module: {module_name}"
+                    ) from exc
+                continue
+
+            require_module_origin(imported_module, module_name)
+            resolved: object = imported_module
+            for attribute in parts[index:]:
+                if not hasattr(resolved, attribute):
+                    raise ValueError(
+                        f"component contract attribute does not exist: {contract}"
+                    )
+                resolved = getattr(resolved, attribute)
+
+            if type(resolved) is sealed_module_type:
+                owner = resolved
+                owner_name = getattr(owner, "__name__", None)
+                if type(owner_name) is not str:
+                    raise ValueError(
+                        "component contract owner module name is unavailable"
+                    )
+            else:
+                owner_name = getattr(resolved, "__module__", None)
+                if type(owner_name) is not str or not (
+                    owner_name == "twelve_six"
+                    or owner_name.startswith("twelve_six.")
+                ):
+                    raise ValueError(
+                        "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+                    )
+                try:
+                    owner = sealed_import_module(owner_name)
+                except (ImportError, ValueError) as exc:
+                    raise ValueError(
+                        "AVAILABLE component contract owner module cannot be resolved"
+                    ) from exc
+
+            require_module_origin(owner, owner_name)
+            return resolved
+        raise ValueError(f"component contract module does not exist: {contract}")
+
+    return resolve
 
 
-# Seal the repository-owned contract resolver against rebinding of the public helper.
-# Stored registry authority must not depend on a later replacement of
-# `resolve_component_contract`.
+_resolve_component_contract_authority = _build_component_contract_authority()
+
+# Seal the repository-owned contract resolver against rebinding of public/module
+# helpers. Stored registry authority captures this closure at definition time.
 _SEALED_RESOLVE_COMPONENT_CONTRACT = _resolve_component_contract_authority
 
 
