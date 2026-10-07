@@ -1034,6 +1034,7 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
 
 def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
     protected = (
+        ".gitignore",
         "tests/test_payload.py",
         ".github/workflows/ci.yml",
         "configs/control/ai_qa_policy_v1.json",
@@ -1043,6 +1044,7 @@ def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
         "SEQUENTIAL_CLOSURE_STATE.md",
         "src/twelve_six/ai_qa_control.py",
         "src/twelve_six/capability_map.py",
+        "src/twelve_six/ci_workflow_policy.py",
         "src/twelve_six/sil_qualification.py",
     )
     for path in protected:

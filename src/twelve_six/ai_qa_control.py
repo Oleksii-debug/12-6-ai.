@@ -38,6 +38,7 @@ _MAX_JSON_BYTES = 4 * 1024 * 1024
 # trust roots; changing them requires a separate reviewed lineage.
 _PROTECTED_REPAIR_EXACT_PATHS = frozenset(
     {
+        ".gitignore",
         "AGENTS.md",
         "SEQUENTIAL_CLOSURE_STATE.md",
         "conftest.py",
@@ -47,6 +48,7 @@ _PROTECTED_REPAIR_EXACT_PATHS = frozenset(
         "tox.ini",
         "src/twelve_six/ai_qa_control.py",
         "src/twelve_six/capability_map.py",
+        "src/twelve_six/ci_workflow_policy.py",
         "src/twelve_six/sil_qualification.py",
     }
 )
