@@ -1232,7 +1232,10 @@ def validate_source_surface_coverage(
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
 
-    known_capability_ids = {item.capability_id for item in registry.capabilities}
+    by_capability = {
+        item.capability_id: item for item in registry.capabilities
+    }
+    known_capability_ids = set(by_capability)
     mapped_capability_ids = {item.capability_id for item in inventory.surfaces}
     unknown = sorted(mapped_capability_ids.difference(known_capability_ids))
     if unknown:
@@ -1242,7 +1245,7 @@ def validate_source_surface_coverage(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
         if surface.origin != "accepted_main"
-        and registry.capability(surface.capability_id).status
+        and by_capability[surface.capability_id].status
         is not CapabilityStatus.UNAVAILABLE
     )
     if premature_candidate_acceptance:
@@ -1343,7 +1346,7 @@ def validate_source_surface_coverage(
 
     journey_ids = {item.journey_id for item in registry.journeys}
     for capability_id in mapped_capability_ids:
-        capability = registry.capability(capability_id)
+        capability = by_capability[capability_id]
         if not capability.journey_ids:
             raise ValueError(
                 f"source-mapped capability lacks a user/operator journey: {capability_id}"
