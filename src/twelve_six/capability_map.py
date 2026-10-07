@@ -917,6 +917,8 @@ def validate_source_surface_coverage(
         raise ValueError("registry must be a CapabilityRegistry")
     if not _is_exact_type(inventory, SourceSurfaceInventory):
         raise ValueError("inventory must be a SourceSurfaceInventory")
+    CapabilityRegistry.__post_init__(registry)
+    SourceSurfaceInventory.__post_init__(inventory)
     if registry.observed_main_sha != inventory.observed_main_sha:
         raise ValueError("capability and source inventories observe different main SHAs")
 
