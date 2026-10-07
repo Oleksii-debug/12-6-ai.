@@ -177,7 +177,7 @@ class ArtifactRef:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactRef:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "kind",
             "schema_version",
             "identity_sha256",
@@ -221,7 +221,7 @@ class ParentBinding:
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "role",
             "artifact",
             "parent_manifest_identity_sha256",
@@ -283,14 +283,14 @@ class ArtifactManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
-        if not isinstance(value, dict) or set(value) != {
+        if not _is_exact_type(value, dict) or set(value) != {
             "schema_version",
             "artifact",
             "parents",
         }:
             raise ValueError("ArtifactManifest fields mismatch")
         parents = value["parents"]
-        if not isinstance(parents, list):
+        if not _is_exact_type(parents, list):
             raise ValueError("ArtifactManifest parents must be a JSON array")
         return cls(
             schema_version=value["schema_version"],
@@ -468,10 +468,10 @@ class GenerationIdentityManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> GenerationIdentityManifest:
-        if not isinstance(value, dict) or set(value) != {"schema_version", "artifacts"}:
+        if not _is_exact_type(value, dict) or set(value) != {"schema_version", "artifacts"}:
             raise ValueError("GenerationIdentityManifest fields mismatch")
         artifacts = value["artifacts"]
-        if not isinstance(artifacts, list):
+        if not _is_exact_type(artifacts, list):
             raise ValueError("GenerationIdentityManifest artifacts must be a JSON array")
         return cls(
             schema_version=value["schema_version"],
