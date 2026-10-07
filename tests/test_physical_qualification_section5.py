@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.physical_qualification as physical_qualification
 from twelve_six.physical_qualification import (
     ActionExecution,
     ExecutionMode,
@@ -309,6 +310,75 @@ def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> N
     assert evidence["actions"][0]["stdout_truncated"] is True
     assert evidence["actions"][0]["post_tracked_clean"] is False
 
+
+
+def test_process_tree_policy_uses_isolated_posix_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        pid = 4242
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+        @staticmethod
+        def kill() -> None:
+            raise AssertionError("direct-process fallback must not be used")
+
+    monkeypatch.setattr(physical_qualification.sys, "platform", "linux")
+    monkeypatch.setattr(
+        physical_qualification.os,
+        "killpg",
+        lambda pid, sig: calls.append((pid, sig)),
+    )
+
+    assert physical_qualification._popen_process_group_kwargs() == {"start_new_session": True}
+    physical_qualification._terminate_process_tree(FakeProcess())
+    assert calls == [(4242, physical_qualification.signal.SIGKILL)]
+
+
+def test_process_tree_policy_uses_windows_taskkill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    class FakeProcess:
+        pid = 4343
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+        @staticmethod
+        def kill() -> None:
+            raise AssertionError("direct-process fallback must not be used")
+
+    def fake_run(argv: tuple[str, ...], **kwargs: object) -> object:
+        calls.append((argv, kwargs))
+        return object()
+
+    monkeypatch.setattr(physical_qualification.sys, "platform", "win32")
+    monkeypatch.setattr(
+        physical_qualification.subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        0x200,
+        raising=False,
+    )
+    monkeypatch.setattr(physical_qualification.subprocess, "run", fake_run)
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
+
+    assert physical_qualification._popen_process_group_kwargs() == {"creationflags": 0x200}
+    physical_qualification._terminate_process_tree(FakeProcess())
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert argv[1:] == ("/PID", "4343", "/T", "/F")
+    assert argv[0].endswith("System32/taskkill.exe") or argv[0].endswith(
+        r"System32\taskkill.exe"
+    )
+    assert kwargs["shell"] is False
+    assert kwargs["check"] is True
 
 
 def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
