@@ -224,6 +224,7 @@ def test_sil_policy_predeclares_closed_predecessor_journey_contract() -> None:
         "section0-product-stack",
         "section1-stack",
     )
+    assert policy["maintainer-capability-qualification"] == ("section2-stack",)
 
 
 def test_sil_plan_binds_explicit_end_to_end_contracts_to_exact_journey_steps() -> None:

@@ -99,6 +99,7 @@ _CANONICAL_JOURNEY_E2E_VECTOR_POLICY = (
     ("operator-scale141-recovery", ("scale141-content-addressed",)),
     ("researcher-split-validation", ("split-robustness-manifest",)),
     ("maintainer-project-control", ("swarm-protocol",)),
+    ("maintainer-capability-qualification", ("section2-stack",)),
 )
 
 
