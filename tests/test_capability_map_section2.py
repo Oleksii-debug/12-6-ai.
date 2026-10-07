@@ -1242,3 +1242,35 @@ def test_registry_cycle_checker_rebinding_cannot_hide_dependency_cycle(
 
     with pytest.raises(ValueError, match="capability dependency cycle"):
         registry.identity_sha256()
+
+
+def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "resolve_component_contract",
+        lambda _contract: object(),
+    )
+
+    for operation in (
+        lambda: replace(registry),
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract module does not exist"):
+            operation()
+
