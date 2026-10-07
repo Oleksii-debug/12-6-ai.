@@ -495,11 +495,13 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
         check: bool,
         capture_output: bool,
         text: bool,
+        env: dict[str, str],
     ) -> subprocess.CompletedProcess[str]:
         assert command == expected_command
         assert check is False
         assert capture_output is True
         assert text is True
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -512,6 +514,46 @@ def test_worktree_python_source_drift_detects_dirty_tracked_source(
     assert _worktree_python_source_drift(tmp_path, "src/twelve_six") == {
         "src/twelve_six/model.py"
     }
+
+
+def test_library_git_evidence_probes_strip_ambient_git_redirection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hostile = {
+        "GIT_DIR": str(tmp_path / "forged.git"),
+        "GIT_WORK_TREE": str(tmp_path / "forged-worktree"),
+        "GIT_CONFIG_PARAMETERS": "'core.hooksPath=/forged'",
+        "GIT_INDEX_FILE": str(tmp_path / "forged-index"),
+    }
+    for key, value in hostile.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+
+    original_run = capability_map_module.subprocess.run
+    observed_commands: list[tuple[str, ...]] = []
+
+    def recording_run(command: list[str], *args: object, **kwargs: object):
+        if command and command[0] == "git":
+            env = kwargs.get("env")
+            assert isinstance(env, dict)
+            for key in hostile:
+                assert key not in env
+            assert env["GIT_OPTIONAL_LOCKS"] == "0"
+            observed_commands.append(tuple(command))
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(capability_map_module.subprocess, "run", recording_run)
+
+    validate_source_surface_coverage(
+        _load(),
+        load_source_surface_inventory(_SURFACE_INVENTORY),
+        repo_root=_ROOT,
+    )
+
+    assert any("diff" in command for command in observed_commands)
+    assert any("show" in command for command in observed_commands)
+    assert any("ls-tree" in command for command in observed_commands)
 
 
 def test_changed_existing_source_paths_detects_same_path_blob_drift() -> None:
