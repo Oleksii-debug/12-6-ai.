@@ -1099,7 +1099,8 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
     assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
     assert "--require-hashes --no-deps" in sil_job
-    assert "--no-deps --no-build-isolation -e ." in sil_job
+    assert "--no-deps --no-build-isolation ." in sil_job
+    assert "--no-deps --no-build-isolation -e ." not in sil_job
     assert "python -m pip install --upgrade pip" not in sil_job
     assert "pip install -e .[dev]" not in sil_job
     assert '"$sil_python" -m twelve_six.sil_qualification environment-receipt' in sil_job
