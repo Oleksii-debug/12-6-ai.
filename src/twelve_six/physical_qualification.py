@@ -675,8 +675,8 @@ def _collect_external_resource_evidence(
         if verifier is None:
             raise ValueError(f"external resource verifier is missing: {resource.value}")
         evidence = probe(repo_root)
-        if not isinstance(evidence, ExternalResourceEvidence):
-            raise ValueError("external resource probe returned a non-evidence object")
+        if type(evidence) is not ExternalResourceEvidence:
+            raise ValueError("external resource probe must return exact ExternalResourceEvidence")
         if evidence.resource is not resource:
             raise ValueError("external resource probe returned evidence for the wrong resource")
         if not verifier(evidence.adapter_id, evidence.evidence):
@@ -1009,6 +1009,8 @@ def execute_qualification(
                 reasons.append(f"required real resource is not proven: {resource.value}")
 
     initial_state = git_probe(root)
+    if type(initial_state) is not GitState:
+        raise ValueError("git probe must return exact GitState")
     if initial_state.sha != packet.target_git_sha:
         raise ValueError("physical agent checkout does not match signed target Git SHA")
     if not initial_state.tracked_clean:
@@ -1020,14 +1022,20 @@ def execute_qualification(
 
     for action in packet.actions:
         pre_state = git_probe(root)
+        if type(pre_state) is not GitState:
+            raise ValueError("git probe must return exact GitState")
         if pre_state.sha != packet.target_git_sha or not pre_state.tracked_clean:
             raise ValueError("checkout changed before physical qualification action")
 
         execution = action_runner(action, root)
+        if type(execution) is not ActionExecution:
+            raise ValueError("action runner must return exact ActionExecution")
         stdout, stdout_truncated = _bounded_output(execution.stdout, action.max_output_bytes)
         stderr, stderr_truncated = _bounded_output(execution.stderr, action.max_output_bytes)
 
         post_state = git_probe(root)
+        if type(post_state) is not GitState:
+            raise ValueError("git probe must return exact GitState")
         exact_clean = (
             post_state.sha == packet.target_git_sha
             and post_state.tracked_clean
