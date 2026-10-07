@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -433,6 +435,36 @@ def test_registry_loader_rejects_external_symbol_reexport_as_component_contract(
 
     with pytest.raises(ValueError, match="repository-owned"):
         load_capability_registry(path)
+
+
+def test_registry_loader_rejects_forged_twelve_six_module_origin(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    module_name, symbol_name = target["component_contract"].rsplit(".", 1)
+    original_module = sys.modules.get(module_name)
+    forged = ModuleType(module_name)
+    forged.__file__ = str(tmp_path / "forged_component.py")
+    forged_symbol = type(symbol_name, (), {})
+    forged_symbol.__module__ = module_name
+    setattr(forged, symbol_name, forged_symbol)
+    sys.modules[module_name] = forged
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        with pytest.raises(ValueError, match="repository-owned module origin"):
+            load_capability_registry(path)
+    finally:
+        if original_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = original_module
 
 
 def test_registry_loader_rejects_unknown_nested_capability_field(tmp_path: Path) -> None:
