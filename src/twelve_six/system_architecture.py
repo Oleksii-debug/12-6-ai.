@@ -175,14 +175,14 @@ class SystemArchitectureManifest:
         if self.planes != _REQUIRED_PLANES:
             raise ValueError("system architecture plane order or set is non-canonical")
 
+        if any(not isinstance(boundary, TypedBoundary) for boundary in self.boundaries):
+            raise ValueError("boundaries must contain only TypedBoundary values")
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
             raise ValueError("typed boundary names must be unique")
 
         plane_set = set(self.planes)
         for boundary in self.boundaries:
-            if not isinstance(boundary, TypedBoundary):
-                raise ValueError("boundaries must contain only TypedBoundary values")
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 

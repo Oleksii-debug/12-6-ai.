@@ -365,3 +365,13 @@ def test_manifest_rejects_mutable_boundary_container() -> None:
             boundaries=list(canonical.boundaries),  # type: ignore[arg-type]
         )
 
+def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="only TypedBoundary"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(*canonical.boundaries[:-1], None),  # type: ignore[arg-type]
+        )
+
