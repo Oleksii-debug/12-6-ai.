@@ -626,23 +626,23 @@ jobs:
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
 
-      - name: Reconstruct accepted deterministic SIL environment
+      - name: Reconstruct deterministic SIL environment from pinned lock source
         shell: bash
         env:
-          SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+          SIL_ENV_LOCK_SOURCE_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"
         run: |
           set -euo pipefail
           lock_dir="$RUNNER_TEMP/sil-locks"
           venv_dir="$RUNNER_TEMP/sil-venv"
           mkdir -p "$lock_dir"
           git fetch --no-tags origin refs/pull/402/head
-          test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_AUTHORITY_COMMIT"
+          test "$(git rev-parse FETCH_HEAD)" = "$SIL_ENV_LOCK_SOURCE_COMMIT"
 
-          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/locks/linux-x86_64/toolchain.lock.txt" \
+          git show "$SIL_ENV_LOCK_SOURCE_COMMIT:requirements/locks/linux-x86_64/toolchain.lock.txt" \
             > "$lock_dir/toolchain.lock.txt"
-          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/execution/linux-x86_64/cpu-runtime.lock.txt" \
+          git show "$SIL_ENV_LOCK_SOURCE_COMMIT:requirements/execution/linux-x86_64/cpu-runtime.lock.txt" \
             > "$lock_dir/cpu-runtime.lock.txt"
-          git show "$SIL_ENV_AUTHORITY_COMMIT:requirements/locks/linux-x86_64/dev.lock.txt" \
+          git show "$SIL_ENV_LOCK_SOURCE_COMMIT:requirements/locks/linux-x86_64/dev.lock.txt" \
             > "$lock_dir/dev.lock.txt"
 
           test "$(sha256sum "$lock_dir/toolchain.lock.txt" | cut -d' ' -f1)" = \
