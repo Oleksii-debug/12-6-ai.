@@ -1229,6 +1229,63 @@ def _worktree_python_source_drift(
     return changed
 
 
+def _baseline_source_capability_map(
+    repo_root: Path,
+    observed_main_sha: str,
+) -> dict[str, str]:
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "show",
+            f"{observed_main_sha}:configs/control/product_source_surface_inventory_v1.json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_git_subprocess_env(),
+    )
+    if completed.returncode != 0:
+        raise ValueError("cannot read accepted-main source capability inventory")
+    try:
+        payload = _strict_json_object(completed.stdout.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise ValueError(
+            "accepted-main source capability inventory is not canonical UTF-8"
+        ) from exc
+    payload = _require_exact_fields(
+        payload,
+        {
+            "schema_version",
+            "observed_main_sha",
+            "observed_main_tree_sha",
+            "source_root",
+            "source_surface_count",
+            "accepted_main_surface_count",
+            "candidate_overlay_surface_count",
+            "surfaces",
+        },
+        "accepted_main_source_surface_inventory",
+    )
+    raw_surfaces = payload["surfaces"]
+    if not _is_exact_type(raw_surfaces, list):
+        raise ValueError("accepted-main source surfaces must be a JSON array")
+
+    mapping: dict[str, str] = {}
+    for raw_surface in raw_surfaces:
+        item = _require_exact_fields(
+            raw_surface,
+            {"path", "capability_id", "origin"},
+            "accepted_main_source_surface",
+        )
+        surface = SourceSurface(**item)
+        if surface.path in mapping:
+            raise ValueError("accepted-main source surface paths must be unique")
+        mapping[surface.path] = surface.capability_id
+    return mapping
+
+
 def validate_source_surface_coverage(
     registry: CapabilityRegistry,
     inventory: SourceSurfaceInventory,
@@ -1296,6 +1353,25 @@ def validate_source_surface_coverage(
     if resolved_tree_sha != inventory.observed_main_tree_sha:
         raise ValueError(
             "source inventory observed_main_tree_sha does not match observed_main_sha"
+        )
+
+    baseline_capability_map = _baseline_source_capability_map(
+        root,
+        inventory.observed_main_sha,
+    )
+    candidate_capability_map = {
+        item.path: item.capability_id for item in inventory.surfaces
+    }
+    capability_mapping_drift = sorted(
+        path
+        for path, capability_id in baseline_capability_map.items()
+        if path in candidate_capability_map
+        and candidate_capability_map[path] != capability_id
+    )
+    if capability_mapping_drift:
+        raise ValueError(
+            "source capability mapping drift from accepted predecessor: "
+            f"{capability_mapping_drift}"
         )
 
     accepted_main_blobs = _python_source_blob_map(
