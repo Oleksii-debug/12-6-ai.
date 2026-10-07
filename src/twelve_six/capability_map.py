@@ -307,7 +307,10 @@ class SourceSurface:
     def __post_init__(self) -> None:
         _require_text("source surface path", self.path)
         _require_id("source surface capability_id", self.capability_id)
-        if not _is_exact_type(self.origin, str) or self.origin not in {\n            "accepted_main", "stacked_candidate"\n        }:
+        if not _is_exact_type(self.origin, str) or self.origin not in {
+            "accepted_main",
+            "stacked_candidate",
+        }:
             raise ValueError("source surface origin is unsupported")
         path = PurePosixPath(self.path)
         if (
@@ -355,7 +358,8 @@ class SourceSurfaceInventory:
         ):
             if not _is_exact_type(value, str) or _SHA40_RE.fullmatch(value) is None:
                 raise ValueError(f"{field_name} must be a lowercase 40-hex Git SHA")
-        _require_text("source_root", self.source_root)\n        if self.source_root != "src/twelve_six":
+        _require_text("source_root", self.source_root)
+        if self.source_root != "src/twelve_six":
             raise ValueError("source_root must be canonical src/twelve_six")
         _require_positive_int("source_surface_count", self.source_surface_count)
         _require_positive_int(
@@ -421,7 +425,8 @@ class CapabilityRegistry:
         ) is None:
             raise ValueError("observed_main_sha must be a lowercase 40-hex Git SHA")
         _require_positive_int("observed_main_ci_run_id", self.observed_main_ci_run_id)
-        _require_text("observed_main_ci_conclusion", self.observed_main_ci_conclusion)\n        if self.observed_main_ci_conclusion != "success":
+        _require_text("observed_main_ci_conclusion", self.observed_main_ci_conclusion)
+        if self.observed_main_ci_conclusion != "success":
             raise ValueError("observed main CI must be terminal success")
 
         if not _is_exact_type(self.capabilities, tuple) or not self.capabilities:
