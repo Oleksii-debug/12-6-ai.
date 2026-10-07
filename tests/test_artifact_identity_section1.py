@@ -450,11 +450,11 @@ def test_generation_validation_fails_closed_after_policy_global_rebind(
     canonical = artifact_identity_module._GENERATION_PARENT_POLICY
     forged = dict(canonical)
     forged_release = dict(canonical[ArtifactKind.RELEASE])
-    forged_release["evaluation"] = ArtifactKind.EXPORT
+    forged_release["checkpoint"] = ArtifactKind.MODEL_SPEC
     forged[ArtifactKind.RELEASE] = forged_release
     monkeypatch.setattr(artifact_identity_module, "_GENERATION_PARENT_POLICY", forged)
 
-    with pytest.raises(ValueError, match=r"release\.evaluation must reference evaluation"):
+    with pytest.raises(ValueError, match=r"release\.checkpoint must reference checkpoint"):
         _generation("a")
 
 
