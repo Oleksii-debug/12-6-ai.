@@ -1437,7 +1437,7 @@ def test_capability_status_branch_ignores_module_class_rebinding(
 
     monkeypatch.setattr(capability_map_module, "CapabilityStatus", ForgedStatus)
 
-    with pytest.raises(ValueError, match="AVAILABLE capability cannot have unavailable_reason"):
+    with pytest.raises(ValueError, match="status must be a CapabilityStatus"):
         capability_map_module.Capability.__post_init__(capability)
 
 
