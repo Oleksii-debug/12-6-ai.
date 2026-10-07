@@ -73,6 +73,12 @@ change acceptance semantics; a builder influenced by such a rebind fails closed 
 Stored parent/artifact tuples are exact built-in tuples rather than behavioral subclasses, so
 validation and later canonical serialization cannot observe different container views.
 
+Canonical identity objects are also revalidated whenever they are serialized, traversed,
+bound, verified or assembled into a generation. Constructor-time validation is not trusted
+after object creation, so low-level post-validation mutation cannot turn a once-valid exact
+dataclass into a new accepted identity. Identity-bearing builder inputs use exact built-in
+`dict` mappings rather than arbitrary behavioral `Mapping` implementations.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;

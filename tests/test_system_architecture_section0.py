@@ -787,3 +787,66 @@ def test_closed_scalar_fields_reject_behavioral_subclasses() -> None:
             tokenizer_sha256=canonical.tokenizer_sha256,
             parameter_count=ForgedInt(canonical.parameter_count),
         )
+
+
+def test_closed_snapshots_revalidate_after_object_setattr_mutation() -> None:
+    contract = InterfaceContract("twelve_six.memory", 1)
+    object.__setattr__(contract, "schema_version", 0)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        contract.identity_sha256()
+
+    core = _core("stale-core", 20_613_440)
+    object.__setattr__(core, "checkpoint_sha256", "0" * 63)
+
+    with pytest.raises(ValueError, match="checkpoint_sha256 must be a lowercase 64-hex"):
+        core.identity_sha256()
+
+
+def test_architecture_and_shell_revalidate_mutated_nested_objects() -> None:
+    architecture = canonical_system_architecture_v1()
+    first_boundary = architecture.boundaries[0]
+    object.__setattr__(first_boundary, "producer", first_boundary.producer.value)
+
+    with pytest.raises(ValueError, match="producer must be a SystemPlane"):
+        architecture.identity_sha256()
+
+    shell = canonical_runtime_shell_v1()
+    object.__setattr__(shell.memory_api, "schema_version", 0)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        shell.identity_sha256()
+
+    role_swapped_shell = canonical_runtime_shell_v1()
+    object.__setattr__(
+        role_swapped_shell,
+        "memory_api",
+        role_swapped_shell.tools_api,
+    )
+
+    with pytest.raises(ValueError, match="memory_api contract role semantics are non-canonical"):
+        role_swapped_shell.surface_identities()
+
+
+def test_replacement_and_receipt_revalidate_stale_exact_objects() -> None:
+    assembly = _assembly("stale-assembly", 20_613_440)
+    candidate = CognitiveCoreBinding(
+        core=_core("stale-candidate", 200_000_000),
+        gateway_api=assembly.shell.gateway_api,
+    )
+    object.__setattr__(candidate.core, "parameter_count", 0)
+
+    with pytest.raises(ValueError, match="parameter_count must be a positive integer"):
+        replace_cognitive_core(assembly, candidate)
+
+    clean_assembly = _assembly("receipt-base", 20_613_440)
+    clean_candidate = CognitiveCoreBinding(
+        core=_core("receipt-candidate", 200_000_000),
+        gateway_api=clean_assembly.shell.gateway_api,
+    )
+    _, receipt = replace_cognitive_core(clean_assembly, clean_candidate)
+    object.__setattr__(receipt, "shell_rewrite_required", True)
+
+    with pytest.raises(ValueError, match="must not require a runtime-shell rewrite"):
+        receipt.identity_sha256()
+

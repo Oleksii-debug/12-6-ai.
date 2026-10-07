@@ -39,6 +39,11 @@ Closed architecture, shell, core-binding and replacement-evidence schemas also r
 behavioral subclasses at canonical boundaries, preventing validation-facing state from
 diverging from overridable identity serialization.
 
+Canonical objects are revalidated again whenever they cross an assembly, replacement,
+serialization or evidence boundary. Constructor-time validation is therefore not trusted after
+object creation: post-validation mutation of an exact dataclass instance (including mutation via
+low-level `object.__setattr__`) fails closed before its stale state can be hashed or promoted.
+
 The canonical typed boundaries are:
 
 - Base Model -> Model Gateway: `twelve_six.model_gateway.v1`
