@@ -9,7 +9,6 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any
 
-
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
