@@ -413,16 +413,18 @@ def test_source_surface_coverage_rejects_unknown_capability_mapping(tmp_path: Pa
 
 def test_source_surface_coverage_rejects_current_checkout_drift(tmp_path: Path) -> None:
     registry = _load()
-    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
-    fake_root = tmp_path / "repo"
-    source_root = fake_root / "src" / "twelve_six"
-    source_root.mkdir(parents=True)
-    for surface in inventory.surfaces:
-        path = fake_root / surface.path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("", encoding="utf-8")
-    extra = source_root / "unmapped_new_capability.py"
-    extra.write_text("", encoding="utf-8")
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "stacked_candidate"
+    )
+    payload["surfaces"].remove(target)
+    payload["source_surface_count"] -= 1
+    payload["candidate_overlay_surface_count"] -= 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
 
-    with pytest.raises(ValueError, match="unmapped_current"):
-        validate_source_surface_coverage(registry, inventory, repo_root=fake_root)
+    with pytest.raises(ValueError, match="unmapped_checkout"):
+        validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
