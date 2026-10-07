@@ -17,6 +17,7 @@ from twelve_six.sil_qualification import (
     CommandExecution,
     GitState,
     SILScenario,
+    build_package_manifest_bytes,
     build_sil_plan,
     load_sil_scenario,
     parse_vector_command,
@@ -37,6 +38,10 @@ def _registry() -> CapabilityRegistry:
 
 def _scenario() -> SILScenario:
     return load_sil_scenario(_SCENARIO)
+
+
+def _package_bytes() -> bytes:
+    return build_package_manifest_bytes(_ROOT)
 
 
 def _pass_runner(
@@ -92,7 +97,7 @@ def _verify_evidence(evidence_path: Path, log_path: Path) -> dict[str, object]:
     return verify_sil_evidence(
         evidence_path,
         log_path,
-        expected_package_bytes=b"package",
+        expected_package_bytes=_package_bytes(),
         expected_registry=_registry(),
         expected_scenario=_scenario(),
         expected_git_sha=_GIT_SHA,
@@ -192,7 +197,7 @@ def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdic
         expected_git_sha=_GIT_SHA,
         registry=registry,
         scenario=scenario,
-        package_bytes=b"[project]\nname='twelve-six-ai'\n",
+        package_bytes=_package_bytes(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -260,7 +265,7 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
         scenario=_scenario(),
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=fail_once,
         git_probe=_git_probe,
     )
@@ -294,7 +299,7 @@ def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
         scenario=_scenario(),
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=consume_wrong_identity,
         git_probe=_git_probe,
     )
@@ -322,7 +327,7 @@ def test_sil_rejects_tracked_checkout_mutation_during_vector_execution() -> None
             expected_git_sha=_GIT_SHA,
             registry=_registry(),
             scenario=_scenario(),
-            package_bytes=b"package",
+            package_bytes=_package_bytes(),
             command_runner=_pass_runner,
             git_probe=lambda _: next(states),
         )
@@ -338,7 +343,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
             expected_git_sha=_GIT_SHA,
             registry=registry,
             scenario=scenario,
-            package_bytes=b"package",
+            package_bytes=_package_bytes(),
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha="b" * 40, tracked_clean=True),
         )
@@ -349,7 +354,7 @@ def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
             expected_git_sha=_GIT_SHA,
             registry=registry,
             scenario=scenario,
-            package_bytes=b"package",
+            package_bytes=_package_bytes(),
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha=_GIT_SHA, tracked_clean=False),
         )
@@ -402,7 +407,7 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
         scenario=_scenario(),
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -434,7 +439,7 @@ def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
         expected_git_sha=_GIT_SHA,
         registry=_registry(),
         scenario=_scenario(),
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -469,7 +474,7 @@ def test_verifier_rejects_self_consistent_package_authority_reseal(
         expected_git_sha=_GIT_SHA,
         registry=registry,
         scenario=scenario,
-        package_bytes=b"package",
+        package_bytes=_package_bytes(),
         command_runner=_pass_runner,
         git_probe=_git_probe,
     )
@@ -520,3 +525,32 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert "python -m twelve_six.sil_qualification verify" in workflow
     assert "continue-on-error: true" in workflow
     assert "if: always()" in workflow
+
+def test_package_identity_binds_tracked_package_source_manifest() -> None:
+    raw = _package_bytes()
+    manifest = json.loads(raw.decode("utf-8"))
+
+    assert manifest["schema_version"] == "12-6.package-source-manifest.v1"
+    paths = [item["path"] for item in manifest["files"]]
+    assert paths == sorted(paths)
+    assert "pyproject.toml" in paths
+    assert "src/twelve_six/sil_qualification.py" in paths
+    assert any(path.startswith("configs/research/") for path in paths)
+    for item in manifest["files"]:
+        source = (_ROOT / item["path"]).read_bytes()
+        assert item["bytes"] == len(source)
+        assert item["sha256"] == hashlib.sha256(source).hexdigest()
+
+
+def test_qualify_sil_rejects_opaque_package_bytes_not_bound_to_checkout() -> None:
+    with pytest.raises(ValueError, match="exact tracked package source manifest"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=b"opaque-unbound-package",
+            command_runner=_pass_runner,
+            git_probe=_git_probe,
+        )
+
