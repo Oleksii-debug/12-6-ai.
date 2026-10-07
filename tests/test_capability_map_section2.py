@@ -700,7 +700,7 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     for surface in inventory.surfaces:
-        if surface.origin == "accepted_main":
+        if surface.origin != "stacked_candidate":
             continue
         capability = registry.capability(surface.capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
@@ -715,7 +715,7 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["origin"] != "accepted_main"
+        if surface["origin"] == "stacked_candidate"
     )
     target["capability_id"] = "model-spec-identity"
     path = tmp_path / "surface-inventory.json"
@@ -724,6 +724,31 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
 
     with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
+
+
+def test_modified_candidate_can_repair_an_available_capability(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        surface
+        for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/artifact_identity.py"
+    )
+    if target["origin"] == "accepted_main":
+        target["origin"] = "modified_candidate"
+        payload["accepted_main_surface_count"] -= 1
+        payload["candidate_overlay_surface_count"] += 1
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    inventory = load_source_surface_inventory(path)
+
+    capability = _load().capability(target["capability_id"])
+    assert capability.status is CapabilityStatus.AVAILABLE
+    assert next(
+        item for item in inventory.surfaces
+        if item.path == "src/twelve_six/artifact_identity.py"
+    ).origin == "modified_candidate"
 
 
 def test_source_surface_inventory_accepts_zero_candidate_overlay_after_integration(
