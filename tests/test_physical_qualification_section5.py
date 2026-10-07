@@ -12,6 +12,7 @@ import twelve_six.physical_qualification as physical_qualification
 from twelve_six.physical_qualification import (
     ActionExecution,
     ExecutionMode,
+    ExternalResourceEvidence,
     HostInventory,
     QualificationAction,
     QualificationPacket,
@@ -156,6 +157,18 @@ def _git_probe(_: Path) -> GitState:
     return GitState(sha=_GIT_SHA, tracked_clean=True)
 
 
+def _network_probe(_: Path) -> ExternalResourceEvidence:
+    return ExternalResourceEvidence(
+        resource=ResourceKind.NETWORK,
+        adapter_id="network-loopback-v1",
+        evidence=b"network-proof-v1",
+    )
+
+
+def _network_probe_verify(adapter_id: str, evidence: bytes) -> bool:
+    return adapter_id == "network-loopback-v1" and evidence == b"network-proof-v1"
+
+
 def test_signed_packet_rejects_bad_signature_and_expiry(tmp_path: Path) -> None:
     path = tmp_path / "packet.json"
     packet = _packet()
@@ -258,6 +271,80 @@ def test_unproven_network_or_absent_gpu_blocks_real_pass(tmp_path: Path) -> None
     assert evidence["verdict"] == QualificationVerdict.FAIL.value
     assert "required real resource is not proven: GPU" in evidence["reasons"]
     assert "required real resource is not proven: NETWORK" in evidence["reasons"]
+
+
+def test_verified_external_network_probe_can_satisfy_real_resource(
+    tmp_path: Path,
+) -> None:
+    action = _action(resources=(ResourceKind.NETWORK,))
+    verified = _load(tmp_path, _packet(actions=(action,)))
+    evidence, log_bytes = execute_qualification(
+        verified,
+        repo_root=tmp_path,
+        host_inventory=_inventory(),
+        action_runner=_pass_runner,
+        git_probe=_git_probe,
+        agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
+        resource_probes={ResourceKind.NETWORK: _network_probe},
+        resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+    )
+    assert evidence["verdict"] == QualificationVerdict.PASS.value
+    assert evidence["resource_observations"]["NETWORK"] == "REAL_PROBED"
+    assert evidence["external_resource_evidence"][0]["resource"] == "NETWORK"
+
+    evidence_path = tmp_path / "network-evidence.json"
+    log_path = tmp_path / "network-run.jsonl"
+    write_evidence_bundle(
+        evidence_path,
+        log_path,
+        evidence=evidence,
+        log_bytes=log_bytes,
+    )
+    checked = verify_qualification_evidence(
+        evidence_path,
+        log_path,
+        verified_packet=verified,
+        agent_source_bytes=_AGENT_BYTES,
+        artifact_root=tmp_path,
+        require_real_pass=True,
+        evidence_signature_verifier=_fake_evidence_verify,
+        resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+    )
+    assert checked["verdict"] == "PASS"
+
+
+def test_external_resource_probe_requires_independent_verifier(tmp_path: Path) -> None:
+    action = _action(resources=(ResourceKind.NETWORK,))
+    verified = _load(tmp_path, _packet(actions=(action,)))
+
+    with pytest.raises(ValueError, match="verifier is missing: NETWORK"):
+        execute_qualification(
+            verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=_pass_runner,
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+            resource_probes={ResourceKind.NETWORK: _network_probe},
+        )
+
+    with pytest.raises(ValueError, match="verification failed: NETWORK"):
+        execute_qualification(
+            verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=_pass_runner,
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+            resource_probes={ResourceKind.NETWORK: _network_probe},
+            resource_probe_verifiers={ResourceKind.NETWORK: lambda adapter, raw: False},
+        )
 
 
 def test_agent_source_and_exact_clean_checkout_are_fail_closed(tmp_path: Path) -> None:
