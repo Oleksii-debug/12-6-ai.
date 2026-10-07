@@ -1135,3 +1135,66 @@ def test_closed_sil_scalar_and_container_boundaries_reject_behavioral_subclasses
 
     with pytest.raises(ValueError, match="SIL log must be non-empty bytes"):
         sil_qualification._load_sil_log_records(ForgedBytes(b"{}\n"))
+
+def test_sil_objects_revalidate_after_post_construction_mutation() -> None:
+    scenario = _scenario()
+    object.__setattr__(scenario, "timeout_seconds_per_vector", 0)
+
+    with pytest.raises(ValueError, match="timeout_seconds_per_vector"):
+        scenario.identity_sha256()
+
+    plan = build_sil_plan(_registry(), _scenario())
+    vector = plan.vectors[0]
+    object.__setattr__(vector, "argv", ("python", "-c", "forged"))
+
+    with pytest.raises(ValueError, match="planned vector argv"):
+        plan.to_dict()
+
+
+def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
+    state = GitState(sha=_GIT_SHA, tracked_clean=True)
+    object.__setattr__(state, "tracked_clean", "yes")
+
+    with pytest.raises(ValueError, match="tracked_clean must be boolean"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=_pass_runner,
+            git_probe=lambda _: state,
+        )
+
+
+def test_sil_revalidates_mutated_exact_command_result() -> None:
+    def stale_runner(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+        object.__setattr__(result, "return_code", True)
+        return result
+
+    with pytest.raises(ValueError, match="return_code must be an integer"):
+        qualify_sil(
+            repo_root=_ROOT,
+            expected_git_sha=_GIT_SHA,
+            registry=_registry(),
+            scenario=_scenario(),
+            package_bytes=_package_bytes(),
+            environment_receipt=_environment_receipt(),
+            command_runner=stale_runner,
+            git_probe=_git_probe,
+        )
+
