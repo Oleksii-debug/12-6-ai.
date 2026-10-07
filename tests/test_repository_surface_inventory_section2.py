@@ -42,7 +42,7 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["current_repository_main_tree_sha"] == "17edf21d66709f6e8a7c217e138b33c0bf9a0217"
     assert result["qualified_current_equivalent_surface_count"] == 237
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 0
+    assert result["candidate_overlay_surface_count"] == 1
     assert result["checkout_surface_count"] == 120
 
 
@@ -67,7 +67,12 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
 def test_section2_validator_is_integrated_into_qualified_baseline() -> None:
     payload = _load_strict_json(_INVENTORY)
 
-    assert payload["candidate_overrides"] == []
+    assert payload["candidate_overrides"] == [
+        {
+            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "capability_id": "executable-capability-map",
+        }
+    ]
     assert {
         "rule_id": "section2-surface-validator",
         "selector": "exact",
