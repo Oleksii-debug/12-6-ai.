@@ -311,7 +311,6 @@ def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> N
     assert evidence["actions"][0]["post_tracked_clean"] is False
 
 
-
 def test_process_tree_policy_uses_isolated_posix_group(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[int, int]] = []
 
