@@ -147,6 +147,19 @@ def _matching_rules(path: str, rules: tuple[dict[str, str], ...]) -> list[dict[s
     return matches
 
 
+def _candidate_surface_paths(
+    current_main_blobs: dict[str, str],
+    checkout_blobs: dict[str, str],
+) -> set[str]:
+    """Return executable surfaces added or byte-changed from current main."""
+
+    return {
+        path
+        for path, blob_sha in checkout_blobs.items()
+        if current_main_blobs.get(path) != blob_sha
+    }
+
+
 def _classify_main_surface(
     path: str,
     rules: tuple[dict[str, str], ...],
@@ -330,7 +343,21 @@ def validate_repository_surface_coverage(
     )
     main_set = set(main_paths)
     checkout_set = set(checkout_paths)
-    candidate_actual = checkout_set.difference(main_set)
+
+    current_executable_blobs = {
+        path: blob_sha
+        for path, blob_sha in current_surface_blobs.items()
+        if _is_surface(path)
+    }
+    checkout_executable_blobs = {
+        path: blob_sha
+        for path, blob_sha in _surface_blob_map(repo_root, "HEAD").items()
+        if _is_surface(path)
+    }
+    candidate_actual = _candidate_surface_paths(
+        current_executable_blobs,
+        checkout_executable_blobs,
+    )
     candidate_expected = set(candidate_overrides)
     if candidate_actual != candidate_expected:
         raise ValueError(
