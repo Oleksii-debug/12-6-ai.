@@ -876,3 +876,6 @@ def test_source_inventory_revalidates_mutated_surface_state() -> None:
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         inventory.identity_sha256()
 
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        validate_source_surface_coverage(_load(), inventory, repo_root=_ROOT)
+
