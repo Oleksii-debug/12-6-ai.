@@ -297,8 +297,19 @@ class SourceSurface:
         _require_id("source surface capability_id", self.capability_id)
         if self.origin not in {"accepted_main", "stacked_candidate"}:
             raise ValueError("source surface origin is unsupported")
-        if not self.path.startswith("src/twelve_six/") or not self.path.endswith(".py"):
-            raise ValueError("source surface path must be a Python path under src/twelve_six")
+        path = PurePosixPath(self.path)
+        if (
+            "\\" in self.path
+            or path.is_absolute()
+            or len(path.parts) < 3
+            or path.parts[:2] != ("src", "twelve_six")
+            or ".." in path.parts
+            or path.as_posix() != self.path
+            or path.suffix != ".py"
+        ):
+            raise ValueError(
+                "source surface path must be a canonical Python path under src/twelve_six"
+            )
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -422,6 +433,7 @@ class CapabilityRegistry:
         expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
             if capability.status is CapabilityStatus.AVAILABLE:
+                resolve_component_contract(capability.component_contract)
                 main_ci_targets = [
                     target.target
                     for target in capability.evidence_targets
@@ -696,7 +708,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             )
         )
     journeys = tuple(journeys_list)
-    registry = CapabilityRegistry(
+    return CapabilityRegistry(
         schema_version=payload["schema_version"],
         observed_main_sha=payload["observed_main_sha"],
         observed_main_ci_run_id=ci["run_id"],
@@ -704,8 +716,6 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         capabilities=tuple(capabilities),
         journeys=journeys,
     )
-    validate_available_component_contracts(registry)
-    return registry
 
 
 def load_source_surface_inventory(path: str | Path) -> SourceSurfaceInventory:
