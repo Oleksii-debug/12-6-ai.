@@ -406,6 +406,33 @@ def test_agent_source_and_exact_clean_checkout_are_fail_closed(tmp_path: Path) -
         )
 
 
+def test_runtime_results_require_exact_schema_types(tmp_path: Path) -> None:
+    verified = _load(tmp_path, _packet())
+    with pytest.raises(ValueError, match="git probe must return exact GitState"):
+        execute_qualification(
+            verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=_pass_runner,
+            git_probe=lambda _: object(),
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+        )
+
+    with pytest.raises(ValueError, match="action runner must return exact ActionExecution"):
+        execute_qualification(
+            verified,
+            repo_root=tmp_path,
+            host_inventory=_inventory(),
+            action_runner=lambda action, root: object(),
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+        )
+
+
 def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> None:
     verified = _load(tmp_path, _packet(actions=(_action(max_output_bytes=2),)))
     states = iter(
