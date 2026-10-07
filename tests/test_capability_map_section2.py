@@ -1746,3 +1746,55 @@ def test_registry_constructor_status_validator_rebinding_cannot_accept_forged_st
     with pytest.raises(ValueError, match="status must be a CapabilityStatus"):
         replace(registry)
 
+
+def test_stored_paths_ignore_pureposixpath_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForgedPath:
+        def __init__(self, value: str) -> None:
+            self.value = value
+            self.parts = (
+                ("tests", "forged.py")
+                if value.startswith("tests/")
+                else ("src", "twelve_six", "forged.py")
+            )
+            self.suffix = ".py"
+
+        def is_absolute(self) -> bool:
+            return False
+
+        def as_posix(self) -> str:
+            return self.value
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "PurePosixPath",
+        ForgedPath,
+    )
+
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(
+        vector,
+        "command",
+        "pytest -q tests/../forged.py",
+    )
+    with pytest.raises(
+        ValueError,
+        match="test vector command may reference only canonical tests",
+    ):
+        registry.identity_sha256()
+
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(
+        surface,
+        "path",
+        "src/twelve_six/../../forged.py",
+    )
+    with pytest.raises(
+        ValueError,
+        match="source surface path must be a canonical Python path",
+    ):
+        inventory.identity_sha256()
