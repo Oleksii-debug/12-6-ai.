@@ -85,6 +85,11 @@ after object creation, so low-level post-validation mutation cannot turn a once-
 dataclass into a new accepted identity. Identity-bearing builder inputs use exact built-in
 `dict` mappings rather than arbitrary behavioral `Mapping` implementations.
 
+Artifact-reference equality is not an authority boundary. Duplicate/self-parent checks and
+cross-generation parent matching compare revalidated canonical scalar signatures instead of
+dispatching `ArtifactRef.__eq__` or `__hash__`, so class-level dunder rebinding cannot reseal
+an incompatible parent as the selected generation identity.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;
