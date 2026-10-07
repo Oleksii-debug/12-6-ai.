@@ -40,6 +40,11 @@ def _require_sha256(name: str, value: object) -> str:
     return value
 
 
+def _is_exact_type(value: object, expected: type[object]) -> bool:
+    # Closed architecture schemas reject subclasses that can override identity serialization.
+    return type(value) is expected  # noqa: E721
+
+
 class SystemPlane(str, Enum):
     BASE_MODEL = "base_model"
     POST_BASE_LEARNING = "post_base_learning"
@@ -134,13 +139,13 @@ class TypedBoundary:
 
     def __post_init__(self) -> None:
         _require_nonempty_text("name", self.name)
-        if not isinstance(self.producer, SystemPlane):
+        if not _is_exact_type(self.producer, SystemPlane):
             raise ValueError("producer must be a SystemPlane")
-        if not isinstance(self.consumer, SystemPlane):
+        if not _is_exact_type(self.consumer, SystemPlane):
             raise ValueError("consumer must be a SystemPlane")
         if self.producer is self.consumer:
             raise ValueError("typed boundary producer and consumer must differ")
-        if not isinstance(self.interface, InterfaceContract):
+        if not _is_exact_type(self.interface, InterfaceContract):
             raise ValueError("interface must be an InterfaceContract")
 
     def to_dict(self) -> dict[str, Any]:
@@ -171,13 +176,13 @@ class SystemArchitectureManifest:
         if self.schema_version != 1:
             raise ValueError("unsupported system architecture schema_version")
 
-        if not isinstance(self.planes, tuple) or any(
-            not isinstance(plane, SystemPlane) for plane in self.planes
+        if not _is_exact_type(self.planes, tuple) or any(
+            not _is_exact_type(plane, SystemPlane) for plane in self.planes
         ):
             raise ValueError(
                 "system architecture planes must be an immutable tuple of SystemPlane values"
             )
-        if not isinstance(self.boundaries, tuple):
+        if not _is_exact_type(self.boundaries, tuple):
             raise ValueError("system architecture boundaries must be an immutable tuple")
 
         if len(self.planes) != len(_sealed_planes):
@@ -187,7 +192,7 @@ class SystemArchitectureManifest:
         if self.planes != _sealed_planes:
             raise ValueError("system architecture plane order or set is non-canonical")
 
-        if any(not isinstance(boundary, TypedBoundary) for boundary in self.boundaries):
+        if any(not _is_exact_type(boundary, TypedBoundary) for boundary in self.boundaries):
             raise ValueError("boundaries must contain only TypedBoundary values")
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
@@ -275,7 +280,7 @@ class RuntimeShellContract:
             ("orchestration_api", self.orchestration_api, "twelve_six.orchestration"),
         )
         for name, value, expected_contract_name in contracts:
-            if not isinstance(value, InterfaceContract):
+            if not _is_exact_type(value, InterfaceContract):
                 raise ValueError(f"{name} must be an InterfaceContract")
             if value.name != expected_contract_name:
                 raise ValueError(
@@ -316,9 +321,9 @@ class CognitiveCoreBinding:
     gateway_api: InterfaceContract
 
     def __post_init__(self) -> None:
-        if not isinstance(self.core, CognitiveCoreIdentity):
+        if not _is_exact_type(self.core, CognitiveCoreIdentity):
             raise ValueError("core must be a CognitiveCoreIdentity")
-        if not isinstance(self.gateway_api, InterfaceContract):
+        if not _is_exact_type(self.gateway_api, InterfaceContract):
             raise ValueError("gateway_api must be an InterfaceContract")
 
     def to_dict(self) -> dict[str, Any]:
@@ -337,11 +342,11 @@ class ProductAssembly:
     core_binding: CognitiveCoreBinding
 
     def __post_init__(self) -> None:
-        if not isinstance(self.architecture, SystemArchitectureManifest):
+        if not _is_exact_type(self.architecture, SystemArchitectureManifest):
             raise ValueError("architecture must be a SystemArchitectureManifest")
-        if not isinstance(self.shell, RuntimeShellContract):
+        if not _is_exact_type(self.shell, RuntimeShellContract):
             raise ValueError("shell must be a RuntimeShellContract")
-        if not isinstance(self.core_binding, CognitiveCoreBinding):
+        if not _is_exact_type(self.core_binding, CognitiveCoreBinding):
             raise ValueError("core_binding must be a CognitiveCoreBinding")
         architecture_gateway = next(
             boundary.interface
@@ -384,16 +389,16 @@ class CoreReplacementReceipt:
             ("shell_identity_sha256_after", self.shell_identity_sha256_after),
         ):
             _require_sha256(name, value)
-        if not isinstance(self.previous_core, CognitiveCoreIdentity):
+        if not _is_exact_type(self.previous_core, CognitiveCoreIdentity):
             raise ValueError("previous_core must be a CognitiveCoreIdentity")
-        if not isinstance(self.candidate_core, CognitiveCoreIdentity):
+        if not _is_exact_type(self.candidate_core, CognitiveCoreIdentity):
             raise ValueError("candidate_core must be a CognitiveCoreIdentity")
         if self.previous_core_identity_sha256 != self.previous_core.identity_sha256():
             raise ValueError("replacement receipt previous core identity does not match snapshot")
         if self.candidate_core_identity_sha256 != self.candidate_core.identity_sha256():
             raise ValueError("replacement receipt candidate core identity does not match snapshot")
-        if not isinstance(self.preserved_surface_identities, tuple) or any(
-            not isinstance(item, tuple) or len(item) != 2
+        if not _is_exact_type(self.preserved_surface_identities, tuple) or any(
+            not _is_exact_type(item, tuple) or len(item) != 2
             for item in self.preserved_surface_identities
         ):
             raise ValueError(
@@ -403,7 +408,7 @@ class CoreReplacementReceipt:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:
             raise ValueError("canonical core replacement must not require a runtime-shell rewrite")
-        if not isinstance(self.preserved_shell, RuntimeShellContract):
+        if not _is_exact_type(self.preserved_shell, RuntimeShellContract):
             raise ValueError("preserved_shell must be a RuntimeShellContract")
         expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
         observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
@@ -507,9 +512,9 @@ def replace_cognitive_core(
 ) -> tuple[ProductAssembly, CoreReplacementReceipt]:
     """Replace only the cognitive core while proving the persistent shell stayed identical."""
 
-    if not isinstance(assembly, ProductAssembly):
+    if not _is_exact_type(assembly, ProductAssembly):
         raise ValueError("assembly must be a ProductAssembly")
-    if not isinstance(candidate, CognitiveCoreBinding):
+    if not _is_exact_type(candidate, CognitiveCoreBinding):
         raise ValueError("candidate must be a CognitiveCoreBinding")
     if candidate.gateway_api != assembly.shell.gateway_api:
         raise ValueError("candidate cognitive core is incompatible with runtime shell gateway")
