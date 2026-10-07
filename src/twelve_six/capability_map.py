@@ -17,16 +17,60 @@ from typing import Any
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_REGISTRY_BYTES = 1024 * 1024
+_PACKAGE_ROOT = Path(__file__).resolve().parent
 
 
 def _git_subprocess_env() -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("GIT_")
+        if not key.upper().startswith("GIT_")
     }
     env["GIT_OPTIONAL_LOCKS"] = "0"
     return env
+
+
+def _require_repository_module_origin(
+    module: ModuleType,
+    *,
+    _sealed_package_root: Path = _PACKAGE_ROOT,
+) -> Path:
+    """Bind an imported twelve_six module to its canonical repository source path."""
+
+    if not _is_exact_type(module, ModuleType):
+        raise ValueError("component contract owner must be an exact Python module")
+    module_name = getattr(module, "__name__", None)
+    if not _is_exact_type(module_name, str) or not (
+        module_name == "twelve_six" or module_name.startswith("twelve_six.")
+    ):
+        raise ValueError("component contract owner module is not canonical twelve_six code")
+
+    module_file = getattr(module, "__file__", None)
+    module_spec = getattr(module, "__spec__", None)
+    spec_origin = getattr(module_spec, "origin", None)
+    if not _is_exact_type(module_file, str) or not _is_exact_type(spec_origin, str):
+        raise ValueError("component contract repository-owned module origin is unavailable")
+
+    source_path = Path(module_file).resolve()
+    spec_path = Path(spec_origin).resolve()
+    if source_path != spec_path or not source_path.is_file():
+        raise ValueError("component contract repository-owned module origin mismatch")
+
+    relative_parts = module_name.split(".")[1:]
+    module_stem = _sealed_package_root.joinpath(*relative_parts)
+    expected_paths = {
+        module_stem.with_suffix(".py").resolve(),
+        (module_stem / "__init__.py").resolve(),
+    }
+    if source_path not in expected_paths:
+        raise ValueError("component contract repository-owned module origin is outside package")
+    try:
+        source_path.relative_to(_sealed_package_root)
+    except ValueError as exc:
+        raise ValueError(
+            "component contract repository-owned module origin escapes package root"
+        ) from exc
+    return source_path
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -133,46 +177,66 @@ _CANONICAL_TEST_LEVELS = tuple(TestLevel)
 _CANONICAL_TEST_LEVEL_VALUES = tuple(item.value for item in _CANONICAL_TEST_LEVELS)
 
 
-def _require_capability_status(value: object) -> CapabilityStatus:
-    if not _is_exact_type(value, CapabilityStatus):
+def _require_capability_status(
+    value: object,
+    _sealed_type: type[CapabilityStatus] = CapabilityStatus,
+    _sealed_statuses: tuple[CapabilityStatus, ...] = _CANONICAL_CAPABILITY_STATUSES,
+    _sealed_values: tuple[str, ...] = _CANONICAL_CAPABILITY_STATUS_VALUES,
+) -> CapabilityStatus:
+    if type(value) is not _sealed_type:
         raise ValueError("status must be a CapabilityStatus")
-    for index, canonical in enumerate(_CANONICAL_CAPABILITY_STATUSES):
+    for index, canonical in enumerate(_sealed_statuses):
         if value is canonical:
-            if canonical.value != _CANONICAL_CAPABILITY_STATUS_VALUES[index]:
+            if canonical.value != _sealed_values[index]:
                 raise ValueError("status wire value is non-canonical")
             return canonical
     raise ValueError("status must be a canonical CapabilityStatus")
 
 
-def _require_test_level(value: object) -> TestLevel:
-    if not _is_exact_type(value, TestLevel):
+def _require_test_level(
+    value: object,
+    _sealed_type: type[TestLevel] = TestLevel,
+    _sealed_levels: tuple[TestLevel, ...] = _CANONICAL_TEST_LEVELS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_TEST_LEVEL_VALUES,
+) -> TestLevel:
+    if type(value) is not _sealed_type:
         raise ValueError("level must be a TestLevel")
-    for index, canonical in enumerate(_CANONICAL_TEST_LEVELS):
+    for index, canonical in enumerate(_sealed_levels):
         if value is canonical:
-            if canonical.value != _CANONICAL_TEST_LEVEL_VALUES[index]:
+            if canonical.value != _sealed_values[index]:
                 raise ValueError("level wire value is non-canonical")
             return canonical
     raise ValueError("level must be a canonical TestLevel")
 
 
-def _capability_status_from_wire_value(value: object) -> CapabilityStatus:
-    if not _is_exact_type(value, str):
+def _capability_status_from_wire_value(
+    value: object,
+    _sealed_statuses: tuple[CapabilityStatus, ...] = _CANONICAL_CAPABILITY_STATUSES,
+    _sealed_values: tuple[str, ...] = _CANONICAL_CAPABILITY_STATUS_VALUES,
+    _sealed_validator: Any = _require_capability_status,
+) -> CapabilityStatus:
+    if type(value) is not str:
         raise ValueError("status must be an exact string")
     try:
-        index = _CANONICAL_CAPABILITY_STATUS_VALUES.index(value)
+        index = _sealed_values.index(value)
     except ValueError as exc:
         raise ValueError("status wire value is unsupported") from exc
-    return _require_capability_status(_CANONICAL_CAPABILITY_STATUSES[index])
+    return _sealed_validator(_sealed_statuses[index])
 
 
-def _test_level_from_wire_value(value: object) -> TestLevel:
-    if not _is_exact_type(value, str):
+def _test_level_from_wire_value(
+    value: object,
+    _sealed_levels: tuple[TestLevel, ...] = _CANONICAL_TEST_LEVELS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_TEST_LEVEL_VALUES,
+    _sealed_validator: Any = _require_test_level,
+) -> TestLevel:
+    if type(value) is not str:
         raise ValueError("level must be an exact string")
     try:
-        index = _CANONICAL_TEST_LEVEL_VALUES.index(value)
+        index = _sealed_values.index(value)
     except ValueError as exc:
         raise ValueError("level wire value is unsupported") from exc
-    return _require_test_level(_CANONICAL_TEST_LEVELS[index])
+    return _sealed_validator(_sealed_levels[index])
 
 
 @dataclass(frozen=True, slots=True)
@@ -662,29 +726,39 @@ def resolve_component_contract(component_contract: str) -> object:
     for index in range(len(parts), 0, -1):
         module_name = ".".join(parts[:index])
         try:
-            resolved: object = importlib.import_module(module_name)
+            imported_module = importlib.import_module(module_name)
         except ModuleNotFoundError as exc:
             if exc.name != module_name:
                 raise ValueError(
                     f"component contract import failed inside module: {module_name}"
                 ) from exc
             continue
+        _require_repository_module_origin(imported_module)
+        resolved: object = imported_module
         for attribute in parts[index:]:
             if not hasattr(resolved, attribute):
                 raise ValueError(
                     f"component contract attribute does not exist: {contract}"
                 )
             resolved = getattr(resolved, attribute)
-        if isinstance(resolved, ModuleType):
-            owner_module = resolved.__name__
+
+        if _is_exact_type(resolved, ModuleType):
+            owner = resolved
         else:
             owner_module = getattr(resolved, "__module__", None)
-        if not isinstance(owner_module, str) or not (
-            owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
-        ):
-            raise ValueError(
-                "AVAILABLE component contract must resolve to repository-owned twelve_six code"
-            )
+            if not _is_exact_type(owner_module, str) or not (
+                owner_module == "twelve_six" or owner_module.startswith("twelve_six.")
+            ):
+                raise ValueError(
+                    "AVAILABLE component contract must resolve to repository-owned twelve_six code"
+                )
+            try:
+                owner = importlib.import_module(owner_module)
+            except (ImportError, ValueError) as exc:
+                raise ValueError(
+                    "AVAILABLE component contract owner module cannot be resolved"
+                ) from exc
+        _require_repository_module_origin(owner)
         return resolved
     raise ValueError(f"component contract module does not exist: {contract}")
 
