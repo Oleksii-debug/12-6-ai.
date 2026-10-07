@@ -504,6 +504,26 @@ def test_candidate_overlay_surfaces_remain_unavailable_until_integrated() -> Non
         assert capability.integrated_result is None
 
 
+def test_source_surface_inventory_accepts_zero_candidate_overlay_after_integration(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    payload["surfaces"] = [
+        surface
+        for surface in payload["surfaces"]
+        if surface["origin"] == "accepted_main"
+    ]
+    payload["source_surface_count"] = payload["accepted_main_surface_count"]
+    payload["candidate_overlay_surface_count"] = 0
+    path = tmp_path / "surface-inventory.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    inventory = load_source_surface_inventory(path)
+
+    assert inventory.candidate_overlay_surface_count == 0
+    assert inventory.source_surface_count == inventory.accepted_main_surface_count
+
+
 def test_source_surface_inventory_rejects_bool_schema_version_alias(
     tmp_path: Path,
 ) -> None:

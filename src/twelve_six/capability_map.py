@@ -81,6 +81,12 @@ def _require_positive_int(name: str, value: object) -> int:
     return value
 
 
+def _require_nonnegative_int(name: str, value: object) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
 def _canonical_sha256(value: Any) -> str:
     raw = json.dumps(
         value,
@@ -351,7 +357,7 @@ class SourceSurfaceInventory:
         _require_positive_int(
             "accepted_main_surface_count", self.accepted_main_surface_count
         )
-        _require_positive_int(
+        _require_nonnegative_int(
             "candidate_overlay_surface_count", self.candidate_overlay_surface_count
         )
         if not isinstance(self.surfaces, tuple) or not self.surfaces:
