@@ -164,10 +164,28 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
     for capability_id in (
         "learned-20m-base",
         "windows-nvda-final-product",
+        "github-sil-qualification",
     ):
         capability = registry.capability(capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
         assert capability.unavailable_reason
+
+
+def test_section3_candidate_demotes_modified_project_control_until_integration() -> None:
+    registry = _load()
+    control = registry.capability("project-control-plane")
+    sil = registry.capability("github-sil-qualification")
+
+    assert control.status is CapabilityStatus.UNAVAILABLE
+    assert control.integrated_result is None
+    assert control.unavailable_reason
+    assert all(not item.supported for item in control.environments)
+    assert registry.journey_available("maintainer-project-control") is False
+
+    assert sil.status is CapabilityStatus.UNAVAILABLE
+    assert sil.integrated_result is None
+    assert sil.unavailable_reason
+    assert registry.journey_available("maintainer-sil-qualification") is False
 
 
 def test_closed_predecessor_capabilities_are_available() -> None:
@@ -679,8 +697,8 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     assert inventory.observed_main_sha == "93a01fe50c94a34eeaf7b586176e0c81153c76b3"
     assert inventory.observed_main_tree_sha == "f1717c60acf917cf5c6a59336b00a223342529c2"
     assert inventory.accepted_main_surface_count == 117
-    assert inventory.candidate_overlay_surface_count == 0
-    assert inventory.source_surface_count == 117
+    assert inventory.candidate_overlay_surface_count == 1
+    assert inventory.source_surface_count == 118
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -688,6 +706,13 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     )
     assert integrated.origin == "accepted_main"
     assert registry.capability(integrated.capability_id).status is CapabilityStatus.AVAILABLE
+    candidate = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/sil_qualification.py"
+    )
+    assert candidate.origin == "stacked_candidate"
+    assert registry.capability(candidate.capability_id).status is CapabilityStatus.UNAVAILABLE
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -702,19 +727,31 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
         assert capability.journey_ids
 
 
-def test_closed_section2_source_is_integrated_accepted_main() -> None:
+def test_closed_section2_source_stays_integrated_with_section3_overlay() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
-    modified = [
+    candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 0
-    assert modified == []
+    assert inventory.candidate_overlay_surface_count == 1
+    assert [
+        (surface.path, surface.origin, surface.capability_id) for surface in candidate
+    ] == [
+        (
+            "src/twelve_six/sil_qualification.py",
+            "stacked_candidate",
+            "github-sil-qualification",
+        )
+    ]
     capability = registry.capability("executable-capability-map")
     assert capability.status is CapabilityStatus.AVAILABLE
     assert capability.integrated_result
     assert capability.unavailable_reason is None
+    section3 = registry.capability("github-sil-qualification")
+    assert section3.status is CapabilityStatus.UNAVAILABLE
+    assert section3.integrated_result is None
+    assert section3.unavailable_reason
 
 
 def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_capability(

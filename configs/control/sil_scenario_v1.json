@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "scenario_id": "current-all-available-journeys-synthetic-v1",
+  "journey_selector": "ALL_AVAILABLE",
+  "fixture_policy": "DETERMINISTIC_SYNTHETIC",
+  "synthetic_data_utf8": "12-6 GitHub SIL deterministic synthetic data fixture v1\n",
+  "timeout_seconds_per_vector": 300
+}

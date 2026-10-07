@@ -669,7 +669,7 @@
     {
       "capability_id": "project-control-plane",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.ci_workflow_policy",
       "dependencies": [],
       "journey_ids": [
@@ -678,11 +678,11 @@
       "environments": [
         {
           "environment_id": "python-3.11",
-          "supported": true
+          "supported": false
         },
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": true
+          "supported": false
         }
       ],
       "test_vectors": [
@@ -703,8 +703,8 @@
           "target": "github-actions:37625412078"
         }
       ],
-      "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Section 3 candidate modifies the canonical CI workflow; project-control-plane remains UNAVAILABLE until that exact workflow mutation is integrated and read back."
     },
     {
       "capability_id": "executable-capability-map",
@@ -748,6 +748,44 @@
       ],
       "integrated_result": "integrated executable capability registry and acceptance graph with exhaustive source/journey coverage, fail-closed AVAILABLE/UNAVAILABLE truth, and sealed component/source authority",
       "unavailable_reason": null
+    },
+    {
+      "capability_id": "github-sil-qualification",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.sil_qualification",
+      "dependencies": [
+        "executable-capability-map"
+      ],
+      "journey_ids": [
+        "maintainer-sil-qualification"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section3-sil-component",
+          "level": "component",
+          "command": "pytest -q tests/test_sil_qualification_section3.py"
+        },
+        {
+          "vector_id": "section3-sil-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_capability_map_section2.py tests/test_sil_qualification_section3.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section3-pr",
+          "target": "pull-request:3079"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 3 candidate is not integrated or terminally exact-head qualified."
     }
   ],
   "journeys": [
@@ -872,6 +910,13 @@
       "title": "Maintainer audits executable capability coverage and acceptance evidence",
       "capability_ids": [
         "executable-capability-map"
+      ]
+    },
+    {
+      "journey_id": "maintainer-sil-qualification",
+      "title": "Maintainer executes and independently verifies exact-head GitHub SIL evidence",
+      "capability_ids": [
+        "github-sil-qualification"
       ]
     }
   ]

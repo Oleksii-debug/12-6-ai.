@@ -2,8 +2,8 @@
   "schema_version": 1,
   "observed_main_sha": "93a01fe50c94a34eeaf7b586176e0c81153c76b3",
   "observed_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
-  "current_repository_main_sha": "ee7ade7e80e9e4e6fe7ffd5ebd5012a61bbc5fb6",
-  "current_repository_main_tree_sha": "f1717c60acf917cf5c6a59336b00a223342529c2",
+  "current_repository_main_sha": "c27f78fea59148c51f40d1d86c1b263e1a7f98ef",
+  "current_repository_main_tree_sha": "62d8ff938583c80ccd09ab04573aa593d8597514",
   "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -92,5 +92,10 @@
       "capability_id": "executable-capability-map"
     }
   ],
-  "candidate_overrides": []
+  "candidate_overrides": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "capability_id": "project-control-plane"
+    }
+  ]
 }
