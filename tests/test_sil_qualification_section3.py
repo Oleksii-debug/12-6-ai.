@@ -682,7 +682,7 @@ def test_package_manifest_identity_binds_git_mode_and_blob(
     (tmp_path / "src" / "twelve_six" / "module.py").write_bytes(module)
 
     def git_blob_sha(raw: bytes) -> str:
-        header = f"blob {len(raw)}\\0".encode("ascii")
+        header = f"blob {len(raw)}\0".encode("ascii")
         return hashlib.sha1(
             header + raw,
             usedforsecurity=False,
@@ -733,7 +733,7 @@ def test_package_manifest_preserves_raw_unicode_git_path(
     (tmp_path / path).write_bytes(module)
 
     def git_blob_sha(raw: bytes) -> str:
-        header = f"blob {len(raw)}\\0".encode("ascii")
+        header = f"blob {len(raw)}\0".encode("ascii")
         return hashlib.sha1(
             header + raw,
             usedforsecurity=False,
