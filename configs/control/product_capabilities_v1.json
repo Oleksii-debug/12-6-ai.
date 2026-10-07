@@ -790,6 +790,44 @@
       ],
       "integrated_result": "integrated exact-head GitHub Software-in-the-Loop qualification plane with deterministic clean-runner execution, retained bound evidence, and independent verification",
       "unavailable_reason": null
+    },
+    {
+      "capability_id": "ai-qa-repair-control",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.ai_qa_control",
+      "dependencies": [
+        "github-sil-qualification"
+      ],
+      "journey_ids": [
+        "maintainer-ai-qa-repair"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section4-aiqa-component",
+          "level": "component",
+          "command": "pytest -q tests/test_ai_qa_control_section4.py"
+        },
+        {
+          "vector_id": "section4-aiqa-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_sil_qualification_section3.py tests/test_ai_qa_control_section4.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section4-pr",
+          "target": "pull-request:3080"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 4 candidate is not integrated; terminal exact-head CI/SIL, independent promotion evidence, accepted-main integration and post-merge readback remain required."
     }
   ],
   "journeys": [
@@ -921,6 +959,13 @@
       "title": "Maintainer executes and independently verifies exact-head GitHub SIL evidence",
       "capability_ids": [
         "github-sil-qualification"
+      ]
+    },
+    {
+      "journey_id": "maintainer-ai-qa-repair",
+      "title": "Maintainer converts failure evidence into an isolated repair candidate and independently gated retest decision",
+      "capability_ids": [
+        "ai-qa-repair-control"
       ]
     }
   ]

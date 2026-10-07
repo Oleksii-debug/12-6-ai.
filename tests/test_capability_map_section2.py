@@ -164,6 +164,7 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
     for capability_id in (
         "learned-20m-base",
         "windows-nvda-final-product",
+        "ai-qa-repair-control",
     ):
         capability = registry.capability(capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
@@ -690,7 +691,7 @@ def test_python_source_blob_map_rejects_symlink_mode(
 
 
 
-def test_source_surface_inventory_covers_integrated_main_without_candidate_overlay() -> None:
+def test_source_surface_inventory_covers_integrated_main_with_section4_candidate_overlay() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
@@ -698,8 +699,8 @@ def test_source_surface_inventory_covers_integrated_main_without_candidate_overl
     assert inventory.observed_main_sha == "698531883661e57bbca6e005d571a467fad552ea"
     assert inventory.observed_main_tree_sha == "6e91af737d92cd17ee34404fd86e8e0074d53171"
     assert inventory.accepted_main_surface_count == 118
-    assert inventory.candidate_overlay_surface_count == 0
-    assert inventory.source_surface_count == 118
+    assert inventory.candidate_overlay_surface_count == 1
+    assert inventory.source_surface_count == 119
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -717,6 +718,16 @@ def test_source_surface_inventory_covers_integrated_main_without_candidate_overl
         registry.capability(sil_surface.capability_id).status
         is CapabilityStatus.AVAILABLE
     )
+    aiqa_surface = next(
+        surface
+        for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/ai_qa_control.py"
+    )
+    assert aiqa_surface.origin == "stacked_candidate"
+    assert (
+        registry.capability(aiqa_surface.capability_id).status
+        is CapabilityStatus.UNAVAILABLE
+    )
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> None:
@@ -731,15 +742,17 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
 
 
 
-def test_closed_section2_and_integrated_section3_sources_have_zero_overlay() -> None:
+def test_closed_predecessor_sources_leave_only_section4_candidate_overlay() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 0
-    assert candidate == []
+    assert inventory.candidate_overlay_surface_count == 1
+    assert [surface.path for surface in candidate] == ["src/twelve_six/ai_qa_control.py"]
+    assert candidate[0].capability_id == "ai-qa-repair-control"
+    assert candidate[0].origin == "stacked_candidate"
 
     capability = registry.capability("executable-capability-map")
     assert capability.status is CapabilityStatus.AVAILABLE

@@ -3,7 +3,7 @@
   "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
   "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
   "source_root": "src/twelve_six",
-  "source_surface_count": 118,
+  "source_surface_count": 119,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -14,6 +14,11 @@
       "path": "src/twelve_six/accelerated_scaling.py",
       "capability_id": "accelerated-scaling-research",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/ai_qa_control.py",
+      "capability_id": "ai-qa-repair-control",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/artifact_identity.py",
@@ -597,5 +602,5 @@
     }
   ],
   "accepted_main_surface_count": 118,
-  "candidate_overlay_surface_count": 0
+  "candidate_overlay_surface_count": 1
 }
