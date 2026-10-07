@@ -748,6 +748,9 @@ def _build_sil_plan_with_policy(
     _scenario_validator: Callable[[SILScenario], None] = (
         _validate_sil_scenario_stored
     ),
+    _available_status: CapabilityStatus = CapabilityStatus.AVAILABLE,
+    _unavailable_status: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    _integration_level: TestLevel = TestLevel.INTEGRATION,
 ) -> SILPlan:
     if not _is_exact_type(registry, CapabilityRegistry):
         raise ValueError("registry must be a CapabilityRegistry")
@@ -791,12 +794,12 @@ def _build_sil_plan_with_policy(
             journey_vectors: list[PlannedVector] = []
             for capability_id in journey.capability_ids:
                 capability = registry.capability(capability_id)
-                if capability.status is not CapabilityStatus.AVAILABLE:
+                if capability.status is not _available_status:
                     raise ValueError("available journey contains an unavailable capability")
                 integration_vectors = tuple(
                     vector
                     for vector in capability.test_vectors
-                    if vector.level is TestLevel.INTEGRATION
+                    if vector.level is _integration_level
                 )
                 if not integration_vectors:
                     raise ValueError(
@@ -828,7 +831,7 @@ def _build_sil_plan_with_policy(
         blockers = tuple(
             registry.capability(capability_id)
             for capability_id in journey.capability_ids
-            if registry.capability(capability_id).status is CapabilityStatus.UNAVAILABLE
+            if registry.capability(capability_id).status is _unavailable_status
         )
         if not blockers:
             raise ValueError("unavailable journey has no explicit unavailable capability")
