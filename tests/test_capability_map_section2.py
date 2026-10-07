@@ -1118,3 +1118,73 @@ def test_available_level_gate_ignores_testlevel_dunder_rebinding(
     with pytest.raises(ValueError, match="component and integration"):
         replace(target, test_vectors=(end_to_end_only,))
 
+
+
+def test_registry_method_rebinding_cannot_bypass_stored_state_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    vector = capability.test_vectors[0]
+    object.__setattr__(vector, "command", "python forged.py")
+
+    monkeypatch.setattr(CapabilityRegistry, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(TestVector, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="test vector command"):
+        registry.identity_sha256()
+
+
+def test_registry_serializer_rebinding_cannot_reseal_identity_or_acceptance_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _load()
+    expected_identity = registry.identity_sha256()
+    capability = next(item for item in registry.capabilities if item.test_vectors)
+    expected_path = registry.acceptance_path(capability.capability_id)
+
+    monkeypatch.setattr(
+        capability_map_module.Capability,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        TestVector,
+        "to_dict",
+        lambda _self: {"forged_vector": True},
+    )
+
+    assert registry.identity_sha256() == expected_identity
+    assert registry.acceptance_path(capability.capability_id) == expected_path
+
+
+def test_source_inventory_method_rebinding_cannot_hide_invalid_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
+    surface = inventory.surfaces[0]
+    object.__setattr__(surface, "origin", "forged")
+
+    monkeypatch.setattr(
+        capability_map_module.SourceSurfaceInventory,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "__post_init__",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        capability_map_module.SourceSurface,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    with pytest.raises(ValueError, match="source surface origin is unsupported"):
+        inventory.identity_sha256()
