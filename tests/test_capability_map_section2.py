@@ -1271,6 +1271,6 @@ def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
         lambda: registry.acceptance_path(capability.capability_id),
         lambda: capability_map_module.validate_available_component_contracts(registry),
     ):
-        with pytest.raises(ValueError, match="component contract module does not exist"):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
             operation()
 
