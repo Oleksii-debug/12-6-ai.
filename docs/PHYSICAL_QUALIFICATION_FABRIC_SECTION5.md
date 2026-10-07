@@ -56,6 +56,12 @@ The agent probes the exact Git SHA and tracked/index cleanliness before the run 
 every action. A dirty checkout, changed HEAD, output overflow, non-zero test exit, missing required
 real resource or artifact substitution prevents physical PASS.
 
+The default pytest runner also strips inherited `PYTHON*` and `PYTEST*` host overrides before
+launch, then pins `PYTHONHASHSEED=0`, `PYTHONNOUSERSITE=1` and
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`. This prevents host environment variables such as
+`PYTEST_ADDOPTS=--collect-only`, `PYTEST_PLUGINS` or `PYTHONPATH` from silently changing the
+signed action semantics.
+
 The current subprocess implementation enforces timeout and the signed stdout/stderr capture cap
 *during* execution: two bounded drainers retain at most `max_output_bytes + 1` bytes per stream.
 Each action is launched in an isolated POSIX session or Windows process group; timeout/output

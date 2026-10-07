@@ -527,6 +527,43 @@ def test_process_tree_policy_uses_windows_taskkill(
     assert kwargs["check"] is True
 
 
+def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_must_execute.py").write_text(
+        "def test_must_execute() -> None:\\n    assert False\\n",
+        encoding="utf-8",
+    )
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "--", "tests/test_must_execute.py"), cwd=tmp_path, check=True)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_host_plugin")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "host-pythonpath"))
+    monkeypatch.setenv("TWELVE_SIX_SAFE_SENTINEL", "preserved")
+
+    child_env = physical_qualification._bounded_pytest_env()
+    assert "PYTEST_ADDOPTS" not in child_env
+    assert "PYTEST_PLUGINS" not in child_env
+    assert "PYTHONPATH" not in child_env
+    assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert child_env["PYTHONNOUSERSITE"] == "1"
+    assert child_env["PYTHONHASHSEED"] == "0"
+    assert child_env["TWELVE_SIX_SAFE_SENTINEL"] == "preserved"
+
+    action = QualificationAction(
+        action_id="host-env-bypass",
+        pytest_targets=("tests/test_must_execute.py",),
+        timeout_seconds=30,
+        max_output_bytes=16 * 1024,
+        required_resources=(),
+    )
+    execution = run_bounded_pytest(action, tmp_path)
+
+    assert execution.return_code != 0
+
 def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(
     tmp_path: Path,
 ) -> None:

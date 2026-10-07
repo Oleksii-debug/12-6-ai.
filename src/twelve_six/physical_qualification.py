@@ -779,6 +779,23 @@ def _validate_checked_in_pytest_targets(
             raise ValueError(f"physical pytest target is not exactly tracked: {relative}")
 
 
+def _bounded_pytest_env() -> dict[str, str]:
+    """Remove host-controlled Python/pytest knobs from signed qualification execution."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith(("PYTHON", "PYTEST"))
+    }
+    env.update(
+        {
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        }
+    )
+    return env
+
 def _popen_process_group_kwargs() -> dict[str, Any]:
     if sys.platform == "win32":
         creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", None)
@@ -832,7 +849,7 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
     process = subprocess.Popen(
         argv,
         cwd=repo_root,
-        env={**os.environ, "PYTHONNOUSERSITE": "1", "PYTHONHASHSEED": "0"},
+        env=_bounded_pytest_env(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
