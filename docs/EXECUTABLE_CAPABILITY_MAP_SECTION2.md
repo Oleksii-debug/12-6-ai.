@@ -80,6 +80,11 @@ Dependencies are closed-world and cycle-checked. An AVAILABLE capability cannot 
 UNAVAILABLE capability. Journeys are bidirectionally bound to their capabilities and
 `journey_available()` is true only when every required capability is AVAILABLE.
 
+Identity-bearing registry, capability, journey and source-surface objects are revalidated whenever
+they are serialized or traversed through acceptance/accessor paths. Constructor-time validation is
+not trusted after object creation: low-level mutation of an exact dataclass instance fails closed
+before stale test, evidence, journey or source-surface state can produce a new accepted identity.
+
 Permanent regressions in `tests/test_capability_map_section2.py` cover:
 - AVAILABLE component contracts are resolved by the registry constructor itself, and the resolved module/symbol must actually be owned by the `twelve_six` namespace; imported external objects cannot be re-exported through a `twelve_six.*` attribute path to bypass the executable-contract gate;
 - source-surface paths must be canonical POSIX paths beneath `src/twelve_six/`, rejecting traversal and alternate separators before inventory identity is accepted;
