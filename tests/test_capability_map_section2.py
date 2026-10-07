@@ -1317,3 +1317,50 @@ def test_public_component_resolver_rebinding_cannot_bypass_registry_authority(
     ):
         with pytest.raises(ValueError, match="component contract attribute does not exist"):
             operation()
+
+def test_sealed_component_resolver_alias_rebinding_cannot_reseal_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    registry = _load()
+    capability = next(
+        item
+        for item in registry.capabilities
+        if item.status is CapabilityStatus.AVAILABLE
+    )
+    object.__setattr__(
+        capability,
+        "component_contract",
+        "twelve_six.__forged_missing_contract__",
+    )
+
+    monkeypatch.setattr(
+        capability_map_module,
+        "resolve_component_contract",
+        lambda _contract: object(),
+    )
+    monkeypatch.setattr(
+        capability_map_module,
+        "_SEALED_RESOLVE_COMPONENT_CONTRACT",
+        lambda _contract: object(),
+    )
+
+    for operation in (
+        registry.identity_sha256,
+        lambda: registry.acceptance_path(capability.capability_id),
+        lambda: capability_map_module.validate_available_component_contracts(registry),
+    ):
+        with pytest.raises(ValueError, match="component contract attribute does not exist"):
+            operation()
+
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    available = next(
+        item for item in payload["capabilities"] if item["status"] == "AVAILABLE"
+    )
+    available["component_contract"] = "twelve_six.__forged_missing_contract__"
+    path = tmp_path / "forged-component-contract.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="component contract attribute does not exist"):
+        load_capability_registry(path)
+
