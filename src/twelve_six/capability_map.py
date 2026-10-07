@@ -133,46 +133,66 @@ _CANONICAL_TEST_LEVELS = tuple(TestLevel)
 _CANONICAL_TEST_LEVEL_VALUES = tuple(item.value for item in _CANONICAL_TEST_LEVELS)
 
 
-def _require_capability_status(value: object) -> CapabilityStatus:
-    if not _is_exact_type(value, CapabilityStatus):
+def _require_capability_status(
+    value: object,
+    _sealed_type: type[CapabilityStatus] = CapabilityStatus,
+    _sealed_statuses: tuple[CapabilityStatus, ...] = _CANONICAL_CAPABILITY_STATUSES,
+    _sealed_values: tuple[str, ...] = _CANONICAL_CAPABILITY_STATUS_VALUES,
+) -> CapabilityStatus:
+    if type(value) is not _sealed_type:
         raise ValueError("status must be a CapabilityStatus")
-    for index, canonical in enumerate(_CANONICAL_CAPABILITY_STATUSES):
+    for index, canonical in enumerate(_sealed_statuses):
         if value is canonical:
-            if canonical.value != _CANONICAL_CAPABILITY_STATUS_VALUES[index]:
+            if canonical.value != _sealed_values[index]:
                 raise ValueError("status wire value is non-canonical")
             return canonical
     raise ValueError("status must be a canonical CapabilityStatus")
 
 
-def _require_test_level(value: object) -> TestLevel:
-    if not _is_exact_type(value, TestLevel):
+def _require_test_level(
+    value: object,
+    _sealed_type: type[TestLevel] = TestLevel,
+    _sealed_levels: tuple[TestLevel, ...] = _CANONICAL_TEST_LEVELS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_TEST_LEVEL_VALUES,
+) -> TestLevel:
+    if type(value) is not _sealed_type:
         raise ValueError("level must be a TestLevel")
-    for index, canonical in enumerate(_CANONICAL_TEST_LEVELS):
+    for index, canonical in enumerate(_sealed_levels):
         if value is canonical:
-            if canonical.value != _CANONICAL_TEST_LEVEL_VALUES[index]:
+            if canonical.value != _sealed_values[index]:
                 raise ValueError("level wire value is non-canonical")
             return canonical
     raise ValueError("level must be a canonical TestLevel")
 
 
-def _capability_status_from_wire_value(value: object) -> CapabilityStatus:
-    if not _is_exact_type(value, str):
+def _capability_status_from_wire_value(
+    value: object,
+    _sealed_statuses: tuple[CapabilityStatus, ...] = _CANONICAL_CAPABILITY_STATUSES,
+    _sealed_values: tuple[str, ...] = _CANONICAL_CAPABILITY_STATUS_VALUES,
+    _sealed_validator: Any = _require_capability_status,
+) -> CapabilityStatus:
+    if type(value) is not str:
         raise ValueError("status must be an exact string")
     try:
-        index = _CANONICAL_CAPABILITY_STATUS_VALUES.index(value)
+        index = _sealed_values.index(value)
     except ValueError as exc:
         raise ValueError("status wire value is unsupported") from exc
-    return _require_capability_status(_CANONICAL_CAPABILITY_STATUSES[index])
+    return _sealed_validator(_sealed_statuses[index])
 
 
-def _test_level_from_wire_value(value: object) -> TestLevel:
-    if not _is_exact_type(value, str):
+def _test_level_from_wire_value(
+    value: object,
+    _sealed_levels: tuple[TestLevel, ...] = _CANONICAL_TEST_LEVELS,
+    _sealed_values: tuple[str, ...] = _CANONICAL_TEST_LEVEL_VALUES,
+    _sealed_validator: Any = _require_test_level,
+) -> TestLevel:
+    if type(value) is not str:
         raise ValueError("level must be an exact string")
     try:
-        index = _CANONICAL_TEST_LEVEL_VALUES.index(value)
+        index = _sealed_values.index(value)
     except ValueError as exc:
         raise ValueError("level wire value is unsupported") from exc
-    return _require_test_level(_CANONICAL_TEST_LEVELS[index])
+    return _sealed_validator(_sealed_levels[index])
 
 
 @dataclass(frozen=True, slots=True)
