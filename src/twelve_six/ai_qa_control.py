@@ -1349,10 +1349,10 @@ def evaluate_promotion(
     by_gate: dict[GateKind, GateReceipt] = {}
     for receipt in receipts:
         if receipt.gate in by_gate:
-            raise ValueError(f"duplicate gate receipt: {receipt.str.__str__(gate)}")
+            raise ValueError(f"duplicate gate receipt: {str.__str__(receipt.gate)}")
         by_gate[receipt.gate] = receipt
         if policy.require_exact_candidate_sha and receipt.git_sha != candidate.candidate_git_sha:
-            reasons.append(f"{receipt.str.__str__(gate)} receipt is bound to a different Git SHA")
+            reasons.append(f"{str.__str__(receipt.gate)} receipt is bound to a different Git SHA")
 
     for gate in policy.promotion_gate_order:
         if gate not in by_gate:
@@ -1530,23 +1530,23 @@ def load_gate_receipt_bundle(
         if not _is_exact_type(trusted, GateReceipt):
             raise ValueError("trusted_receipts must contain GateReceipt values")
         if trusted.gate in trusted_by_gate:
-            raise ValueError(f"duplicate trusted gate receipt: {trusted.str.__str__(gate)}")
+            raise ValueError(f"duplicate trusted gate receipt: {str.__str__(trusted.gate)}")
         trusted_by_gate[trusted.gate] = trusted
 
     parsed = tuple(_receipt_from_dict(item) for item in receipts)
     seen: set[GateKind] = set()
     for receipt in parsed:
         if receipt.gate in seen:
-            raise ValueError(f"duplicate bundled gate receipt: {receipt.str.__str__(gate)}")
+            raise ValueError(f"duplicate bundled gate receipt: {str.__str__(receipt.gate)}")
         seen.add(receipt.gate)
         trusted = trusted_by_gate.get(receipt.gate)
         if trusted is None:
             raise ValueError(
-                f"{receipt.str.__str__(gate)} gate receipt has no live trusted verifier result"
+                f"{str.__str__(receipt.gate)} gate receipt has no live trusted verifier result"
             )
         if receipt != trusted:
             raise ValueError(
-                f"{receipt.str.__str__(gate)} gate receipt does not match live trusted evidence"
+                f"{str.__str__(receipt.gate)} gate receipt does not match live trusted evidence"
             )
     return parsed
 
@@ -1836,7 +1836,7 @@ def _assess_cli(args: argparse.Namespace) -> int:
     durable_by_gate: dict[GateKind, GateReceipt] = {}
     for receipt in durable_receipts:
         if receipt.gate in durable_by_gate:
-            raise ValueError(f"duplicate durable gate receipt: {receipt.str.__str__(gate)}")
+            raise ValueError(f"duplicate durable gate receipt: {str.__str__(receipt.gate)}")
         durable_by_gate[receipt.gate] = receipt
     if durable_by_gate != expected_by_gate:
         raise ValueError("durable receipt bundles do not cover the exact live-verified gate set")
