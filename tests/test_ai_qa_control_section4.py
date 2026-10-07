@@ -1047,6 +1047,7 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     assert component.evidence_identity_sha256 != adversarial.evidence_identity_sha256
     assert payload.read_text(encoding="utf-8") == "repaired\n"
 
+
 def test_repair_path_guard_blocks_qualification_trust_roots() -> None:
     protected = (
         ".gitignore",
@@ -1145,3 +1146,88 @@ def test_materializer_rejects_patch_that_rewrites_reproducer_test(
             policy=_policy(),
         )
 
+
+def test_closed_ai_qa_schema_rejects_behavioral_subclasses() -> None:
+    class ForgedStr(str):
+        def strip(self) -> str:
+            return "forged-valid"
+
+    class ForgedBytes(bytes):
+        pass
+
+    class ForgedTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("behavioral tuple must not be iterated")
+
+    policy = _policy()
+    with pytest.raises(ValueError, match="exact lowercase SHA-256"):
+        ai_qa_control._require_sha256("identity", ForgedStr("a" * 64))
+
+    with pytest.raises(ValueError, match="automated gate order is non-canonical"):
+        ai_qa_control.AIQAPolicy(
+            policy.schema_version,
+            ForgedTuple(policy.automated_gate_order),
+            policy.promotion_gate_order,
+            policy.require_independent_certifier,
+            policy.require_exact_candidate_sha,
+            policy.physical_not_applicable_requires_explicit_scope,
+            policy.max_failure_summary_bytes,
+            policy.max_patch_bytes,
+        )
+
+    observation = _ci_observation()
+    with pytest.raises(ValueError, match="external observation schema"):
+        ExternalObservation(
+            ForgedStr(observation.schema_version),
+            observation.source,
+            observation.git_sha,
+            observation.evidence_identity_sha256,
+            observation.failure_summary,
+            observation.reproducer_command,
+            observation.physical_gate_id,
+        )
+
+    failure = _failure()
+    with pytest.raises(ValueError, match="patch must be non-empty bytes"):
+        build_repair_candidate(
+            failure,
+            base_git_sha=_FAIL_SHA,
+            candidate_git_sha=_CANDIDATE_SHA,
+            patch_bytes=ForgedBytes(b"diff --git a/x b/x\n+repair\n"),
+            proposer_actor_id="repair-agent",
+            policy=policy,
+        )
+
+    with pytest.raises(ValueError, match="gate receipt reason must be text"):
+        GateReceipt(
+            GateKind.PHYSICAL,
+            GateVerdict.NOT_APPLICABLE,
+            _CANDIDATE_SHA,
+            "d" * 64,
+            "physical-certifier",
+            ForgedStr("not required"),
+        )
+
+    with pytest.raises(ValueError, match="promotion decision"):
+        ai_qa_control.PromotionDecision(
+            ForgedStr("BLOCK"),
+            "e" * 64,
+            "independent-certifier",
+            ("blocked",),
+        )
+
+    component = GateReceipt(
+        GateKind.COMPONENT,
+        GateVerdict.PASS,
+        _CANDIDATE_SHA,
+        "f" * 64,
+        "independent-certifier",
+    )
+    with pytest.raises(ValueError, match="receipts must contain exact GateReceipt values"):
+        evaluate_promotion(
+            failure,
+            _candidate(failure),
+            ForgedTuple((component,)),
+            certifier_actor_id="independent-certifier",
+            policy=policy,
+        )
