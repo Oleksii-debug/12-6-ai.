@@ -860,7 +860,12 @@ def test_system_plane_value_descriptor_rebinding_cannot_reseal_identity(
     def dispatching_value(_: SystemPlane) -> str:
         raise AssertionError("SystemPlane.value descriptor must not be dispatched")
 
-    monkeypatch.setattr(SystemPlane, "value", property(dispatching_value))
+    monkeypatch.setattr(
+        SystemPlane,
+        "value",
+        property(dispatching_value),
+        raising=False,
+    )
 
     assert architecture.identity_sha256() == expected_identity
     assert canonical_system_architecture_v1().identity_sha256() == expected_identity
