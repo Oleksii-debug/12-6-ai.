@@ -932,7 +932,7 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     resealed = dict(evidence)
     resealed["scenario_id"] = "forged-scenario"
     _write_evidence(evidence_path, resealed)
-    with pytest.raises(ValueError, match="evidence identity"):
+    with pytest.raises(ValueError, match="scenario_id does not match exact scenario"):
         _verify_evidence(evidence_path, log_path)
 
 
