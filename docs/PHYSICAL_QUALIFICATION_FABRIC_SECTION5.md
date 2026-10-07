@@ -33,9 +33,11 @@ RAM/disk and PyTorch/CUDA device state. Resource observations are explicit:
 - NOT_PROBED;
 - SIMULATED.
 
-CPU/RAM/disk and CUDA GPU can be proven by the v1 local probes. Network, model and provider
-execution are deliberately NOT_PROBED until an authoritative adapter exists. A signed packet that
-requires one of those resources therefore cannot receive physical PASS.
+CPU/RAM/disk and CUDA GPU can be proven by the v1 local probes. NETWORK/MODEL/PROVIDER can only
+become REAL_PROBED through a bounded external adapter evidence object whose adapter id and exact
+bytes pass a trusted resource-specific verifier during execution and again during independent
+evidence verification. Without that authoritative adapter/verifier pair the resource remains
+NOT_PROBED, so a packet that requires it cannot receive physical PASS.
 
 SIMULATION is a first-class evidence mode. Even if every test vector passes, simulation receives
 SIMULATION_PASS and the independent verifier rejects it when real physical PASS is required.
