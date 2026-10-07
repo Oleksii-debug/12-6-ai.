@@ -922,6 +922,7 @@ def test_closed_scalar_and_container_schema_boundaries_reject_behavioral_subclas
     with pytest.raises(ValueError, match="source surface origin is unsupported"):
         replace(surface, origin=ForgedStr(surface.origin))
 
+
 def test_registry_rejects_enum_wire_value_mutation_before_serialization() -> None:
     registry = _load()
     status = capability_map_module.CapabilityStatus.AVAILABLE
