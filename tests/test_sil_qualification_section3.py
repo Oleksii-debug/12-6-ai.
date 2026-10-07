@@ -736,6 +736,45 @@ def test_sil_subprocess_environment_rejects_host_overrides(
     assert execution.return_code != 0
 
 
+def test_sil_command_runner_never_inherits_stdin_or_enables_shell(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_bytes = b'{"stdin":"sealed"}'
+    input_identity = hashlib.sha256(input_bytes).hexdigest()
+    observed: dict[str, object] = {}
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.update(kwargs)
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=f"SIL_INPUT_VERIFIED_SHA256={input_identity}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(sil_qualification.subprocess, "run", fake_run)
+
+    execution = sil_qualification.run_command(
+        (
+            sil_qualification.sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_must_execute.py",
+        ),
+        tmp_path,
+        30,
+        input_bytes,
+        input_identity,
+    )
+
+    assert observed["stdin"] is subprocess.DEVNULL
+    assert observed["shell"] is False
+    assert execution.return_code == 0
+    assert execution.consumed_input_identity_sha256 == input_identity
+
+
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
     registry = _registry()
     scenario = _scenario()
