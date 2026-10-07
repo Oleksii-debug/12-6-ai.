@@ -4,6 +4,7 @@ import hashlib
 import importlib
 import json
 import math
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -16,6 +17,16 @@ from typing import Any
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_REGISTRY_BYTES = 1024 * 1024
+
+
+def _git_subprocess_env() -> dict[str, str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    return env
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -142,6 +153,26 @@ def _require_test_level(value: object) -> TestLevel:
                 raise ValueError("level wire value is non-canonical")
             return canonical
     raise ValueError("level must be a canonical TestLevel")
+
+
+def _capability_status_from_wire_value(value: object) -> CapabilityStatus:
+    if not _is_exact_type(value, str):
+        raise ValueError("status must be an exact string")
+    try:
+        index = _CANONICAL_CAPABILITY_STATUS_VALUES.index(value)
+    except ValueError as exc:
+        raise ValueError("status wire value is unsupported") from exc
+    return _require_capability_status(_CANONICAL_CAPABILITY_STATUSES[index])
+
+
+def _test_level_from_wire_value(value: object) -> TestLevel:
+    if not _is_exact_type(value, str):
+        raise ValueError("level must be an exact string")
+    try:
+        index = _CANONICAL_TEST_LEVEL_VALUES.index(value)
+    except ValueError as exc:
+        raise ValueError("level wire value is unsupported") from exc
+    return _require_test_level(_CANONICAL_TEST_LEVELS[index])
 
 
 @dataclass(frozen=True, slots=True)
@@ -730,7 +761,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
         test_vectors = tuple(
             TestVector(
                 vector_id=vector["vector_id"],
-                level=TestLevel(vector["level"]),
+                level=_test_level_from_wire_value(vector["level"]),
                 command=vector["command"],
             )
             for raw_vector in item["test_vectors"]
@@ -756,7 +787,7 @@ def load_capability_registry(path: str | Path) -> CapabilityRegistry:
             Capability(
                 capability_id=item["capability_id"],
                 schema_version=item["schema_version"],
-                status=CapabilityStatus(item["status"]),
+                status=_capability_status_from_wire_value(item["status"]),
                 component_contract=item["component_contract"],
                 dependencies=tuple(item["dependencies"]),
                 journey_ids=tuple(item["journey_ids"]),
@@ -855,6 +886,7 @@ def _python_source_blob_map(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError(f"cannot enumerate source blobs for {treeish}")
@@ -912,6 +944,7 @@ def _worktree_python_source_drift(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if completed.returncode != 0:
         raise ValueError("cannot inspect Python source worktree drift")
@@ -991,6 +1024,7 @@ def validate_source_surface_coverage(
         check=False,
         capture_output=True,
         text=True,
+        env=_git_subprocess_env(),
     )
     if tree_check.returncode != 0:
         raise ValueError("cannot resolve observed_main_sha in repository checkout")
