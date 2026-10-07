@@ -763,14 +763,31 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
     assert workflows == ["ci.yml"]
 
     workflow = (workflow_dir / "ci.yml").read_text(encoding="utf-8")
-    assert "  sil-current-capability-journeys:" in workflow
-    assert "needs: bootstrap" in workflow
-    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
-    assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in workflow
-    assert "python -m twelve_six.sil_qualification run" in workflow
-    assert "python -m twelve_six.sil_qualification verify" in workflow
-    assert "continue-on-error: true" in workflow
-    assert "if: always()" in workflow
+    marker = "  sil-current-capability-journeys:"
+    assert marker in workflow
+    sil_job = marker + workflow.split(marker, 1)[1]
+    assert "needs: bootstrap" in sil_job
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in sil_job
+    assert 'test "$(git rev-parse HEAD)" = "$SIL_EXPECTED_SHA"' in sil_job
+    assert (
+        'SIL_ENV_AUTHORITY_COMMIT: "029514654829cebc149cff6fc1fea2a8ba4fa566"'
+        in sil_job
+    )
+    assert "requirements/locks/linux-x86_64/toolchain.lock.txt" in sil_job
+    assert "requirements/execution/linux-x86_64/cpu-runtime.lock.txt" in sil_job
+    assert "requirements/locks/linux-x86_64/dev.lock.txt" in sil_job
+    assert "--require-hashes --no-deps" in sil_job
+    assert "--no-deps --no-build-isolation -e ." in sil_job
+    assert "python -m pip install --upgrade pip" not in sil_job
+    assert "pip install -e .[dev]" not in sil_job
+    assert "python -m twelve_six.sil_qualification environment-receipt" in sil_job
+    assert sil_job.count(
+        '--environment-receipt "$RUNNER_TEMP/sil-environment.json"'
+    ) == 2
+    assert "python -m twelve_six.sil_qualification run" in sil_job
+    assert "python -m twelve_six.sil_qualification verify" in sil_job
+    assert "continue-on-error: true" in sil_job
+    assert "if: always()" in sil_job
 
 def test_package_identity_binds_tracked_package_source_manifest() -> None:
     raw = _package_bytes()
