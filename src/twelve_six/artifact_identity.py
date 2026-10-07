@@ -267,9 +267,6 @@ class ArtifactManifest:
     def parent_bindings_by_role(self) -> dict[str, ParentBinding]:
         return {parent.role: parent for parent in self.parents}
 
-    def parent_bindings_by_role(self) -> dict[str, ParentBinding]:
-        return {parent.role: parent for parent in self.parents}
-
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
         if not isinstance(value, dict) or set(value) != {
