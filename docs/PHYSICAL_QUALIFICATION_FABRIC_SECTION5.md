@@ -55,6 +55,11 @@ Section-5 closure; this draft does not pretend that Python pipe capture is an OS
 
 ## Machine-verifiable evidence
 
+The host service must also ED25519-sign the canonical evidence body with a separately trusted host
+attestation key. A self-consistent JSON envelope plus recomputed hashes is not accepted. The
+independent verifier validates that host signature and independently derives resource observations,
+blocker reasons, action verdicts and the final qualification verdict from the signed body.
+
 The evidence envelope cross-binds:
 
 - signed packet identity and detached-signature identity;

@@ -255,6 +255,7 @@ class VerifiedSignedPacket:
 
 
 SignatureVerifier = Callable[[str, bytes, bytes], bool]
+EvidenceSigner = Callable[[str, bytes], bytes]
 
 
 def _action_from_dict(value: object) -> QualificationAction:
@@ -386,6 +387,18 @@ class HostInventory:
         if self.os_family not in {"WINDOWS", "LINUX", "OTHER"}:
             raise ValueError("invalid host os_family")
         for name, value in (
+            ("platform_system", self.platform_system),
+            ("platform_release", self.platform_release),
+            ("machine", self.machine),
+            ("python_version", self.python_version),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{name} must be a non-empty string")
+        if self.torch_version is not None and not isinstance(self.torch_version, str):
+            raise ValueError("torch_version must be a string or null")
+        if not all(isinstance(item, str) and item for item in self.cuda_device_names):
+            raise ValueError("CUDA device names must be non-empty strings")
+        for name, value in (
             ("disk_total_bytes", self.disk_total_bytes),
             ("disk_free_bytes", self.disk_free_bytes),
         ):
@@ -422,6 +435,42 @@ class HostInventory:
 
     def identity_sha256(self) -> str:
         return _sha256_bytes(_canonical_json_bytes(self.to_dict()))
+
+
+def _host_inventory_from_dict(value: object) -> HostInventory:
+    expected = {
+        "os_family",
+        "platform_system",
+        "platform_release",
+        "machine",
+        "python_version",
+        "cpu_logical_count",
+        "ram_total_bytes",
+        "disk_total_bytes",
+        "disk_free_bytes",
+        "torch_version",
+        "cuda_available",
+        "cuda_device_names",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("host inventory fields are non-canonical")
+    names = value["cuda_device_names"]
+    if not isinstance(names, list) or not all(isinstance(item, str) for item in names):
+        raise ValueError("cuda_device_names must be a string array")
+    return HostInventory(
+        os_family=value["os_family"],
+        platform_system=value["platform_system"],
+        platform_release=value["platform_release"],
+        machine=value["machine"],
+        python_version=value["python_version"],
+        cpu_logical_count=value["cpu_logical_count"],
+        ram_total_bytes=value["ram_total_bytes"],
+        disk_total_bytes=value["disk_total_bytes"],
+        disk_free_bytes=value["disk_free_bytes"],
+        torch_version=value["torch_version"],
+        cuda_available=value["cuda_available"],
+        cuda_device_names=tuple(names),
+    )
 
 
 def _probe_ram_total_bytes() -> int | None:
@@ -612,8 +661,11 @@ def execute_qualification(
     action_runner: ActionRunner = run_bounded_pytest,
     git_probe: GitProbe = probe_git_state,
     agent_source_bytes: bytes | None = None,
+    evidence_signing_key_id: str,
+    evidence_signer: EvidenceSigner,
 ) -> tuple[dict[str, Any], bytes]:
     packet = verified.packet
+    signing_key_id = _require_id("evidence signing key id", evidence_signing_key_id)
     root = Path(repo_root).resolve()
     source_bytes = Path(__file__).read_bytes() if agent_source_bytes is None else agent_source_bytes
     source_sha = _sha256_bytes(source_bytes)
@@ -719,7 +771,8 @@ def execute_qualification(
         "host_inventory": inventory.to_dict(),
         "host_inventory_identity_sha256": inventory.identity_sha256(),
         "resource_observations": {
-            item.value: resources[item].value for item in sorted(ResourceKind, key=lambda x: x.value)
+            item.value: resources[item].value
+            for item in sorted(ResourceKind, key=lambda item: item.value)
         },
         "actions": action_evidence,
         "artifacts": list(artifacts),
@@ -728,7 +781,18 @@ def execute_qualification(
         "verdict": verdict.value,
         "reasons": reasons,
     }
-    body["evidence_identity_sha256"] = _sha256_bytes(_canonical_json_bytes(body))
+    evidence_message = _canonical_json_bytes(body)
+    evidence_identity = _sha256_bytes(evidence_message)
+    evidence_signature = evidence_signer(signing_key_id, evidence_message)
+    if not isinstance(evidence_signature, bytes) or len(evidence_signature) != 64:
+        raise ValueError("host evidence signer must return one 64-byte ED25519 signature")
+    body["evidence_identity_sha256"] = evidence_identity
+    body["evidence_attestation"] = {
+        "algorithm": "ED25519",
+        "key_id": signing_key_id,
+        "signature_b64": base64.b64encode(evidence_signature).decode("ascii"),
+        "signature_sha256": _sha256_bytes(evidence_signature),
+    }
     return body, log_bytes
 
 
@@ -742,6 +806,7 @@ def write_evidence_bundle(
     expected_identity = evidence.get("evidence_identity_sha256")
     body = dict(evidence)
     body.pop("evidence_identity_sha256", None)
+    body.pop("evidence_attestation", None)
     if expected_identity != _sha256_bytes(_canonical_json_bytes(body)):
         raise ValueError("evidence identity does not match evidence body")
     if evidence.get("log_sha256") != _sha256_bytes(log_bytes):
@@ -760,6 +825,7 @@ def verify_qualification_evidence(
     agent_source_bytes: bytes,
     artifact_root: str | Path,
     require_real_pass: bool,
+    evidence_signature_verifier: SignatureVerifier,
 ) -> dict[str, Any]:
     evidence = _strict_json_object(evidence_path, label="physical qualification evidence")
     expected_fields = {
@@ -781,6 +847,7 @@ def verify_qualification_evidence(
         "verdict",
         "reasons",
         "evidence_identity_sha256",
+        "evidence_attestation",
     }
     if set(evidence) != expected_fields:
         raise ValueError("physical evidence fields are non-canonical")
@@ -793,8 +860,37 @@ def verify_qualification_evidence(
     )
     identity_body = dict(evidence)
     del identity_body["evidence_identity_sha256"]
-    if _sha256_bytes(_canonical_json_bytes(identity_body)) != claimed_identity:
+    attestation = identity_body.pop("evidence_attestation", None)
+    evidence_message = _canonical_json_bytes(identity_body)
+    if _sha256_bytes(evidence_message) != claimed_identity:
         raise ValueError("physical evidence identity mismatch")
+    if not isinstance(attestation, dict) or set(attestation) != {
+        "algorithm",
+        "key_id",
+        "signature_b64",
+        "signature_sha256",
+    }:
+        raise ValueError("physical evidence attestation fields are non-canonical")
+    if attestation["algorithm"] != "ED25519":
+        raise ValueError("physical evidence attestation must use ED25519")
+    evidence_key_id = _require_id("evidence attestation key id", attestation["key_id"])
+    try:
+        evidence_signature = base64.b64decode(
+            attestation["signature_b64"],
+            validate=True,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("physical evidence signature is not strict base64") from exc
+    if len(evidence_signature) != 64:
+        raise ValueError("physical evidence ED25519 signature must contain 64 bytes")
+    if _sha256_bytes(evidence_signature) != attestation["signature_sha256"]:
+        raise ValueError("physical evidence signature identity mismatch")
+    if not evidence_signature_verifier(
+        evidence_key_id,
+        evidence_message,
+        evidence_signature,
+    ):
+        raise ValueError("physical evidence host attestation verification failed")
 
     packet = verified_packet.packet
     if evidence["packet_identity_sha256"] != packet.identity_sha256():
@@ -814,12 +910,8 @@ def verify_qualification_evidence(
         raise ValueError("physical evidence agent source hash mismatch")
 
     inventory_payload = evidence["host_inventory"]
-    if not isinstance(inventory_payload, dict):
-        raise ValueError("host_inventory must be an object")
-    if (
-        _sha256_bytes(_canonical_json_bytes(inventory_payload))
-        != evidence["host_inventory_identity_sha256"]
-    ):
+    inventory = _host_inventory_from_dict(inventory_payload)
+    if inventory.identity_sha256() != evidence["host_inventory_identity_sha256"]:
         raise ValueError("host inventory identity mismatch")
 
     mode = ExecutionMode(evidence["execution_mode"])
@@ -842,11 +934,25 @@ def verify_qualification_evidence(
         ResourceKind(key): ResourceObservation(value)
         for key, value in resource_payload.items()
     }
+    expected_resources = resource_observations(inventory, execution_mode=mode)
+    if resource_values != expected_resources:
+        raise ValueError("resource observations do not match host inventory/mode")
     required = {
         resource
         for action in packet.actions
         for resource in action.required_resources
     }
+    expected_reasons: list[str] = []
+    if inventory.os_family not in packet.allowed_os_families:
+        expected_reasons.append("host OS family is not allowed by the signed packet")
+    if mode is ExecutionMode.REAL_HOST:
+        for resource in sorted(required, key=lambda item: item.value):
+            if resource_values[resource] is not ResourceObservation.REAL_PROBED:
+                expected_reasons.append(
+                    f"required real resource is not proven: {resource.value}"
+                )
+    if evidence["reasons"] != expected_reasons:
+        raise ValueError("physical evidence blocker reasons are not independently reproducible")
     if verdict is QualificationVerdict.PASS:
         for resource in required:
             if resource_values[resource] is not ResourceObservation.REAL_PROBED:
@@ -878,9 +984,36 @@ def verify_qualification_evidence(
         raise ValueError("physical evidence action count mismatch")
     if len(log_rows) != len(packet.actions):
         raise ValueError("physical log action count mismatch")
+    all_actions_pass = True
+    expected_action_fields = {
+        "action_id",
+        "argv",
+        "return_code",
+        "duration_ms",
+        "stdout_sha256",
+        "stderr_sha256",
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdout_truncated",
+        "stderr_truncated",
+        "pre_git_sha",
+        "pre_tracked_clean",
+        "post_git_sha",
+        "post_tracked_clean",
+        "verdict",
+    }
+    expected_log_fields = {
+        "action_id",
+        "stdout_b64",
+        "stderr_b64",
+        "stdout_truncated",
+        "stderr_truncated",
+    }
     for expected, actual, log_row in zip(packet.actions, actions, log_rows, strict=True):
-        if not isinstance(actual, dict):
-            raise ValueError("physical action evidence must be an object")
+        if not isinstance(actual, dict) or set(actual) != expected_action_fields:
+            raise ValueError("physical action evidence fields are non-canonical")
+        if not isinstance(log_row, dict) or set(log_row) != expected_log_fields:
+            raise ValueError("physical log fields are non-canonical")
         if actual.get("action_id") != expected.action_id:
             raise ValueError("physical action evidence order/id mismatch")
         if actual.get("argv") != list(expected.logical_argv()):
@@ -908,11 +1041,42 @@ def verify_qualification_evidence(
             "stderr_bytes"
         ):
             raise ValueError("physical action output byte count mismatch")
-        if actual.get("verdict") == ActionVerdict.PASS.value and (
-            actual.get("stdout_truncated") is not False
-            or actual.get("stderr_truncated") is not False
-        ):
-            raise ValueError("physical PASS action contains truncated output")
+        if log_row["stdout_truncated"] is not actual["stdout_truncated"]:
+            raise ValueError("physical stdout truncation flag mismatch")
+        if log_row["stderr_truncated"] is not actual["stderr_truncated"]:
+            raise ValueError("physical stderr truncation flag mismatch")
+        if type(actual["return_code"]) is not int:
+            raise ValueError("physical action return_code must be an integer")
+        if type(actual["duration_ms"]) is not int or actual["duration_ms"] < 0:
+            raise ValueError("physical action duration_ms must be non-negative")
+        expected_action_pass = (
+            actual["return_code"] == 0
+            and actual["stdout_truncated"] is False
+            and actual["stderr_truncated"] is False
+            and actual["pre_tracked_clean"] is True
+            and actual["post_tracked_clean"] is True
+            and actual["pre_git_sha"] == packet.target_git_sha
+            and actual["post_git_sha"] == packet.target_git_sha
+        )
+        expected_action_verdict = (
+            ActionVerdict.PASS.value if expected_action_pass else ActionVerdict.FAIL.value
+        )
+        if actual["verdict"] != expected_action_verdict:
+            raise ValueError("physical action verdict is not independently reproducible")
+        if not expected_action_pass:
+            all_actions_pass = False
+
+    expected_verdict = (
+        QualificationVerdict.FAIL
+        if expected_reasons or not all_actions_pass
+        else (
+            QualificationVerdict.SIMULATION_PASS
+            if mode is ExecutionMode.SIMULATION
+            else QualificationVerdict.PASS
+        )
+    )
+    if verdict is not expected_verdict:
+        raise ValueError("physical qualification verdict is not independently reproducible")
 
     artifacts = evidence["artifacts"]
     if not isinstance(artifacts, list) or len(artifacts) != len(packet.artifact_paths):

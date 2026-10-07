@@ -27,6 +27,7 @@ _GIT_SHA = "a" * 40
 _AGENT_BYTES = b"section-5-agent-source"
 _AGENT_SHA = hashlib.sha256(_AGENT_BYTES).hexdigest()
 _KEY_ID = "physical-root-1"
+_HOST_KEY_ID = "physical-host-1"
 
 
 def _fake_signature(message: bytes) -> bytes:
@@ -37,6 +38,21 @@ def _fake_signature(message: bytes) -> bytes:
 
 def _fake_verify(key_id: str, message: bytes, signature: bytes) -> bool:
     return key_id == _KEY_ID and signature == _fake_signature(message)
+
+
+def _host_signature(message: bytes) -> bytes:
+    left = hashlib.sha256(_HOST_KEY_ID.encode("ascii") + message).digest()
+    right = hashlib.sha256(message + _HOST_KEY_ID.encode("ascii")).digest()
+    return left + right
+
+
+def _fake_evidence_signer(key_id: str, message: bytes) -> bytes:
+    assert key_id == _HOST_KEY_ID
+    return _host_signature(message)
+
+
+def _fake_evidence_verify(key_id: str, message: bytes, signature: bytes) -> bool:
+    return key_id == _HOST_KEY_ID and signature == _host_signature(message)
 
 
 def _action(
@@ -184,6 +200,8 @@ def test_simulation_can_never_claim_physical_pass(tmp_path: Path) -> None:
         action_runner=_pass_runner,
         git_probe=_git_probe,
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     assert evidence["verdict"] == QualificationVerdict.SIMULATION_PASS.value
     assert set(evidence["resource_observations"].values()) == {"SIMULATED"}
@@ -201,6 +219,8 @@ def test_real_host_pass_requires_exact_proven_resources(tmp_path: Path) -> None:
         action_runner=_pass_runner,
         git_probe=_git_probe,
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     assert evidence["verdict"] == QualificationVerdict.PASS.value
     assert evidence["resource_observations"]["CPU"] == "REAL_PROBED"
@@ -227,6 +247,8 @@ def test_unproven_network_or_absent_gpu_blocks_real_pass(tmp_path: Path) -> None
         action_runner=_pass_runner,
         git_probe=_git_probe,
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     assert evidence["verdict"] == QualificationVerdict.FAIL.value
     assert "required real resource is not proven: GPU" in evidence["reasons"]
@@ -243,6 +265,8 @@ def test_agent_source_and_exact_clean_checkout_are_fail_closed(tmp_path: Path) -
             action_runner=_pass_runner,
             git_probe=_git_probe,
             agent_source_bytes=b"wrong-agent",
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
         )
 
     with pytest.raises(ValueError, match="dirty before qualification"):
@@ -277,6 +301,8 @@ def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> N
         ),
         git_probe=lambda _: next(states),
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     assert evidence["verdict"] == QualificationVerdict.FAIL.value
     assert evidence["actions"][0]["stdout_truncated"] is True
@@ -294,6 +320,8 @@ def test_artifact_hashes_and_log_are_independently_verified(tmp_path: Path) -> N
         action_runner=_pass_runner,
         git_probe=_git_probe,
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     evidence_path = tmp_path / "evidence.json"
     log_path = tmp_path / "run.jsonl"
@@ -310,6 +338,7 @@ def test_artifact_hashes_and_log_are_independently_verified(tmp_path: Path) -> N
         agent_source_bytes=_AGENT_BYTES,
         artifact_root=tmp_path,
         require_real_pass=True,
+        evidence_signature_verifier=_fake_evidence_verify,
     )
     assert checked["verdict"] == "PASS"
 
@@ -322,6 +351,7 @@ def test_artifact_hashes_and_log_are_independently_verified(tmp_path: Path) -> N
             agent_source_bytes=_AGENT_BYTES,
             artifact_root=tmp_path,
             require_real_pass=True,
+            evidence_signature_verifier=_fake_evidence_verify,
         )
 
 
@@ -342,6 +372,8 @@ def test_artifact_substitution_and_simulation_real_gate_are_rejected(tmp_path: P
         action_runner=_pass_runner,
         git_probe=_git_probe,
         agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
     )
     evidence_path = tmp_path / "evidence.json"
     log_path = tmp_path / "run.jsonl"
@@ -359,6 +391,7 @@ def test_artifact_substitution_and_simulation_real_gate_are_rejected(tmp_path: P
             agent_source_bytes=_AGENT_BYTES,
             artifact_root=tmp_path,
             require_real_pass=True,
+            evidence_signature_verifier=_fake_evidence_verify,
         )
 
     artifact.write_bytes(b"substituted")
@@ -370,6 +403,60 @@ def test_artifact_substitution_and_simulation_real_gate_are_rejected(tmp_path: P
             agent_source_bytes=_AGENT_BYTES,
             artifact_root=tmp_path,
             require_real_pass=False,
+            evidence_signature_verifier=_fake_evidence_verify,
+        )
+
+
+def test_forged_self_consistent_evidence_without_host_signature_is_rejected(
+    tmp_path: Path,
+) -> None:
+    verified = _load(tmp_path, _packet())
+    evidence, log_bytes = execute_qualification(
+        verified,
+        repo_root=tmp_path,
+        host_inventory=_inventory(),
+        action_runner=_pass_runner,
+        git_probe=_git_probe,
+        agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
+    )
+    evidence_path = tmp_path / "evidence.json"
+    log_path = tmp_path / "run.jsonl"
+    write_evidence_bundle(
+        evidence_path,
+        log_path,
+        evidence=evidence,
+        log_bytes=log_bytes,
+    )
+
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    payload["resource_observations"]["PROVIDER"] = "REAL_PROBED"
+    attestation = payload.pop("evidence_attestation")
+    payload.pop("evidence_identity_sha256")
+    message = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    payload["evidence_identity_sha256"] = hashlib.sha256(message).hexdigest()
+    payload["evidence_attestation"] = attestation
+    evidence_path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="host attestation verification failed"):
+        verify_qualification_evidence(
+            evidence_path,
+            log_path,
+            verified_packet=verified,
+            agent_source_bytes=_AGENT_BYTES,
+            artifact_root=tmp_path,
+            require_real_pass=False,
+            evidence_signature_verifier=_fake_evidence_verify,
         )
 
 
