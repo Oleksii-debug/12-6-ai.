@@ -84,6 +84,20 @@ def _is_exact_type(value: object, expected: type[object]) -> bool:
     return type(value) is expected  # noqa: E721
 
 
+def _require_exact_object_fields(
+    schema_name: str,
+    value: object,
+    expected_fields: set[str],
+) -> dict[str, Any]:
+    if not _is_exact_type(value, dict):
+        raise ValueError(f"{schema_name} fields mismatch")
+    if any(not _is_exact_type(key, str) for key in value):
+        raise ValueError(f"{schema_name} fields mismatch")
+    if set(value) != expected_fields:
+        raise ValueError(f"{schema_name} fields mismatch")
+    return value
+
+
 class ArtifactKind(str, Enum):
     MODEL_SPEC = "model_spec"
     INIT_SPEC = "init_spec"
@@ -201,12 +215,11 @@ class ArtifactRef:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactRef:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "kind",
-            "schema_version",
-            "identity_sha256",
-        }:
-            raise ValueError("ArtifactRef fields mismatch")
+        value = _require_exact_object_fields(
+            "ArtifactRef",
+            value,
+            {"kind", "schema_version", "identity_sha256"},
+        )
         kind_value = value["kind"]
         if not _is_exact_type(kind_value, str):
             raise ValueError("ArtifactRef kind must be an exact string")
@@ -250,12 +263,11 @@ class ParentBinding:
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "role",
-            "artifact",
-            "parent_manifest_identity_sha256",
-        }:
-            raise ValueError("ParentBinding fields mismatch")
+        value = _require_exact_object_fields(
+            "ParentBinding",
+            value,
+            {"role", "artifact", "parent_manifest_identity_sha256"},
+        )
         return cls(
             role=value["role"],
             artifact=ArtifactRef.from_dict(value["artifact"]),
@@ -318,12 +330,11 @@ class ArtifactManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
-        if not _is_exact_type(value, dict) or set(value) != {
-            "schema_version",
-            "artifact",
-            "parents",
-        }:
-            raise ValueError("ArtifactManifest fields mismatch")
+        value = _require_exact_object_fields(
+            "ArtifactManifest",
+            value,
+            {"schema_version", "artifact", "parents"},
+        )
         parents = value["parents"]
         if not _is_exact_type(parents, list):
             raise ValueError("ArtifactManifest parents must be a JSON array")
@@ -512,8 +523,11 @@ class GenerationIdentityManifest:
 
     @classmethod
     def from_dict(cls, value: object) -> GenerationIdentityManifest:
-        if not _is_exact_type(value, dict) or set(value) != {"schema_version", "artifacts"}:
-            raise ValueError("GenerationIdentityManifest fields mismatch")
+        value = _require_exact_object_fields(
+            "GenerationIdentityManifest",
+            value,
+            {"schema_version", "artifacts"},
+        )
         artifacts = value["artifacts"]
         if not _is_exact_type(artifacts, list):
             raise ValueError("GenerationIdentityManifest artifacts must be a JSON array")
