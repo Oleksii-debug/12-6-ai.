@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -511,6 +514,155 @@ def build_repair_candidate(
     )
 
 
+def _git_command(
+    repo_root: Path,
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=check,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def materialize_local_repair_candidate(
+    failure: FailurePacket,
+    *,
+    repo_root: str | Path,
+    patch_bytes: bytes,
+    proposer_actor_id: str,
+    policy: AIQAPolicy,
+) -> tuple[RepairCandidate, str]:
+    """Create an isolated deterministic local Git repair lineage from the exact failing SHA."""
+
+    if not isinstance(failure, FailurePacket):
+        raise ValueError("failure must be a FailurePacket")
+    if not isinstance(policy, AIQAPolicy):
+        raise ValueError("policy must be an AIQAPolicy")
+    _require_id("proposer_actor_id", proposer_actor_id)
+    if not isinstance(patch_bytes, bytes) or not patch_bytes:
+        raise ValueError("isolated repair patch must be non-empty bytes")
+    if len(patch_bytes) > policy.max_patch_bytes:
+        raise ValueError("isolated repair patch exceeds AI QA policy bound")
+
+    root = Path(repo_root).resolve()
+    base_sha = failure.failing_git_sha
+    base_probe = _git_command(root, "cat-file", "-e", f"{base_sha}^{{commit}}", check=False)
+    if base_probe.returncode != 0:
+        raise ValueError("failing Git SHA is not an available local commit")
+
+    patch_sha = _sha256_bytes(patch_bytes)
+    branch_name = f"aiqa/repair/{base_sha[:12]}-{patch_sha[:12]}"
+    ref_name = f"refs/heads/{branch_name}"
+    ref_check = _git_command(root, "check-ref-format", ref_name, check=False)
+    if ref_check.returncode != 0:
+        raise ValueError("derived repair branch name is not a valid Git ref")
+
+    with tempfile.TemporaryDirectory(prefix="twelve-six-aiqa-") as temp_root:
+        temp_path = Path(temp_root)
+        worktree = temp_path / "worktree"
+        patch_path = temp_path / "repair.patch"
+        patch_path.write_bytes(patch_bytes)
+        added = False
+        try:
+            add_result = _git_command(
+                root,
+                "worktree",
+                "add",
+                "--detach",
+                str(worktree),
+                base_sha,
+                check=False,
+            )
+            if add_result.returncode != 0:
+                raise ValueError("cannot create isolated repair worktree from failing SHA")
+            added = True
+
+            apply_result = _git_command(
+                worktree,
+                "apply",
+                "--index",
+                "--whitespace=nowarn",
+                str(patch_path),
+                check=False,
+            )
+            if apply_result.returncode != 0:
+                raise ValueError("isolated repair patch does not apply cleanly to failing SHA")
+            staged = _git_command(worktree, "diff", "--cached", "--quiet", check=False)
+            if staged.returncode == 0:
+                raise ValueError("isolated repair patch produces no staged change")
+            if staged.returncode != 1:
+                raise ValueError("cannot verify isolated repair staged delta")
+
+            commit_env = os.environ.copy()
+            commit_env.update(
+                {
+                    "GIT_AUTHOR_NAME": "12-6 AI QA",
+                    "GIT_AUTHOR_EMAIL": "aiqa@localhost",
+                    "GIT_COMMITTER_NAME": "12-6 AI QA",
+                    "GIT_COMMITTER_EMAIL": "aiqa@localhost",
+                    "GIT_AUTHOR_DATE": "2000-01-01T00:00:00+0000",
+                    "GIT_COMMITTER_DATE": "2000-01-01T00:00:00+0000",
+                }
+            )
+            message = (
+                f"AI QA repair {failure.defect_id}\n\n"
+                f"Failure-SHA: {base_sha}\n"
+                f"Patch-SHA256: {patch_sha}"
+            )
+            commit_result = _git_command(
+                worktree,
+                "commit",
+                "--no-gpg-sign",
+                "-m",
+                message,
+                env=commit_env,
+                check=False,
+            )
+            if commit_result.returncode != 0:
+                raise ValueError("cannot commit isolated repair candidate")
+            candidate_sha = _git_command(worktree, "rev-parse", "HEAD").stdout.strip()
+            _require_git_sha("materialized candidate Git SHA", candidate_sha)
+
+            existing = _git_command(root, "rev-parse", "--verify", "--quiet", ref_name, check=False)
+            if existing.returncode == 0:
+                if existing.stdout.strip() != candidate_sha:
+                    raise ValueError("repair branch already exists with a different candidate")
+            elif existing.returncode == 1:
+                created = _git_command(
+                    root,
+                    "update-ref",
+                    ref_name,
+                    candidate_sha,
+                    "0" * 40,
+                    check=False,
+                )
+                if created.returncode != 0:
+                    raise ValueError("cannot atomically create isolated repair branch")
+            else:
+                raise ValueError("cannot inspect isolated repair branch state")
+        finally:
+            if added:
+                _git_command(root, "worktree", "remove", "--force", str(worktree), check=False)
+
+    return (
+        build_repair_candidate(
+            failure,
+            base_git_sha=base_sha,
+            candidate_git_sha=candidate_sha,
+            patch_bytes=patch_bytes,
+            proposer_actor_id=proposer_actor_id,
+            policy=policy,
+        ),
+        branch_name,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RegressionChain:
     schema_version: int
@@ -965,6 +1117,34 @@ def _candidate_cli(args: argparse.Namespace) -> int:
     return 0
 
 
+def _materialize_candidate_cli(args: argparse.Namespace) -> int:
+    policy = load_ai_qa_policy(args.policy)
+    failure = load_failure_packet(args.failure)
+    candidate, branch_name = materialize_local_repair_candidate(
+        failure,
+        repo_root=args.repo_root,
+        patch_bytes=Path(args.patch_file).read_bytes(),
+        proposer_actor_id=args.proposer_actor_id,
+        policy=policy,
+    )
+    payload = candidate.to_dict()
+    payload["candidate_identity_sha256"] = candidate.identity_sha256()
+    _write_json(args.output, payload)
+    print(
+        json.dumps(
+            {
+                "defect_id": candidate.defect_id,
+                "base_git_sha": candidate.base_git_sha,
+                "candidate_git_sha": candidate.candidate_git_sha,
+                "branch_name": branch_name,
+                "candidate_identity_sha256": candidate.identity_sha256(),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def _regression_cli(args: argparse.Namespace) -> int:
     failure = load_failure_packet(args.failure)
     candidate = load_repair_candidate(args.candidate)
@@ -1232,6 +1412,15 @@ def main() -> int:
     candidate.add_argument("--proposer-actor-id", required=True)
     candidate.add_argument("--output", required=True)
     candidate.set_defaults(func=_candidate_cli)
+
+    materialize = subparsers.add_parser("materialize-candidate")
+    materialize.add_argument("--failure", required=True)
+    materialize.add_argument("--policy", required=True)
+    materialize.add_argument("--repo-root", required=True)
+    materialize.add_argument("--patch-file", required=True)
+    materialize.add_argument("--proposer-actor-id", required=True)
+    materialize.add_argument("--output", required=True)
+    materialize.set_defaults(func=_materialize_candidate_cli)
 
     regression = subparsers.add_parser("run-regression")
     regression.add_argument("--failure", required=True)

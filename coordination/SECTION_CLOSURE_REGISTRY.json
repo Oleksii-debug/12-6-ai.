@@ -116,7 +116,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/4-ai-qa-control-v1",
-        "predecessor_candidate_sha": "681591c59fc99b1b2e212595cd8125dca2c50d4b",
+        "predecessor_candidate_sha": "49c25d41ed04977e1b8c8ba4c174233f47534633",
         "implementation_paths": [
           "configs/control/ai_qa_policy_v1.json",
           "src/twelve_six/ai_qa_control.py",
@@ -127,8 +127,7 @@
         "pull_request": null,
         "terminal_ci": null,
         "remaining_closure_requirements": [
-          "live defect-to-repair-to-retest round-trip evidence",
-          "authorized isolated repair lineage mutation adapter",
+          "live defect-to-repair-to-retest round-trip evidence using exact-failing-SHA materialization",
           "independent promotion evidence"
         ]
       }

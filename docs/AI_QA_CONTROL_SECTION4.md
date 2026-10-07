@@ -17,8 +17,9 @@ The control layer can:
    or UNKNOWN;
 3. derive a minimal checked-in pytest reproducer through the Section-3 no-shell command parser;
 4. bind the defect to an exact failing SHA and source-evidence identity;
-5. bind an isolated repair candidate to base SHA, candidate SHA, patch SHA-256, proposer identity
-   and the exact failure-packet identity;
+5. materialize an isolated local Git repair branch from the exact failing SHA, apply the bounded
+   patch without a shell, commit it deterministically, and bind base SHA, candidate SHA, patch
+   SHA-256, proposer identity and the exact failure-packet identity;
 6. execute component and adversarial regressions on the exact clean candidate checkout;
 7. ingest a native SIL receipt bound to the exact candidate SHA;
 8. require an explicit physical PASS when physical scope is REQUIRED, or an explicit independent
@@ -26,9 +27,12 @@ The control layer can:
 9. allow promotion only when all four gates are represented and an independent certifier, not the
    repair proposer, makes the final decision.
 
-The durable command surface supports failure-packet creation, candidate formation, automated
-regression execution, native SIL receipt creation, software-only physical-scope receipt creation,
-and independent promotion assessment.
+The durable command surface supports failure-packet creation, external candidate binding,
+`materialize-candidate` for an actual isolated local Git repair lineage, automated regression
+execution, native SIL receipt creation, software-only physical-scope receipt creation, and
+independent promotion assessment. Materialization never pushes a remote or reads credentials; it
+atomically creates only a deterministic local `aiqa/repair/*` ref, so publication remains an
+explicit authorized operation.
 
 ## Gate chain
 
@@ -63,9 +67,8 @@ closure-ready yet. Before READY/DONE, current authority still needs:
 - convergence on accepted predecessor Sections;
 - at least one live failure round-trip showing failure evidence → minimal reproducer → isolated
   repair commit → component/adversarial retest → SIL → applicable physical decision;
-- an authorized GitHub mutation adapter or equivalent current project mechanism that actually
-  creates/updates the isolated repair lineage instead of merely binding an already-created
-  candidate SHA; a repair candidate is now also required to start from the exact failing SHA; and
+- at least one live round-trip must exercise the new exact-failing-SHA local mutation adapter and
+  preserve its resulting candidate evidence on an accepted lineage; and
 - independent evidence that the final promotion decision was not produced by the repair proposer.
 
 ## Durable surfaces

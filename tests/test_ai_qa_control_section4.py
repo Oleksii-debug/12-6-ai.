@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from twelve_six.ai_qa_control import (
     load_failure_packet,
     load_gate_receipt_bundle,
     load_repair_candidate,
+    materialize_local_repair_candidate,
 )
 from twelve_six.capability_map import load_capability_registry
 from twelve_six.sil_qualification import (
@@ -563,3 +565,93 @@ def test_regression_chain_rejects_durable_wrong_base_even_if_failure_hash_matche
             candidate,
             adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
         )
+
+
+def test_materialize_local_repair_candidate_creates_exact_base_isolated_branch(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Section 4 test"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "section4@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    target = repo / "payload.txt"
+    target.write_text("broken\n", encoding="utf-8")
+    subprocess.run(["git", "add", "payload.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "failing base"], cwd=repo, check=True)
+    failing_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    target.write_text("repaired\n", encoding="utf-8")
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "--", "payload.txt"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    subprocess.run(["git", "checkout", "--", "payload.txt"], cwd=repo, check=True)
+
+    observation = ExternalObservation(
+        schema_version="12-6.aiqa-observation.v1",
+        source=FailureSource.CI,
+        git_sha=failing_sha,
+        evidence_identity_sha256="a" * 64,
+        failure_summary="AssertionError: payload is broken",
+        reproducer_command="pytest -q tests/test_ai_qa_control_section4.py",
+        physical_gate_id=None,
+    )
+    failure = failure_packet_from_observation(
+        observation,
+        defect_id="materialized-repair",
+        policy=_policy(),
+    )
+
+    candidate, branch_name = materialize_local_repair_candidate(
+        failure,
+        repo_root=repo,
+        patch_bytes=patch,
+        proposer_actor_id="repair-agent",
+        policy=_policy(),
+    )
+    assert candidate.base_git_sha == failing_sha
+    assert candidate.patch_sha256 == hashlib.sha256(patch).hexdigest()
+    assert branch_name.startswith("aiqa/repair/")
+    branch_sha = subprocess.run(
+        ["git", "rev-parse", branch_name],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert branch_sha == candidate.candidate_git_sha
+    repaired = subprocess.run(
+        ["git", "show", f"{branch_name}:payload.txt"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert repaired == "repaired\n"
+
+    repeated, repeated_branch = materialize_local_repair_candidate(
+        failure,
+        repo_root=repo,
+        patch_bytes=patch,
+        proposer_actor_id="repair-agent",
+        policy=_policy(),
+    )
+    assert repeated == candidate
+    assert repeated_branch == branch_name
