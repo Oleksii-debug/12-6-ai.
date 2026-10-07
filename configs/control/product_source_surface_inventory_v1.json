@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "49218c0c581b73bcd0985646f48bf35300b1948c",
-  "observed_main_tree_sha": "2f8c32273994595b0bd466a293ee727d6f56d2ef",
+  "observed_main_sha": "26744c1b2c6dc502c50d6c818b7a6013011fc19e",
+  "observed_main_tree_sha": "21ba29dbac1b39a6a26ca184f9d97448b84843c5",
   "source_root": "src/twelve_six",
-  "source_surface_count": 117,
+  "source_surface_count": 118,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -23,7 +23,7 @@
     {
       "path": "src/twelve_six/capability_map.py",
       "capability_id": "executable-capability-map",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/checkpoint/__init__.py",
@@ -511,6 +511,11 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/sil_qualification.py",
+      "capability_id": "github-sil-qualification",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/split_robustness.py",
       "capability_id": "split-robustness",
       "origin": "accepted_main"
@@ -591,6 +596,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 116,
+  "accepted_main_surface_count": 117,
   "candidate_overlay_surface_count": 1
 }

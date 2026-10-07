@@ -36,12 +36,12 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert result["observed_main_tree_sha"] == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
-    assert result["current_repository_main_sha"] == "5c041ca56edda55a5c3334f722361754051e121c"
-    assert result["current_repository_main_tree_sha"] == "95ad101c8965fd49c1711027146253a093fce2f8"
-    assert result["qualified_current_equivalent_surface_count"] == 235
-    assert result["accepted_main_surface_count"] == 119
+    assert result["observed_main_sha"] == "26744c1b2c6dc502c50d6c818b7a6013011fc19e"
+    assert result["observed_main_tree_sha"] == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
+    assert result["current_repository_main_sha"] == "a10287066dae4adc9eb78a7a6dc40fcf73ab9161"
+    assert result["current_repository_main_tree_sha"] == "43c908ba384303e0e1edb721b6bc3675fe4b27da"
+    assert result["qualified_current_equivalent_surface_count"] == 237
+    assert result["accepted_main_surface_count"] == 120
     assert result["candidate_overlay_surface_count"] == 1
     assert result["checkout_surface_count"] == 120
 
@@ -55,6 +55,7 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
         "checkpoint-integrity-mechanics": 1,
         "data-governance-mechanics": 102,
         "deterministic-packing-mechanics": 2,
+        "executable-capability-map": 1,
         "learned20m-control-plane": 5,
         "model-spec-identity": 2,
         "package-runtime": 1,
@@ -63,16 +64,15 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
     }
 
 
-def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
+def test_section3_workflow_is_the_explicit_candidate_overlay() -> None:
     payload = _load_strict_json(_INVENTORY)
 
     assert payload["candidate_overrides"] == [
         {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
-            "capability_id": "executable-capability-map",
+            "path": ".github/workflows/ci.yml",
+            "capability_id": "github-sil-qualification",
         }
     ]
-
 
 def test_candidate_surface_paths_include_changed_existing_surface() -> None:
     current_main_blobs = {
@@ -199,7 +199,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
+    payload["observed_main_sha"] = "a10287066dae4adc9eb78a7a6dc40fcf73ab9161"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 

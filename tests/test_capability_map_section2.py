@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert registry.observed_main_ci_run_id == 37608406911
+    assert registry.observed_main_sha == "26744c1b2c6dc502c50d6c818b7a6013011fc19e"
+    assert registry.observed_main_ci_run_id == 37609405086
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -164,6 +164,7 @@ def test_known_not_yet_product_capabilities_are_explicitly_unavailable() -> None
     for capability_id in (
         "learned-20m-base",
         "windows-nvda-final-product",
+        "github-sil-qualification",
     ):
         capability = registry.capability(capability_id)
         assert capability.status is CapabilityStatus.UNAVAILABLE
@@ -182,6 +183,11 @@ def test_closed_predecessor_capabilities_are_available() -> None:
         assert capability.integrated_result
         assert capability.unavailable_reason is None
     assert registry.journey_available("developer-replace-cognitive-core") is True
+    section2 = registry.capability("executable-capability-map")
+    assert section2.status is CapabilityStatus.AVAILABLE
+    assert section2.integrated_result
+    assert section2.unavailable_reason is None
+    assert registry.journey_available("maintainer-capability-qualification") is True
 
 
 def test_mechanics_are_not_resealed_as_physical_windows_acceptance() -> None:
@@ -500,7 +506,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37608406911',
+        '"run_id": 37609405086',
         '"run_id": NaN',
         1,
     )
@@ -676,11 +682,11 @@ def test_source_surface_inventory_covers_accepted_main_and_candidate_stack() -> 
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "49218c0c581b73bcd0985646f48bf35300b1948c"
-    assert inventory.observed_main_tree_sha == "2f8c32273994595b0bd466a293ee727d6f56d2ef"
-    assert inventory.accepted_main_surface_count == 116
+    assert inventory.observed_main_sha == "26744c1b2c6dc502c50d6c818b7a6013011fc19e"
+    assert inventory.observed_main_tree_sha == "21ba29dbac1b39a6a26ca184f9d97448b84843c5"
+    assert inventory.accepted_main_surface_count == 117
     assert inventory.candidate_overlay_surface_count == 1
-    assert inventory.source_surface_count == 117
+    assert inventory.source_surface_count == 118
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
