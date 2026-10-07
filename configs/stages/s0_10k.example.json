@@ -1,0 +1,7 @@
+{
+  "stage": "S0",
+  "target_parameters": 10000,
+  "status": "design_not_frozen",
+  "canonical_base": "random_init",
+  "paid_compute_authorized": false
+}

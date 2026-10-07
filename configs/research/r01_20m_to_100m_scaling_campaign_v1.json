@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "campaign_id": "R01-20M-TO-100M-SCALING-V1",
+  "status": "CANDIDATE_PLANNING_ONLY",
+  "authority": {
+    "main_sha_at_claim": "23b258d8599aa2c5381b735fdb58a6d0b4a8deb8",
+    "model341_branch": "model341/20m-candidate-a-20260826",
+    "model341_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+    "modelspec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "hard_boundaries": {
+    "base_lineage": "PRETRAINING_ONLY",
+    "foreign_pretrained_weights_allowed": false,
+    "alignment_or_personality_in_base_allowed": false,
+    "paid_compute_authorized": false,
+    "long_training_authorized": false,
+    "stage_promotion_authorized": false,
+    "corpus_mutation_in_this_package": false,
+    "checkpoint_code_mutation_in_this_package": false
+  },
+  "current_readiness": {
+    "model_mechanics": "QUALIFIED_EXACT_AUTHORITY",
+    "research_corpus_v1_identity": null,
+    "tokenizer_fit_identity": null,
+    "checkpoint_integrity_terminal_retest": false,
+    "selection_validation_terminal": false,
+    "compute_authorization": "NOT_AUTHORIZED",
+    "long_training_decision": "BLOCKED"
+  },
+  "baseline_model": {
+    "vocab_size": 256,
+    "max_seq_len": 1024,
+    "d_model": 320,
+    "n_layers": 16,
+    "n_heads": 10,
+    "n_kv_heads": 2,
+    "head_dim": 32,
+    "d_ff": 1080,
+    "activation": "swiglu",
+    "norm": "rmsnorm_pre",
+    "position": "rope",
+    "tie_word_embeddings": true
+  },
+  "scientific_principles": {
+    "parameter_count_is_not_quality": true,
+    "parameter_count_is_not_training_authorization": true,
+    "data_quality_and_mixture_are_independent_axes": true,
+    "tokenizer_identity_must_be_bound_before_learned_campaign": true,
+    "cross_tokenizer_primary_metric": "bits_per_byte",
+    "same_tokenizer_secondary_metrics": [
+      "validation_nll",
+      "perplexity"
+    ],
+    "architecture_bias_below_1b": [
+      "deep_thin",
+      "grouped_query_attention",
+      "tied_embeddings"
+    ],
+    "distributed_bias_at_or_below_100m": "prefer_single_device_or_data_parallel_before_tensor_pipeline_context_parallelism"
+  },
+  "experiment_matrix": [
+    {
+      "id": "R01-E00",
+      "name": "20M exact mechanics control",
+      "parameters": 20613440,
+      "purpose": "retain exact random-init MODEL-341 control",
+      "requires_corpus_identity": false,
+      "requires_tokenizer_fit_identity": false,
+      "long_training": false,
+      "authorized_now": true
+    },
+    {
+      "id": "R01-E10",
+      "name": "tokenizer and packing calibration",
+      "parameters": 20613440,
+      "purpose": "compare byte baseline with trained tokenizer candidates on exact future Research Corpus V1 without changing evaluation reservations",
+      "tokenizer_candidate_vocab_sizes": [
+        320,
+        384,
+        437,
+        512
+      ],
+      "requires_corpus_identity": true,
+      "requires_tokenizer_fit_identity": false,
+      "long_training": false,
+      "authorized_now": false
+    },
+    {
+      "id": "R01-E20",
+      "name": "20M learned scaling sweep",
+      "parameters": 20613440,
+      "purpose": "measure loss data and optimizer scaling only after all hard gates",
+      "planned_tokens_per_parameter": [
+        10,
+        20,
+        40
+      ],
+      "requires_corpus_identity": true,
+      "requires_tokenizer_fit_identity": true,
+      "requires_checkpoint_integrity_terminal_retest": true,
+      "requires_selection_validation_terminal": true,
+      "requires_compute_authorization_if_material_cost": true,
+      "long_training": true,
+      "authorized_now": false
+    },
+    {
+      "id": "R01-E30",
+      "name": "20M 50M 100M architecture-size sweep",
+      "parameter_targets": [
+        20000000,
+        50000000,
+        100000000
+      ],
+      "purpose": "fit measured scaling curves before freezing a 100M ModelSpec",
+      "freeze_100m_modelspec_now": false,
+      "planned_tokens_per_parameter": [
+        10,
+        20,
+        40
+      ],
+      "requires_corpus_identity": true,
+      "requires_tokenizer_fit_identity": true,
+      "requires_20m_learned_evidence": true,
+      "requires_compute_authorization_if_material_cost": true,
+      "long_training": true,
+      "authorized_now": false
+    }
+  ],
+  "optimizer_research": {
+    "optimizer_family": "AdamW",
+    "learning_rate_policy": "sweep_around_measured_incumbent_not_fixed_by_parameter_count",
+    "beta2_candidates_for_small_scale_ablation": [
+      0.95,
+      0.98,
+      0.999
+    ],
+    "scheduler_policy": "compare_incumbent_against_evidence_backed_alternatives_on_bounded_pilots",
+    "gradient_clipping_required": true,
+    "nan_inf_fail_closed": true
+  },
+  "metric_contract": {
+    "required": [
+      "bits_per_byte",
+      "heldout_loss",
+      "loss_curve",
+      "gradient_health",
+      "tokens_per_second",
+      "peak_memory_bytes",
+      "checkpoint_resume_equivalence",
+      "deterministic_rebuild_or_seed_evidence"
+    ],
+    "tokenizer_comparison_rule": "do_not_compare_token_level_perplexity_across_different_tokenizer_identities_as_primary_quality_evidence",
+    "evaluation_firewall": "training_must_not_consume_selection_validation_or_final_test_records"
+  },
+  "promotion_gates": [
+    "exact_corpus_identity",
+    "reserved_evaluation_decontamination",
+    "quality_privacy_dedup_split",
+    "unique_post_pack_loss_ledger",
+    "trained_tokenizer_identity_or_explicit_byte_baseline_decision",
+    "checkpoint_integrity_terminal_retest",
+    "selection_validation_terminal",
+    "exact_code_model_tokenizer_data_config_hashes",
+    "bounded_pilot_loss_and_numerics",
+    "compute_authorization_for_material_cost",
+    "independent_audit"
+  ],
+  "handoff": {
+    "DATA": "materialize Research Corpus V1 and immutable candidate identity before learned runs",
+    "TOK": "fit and reproduce corpus-bound tokenizer candidates and report BPB fertility roundtrip throughput",
+    "TRAIN": "run bounded optimizer and token-budget pilots only after data tokenizer checkpoint gates",
+    "D06": "compare contamination-safe metrics and fit empirical scaling curves",
+    "C01": "estimate cost and request explicit authorization before materially paid runs",
+    "D01": "freeze 100M ModelSpec only from measured sweep evidence"
+  },
+  "research_sources": [
+    {
+      "title": "Training Compute-Optimal Large Language Models",
+      "url": "https://arxiv.org/abs/2203.15556",
+      "use": "starting reference for joint model and data scaling not a rigid tiny-model prescription"
+    },
+    {
+      "title": "MobileLLM: Optimizing Sub-billion Parameter Language Models for On-Device Use Cases",
+      "url": "https://arxiv.org/abs/2402.14905",
+      "use": "sub-billion architecture evidence for deep-thin design grouped-query attention and embedding sharing"
+    },
+    {
+      "title": "SmolLM2: When Smol Goes Big -- Data-Centric Training of a Small Language Model",
+      "url": "https://arxiv.org/abs/2502.02737",
+      "use": "evidence for data-centric small-model training and small-scale ablations before large runs"
+    }
+  ]
+}

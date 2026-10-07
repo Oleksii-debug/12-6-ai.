@@ -1,0 +1,87 @@
+{
+  "schema_version": "12-6.data-bulk-code1-permissive-python-bundle-terminal-evidence.v1",
+  "worker_id": "DATA-BULK-CODE-1-PERMISSIVE-PYTHON-BUNDLE",
+  "issue": 635,
+  "execution_profile": "LOCAL_FREE",
+  "contract_identity_sha256": "7fd2228208f928859ebe68e947a72c977cda6952035a654d12923ce3a19a7dd6",
+  "execution_head_sha": "a045c602bfcead862f7852924fb78a5d78c992d6",
+  "workflow_run_id": 34155446113,
+  "workflow_conclusion": "success",
+  "artifact": {
+    "id": 10030825509,
+    "name": "data-bulk-code1-a045c602bfcead862f7852924fb78a5d78c992d6",
+    "digest": "sha256:9febb6e4e900df63c58b1cb0ed2a7003df56d6e9bd593e4b4adbaa54496010ac",
+    "retained_report_identity_sha256": "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985"
+  },
+  "execution": {
+    "independent_materializations": 2,
+    "byte_identical_reports": true,
+    "exact_source_checkout": true,
+    "exact_license_blob_validation": true,
+    "focused_tests_passed": 10,
+    "security_firewall_self_test_passed": true,
+    "credential_scan": "PASS_NO_HIGH_CONFIDENCE_HITS"
+  },
+  "aggregate": {
+    "source_family_count": 6,
+    "eligible_file_count": 229,
+    "eligible_utf8_bytes": 3880009
+  },
+  "families": [
+    {
+      "family_id": "github:pallets/flask",
+      "eligible_file_count": 24,
+      "eligible_utf8_bytes": 348253,
+      "family_materialization_identity_sha256": "0adcaf8045583380a295fea5cad42457bb686958fa5b1d986700eb9bd927d08b"
+    },
+    {
+      "family_id": "github:pallets/click",
+      "eligible_file_count": 17,
+      "eligible_utf8_bytes": 441955,
+      "family_materialization_identity_sha256": "1e35efcc2c2036e3d886b011cc95553a94a41df88f0f8c36e737378fae119313"
+    },
+    {
+      "family_id": "github:pallets/jinja",
+      "eligible_file_count": 23,
+      "eligible_utf8_bytes": 450060,
+      "family_materialization_identity_sha256": "35a988c002ecfe09311d91eb4a887c34977a8a4e933a883ef43914d2e4898f1b"
+    },
+    {
+      "family_id": "github:pallets/werkzeug",
+      "eligible_file_count": 48,
+      "eligible_utf8_bytes": 727343,
+      "family_materialization_identity_sha256": "ea4219d2e62645bae613d5b34d42b7579a5cc9553a85631643c7b45cec080fda"
+    },
+    {
+      "family_id": "github:agronholm/anyio",
+      "eligible_file_count": 43,
+      "eligible_utf8_bytes": 525297,
+      "family_materialization_identity_sha256": "62f81f9602b1f795536036e70a1c8ca5498b4f8969239ac92f5de77a846f477d"
+    },
+    {
+      "family_id": "github:pytest-dev/pytest",
+      "eligible_file_count": 74,
+      "eligible_utf8_bytes": 1387101,
+      "family_materialization_identity_sha256": "9a7437e4486af8e25295e19058bf27551bf04e4a7a2a22ba7cf31c2a1cfe37ab"
+    }
+  ],
+  "claim_boundary": {
+    "source_intake_evidence_terminal": true,
+    "automatic_canonical_capacity_credit": false,
+    "post_global_dedup_capacity_claimed": false,
+    "authorized_training_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false
+  },
+  "required_successors": [
+    "global_cross_source_exact_and_near_dedup",
+    "reserved_evaluation_decontamination",
+    "post_composition_quality_privacy_revalidation",
+    "balance_and_family_caps",
+    "cluster_safe_split_and_deterministic_sharding",
+    "two_clean_corpus_builds",
+    "post_pack_unique_loss_ledger"
+  ]
+}

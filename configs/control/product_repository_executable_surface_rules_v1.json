@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+  "observed_main_tree_sha": "c727add7897dd94bdb02493e0cd7a565be7e8d9f",
+  "current_repository_main_sha": "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7",
+  "current_repository_main_tree_sha": "429a9933512f3d0c17f42d80193365e5df3f195a",
+  "expected_main_surface_count": 119,
+  "expected_main_capability_counts": {
+    "accelerated-scaling-research": 2,
+    "byte-tokenizer-runtime": 1,
+    "checkpoint-integrity-mechanics": 1,
+    "data-governance-mechanics": 102,
+    "deterministic-packing-mechanics": 2,
+    "learned20m-control-plane": 5,
+    "model-spec-identity": 2,
+    "package-runtime": 1,
+    "portable-run-authority": 2,
+    "project-control-plane": 1
+  },
+  "rules": [
+    {
+      "rule_id": "ci-workflow",
+      "selector": "exact",
+      "pattern": ".github/workflows/ci.yml",
+      "capability_id": "project-control-plane"
+    },
+    {
+      "rule_id": "packaging",
+      "selector": "exact",
+      "pattern": "pyproject.toml",
+      "capability_id": "package-runtime"
+    },
+    {
+      "rule_id": "portable-run-tools",
+      "selector": "regex",
+      "pattern": "^tools/(?:assess_r01_portable_run_packet|build_r01_portable_run_packet)\\.py$",
+      "capability_id": "portable-run-authority"
+    },
+    {
+      "rule_id": "accelerated-scaling-tools",
+      "selector": "regex",
+      "pattern": "^tools/(?:assess_r01_accelerated_scaling_roadmap|validate_r01_20m_to_100m_scaling_campaign)\\.py$",
+      "capability_id": "accelerated-scaling-research"
+    },
+    {
+      "rule_id": "d04-tokenizer-tool",
+      "selector": "regex",
+      "pattern": "^tools/validate_d04_learned20m_tokenizer_decision\\.py$",
+      "capability_id": "byte-tokenizer-runtime"
+    },
+    {
+      "rule_id": "learned20m-control-tools",
+      "selector": "regex",
+      "pattern": "^tools/(?:assess_learned20m_training_lease|assess_r01_learned20m_launch_readiness|operate_learned20m_global_training_lease|validate_learned20m_evaluation_firewall|validate_r01_learned20m_recipe_authority)\\.py$",
+      "capability_id": "learned20m-control-plane"
+    },
+    {
+      "rule_id": "model-resource-tools",
+      "selector": "regex",
+      "pattern": "^tools/model341_current_main_resource_(?:envelope|receipt)_v1\\.py$",
+      "capability_id": "model-spec-identity"
+    },
+    {
+      "rule_id": "checkpoint-recovery-tool",
+      "selector": "exact",
+      "pattern": "tools/run_checkpoint346_model341_recovery.py",
+      "capability_id": "checkpoint-integrity-mechanics"
+    },
+    {
+      "rule_id": "d04-packing-tools",
+      "selector": "regex",
+      "pattern": "^tools/validate_d04_(?:double_pack_binding|ordered_exposure_runtime)\\.py$",
+      "capability_id": "deterministic-packing-mechanics"
+    },
+    {
+      "rule_id": "eval647-transport-shim",
+      "selector": "exact",
+      "pattern": "tools/eval647_transport_bin/python",
+      "capability_id": "data-governance-mechanics"
+    },
+    {
+      "rule_id": "data-governance-tools",
+      "selector": "regex",
+      "pattern": "^tools/(?:adapt_d03_|assert_data_|audit_d03_|build_d03_|classify_d03_|compose_data|converge_d03_|derive_(?:d03_|next100_)|discover_kmu_|download_d03_|execute_(?:current_|eval647_)|extract_d03_|inventory_d03_|materialize_(?:d03_|data|eval_|next100_|post)|next100_|normalize_d03_|pin_d03_|prepare_(?:d03_|data)|probe_(?:d03_|kmu_)|qualify_d03_|replay_d03_|retest_d03_|run_(?:current_|d03_|data|eval647_|next100_)|scan_d03_|validate_(?:common_|culturax_|d03_|data|eval|next100_)|verify_(?:d03_|incumbent_|next100_)).*$",
+      "capability_id": "data-governance-mechanics"
+    }
+  ],
+  "candidate_overrides": [
+    {
+      "path": "tools/validate_section2_repository_surface_coverage.py",
+      "capability_id": "executable-capability-map"
+    }
+  ]
+}

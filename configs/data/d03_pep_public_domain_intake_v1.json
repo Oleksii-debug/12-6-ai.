@@ -1,0 +1,64 @@
+{
+  "authorized_unique_loss_positions": 0,
+  "canonical_capacity_credit_bytes": 0,
+  "common_pile_audit": {
+    "audited_code_revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_blob_sha1": "6bbb677559d11fb7b3473b936157ff3ce3afafda",
+    "collector_path": "sources/pep/to_dolma.py",
+    "registry_blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "python_enhancement_proposals"
+  },
+  "contract_identity_sha256": "c0cd68d0b5cfd90e75993c2c9232608d22a616c7213597bb48abca5608d5578b",
+  "corpus_admitted": false,
+  "execution_profile": "LOCAL_FREE",
+  "known_opl_sentinels": [
+    "peps/pep-0437.rst",
+    "peps/pep-0483.rst",
+    "peps/pep-0551.rst",
+    "peps/pep-0578.rst",
+    "peps/pep-3145.rst"
+  ],
+  "model_training_permitted": false,
+  "paid_compute_authorized": false,
+  "required_downstream_gates": [
+    "privacy",
+    "quality",
+    "global_exact_near_fragment_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "balance_family_caps",
+    "cluster_safe_split",
+    "deterministic_pack_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ],
+  "rights_policy": {
+    "ambiguous_copyright_section_action": "QUARANTINE",
+    "basis": "DOCUMENT_LICENSE_FILTER",
+    "blanket_repository_rights_claimed": false,
+    "legal_conclusion_claimed": false,
+    "opl_markers": [
+      "open publication license",
+      "https://spdx.org/licenses/opubl-1.0.html",
+      "http://www.opencontent.org/openpub/"
+    ],
+    "require_explicit_public_domain_in_copyright_section": true
+  },
+  "schema_version": "12-6.d03-pep-public-domain-intake.v1",
+  "selection_policy": {
+    "max_documents": 128,
+    "max_examined_documents": 192,
+    "max_total_source_bytes": 5000000,
+    "ordering": "DESC_SIZE_THEN_PATH",
+    "path_regex": "^peps/pep-\\d{4}\\.rst$"
+  },
+  "source_family": "en.python.peps.public-domain",
+  "tokenizer_fit_permitted": false,
+  "training_authorized_bytes": 0,
+  "upstream": {
+    "raw_url_template": "https://raw.githubusercontent.com/python/peps/24419b92ae550bf2878716f57c257cba00d3c1a1/{path}",
+    "repository": "python/peps",
+    "revision": "24419b92ae550bf2878716f57c257cba00d3c1a1",
+    "tree_sha1": "fa6b95d941e6fbefc473fbcc50ca93458cdf0857",
+    "tree_url": "https://api.github.com/repos/python/peps/git/trees/fa6b95d941e6fbefc473fbcc50ca93458cdf0857?recursive=1"
+  }
+}
