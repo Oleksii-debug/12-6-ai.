@@ -39,7 +39,7 @@ whose CI run `37608406911` is terminal SUCCESS. Live `main@5c041ca56edda55a5c333
 subsequent ledger-only commit; the repository equivalence gate proves all 235 capability-bearing
 `src/twelve_six/**/*.py`, `tools/`, workflow and `pyproject.toml` blobs are unchanged.
 
-The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface, while separately classifying the Section-2 candidate overlay. At this candidate head the coverage is 116 accepted-main surfaces + 1 candidate overlay = 117/117 current Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
+The capability registry is paired with `configs/control/product_source_surface_inventory_v1.json`. The inventory binds the exact accepted-main Git tree and classifies every production Python source surface. Candidate authority distinguishes new `stacked_candidate` paths from existing accepted-main paths explicitly changed as `modified_candidate`; changed existing source bytes must match that modified set exactly. This keeps repair qualification fail-closed after a Section's source has already landed on main instead of silently treating a modified accepted surface as unchanged. At the original candidate head the coverage was 116 accepted-main surfaces + 1 candidate overlay = 117/117 current Python surfaces. Those surfaces map into 19 registered capability families, and every capability is reciprocally bound to at least one user/operator journey.
 
 Examples:
 
