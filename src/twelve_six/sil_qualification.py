@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -302,28 +303,75 @@ def probe_git_state(repo_root: str | Path) -> GitState:
     return GitState(sha=sha, tracked_clean=worktree.returncode == 0 and index.returncode == 0)
 
 
+_INPUT_VERIFICATION_PREFIX = "SIL_INPUT_VERIFIED_SHA256="
+_EXECUTION_WRAPPER = (
+    "import hashlib,os,sys\n"
+    "expected=sys.argv[1]\n"
+    "raw=sys.argv[2].encode('utf-8')\n"
+    "actual=hashlib.sha256(raw).hexdigest()\n"
+    "if actual != expected: raise SystemExit(86)\n"
+    "print('SIL_INPUT_VERIFIED_SHA256='+actual, flush=True)\n"
+    "os.environ['TWELVE_SIX_SIL_INPUT_IDENTITY_SHA256']=actual\n"
+    "os.environ['TWELVE_SIX_SIL_INPUT_ENVELOPE_JSON']=raw.decode('utf-8')\n"
+    "os.execv(sys.argv[3], sys.argv[3:])\n"
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CommandExecution:
     return_code: int
     stdout: str
     stderr: str
     duration_ms: int
+    consumed_input_identity_sha256: str | None
 
 
-CommandRunner = Callable[[tuple[str, ...], Path, int], CommandExecution]
+CommandRunner = Callable[
+    [tuple[str, ...], Path, int, bytes, str],
+    CommandExecution,
+]
 GitProbe = Callable[[str | Path], GitState]
 
 
-def run_command(argv: tuple[str, ...], cwd: Path, timeout_seconds: int) -> CommandExecution:
+def run_command(
+    argv: tuple[str, ...],
+    cwd: Path,
+    timeout_seconds: int,
+    input_envelope_bytes: bytes,
+    expected_input_identity_sha256: str,
+) -> CommandExecution:
+    expected_identity = _require_sha256(
+        "expected_input_identity_sha256",
+        expected_input_identity_sha256,
+    )
+    if not isinstance(input_envelope_bytes, bytes) or not input_envelope_bytes:
+        raise ValueError("input_envelope_bytes must be non-empty bytes")
+    actual_identity = _sha256_bytes(input_envelope_bytes)
+    if actual_identity != expected_identity:
+        raise ValueError("SIL input envelope identity mismatch before execution")
+    try:
+        envelope_text = input_envelope_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("SIL input envelope must be strict UTF-8") from exc
+
+    wrapped_argv = (
+        sys.executable,
+        "-c",
+        _EXECUTION_WRAPPER,
+        expected_identity,
+        envelope_text,
+        *argv,
+    )
     started = time.monotonic_ns()
     try:
         result = subprocess.run(
-            list(argv),
+            list(wrapped_argv),
             cwd=cwd,
             check=False,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=os.environ.copy(),
         )
         return_code = result.returncode
         stdout = result.stdout
@@ -333,12 +381,16 @@ def run_command(argv: tuple[str, ...], cwd: Path, timeout_seconds: int) -> Comma
         stdout = exc.stdout if isinstance(exc.stdout, str) else ""
         stderr = exc.stderr if isinstance(exc.stderr, str) else ""
         stderr += f"\nSIL_TIMEOUT_AFTER_SECONDS={timeout_seconds}\n"
+
+    verification_line = f"{_INPUT_VERIFICATION_PREFIX}{expected_identity}\n"
+    consumed_identity = expected_identity if stdout.startswith(verification_line) else None
     duration_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
     return CommandExecution(
         return_code=return_code,
         stdout=stdout,
         stderr=stderr,
         duration_ms=duration_ms,
+        consumed_input_identity_sha256=consumed_identity,
     )
 
 
@@ -389,18 +441,20 @@ def qualify_sil(
     data_identity = _sha256_bytes(scenario.synthetic_data_utf8.encode("utf-8"))
     scenario_identity = scenario.identity_sha256()
 
-    input_identity = _canonical_sha256(
-        {
-            "git_sha": expected_git_sha,
-            "package_identity_sha256": package_identity,
-            "capability_registry_identity_sha256": registry_identity,
-            "model_spec_identity_sha256": model_identity,
-            "init_spec_identity_sha256": init_identity,
-            "data_identity_sha256": data_identity,
-            "scenario_identity_sha256": scenario_identity,
-            "plan": plan.to_dict(),
-        }
-    )
+    input_envelope = {
+        "schema_version": "12-6.github-sil-input.v1",
+        "git_sha": expected_git_sha,
+        "package_identity_sha256": package_identity,
+        "capability_registry_identity_sha256": registry_identity,
+        "model_spec_identity_sha256": model_identity,
+        "init_spec_identity_sha256": init_identity,
+        "data_identity_sha256": data_identity,
+        "scenario_identity_sha256": scenario_identity,
+        "synthetic_data_utf8": scenario.synthetic_data_utf8,
+        "plan": plan.to_dict(),
+    }
+    input_envelope_bytes = _canonical_json_bytes(input_envelope)
+    input_identity = _sha256_bytes(input_envelope_bytes)
 
     started_unix_ns = time.time_ns()
     started_monotonic_ns = time.monotonic_ns()
@@ -412,6 +466,8 @@ def qualify_sil(
             vector.argv,
             root,
             scenario.timeout_seconds_per_vector,
+            input_envelope_bytes,
+            input_identity,
         )
         execution = {
             "journey_id": vector.journey_id,
@@ -419,6 +475,8 @@ def qualify_sil(
             "vector_id": vector.vector_id,
             "argv": list(vector.argv),
             "return_code": result.return_code,
+            "expected_input_identity_sha256": input_identity,
+            "consumed_input_identity_sha256": result.consumed_input_identity_sha256,
             "stdout_sha256": _sha256_bytes(result.stdout.encode("utf-8")),
             "stderr_sha256": _sha256_bytes(result.stderr.encode("utf-8")),
             "duration_ms": result.duration_ms,
@@ -452,7 +510,13 @@ def qualify_sil(
     )
     verdict = (
         "PASS"
-        if executions and all(item["return_code"] == 0 for item in executions)
+        if executions
+        and all(
+            item["return_code"] == 0
+            and item["expected_input_identity_sha256"] == input_identity
+            and item["consumed_input_identity_sha256"] == input_identity
+            for item in executions
+        )
         else "FAIL"
     )
 
@@ -525,6 +589,9 @@ def verify_sil_evidence(
     evidence_path: str | Path,
     log_path: str | Path,
     *,
+    expected_package_bytes: bytes,
+    expected_registry: CapabilityRegistry,
+    expected_scenario: SILScenario,
     expected_git_sha: str | None = None,
     require_pass: bool = True,
 ) -> dict[str, Any]:
@@ -556,23 +623,125 @@ def verify_sil_evidence(
     ):
         _require_sha256(field, payload[field])
 
-    if payload["fixture_policy"] != "DETERMINISTIC_SYNTHETIC":
-        raise ValueError("SIL evidence fixture policy is not canonical")
-    if not isinstance(payload["available_journey_ids"], list) or not payload[
-        "available_journey_ids"
-    ]:
-        raise ValueError("SIL evidence needs available journeys")
-    if not isinstance(payload["unavailable_journeys"], list):
-        raise ValueError("SIL evidence unavailable_journeys must be an array")
+    if not isinstance(expected_package_bytes, bytes) or not expected_package_bytes:
+        raise ValueError("expected_package_bytes must be non-empty bytes")
+    if not isinstance(expected_registry, CapabilityRegistry):
+        raise ValueError("expected_registry must be a CapabilityRegistry")
+    if not isinstance(expected_scenario, SILScenario):
+        raise ValueError("expected_scenario must be a SILScenario")
+
+    expected_model_identity, expected_init_identity = _synthetic_model_identities()
+    expected_identities = {
+        "package_identity_sha256": _sha256_bytes(expected_package_bytes),
+        "capability_registry_identity_sha256": expected_registry.identity_sha256(),
+        "model_spec_identity_sha256": expected_model_identity,
+        "init_spec_identity_sha256": expected_init_identity,
+        "data_identity_sha256": _sha256_bytes(
+            expected_scenario.synthetic_data_utf8.encode("utf-8")
+        ),
+        "scenario_identity_sha256": expected_scenario.identity_sha256(),
+    }
+    for field, expected_value in expected_identities.items():
+        if payload[field] != expected_value:
+            raise ValueError(
+                f"SIL evidence {field} does not match exact verifier authority"
+            )
+
+    if payload["scenario_id"] != expected_scenario.scenario_id:
+        raise ValueError("SIL evidence scenario_id does not match exact scenario")
+    if payload["fixture_policy"] != expected_scenario.fixture_policy:
+        raise ValueError("SIL evidence fixture policy does not match exact scenario")
+
+    available_journey_ids = payload["available_journey_ids"]
+    unavailable_journeys = payload["unavailable_journeys"]
     executions = payload["executions"]
+    if not isinstance(available_journey_ids, list) or not available_journey_ids:
+        raise ValueError("SIL evidence needs available journeys")
+    if not isinstance(unavailable_journeys, list):
+        raise ValueError("SIL evidence unavailable_journeys must be an array")
     if not isinstance(executions, list) or not executions:
         raise ValueError("SIL evidence needs executed integration vectors")
-    if payload["verdict"] not in {"PASS", "FAIL"}:
-        raise ValueError("SIL evidence verdict is invalid")
-    if payload["verdict"] == "PASS" and any(
-        type(item) is not dict or item.get("return_code") != 0 for item in executions
-    ):
-        raise ValueError("SIL PASS contains a failed or malformed execution")
+
+    expected_plan = build_sil_plan(expected_registry, expected_scenario)
+    expected_available = list(expected_plan.available_journey_ids)
+    expected_unavailable = [
+        item.to_dict() for item in expected_plan.unavailable_journeys
+    ]
+    if available_journey_ids != expected_available:
+        raise ValueError("SIL evidence available journeys do not match exact registry")
+    if unavailable_journeys != expected_unavailable:
+        raise ValueError("SIL evidence unavailable journeys do not match exact registry")
+    if len(executions) != len(expected_plan.vectors):
+        raise ValueError("SIL evidence execution count does not match exact plan")
+
+    execution_fields = {
+        "journey_id",
+        "capability_id",
+        "vector_id",
+        "argv",
+        "return_code",
+        "expected_input_identity_sha256",
+        "consumed_input_identity_sha256",
+        "stdout_sha256",
+        "stderr_sha256",
+        "duration_ms",
+    }
+    for execution, planned in zip(executions, expected_plan.vectors, strict=True):
+        if type(execution) is not dict or set(execution) != execution_fields:
+            raise ValueError("SIL execution record schema is non-canonical")
+        if (
+            execution["journey_id"] != planned.journey_id
+            or execution["capability_id"] != planned.capability_id
+            or execution["vector_id"] != planned.vector_id
+            or execution["argv"] != list(planned.argv)
+        ):
+            raise ValueError("SIL execution record does not match exact plan")
+        if type(execution["return_code"]) is not int:
+            raise ValueError("SIL execution return_code must be an integer")
+        if type(execution["duration_ms"]) is not int or execution["duration_ms"] < 0:
+            raise ValueError("SIL execution duration_ms must be a non-negative integer")
+        if execution["expected_input_identity_sha256"] != payload["input_identity_sha256"]:
+            raise ValueError("SIL execution expected input identity mismatch")
+        consumed_identity = execution["consumed_input_identity_sha256"]
+        if consumed_identity is not None:
+            _require_sha256("consumed_input_identity_sha256", consumed_identity)
+        _require_sha256("stdout_sha256", execution["stdout_sha256"])
+        _require_sha256("stderr_sha256", execution["stderr_sha256"])
+
+    expected_input_envelope = {
+        "schema_version": "12-6.github-sil-input.v1",
+        "git_sha": payload["git_sha"],
+        "package_identity_sha256": expected_identities["package_identity_sha256"],
+        "capability_registry_identity_sha256": expected_identities[
+            "capability_registry_identity_sha256"
+        ],
+        "model_spec_identity_sha256": expected_model_identity,
+        "init_spec_identity_sha256": expected_init_identity,
+        "data_identity_sha256": expected_identities["data_identity_sha256"],
+        "scenario_identity_sha256": expected_identities["scenario_identity_sha256"],
+        "synthetic_data_utf8": expected_scenario.synthetic_data_utf8,
+        "plan": expected_plan.to_dict(),
+    }
+    expected_input_identity = _sha256_bytes(
+        _canonical_json_bytes(expected_input_envelope)
+    )
+    if payload["input_identity_sha256"] != expected_input_identity:
+        raise ValueError("SIL input identity does not match exact verifier authority")
+
+    expected_verdict = (
+        "PASS"
+        if all(
+            execution["return_code"] == 0
+            and execution["expected_input_identity_sha256"]
+            == payload["input_identity_sha256"]
+            and execution["consumed_input_identity_sha256"]
+            == payload["input_identity_sha256"]
+            for execution in executions
+        )
+        else "FAIL"
+    )
+    if payload["verdict"] != expected_verdict:
+        raise ValueError("SIL evidence verdict does not match execution results")
     if require_pass and payload["verdict"] != "PASS":
         raise ValueError("SIL evidence is not PASS")
 
@@ -662,9 +831,16 @@ def _run_cli(args: argparse.Namespace) -> int:
 
 
 def _verify_cli(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
+    package_bytes = (root / "pyproject.toml").read_bytes()
     evidence = verify_sil_evidence(
         args.evidence,
         args.log,
+        expected_package_bytes=package_bytes,
+        expected_registry=registry,
+        expected_scenario=scenario,
         expected_git_sha=args.expected_git_sha,
         require_pass=True,
     )
@@ -697,6 +873,9 @@ def main() -> int:
     run_parser.set_defaults(func=_run_cli)
 
     verify_parser = subparsers.add_parser("verify")
+    verify_parser.add_argument("--repo-root", required=True)
+    verify_parser.add_argument("--capability-registry", required=True)
+    verify_parser.add_argument("--scenario", required=True)
     verify_parser.add_argument("--evidence", required=True)
     verify_parser.add_argument("--log", required=True)
     verify_parser.add_argument("--expected-git-sha", required=True)

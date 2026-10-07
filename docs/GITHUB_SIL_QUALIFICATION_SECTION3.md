@@ -53,8 +53,11 @@ access, or a substitute for later physical/device qualification.
 PASS is impossible without at least one AVAILABLE journey and at least one executed integration
 vector, and every executed vector must return zero. Component/unit green alone is not SIL PASS.
 
-The verifier recomputes the evidence identity, output identity and log hash, rejects exact-SHA
-mismatch, rejects a widened scientific boundary and rejects FAIL evidence when PASS is required.
+The verifier reloads the exact-head package metadata, capability registry and SIL scenario,
+recomputes package/registry/model/init/data/scenario identities, reconstructs the complete SIL
+plan and input identity, requires every execution record to match that plan exactly, then
+recomputes the evidence identity, output identity and log hash. It rejects exact-SHA mismatch,
+authority resealing, a widened scientific boundary and FAIL evidence when PASS is required.
 
 ## Durable surfaces
 

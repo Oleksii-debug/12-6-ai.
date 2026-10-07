@@ -127,6 +127,14 @@ class TestVector:
         if not isinstance(self.level, TestLevel):
             raise ValueError("level must be a TestLevel")
         _require_text("command", self.command)
+        tokens = self.command.split()
+        if tokens[:2] != ["pytest", "-q"] or len(tokens) < 3:
+            raise ValueError("test vector command must be canonical pytest -q test paths")
+        if any(
+            not token.startswith("tests/") or not token.endswith(".py")
+            for token in tokens[2:]
+        ):
+            raise ValueError("test vector command may reference only tests/*.py paths")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -398,7 +406,18 @@ class CapabilityRegistry:
         if len(by_journey) != len(self.journeys):
             raise ValueError("journey ids must be unique")
 
+        expected_main_ci_target = f"github-actions:{self.observed_main_ci_run_id}"
         for capability in self.capabilities:
+            if capability.status is CapabilityStatus.AVAILABLE:
+                main_ci_targets = [
+                    target.target
+                    for target in capability.evidence_targets
+                    if target.evidence_id == "main-ci"
+                ]
+                if main_ci_targets != [expected_main_ci_target]:
+                    raise ValueError(
+                        f"{capability.capability_id} must bind exact observed main CI"
+                    )
             for dependency_id in capability.dependencies:
                 if dependency_id not in by_capability:
                     raise ValueError(

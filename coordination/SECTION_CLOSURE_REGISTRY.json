@@ -97,7 +97,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/3-github-sil-qualification-v1",
-        "predecessor_candidate_sha": "b6c9c8f6d7baf43b095aec6fed83d79a2247a86a",
+        "predecessor_candidate_sha": "93b47319c1dd9bec02fbfb0e455a6c92a5647c93",
         "implementation_paths": [
           "src/twelve_six/sil_qualification.py",
           "configs/control/sil_scenario_v1.json",
@@ -116,7 +116,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/4-ai-qa-control-v1",
-        "predecessor_candidate_sha": "11197438c505863e8324b9539e056d9108718499",
+        "predecessor_candidate_sha": "e6fe73ef88f4052a1e0e999f0c833bf8e66bd6f5",
         "implementation_paths": [
           "configs/control/ai_qa_policy_v1.json",
           "src/twelve_six/ai_qa_control.py",
