@@ -46,6 +46,8 @@ access, or a substitute for later physical/device qualification.
 - complete available and explicitly unavailable journey sets;
 - every executed journey/capability/vector and argv;
 - per-execution return code, stdout/stderr hashes and duration;
+- a strict JSONL execution log whose raw stdout/stderr and execution metadata are
+  cross-checked record-by-record against the evidence envelope;
 - aggregate input/output/log identities;
 - run timings and final PASS/FAIL verdict; and
 - a fail-closed scientific-boundary receipt.
@@ -55,8 +57,10 @@ vector, and every executed vector must return zero. Component/unit green alone i
 
 The verifier reloads the exact-head package metadata, capability registry and SIL scenario,
 recomputes package/registry/model/init/data/scenario identities, reconstructs the complete SIL
-plan and input identity, requires every execution record to match that plan exactly, then
-recomputes the evidence identity, output identity and log hash. It rejects exact-SHA mismatch,
+plan and input identity, requires every execution record to match that plan exactly, parses
+the strict JSONL log and cross-checks its return code/input binding/stdout/stderr/duration
+against each evidence execution, then recomputes the evidence identity, output identity and
+log hash. It rejects exact-SHA mismatch,
 authority resealing, a widened scientific boundary and FAIL evidence when PASS is required.
 
 ## Durable surfaces

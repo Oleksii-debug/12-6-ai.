@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -86,15 +87,21 @@ def _pass_runner(
     argv: tuple[str, ...],
     cwd: Path,
     timeout_seconds: int,
+    input_envelope_bytes: bytes,
+    expected_input_identity_sha256: str,
 ) -> CommandExecution:
     assert argv[1:4] == ("-m", "pytest", "-q")
     assert cwd
     assert timeout_seconds == 300
+    assert hashlib.sha256(input_envelope_bytes).hexdigest() == (
+        expected_input_identity_sha256
+    )
     return CommandExecution(
         return_code=0,
         stdout="passed",
         stderr="",
         duration_ms=3,
+        consumed_input_identity_sha256=expected_input_identity_sha256,
     )
 
 
@@ -183,6 +190,8 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         argv: tuple[str, ...],
         cwd: Path,
         timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
     ) -> CommandExecution:
         nonlocal calls
         calls += 1
@@ -192,8 +201,15 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
                 stdout="",
                 stderr="AssertionError: integration failed",
                 duration_ms=2,
+                consumed_input_identity_sha256=expected_input_identity_sha256,
             )
-        return _pass_runner(argv, cwd, timeout_seconds)
+        return _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
 
     evidence, log_text = qualify_sil(
         repo_root=_ROOT,
@@ -225,6 +241,9 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         log_path,
         defect_id="sil-integration-defect",
         policy=_policy(),
+        expected_package_bytes=b"package",
+        expected_registry=load_capability_registry(_CAPABILITIES),
+        expected_scenario=load_sil_scenario(_SCENARIO),
     )
     assert packet.source is FailureSource.SIL
     assert packet.failing_git_sha == _FAIL_SHA

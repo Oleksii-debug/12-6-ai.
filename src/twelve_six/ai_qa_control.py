@@ -9,9 +9,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
+from twelve_six.capability_map import CapabilityRegistry, load_capability_registry
 from twelve_six.sil_qualification import (
     CommandExecution,
     GitProbe,
+    SILScenario,
+    load_sil_scenario,
     parse_vector_command,
     probe_git_state,
     run_command,
@@ -386,12 +389,18 @@ def failure_packet_from_sil(
     *,
     defect_id: str,
     policy: AIQAPolicy,
+    expected_package_bytes: bytes,
+    expected_registry: CapabilityRegistry,
+    expected_scenario: SILScenario,
     physical_scope: PhysicalScope = PhysicalScope.NONE,
     physical_gate_id: str | None = None,
 ) -> FailurePacket:
     evidence = verify_sil_evidence(
         evidence_path,
         log_path,
+        expected_package_bytes=expected_package_bytes,
+        expected_registry=expected_registry,
+        expected_scenario=expected_scenario,
         expected_git_sha=None,
         require_pass=False,
     )
@@ -579,7 +588,10 @@ class GateReceipt:
         }
 
 
-CommandRunner = Callable[[tuple[str, ...], Path, int], CommandExecution]
+CommandRunner = Callable[
+    [tuple[str, ...], Path, int, bytes, str],
+    CommandExecution,
+]
 
 
 def execute_automated_regressions(
@@ -606,11 +618,29 @@ def execute_automated_regressions(
         (GateKind.COMPONENT, chain.component_argv),
         (GateKind.ADVERSARIAL, chain.adversarial_argv),
     ):
-        result = command_runner(argv, root, timeout_seconds)
+        input_envelope = {
+            "schema_version": "12-6.aiqa-regression-input.v1",
+            "defect_id": chain.defect_id,
+            "candidate_identity_sha256": chain.candidate_identity_sha256,
+            "candidate_git_sha": chain.candidate_git_sha,
+            "gate": gate.value,
+            "argv": list(argv),
+        }
+        input_envelope_bytes = _canonical_json_bytes(input_envelope)
+        input_identity = _sha256_bytes(input_envelope_bytes)
+        result = command_runner(
+            argv,
+            root,
+            timeout_seconds,
+            input_envelope_bytes,
+            input_identity,
+        )
         evidence = {
             "gate": gate.value,
             "git_sha": chain.candidate_git_sha,
             "argv": list(argv),
+            "expected_input_identity_sha256": input_identity,
+            "consumed_input_identity_sha256": result.consumed_input_identity_sha256,
             "return_code": result.return_code,
             "stdout_sha256": _sha256_bytes(result.stdout.encode("utf-8")),
             "stderr_sha256": _sha256_bytes(result.stderr.encode("utf-8")),
@@ -622,6 +652,7 @@ def execute_automated_regressions(
                 verdict=(
                     GateVerdict.PASS
                     if result.return_code == 0
+                    and result.consumed_input_identity_sha256 == input_identity
                     else GateVerdict.FAIL
                 ),
                 git_sha=chain.candidate_git_sha,
@@ -932,9 +963,15 @@ def _regression_cli(args: argparse.Namespace) -> int:
 
 def _sil_receipt_cli(args: argparse.Namespace) -> int:
     candidate = load_repair_candidate(args.candidate)
+    root = Path(args.repo_root).resolve()
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
     evidence = verify_sil_evidence(
         args.evidence,
         args.log,
+        expected_package_bytes=(root / "pyproject.toml").read_bytes(),
+        expected_registry=registry,
+        expected_scenario=scenario,
         expected_git_sha=candidate.candidate_git_sha,
         require_pass=False,
     )
@@ -1007,11 +1044,17 @@ def _assess_cli(args: argparse.Namespace) -> int:
 
 def _sil_failure_cli(args: argparse.Namespace) -> int:
     policy = load_ai_qa_policy(args.policy)
+    root = Path(args.repo_root).resolve()
+    registry = load_capability_registry(args.capability_registry)
+    scenario = load_sil_scenario(args.scenario)
     packet = failure_packet_from_sil(
         args.evidence,
         args.log,
         defect_id=args.defect_id,
         policy=policy,
+        expected_package_bytes=(root / "pyproject.toml").read_bytes(),
+        expected_registry=registry,
+        expected_scenario=scenario,
         physical_scope=PhysicalScope(args.physical_scope),
         physical_gate_id=args.physical_gate_id,
     )
@@ -1043,6 +1086,9 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     sil = subparsers.add_parser("sil-failure")
+    sil.add_argument("--repo-root", required=True)
+    sil.add_argument("--capability-registry", required=True)
+    sil.add_argument("--scenario", required=True)
     sil.add_argument("--evidence", required=True)
     sil.add_argument("--log", required=True)
     sil.add_argument("--defect-id", required=True)
@@ -1081,6 +1127,9 @@ def main() -> int:
 
     sil_receipt = subparsers.add_parser("sil-receipt")
     sil_receipt.add_argument("--candidate", required=True)
+    sil_receipt.add_argument("--repo-root", required=True)
+    sil_receipt.add_argument("--capability-registry", required=True)
+    sil_receipt.add_argument("--scenario", required=True)
     sil_receipt.add_argument("--evidence", required=True)
     sil_receipt.add_argument("--log", required=True)
     sil_receipt.add_argument("--actor-id", required=True)

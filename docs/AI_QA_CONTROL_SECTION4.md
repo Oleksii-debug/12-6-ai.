@@ -39,8 +39,11 @@ Canonical gate order:
 3. Section-3 SIL journey evidence;
 4. corresponding physical gate or explicit software-only NOT_APPLICABLE scope.
 
-Component/adversarial execution reuses `sil_qualification.parse_vector_command` and never invokes
-a shell. Exact candidate SHA and tracked-clean state are mandatory before execution.
+Component/adversarial execution reuses `sil_qualification.parse_vector_command` and the
+Section-3 exact-input runner rather than creating a second subprocess framework. Each gate gets a
+canonical AI-QA regression input envelope bound to defect/candidate/gate/argv; PASS requires the
+subprocess to report consumption of that exact envelope identity. Exact candidate SHA and
+tracked-clean state are mandatory before execution.
 
 A gate receipt is bound to candidate SHA, evidence identity and actor identity. Missing, duplicate,
 wrong-SHA or FAIL receipts block promotion. SIL/physical evidence produced by the same repair

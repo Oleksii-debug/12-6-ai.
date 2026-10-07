@@ -116,7 +116,7 @@
       "status": "IN_PROGRESS",
       "evidence": {
         "candidate_branch": "section/4-ai-qa-control-v1",
-        "predecessor_candidate_sha": "e6fe73ef88f4052a1e0e999f0c833bf8e66bd6f5",
+        "predecessor_candidate_sha": "681591c59fc99b1b2e212595cd8125dca2c50d4b",
         "implementation_paths": [
           "configs/control/ai_qa_policy_v1.json",
           "src/twelve_six/ai_qa_control.py",

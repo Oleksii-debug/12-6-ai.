@@ -202,7 +202,9 @@ def test_qualify_sil_binds_exact_sha_identities_journeys_outputs_logs_and_verdic
     assert evidence["available_journey_ids"]
     assert evidence["executions"]
     assert all(item["return_code"] == 0 for item in evidence["executions"])
-    assert "journey=" in log_text
+    log_records = [json.loads(line) for line in log_text.splitlines()]
+    assert len(log_records) == len(evidence["executions"])
+    assert all(record["journey_id"] for record in log_records)
     for field in (
         "package_identity_sha256",
         "capability_registry_identity_sha256",
@@ -265,6 +267,44 @@ def test_sil_fail_execution_cannot_become_pass() -> None:
 
     assert evidence["verdict"] == "FAIL"
     assert any(item["return_code"] != 0 for item in evidence["executions"])
+
+
+def test_sil_mismatched_consumed_input_identity_cannot_become_pass() -> None:
+    def consume_wrong_identity(
+        argv: tuple[str, ...],
+        cwd: Path,
+        timeout_seconds: int,
+        input_envelope_bytes: bytes,
+        expected_input_identity_sha256: str,
+    ) -> CommandExecution:
+        result = _pass_runner(
+            argv,
+            cwd,
+            timeout_seconds,
+            input_envelope_bytes,
+            expected_input_identity_sha256,
+        )
+        return replace(
+            result,
+            consumed_input_identity_sha256="b" * 64,
+        )
+
+    evidence, _ = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=b"package",
+        command_runner=consume_wrong_identity,
+        git_probe=_git_probe,
+    )
+
+    assert evidence["verdict"] == "FAIL"
+    assert any(
+        item["consumed_input_identity_sha256"]
+        != item["expected_input_identity_sha256"]
+        for item in evidence["executions"]
+    )
 
 
 def test_sil_rejects_git_head_mismatch_and_dirty_tracked_checkout() -> None:
@@ -362,6 +402,39 @@ def test_evidence_verifier_rejects_log_and_evidence_resealing(tmp_path: Path) ->
     resealed["scenario_id"] = "forged-scenario"
     _write_evidence(evidence_path, resealed)
     with pytest.raises(ValueError, match="evidence identity"):
+        _verify_evidence(evidence_path, log_path)
+
+
+def test_verifier_rejects_self_consistent_execution_hash_reseal_against_log(
+    tmp_path: Path,
+) -> None:
+    evidence, log_text = qualify_sil(
+        repo_root=_ROOT,
+        expected_git_sha=_GIT_SHA,
+        registry=_registry(),
+        scenario=_scenario(),
+        package_bytes=b"package",
+        command_runner=_pass_runner,
+        git_probe=_git_probe,
+    )
+    evidence["executions"][0]["stdout_sha256"] = "b" * 64
+    evidence["output_identity_sha256"] = _canonical_hash(
+        {
+            "available_journey_ids": evidence["available_journey_ids"],
+            "unavailable_journeys": evidence["unavailable_journeys"],
+            "executions": evidence["executions"],
+        }
+    )
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = _canonical_hash(unsigned)
+
+    evidence_path = tmp_path / "resealed-execution-evidence.json"
+    log_path = tmp_path / "sil.log"
+    _write_evidence(evidence_path, evidence)
+    log_path.write_text(log_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="log stdout identity"):
         _verify_evidence(evidence_path, log_path)
 
 

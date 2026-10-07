@@ -459,7 +459,7 @@ def qualify_sil(
     started_unix_ns = time.time_ns()
     started_monotonic_ns = time.monotonic_ns()
     executions: list[dict[str, Any]] = []
-    log_parts: list[str] = []
+    log_records: list[dict[str, Any]] = []
 
     for vector in plan.vectors:
         result = command_runner(
@@ -482,23 +482,27 @@ def qualify_sil(
             "duration_ms": result.duration_ms,
         }
         executions.append(execution)
-        log_parts.extend(
-            [
-                (
-                    f"=== journey={vector.journey_id} capability={vector.capability_id} "
-                    f"vector={vector.vector_id} return_code={result.return_code} ===\n"
-                ),
-                "--- stdout ---\n",
-                result.stdout,
-                "\n--- stderr ---\n",
-                result.stderr,
-                "\n",
-            ]
+        log_records.append(
+            {
+                "journey_id": vector.journey_id,
+                "capability_id": vector.capability_id,
+                "vector_id": vector.vector_id,
+                "argv": list(vector.argv),
+                "return_code": result.return_code,
+                "expected_input_identity_sha256": input_identity,
+                "consumed_input_identity_sha256": result.consumed_input_identity_sha256,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "duration_ms": result.duration_ms,
+            }
         )
 
     finished_monotonic_ns = time.monotonic_ns()
     finished_unix_ns = time.time_ns()
-    log_text = "".join(log_parts)
+    log_text = "".join(
+        _canonical_json_bytes(record).decode("utf-8") + "\n"
+        for record in log_records
+    )
     log_identity = _sha256_bytes(log_text.encode("utf-8"))
     unavailable_payload = [item.to_dict() for item in plan.unavailable_journeys]
     output_identity = _canonical_sha256(
@@ -583,6 +587,46 @@ _EVIDENCE_FIELDS = {
     "scientific_boundary",
     "evidence_identity_sha256",
 }
+
+
+_MAX_LOG_BYTES = 16 * 1024 * 1024
+_LOG_RECORD_FIELDS = {
+    "journey_id",
+    "capability_id",
+    "vector_id",
+    "argv",
+    "return_code",
+    "expected_input_identity_sha256",
+    "consumed_input_identity_sha256",
+    "stdout",
+    "stderr",
+    "duration_ms",
+}
+
+
+def _load_sil_log_records(log_bytes: bytes) -> list[dict[str, Any]]:
+    if not isinstance(log_bytes, bytes) or not log_bytes:
+        raise ValueError("SIL log must be non-empty bytes")
+    if len(log_bytes) > _MAX_LOG_BYTES:
+        raise ValueError("SIL log exceeds maximum encoded size")
+    if not log_bytes.endswith(b"\n"):
+        raise ValueError("SIL log must end with a canonical newline")
+
+    records: list[dict[str, Any]] = []
+    for index, line in enumerate(log_bytes.splitlines(), start=1):
+        if not line:
+            raise ValueError("SIL log contains an empty record")
+        record = _strict_json_object(
+            line,
+            maximum_bytes=_MAX_LOG_BYTES,
+            label=f"SIL log record {index}",
+        )
+        if set(record) != _LOG_RECORD_FIELDS:
+            raise ValueError("SIL log record fields are non-canonical")
+        records.append(record)
+    if not records:
+        raise ValueError("SIL log contains no execution records")
+    return records
 
 
 def verify_sil_evidence(
@@ -762,6 +806,34 @@ def verify_sil_evidence(
     log_bytes = Path(log_path).read_bytes()
     if _sha256_bytes(log_bytes) != payload["log_sha256"]:
         raise ValueError("SIL log identity mismatch")
+    log_records = _load_sil_log_records(log_bytes)
+    if len(log_records) != len(executions):
+        raise ValueError("SIL log execution count does not match evidence")
+    for log_record, execution in zip(log_records, executions, strict=True):
+        for field in (
+            "journey_id",
+            "capability_id",
+            "vector_id",
+            "argv",
+            "return_code",
+            "expected_input_identity_sha256",
+            "consumed_input_identity_sha256",
+            "duration_ms",
+        ):
+            if log_record[field] != execution[field]:
+                raise ValueError(f"SIL log {field} does not match evidence")
+        if not isinstance(log_record["stdout"], str) or not isinstance(
+            log_record["stderr"], str
+        ):
+            raise ValueError("SIL log stdout/stderr must be text")
+        if _sha256_bytes(log_record["stdout"].encode("utf-8")) != execution[
+            "stdout_sha256"
+        ]:
+            raise ValueError("SIL log stdout identity does not match evidence")
+        if _sha256_bytes(log_record["stderr"].encode("utf-8")) != execution[
+            "stderr_sha256"
+        ]:
+            raise ValueError("SIL log stderr identity does not match evidence")
 
     expected_output = _canonical_sha256(
         {
