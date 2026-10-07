@@ -21,11 +21,14 @@ _INVENTORY = (
 _CAPABILITIES = _ROOT / "configs" / "control" / "product_capabilities_v1.json"
 
 
-def _validate(inventory: Path = _INVENTORY) -> dict[str, object]:
+def _validate(
+    inventory: Path = _INVENTORY,
+    capabilities: Path = _CAPABILITIES,
+) -> dict[str, object]:
     return validate_repository_surface_coverage(
         repo_root=_ROOT,
         inventory_path=inventory,
-        capability_registry_path=_CAPABILITIES,
+        capability_registry_path=capabilities,
     )
 
 
@@ -148,3 +151,15 @@ def test_repository_surface_coverage_rejects_current_main_tree_reseal(
 
     with pytest.raises(ValueError, match="does not match current_repository_main_sha"):
         _validate(inventory)
+
+def test_repository_surface_coverage_rejects_duplicate_capability_ids(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["capabilities"].append(dict(payload["capabilities"][0]))
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="capability ids must be unique"):
+        _validate(capabilities=capabilities)
+

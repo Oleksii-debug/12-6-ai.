@@ -234,6 +234,8 @@ def validate_repository_surface_coverage(
         capability_id = capability.get("capability_id")
         if not isinstance(capability_id, str) or not capability_id:
             raise ValueError("capability_id must be non-empty text")
+        if capability_id in capabilities:
+            raise ValueError("capability ids must be unique")
         capabilities[capability_id] = capability
 
     declared_capability_ids = {
