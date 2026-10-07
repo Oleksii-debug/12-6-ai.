@@ -268,6 +268,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
         expected_environment_receipt=_environment_receipt(),
         expected_registry=load_capability_registry(_CAPABILITIES),
         expected_scenario=load_sil_scenario(_SCENARIO),
+        expected_git_sha=_FAIL_SHA,
     )
     assert packet.source is FailureSource.SIL
     assert packet.failing_git_sha == _FAIL_SHA
@@ -276,6 +277,20 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
     assert packet.source_evidence_identity_sha256 == evidence[
         "evidence_identity_sha256"
     ]
+
+
+    with pytest.raises(ValueError, match="Git SHA mismatch"):
+        failure_packet_from_sil(
+            evidence_path,
+            log_path,
+            defect_id="sil-wrong-failing-sha",
+            policy=_policy(),
+            expected_package_bytes=_package_bytes(),
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=load_capability_registry(_CAPABILITIES),
+            expected_scenario=load_sil_scenario(_SCENARIO),
+            expected_git_sha="f" * 40,
+        )
 
 
 def test_sil_failure_ingestion_rejects_environment_authority_mismatch(

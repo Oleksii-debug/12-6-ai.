@@ -446,6 +446,7 @@ def failure_packet_from_sil(
     expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
+    expected_git_sha: str | None = None,
     physical_scope: PhysicalScope = PhysicalScope.NONE,
     physical_gate_id: str | None = None,
 ) -> FailurePacket:
@@ -456,7 +457,7 @@ def failure_packet_from_sil(
         expected_environment_receipt=expected_environment_receipt,
         expected_registry=expected_registry,
         expected_scenario=expected_scenario,
-        expected_git_sha=None,
+        expected_git_sha=expected_git_sha,
         require_pass=False,
     )
     if evidence["verdict"] != "FAIL":
@@ -1635,6 +1636,9 @@ def _assess_cli(args: argparse.Namespace) -> int:
 def _sil_failure_cli(args: argparse.Namespace) -> int:
     policy = load_ai_qa_policy(args.policy)
     root = Path(args.repo_root).resolve()
+    failing_state = probe_git_state(root)
+    if not failing_state.tracked_clean:
+        raise ValueError("SIL failure ingestion checkout is dirty")
     registry = load_capability_registry(args.capability_registry)
     scenario = load_sil_scenario(args.scenario)
     environment_receipt = load_sil_environment_receipt(args.environment_receipt)
@@ -1647,6 +1651,7 @@ def _sil_failure_cli(args: argparse.Namespace) -> int:
         expected_environment_receipt=environment_receipt,
         expected_registry=registry,
         expected_scenario=scenario,
+        expected_git_sha=failing_state.sha,
         physical_scope=PhysicalScope(args.physical_scope),
         physical_gate_id=args.physical_gate_id,
     )
