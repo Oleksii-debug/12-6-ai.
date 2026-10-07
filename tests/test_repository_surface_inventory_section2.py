@@ -114,13 +114,12 @@ def test_repository_surface_coverage_rejects_candidate_override_capability_remap
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    target = next(
-        item
-        for item in payload["candidate_overrides"]
-        if item["path"] == "tools/validate_section2_repository_surface_coverage.py"
-    )
-    assert target["capability_id"] == "executable-capability-map"
-    target["capability_id"] = "learned-20m-base"
+    payload["candidate_overrides"] = [
+        {
+            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "capability_id": "learned-20m-base",
+        }
+    ]
 
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
@@ -233,7 +232,7 @@ def test_repository_surface_coverage_accepts_equivalent_historical_main_receipt(
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["current_repository_main_sha"] = payload["observed_main_sha"]
-    payload["current_repository_main_tree_sha"] = "17edf21d66709f6e8a7c217e138b33c0bf9a0217"
+    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -262,7 +261,7 @@ def test_repository_surface_coverage_rejects_current_main_tree_reseal(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
+    payload["current_repository_main_tree_sha"] = "0" * 40
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
