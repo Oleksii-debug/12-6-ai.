@@ -1443,6 +1443,45 @@ def test_sil_stored_state_authority_ignores_class_method_rebinding(
     ]
 
 
+def test_sil_execution_state_validators_ignore_helper_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sil_qualification,
+        "_require_git_sha",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_require_sha256",
+        lambda _name, value: value,
+    )
+    monkeypatch.setattr(
+        sil_qualification,
+        "_is_exact_type",
+        lambda _value, _expected: True,
+    )
+
+    state = GitState(sha=_GIT_SHA, tracked_clean=True)
+    object.__setattr__(state, "tracked_clean", "yes")
+    with pytest.raises(ValueError, match="tracked_clean must be boolean"):
+        GitState.__post_init__(state)
+
+    execution = CommandExecution(
+        return_code=0,
+        stdout="ok",
+        stderr="",
+        duration_ms=1,
+        consumed_input_identity_sha256="a" * 64,
+    )
+    object.__setattr__(execution, "consumed_input_identity_sha256", "forged")
+    with pytest.raises(
+        ValueError,
+        match="consumed_input_identity_sha256",
+    ):
+        CommandExecution.__post_init__(execution)
+
+
 def test_sil_revalidates_mutated_exact_git_probe_result() -> None:
     state = GitState(sha=_GIT_SHA, tracked_clean=True)
     object.__setattr__(state, "tracked_clean", "yes")
