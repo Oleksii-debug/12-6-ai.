@@ -788,8 +788,8 @@ def _build_capability_registry_post_init() -> Any:
     sealed_evidence_validate = EvidenceTarget.__post_init__
     sealed_require_capability_status = _require_capability_status
     sealed_require_test_level = _require_test_level
-    sealed_available_status = sealed_available_status
-    sealed_unavailable_status = sealed_unavailable_status
+    sealed_available_status = CapabilityStatus.AVAILABLE
+    sealed_unavailable_status = CapabilityStatus.UNAVAILABLE
     sealed_sha40_fullmatch = _SHA40_RE.fullmatch
 
     def validate(self: Any) -> None:
