@@ -384,6 +384,30 @@ def test_generation_manifest_rejects_noncanonical_equivalent_bytes() -> None:
         parse_generation_identity_manifest(noncanonical)
 
 
+def test_artifact_kind_value_descriptor_rebinding_cannot_reseal_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("enum-descriptor")
+    corpus = generation.artifact_ref(ArtifactKind.CORPUS)
+    expected_generation_identity = generation.identity_sha256()
+    expected_corpus_payload = corpus.to_dict()
+
+    def dispatching_value(_: ArtifactKind) -> str:
+        raise AssertionError("ArtifactKind.value descriptor must not be dispatched")
+
+    monkeypatch.setattr(
+        ArtifactKind,
+        "value",
+        property(dispatching_value),
+        raising=False,
+    )
+
+    assert corpus.to_dict() == expected_corpus_payload
+    assert generation.identity_sha256() == expected_generation_identity
+    assert generation.artifact_ref(ArtifactKind.CORPUS) is corpus
+    assert _generation("enum-descriptor").identity_sha256() == expected_generation_identity
+
+
 def test_artifact_kind_enum_wire_value_mutation_fails_closed() -> None:
     generation = _generation("enum-wire")
     refs = _refs("enum-wire-new")
