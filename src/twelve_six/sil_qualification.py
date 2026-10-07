@@ -1281,7 +1281,7 @@ def verify_sil_evidence(
     expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
-    expected_git_sha: str | None = None,
+    expected_git_sha: str,
     require_pass: bool = True,
 ) -> dict[str, Any]:
     payload = _strict_json_object(
@@ -1294,9 +1294,7 @@ def verify_sil_evidence(
     if payload["schema_version"] != "12-6.github-sil-evidence.v1":
         raise ValueError("unsupported SIL evidence schema_version")
     _require_git_sha("evidence git_sha", payload["git_sha"])
-    if expected_git_sha is not None and payload["git_sha"] != _require_git_sha(
-        "expected_git_sha", expected_git_sha
-    ):
+    if payload["git_sha"] != _require_git_sha("expected_git_sha", expected_git_sha):
         raise ValueError("SIL evidence Git SHA mismatch")
     for field in (
         "package_identity_sha256",
