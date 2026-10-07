@@ -1,3 +1,6 @@
+# Dataclass post-init defaults below deliberately freeze authority snapshots against rebinding.
+# ruff: noqa: RUF033
+
 from __future__ import annotations
 
 import hashlib
@@ -9,7 +12,6 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 from typing import Any
-
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -81,7 +83,7 @@ def _require_sha256(name: str, value: object) -> str:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # Closed manifest schemas reject behavioral subclasses that can override serialization.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_exact_object_fields(
