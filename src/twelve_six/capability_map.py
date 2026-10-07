@@ -1107,13 +1107,13 @@ def validate_source_surface_coverage(
     premature_candidate_acceptance = sorted(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
-        if surface.origin == "stacked_candidate"
+        if surface.origin != "accepted_main"
         and registry.capability(surface.capability_id).status
         is not CapabilityStatus.UNAVAILABLE
     )
     if premature_candidate_acceptance:
         raise ValueError(
-            "stacked candidate source surfaces must map to UNAVAILABLE capabilities "
+            "candidate source surfaces must map to UNAVAILABLE capabilities "
             "until integrated: "
             f"{premature_candidate_acceptance}"
         )
