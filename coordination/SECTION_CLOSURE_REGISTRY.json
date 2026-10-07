@@ -83,12 +83,16 @@
           "configs/control/product_capabilities_v1.json",
           "configs/control/product_source_surface_inventory_v1.json",
           "tests/test_capability_map_section2.py",
-          "docs/EXECUTABLE_CAPABILITY_MAP_SECTION2.md"
+          "docs/EXECUTABLE_CAPABILITY_MAP_SECTION2.md",
+          "configs/control/product_repository_executable_surface_rules_v1.json",
+          "tools/validate_section2_repository_surface_coverage.py",
+          "tests/test_repository_surface_inventory_section2.py",
+          "docs/SECTION2_REPOSITORY_EXECUTABLE_SURFACE_COVERAGE.md"
         ],
         "integrated_main_sha": null,
         "pull_request": null,
         "terminal_ci": null,
-        "qualification_blocker": "Static source/capability/journey coverage is complete for the current stack, but exact-head shared CI is not terminal PASS and Sections 0-1 remain unfinished predecessors."
+        "qualification_blocker": "Static package-source and repository executable/control capability coverage is complete on the current candidate, but exact-head shared CI is not terminal PASS and Sections 0-1 remain unfinished predecessors."
       }
     },
     {
