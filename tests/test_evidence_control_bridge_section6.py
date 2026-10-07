@@ -2,20 +2,31 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import subprocess
 
 import pytest
 
 import twelve_six.evidence_control_bridge as bridge_module
+import twelve_six.physical_qualification as physical_module
 from twelve_six.evidence_control_bridge import (
     CanonicalEvidenceRecord,
     HostDispatch,
     PhysicalExecutionReceipt,
     RequalificationReceipt,
     build_canonical_evidence_record,
+    build_host_dispatch,
     build_requalification_requirement,
     physical_failure_observation,
     write_canonical_evidence_record,
 )
+
+from twelve_six.physical_qualification import (
+    ExecutionMode,
+    QualificationAction,
+    QualificationPacket,
+    VerifiedSignedPacket,
+)
+from twelve_six.sil_qualification import build_package_manifest_bytes
 
 
 def _sha(label: str) -> str:
@@ -67,6 +78,126 @@ def _receipt(
         reproducer_command=reproducer,
         _verification_token=bridge_module._VERIFIED_PHYSICAL_RECEIPT,
     )
+
+
+def _verified_packet(target_git_sha: str, *, mode: ExecutionMode) -> VerifiedSignedPacket:
+    action = QualificationAction(
+        action_id="smoke",
+        pytest_targets=("tests/test_smoke.py",),
+        timeout_seconds=60,
+        max_output_bytes=4096,
+        required_resources=(),
+    )
+    packet = QualificationPacket(
+        schema_version="12-6.physical-qualification-packet.v1",
+        packet_id="packet-a",
+        target_git_sha=target_git_sha,
+        agent_source_sha256=_sha("agent-source"),
+        execution_mode=mode,
+        allowed_os_families=("LINUX",),
+        not_before_epoch_seconds=1,
+        expires_epoch_seconds=61,
+        actions=(action,),
+        artifact_paths=(),
+    )
+    return VerifiedSignedPacket(
+        packet=packet,
+        signing_key_id="packet-key",
+        signature_sha256=_sha("packet-signature"),
+        signed_bundle_identity_sha256=_sha("packet-bundle"),
+        _verification_token=physical_module._VERIFIED_PACKET_TOKEN,
+    )
+
+
+def _clean_package_repo(tmp_path) -> str:
+    (tmp_path / "src" / "twelve_six").mkdir(parents=True)
+    (tmp_path / "configs" / "research").mkdir(parents=True)
+    (tmp_path / "tests").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text(
+        "[build-system]\\nrequires=[]\\nbuild-backend='setuptools.build_meta'\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "twelve_six" / "__init__.py").write_text(
+        "__all__ = []\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "configs" / "research" / "smoke.json").write_text(
+        "{}\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "test_smoke.py").write_text(
+        "def test_smoke():\\n    assert True\\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "section6@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Section 6 Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "fixture"],
+        cwd=tmp_path,
+        check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_host_dispatch_derives_package_from_exact_clean_candidate(tmp_path) -> None:
+    git_sha = _clean_package_repo(tmp_path)
+    verified = _verified_packet(git_sha, mode=ExecutionMode.REAL_HOST)
+
+    dispatch = build_host_dispatch(
+        verified,
+        repo_root=tmp_path,
+        dispatch_id="dispatch-clean",
+        scenario_id="host-smoke",
+        physical_gate_id="linux-host",
+    )
+
+    assert dispatch.target_git_sha == git_sha
+    assert dispatch.package_identity_sha256 == hashlib.sha256(
+        build_package_manifest_bytes(tmp_path)
+    ).hexdigest()
+
+
+def test_host_dispatch_rejects_dirty_or_simulated_candidate(tmp_path) -> None:
+    git_sha = _clean_package_repo(tmp_path)
+    simulated = _verified_packet(git_sha, mode=ExecutionMode.SIMULATION)
+    with pytest.raises(ValueError, match="REAL_HOST"):
+        build_host_dispatch(
+            simulated,
+            repo_root=tmp_path,
+            dispatch_id="dispatch-sim",
+            scenario_id="host-smoke",
+            physical_gate_id="linux-host",
+        )
+
+    (tmp_path / "src" / "twelve_six" / "__init__.py").write_text(
+        "__all__ = ['dirty']\\n",
+        encoding="utf-8",
+    )
+    real = _verified_packet(git_sha, mode=ExecutionMode.REAL_HOST)
+    with pytest.raises(ValueError, match="dirty"):
+        build_host_dispatch(
+            real,
+            repo_root=tmp_path,
+            dispatch_id="dispatch-dirty",
+            scenario_id="host-smoke",
+            physical_gate_id="linux-host",
+        )
 
 
 def test_dispatch_identity_binds_package_candidate_and_scenario() -> None:

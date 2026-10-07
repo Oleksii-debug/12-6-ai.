@@ -18,7 +18,13 @@ from twelve_six.physical_qualification import (
     VerifiedSignedPacket,
     verify_qualification_evidence,
 )
-from twelve_six.sil_qualification import SILScenario, parse_vector_command, verify_sil_evidence
+from twelve_six.sil_qualification import (
+    SILScenario,
+    build_package_manifest_bytes,
+    parse_vector_command,
+    require_exact_clean_git_state,
+    verify_sil_evidence,
+)
 
 
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -130,7 +136,7 @@ class HostDispatch:
 def build_host_dispatch(
     verified_packet: VerifiedSignedPacket,
     *,
-    package_manifest_bytes: bytes,
+    repo_root: str | Path,
     dispatch_id: str,
     scenario_id: str,
     physical_gate_id: str,
@@ -138,10 +144,15 @@ def build_host_dispatch(
     if not _is_exact_type(verified_packet, VerifiedSignedPacket):
         raise ValueError("verified_packet must be an exact VerifiedSignedPacket")
     VerifiedSignedPacket.__post_init__(verified_packet)
-    if not _is_exact_type(package_manifest_bytes, bytes) or not package_manifest_bytes:
-        raise ValueError("package_manifest_bytes must be non-empty exact bytes")
     if verified_packet.packet.execution_mode is not ExecutionMode.REAL_HOST:
         raise ValueError("Section 6 physical dispatch requires REAL_HOST mode")
+    require_exact_clean_git_state(
+        repo_root,
+        verified_packet.packet.target_git_sha,
+    )
+    package_manifest_bytes = build_package_manifest_bytes(repo_root)
+    if not package_manifest_bytes:
+        raise ValueError("canonical package manifest cannot be empty")
     return HostDispatch(
         schema_version="12-6.host-dispatch.v1",
         dispatch_id=dispatch_id,

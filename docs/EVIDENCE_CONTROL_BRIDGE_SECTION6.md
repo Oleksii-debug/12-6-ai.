@@ -8,8 +8,9 @@ qualification lineage and is not an independent physical-agent implementation.
 
 The bridge has four responsibilities:
 
-1. Build one HostDispatch that binds an exact Git candidate, exact package-manifest identity,
-   exact signed Section-5 qualification packet, physical scenario, and gate identifier.
+1. Build one HostDispatch from an exact clean Git checkout. It derives the canonical package
+   manifest itself, then binds that package identity to the exact signed Section-5
+   qualification packet, physical scenario, and gate identifier.
 2. Accept a host result only by executing the existing Section-5 cryptographic evidence
    verifier. Simulation evidence is rejected. The resulting PhysicalExecutionReceipt binds
    exact candidate, package, packet, signed bundle, host inventory, physical evidence, and
@@ -28,7 +29,9 @@ The bridge has four responsibilities:
 ## Fail-closed properties
 
 - REAL_HOST is mandatory for bridge dispatch and receipt.
-- Candidate Git SHA and package bytes are independent identities and both are cross-bound.
+- Dispatch creation proves an exact clean candidate checkout and derives package bytes with
+  the existing canonical SIL package-manifest builder; arbitrary caller package bytes are
+  never accepted.
 - Section-5 signed packet and host evidence verification remain authoritative; this module
   does not duplicate their cryptographic verification.
 - Canonical evidence publication is create-only and deterministic.
