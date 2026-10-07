@@ -285,6 +285,21 @@ def test_available_python_component_contracts_resolve_to_real_symbols() -> None:
         assert _resolve_contract(capability.component_contract) is not None
 
 
+def test_registry_loader_rejects_unresolvable_available_contract(tmp_path: Path) -> None:
+    payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    target = next(
+        capability
+        for capability in payload["capabilities"]
+        if capability["status"] == "AVAILABLE"
+    )
+    target["component_contract"] = "twelve_six.nonexistent.Contract"
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="component contract"):
+        load_capability_registry(path)
+
+
 def test_registry_loader_rejects_unknown_nested_capability_field(tmp_path: Path) -> None:
     payload = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     payload["capabilities"][0]["forged_ready"] = True
