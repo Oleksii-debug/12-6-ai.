@@ -1,0 +1,37 @@
+name: Plan 2 Data Component Qualification
+
+on:
+  push:
+    branches:
+      - 'plan2/**'
+    paths:
+      - 'tools/plan2_*.py'
+      - 'tests/test_plan2_*.py'
+      - 'configs/data/plan2_*'
+      - '.github/workflows/plan2-data-component.yml'
+  pull_request:
+    paths:
+      - 'tools/plan2_*.py'
+      - 'tests/test_plan2_*.py'
+      - 'configs/data/plan2_*'
+      - '.github/workflows/plan2-data-component.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-plan2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal LOCAL_FREE qualification dependencies
+        run: python -m pip install pytest ruff
+      - name: Lint Plan 2 additions
+        run: ruff check tools/plan2_*.py tests/test_plan2_*.py
+      - name: Qualify source rights, provenance and physical snapshots
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_*.py tests/test_data324_current_main_port.py
