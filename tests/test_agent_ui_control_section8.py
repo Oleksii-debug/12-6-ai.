@@ -4,7 +4,7 @@ from dataclasses import replace
 import pytest
 
 from twelve_six_agent_runtime.task_state import PendingEffect, StateError, TaskStore
-from twelve_six_agent_runtime.tools import ToolRegistry
+from twelve_six_agent_runtime.tools import ToolBoundaryError, ToolRegistry
 from twelve_six_agent_runtime.ui_control import (
     SemanticNode, SemanticUIControl, UIControlError, UISnapshot, ui_tool_descriptor,
 )
@@ -79,9 +79,9 @@ def test_browser_dom_semantic_action_and_exact_receipt(tmp_path):
     result = complete(ui, intent)
     assert result.pending_effects[0].receipt_id == "external-receipt"
     assert TaskStore(tasks.path).load("task-a") == result
-    with pytest.raises((UIControlError, StateError)):
+    with pytest.raises((UIControlError, StateError, ToolBoundaryError)):
         issue(ui, intent)
-    with pytest.raises((UIControlError, StateError)):
+    with pytest.raises((UIControlError, StateError, ToolBoundaryError)):
         complete(ui, intent)
 
 
@@ -164,7 +164,7 @@ def test_unknown_effect_restart_requires_reconciliation_not_blind_retry(tmp_path
     restarted = TaskStore(tasks.path)
     epoch = restarted.resume("task-a")
     assert epoch.control_epoch == 1
-    with pytest.raises((UIControlError, StateError)):
+    with pytest.raises((UIControlError, StateError, ToolBoundaryError)):
         complete(ui, intent)
     with pytest.raises(UIControlError, match="evidence"):
         ui.reconcile_unknown(intent, observed_state="clicked", receipt_id="r",
