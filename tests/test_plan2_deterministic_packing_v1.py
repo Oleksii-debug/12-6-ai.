@@ -157,3 +157,26 @@ def test_reader_denies_corruption_missing_extra_and_symlink(tmp_path):
     manifest.write_bytes(b"{}")
     with pytest.raises(p.PackingDenied):
         p.read_blocks(ROOT, out)
+
+
+def test_interrupted_temporary_files_are_cleaned_but_unsafe_links_denied(tmp_path):
+    out = tmp_path / "candidate"
+    (out / "shards").mkdir(parents=True)
+    partial = out / "shards" / ".plan2-partial-abandoned"
+    partial.write_bytes(b"uncommitted")
+    (out / ".plan2-partial-abandoned").write_bytes(b"uncommitted")
+    manifest = p.stage(ROOT, out)
+    assert manifest["shards"]
+    assert not partial.exists()
+    assert not (out / ".plan2-partial-abandoned").exists()
+    (out / "shards" / ".plan2-partial-hostile").symlink_to(out / "packing-manifest.json")
+    with pytest.raises(p.PackingDenied):
+        p.stage(ROOT, out)
+
+
+def test_undeclared_destination_member_denied(tmp_path):
+    out = tmp_path / "candidate"
+    p.stage(ROOT, out)
+    (out / "unrecognized-record.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(p.PackingDenied):
+        p.stage(ROOT, out)
