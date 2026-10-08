@@ -55,6 +55,7 @@ def attest_data324_source(root: Path, seed: Mapping[str, Any]) -> dict[str, Any]
     _require(isinstance(seed, Mapping) and set(seed) == {"schema_version", "revision", "sources"},
              "seed fields changed")
     inv = verify_inventory(build_inventory(seed["revision"], seed["sources"]))
+    _require(len(inv["sources"]) == 1, "unreviewed additional source in scope")
     row = next((s for s in inv["sources"] if s["source_id"] == SOURCE_ID), None)
     _require(row is not None and row["status"] == "candidate",
              "DATA324 must remain a source-level candidate")
@@ -128,6 +129,8 @@ def verify_receipt(receipt: Mapping[str, Any], expected: Mapping[str, Any]) -> N
 
 def require_training_materialization(receipt: Mapping[str, Any]) -> None:
     """Fail closed: rights alone cannot promote DATA324 into a training corpus."""
-    _require(receipt.get("corpus_training_authorized") is True and
-             receipt.get("tokenizer_fit_authorized") is True,
-             "separate dedup/privacy/eval/corpus admission not satisfied")
+    _require(receipt.get("schema_version") == SCHEMA and
+             receipt.get("source_id") == SOURCE_ID, "unknown provenance receipt")
+    raise Plan2AdmissibilityError(
+        "DATA324 remains a source-level candidate; separate corpus authority is absent"
+    )
