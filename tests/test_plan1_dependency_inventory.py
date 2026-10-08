@@ -20,7 +20,9 @@ def test_installed_record_is_observation_never_authority(monkeypatch, tmp_path):
 
     class FakeDist:
         version = "2.5.1"
-        metadata = {"Name": "torch", "License": "MIT"}
+
+        def __init__(self):
+            self.metadata = {"Name": "torch", "License": "MIT"}
 
         def read_text(self, name):
             assert name == "RECORD"
@@ -56,7 +58,9 @@ def test_missing_or_unrecorded_wheel_not_admitted(monkeypatch, tmp_path):
 
     class Unrecorded:
         version = "1.26.0"
-        metadata = {"Name": "numpy"}
+
+        def __init__(self):
+            self.metadata = {"Name": "numpy"}
 
         def read_text(self, name):
             return None
@@ -86,8 +90,10 @@ def test_wrong_installed_identity_and_oversize_record_fail_closed(monkeypatch, t
 
     class Fake:
         version = "2.5.0"
-        metadata = {"Name": "foreign"}
         record = "bytes"
+
+        def __init__(self):
+            self.metadata = {"Name": "foreign"}
 
         def read_text(self, name):
             return self.record
