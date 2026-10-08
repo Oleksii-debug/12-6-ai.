@@ -36,20 +36,25 @@ def test_roundtrip_and_bos_eos_special_id_semantics(sample):
 @pytest.mark.parametrize('bad',[[-1],[True],[99999],['260']])
 def test_forged_token_ids_fail_closed(bad):
     m=fit.verify_frozen(fit.freeze_fixture(ROOT))
-    with pytest.raises(fit.FitDenied):m.decode(bad)
+    with pytest.raises(fit.FitDenied):
+        m.decode(bad)
 
 
 @pytest.mark.parametrize('bad',[[[260,1]],[[256,1]],[[0,260]],[[0,0],[0,0]],[['1',2]]])
 def test_future_special_or_duplicate_merge_fails(bad):
-    with pytest.raises(fit.FitDenied):fit.FrozenBPE(bad)
+    with pytest.raises(fit.FitDenied):
+        fit.FrozenBPE(bad)
 
 
 def test_fit_order_invariant_and_fails_on_duplicate_or_invalid_training():
     records=[{'record_id':str(i),'text':f'Україна та text text {i}'} for i in range(5)]
     assert fit._fit(records,30)==fit._fit(list(reversed(records)),30)
-    with pytest.raises(fit.FitDenied):fit._fit(records+[records[0]],30)
-    with pytest.raises(fit.FitDenied):fit._fit([{'record_id':'x','text':''}],30)
-    with pytest.raises(fit.FitDenied):fit._fit([{'record_id':'x','text':'\ud800'}],30)
+    with pytest.raises(fit.FitDenied):
+        fit._fit(records+[records[0]],30)
+    with pytest.raises(fit.FitDenied):
+        fit._fit([{'record_id':'x','text':''}],30)
+    with pytest.raises(fit.FitDenied):
+        fit._fit([{'record_id':'x','text':'\ud800'}],30)
 
 
 def test_manifest_mutation_and_false_permission_fail_closed():
@@ -57,7 +62,8 @@ def test_manifest_mutation_and_false_permission_fail_closed():
     for key,val in [('fit_merges',[]),('manifest_sha256','0'*64),('production_release_authorized',True),('tokenizer_identity',{})]:
         forged=copy.deepcopy(original)
         forged[key]=val
-        with pytest.raises(fit.FitDenied):fit.verify_frozen(forged)
+        with pytest.raises(fit.FitDenied):
+            fit.verify_frozen(forged)
 
 
 def test_checkpoint_identity_never_silently_matches_incumbent():
@@ -84,16 +90,19 @@ def test_restart_clean_rebuild_and_corrupt_artifact(tmp_path):
     q=tmp_path/'two'/'frozen-tokenizer-fixture.json'
     assert p.read_bytes()==q.read_bytes()
     p.write_text('{}',encoding='utf-8')
-    with pytest.raises(fit.FitDenied):fit.stage(ROOT,tmp_path/'one')
+    with pytest.raises(fit.FitDenied):
+        fit.stage(ROOT,tmp_path/'one')
 
 
 def test_symlink_destination_and_tampered_policy_rejected(tmp_path):
     (tmp_path/'actual').mkdir()
     (tmp_path/'alias').symlink_to(tmp_path/'actual',target_is_directory=True)
-    with pytest.raises(fit.FitDenied):fit.stage(ROOT,tmp_path/'alias'/'child')
+    with pytest.raises(fit.FitDenied):
+        fit.stage(ROOT,tmp_path/'alias'/'child')
     policy=ROOT/fit.POLICY_PATH
     assert fit.git_blob(policy.read_bytes())==fit.POLICY_BLOB
     replacement=tmp_path/'other'
     (replacement/'configs'/'data').mkdir(parents=True)
     (replacement/fit.POLICY_PATH).write_text('{"purpose":"PRODUCTION"}')
-    with pytest.raises(fit.FitDenied):fit._policy(replacement)
+    with pytest.raises(fit.FitDenied):
+        fit._policy(replacement)
