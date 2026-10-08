@@ -209,9 +209,10 @@ def inspect_wheel(path: Path) -> tuple[str, str]:
                 ):
                     raise EnvironmentLockError("unsafe or duplicate wheel archive path")
                 mode = (member.external_attr >> 16) & 0o170000
-                if mode not in (0, stat.S_IFDIR) if member.is_dir() else mode not in (
-                    0, stat.S_IFREG
-                ):
+                allowed_modes = (
+                    (0, stat.S_IFDIR) if member.is_dir() else (0, stat.S_IFREG)
+                )
+                if mode not in allowed_modes:
                     raise EnvironmentLockError("wheel symlink or special archive member")
                 seen.add(name)
                 if member.is_dir():
