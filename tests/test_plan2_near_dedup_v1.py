@@ -165,6 +165,17 @@ def test_versioned_audit_duplicate_json_key_is_denied(tmp_path):
         near.audit_samples(tmp_path)
 
 
+def test_versioned_audit_acceptance_sample_replacement_is_denied(tmp_path):
+    """No schema-valid replacement may silently launder the FP/FN gate."""
+    fixture = tmp_path / near.AUDIT
+    fixture.parent.mkdir(parents=True)
+    original = json.loads((ROOT / near.AUDIT).read_text(encoding="utf-8"))
+    original["samples"][0]["id"] = "unreviewed-replacement"
+    fixture.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(near.NearDedupError, match="audit fixture identity drift"):
+        near.audit_samples(tmp_path)
+
+
 def test_candidate_physical_restart_and_clean_rebuild(tmp_path):
     first = near.stage_near(ROOT, tmp_path / "one")
     again = near.stage_near(ROOT, tmp_path / "one")
