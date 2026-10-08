@@ -86,7 +86,7 @@ def test_version_and_result_digest_bindings_fail_closed(tmp_path):
         vault.evaluate(dataset_ref={**ref, "dataset_version": "forged"},
                        predictions={"a": "yes", "b": "no"}, **identity)
     with pytest.raises(EvaluationBoundaryError, match="immutable dataset version"):
-        vault.reserve(dataset=b'{"id":"a","answer":"yes"}\\n{"id":"b","answer":"no"}\\n',
+        vault.reserve(dataset=b'{"id":"a","answer":"yes"}\n{"id":"b","answer":"no"}\n',
                       dataset_version="changed")
     sealed = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "no"}, **identity)
     result = vault.results / (sealed["evaluation_id"] + ".json")
@@ -100,5 +100,5 @@ def test_version_and_result_digest_bindings_fail_closed(tmp_path):
 def test_duplicate_json_object_fields_rejected(tmp_path):
     vault, _, _ = setup(tmp_path)
     with pytest.raises(EvaluationBoundaryError, match="duplicate JSON field"):
-        vault.reserve(dataset=b'{"id":"x","answer":"one","answer":"two"}\\n',
+        vault.reserve(dataset=b'{"id":"x","answer":"one","answer":"two"}\n',
                       dataset_version="fixture-v2")
