@@ -154,3 +154,61 @@ def test_policy_rejects_malformed_and_duplicates():
     for case in cases:
         with pytest.raises(split.Plan2ClusterSplitError):
             split.parse_policy(case)
+
+
+def test_local_staging_adapter_immutable_restart_and_symlink(tmp_path, monkeypatch):
+    """Synthetic adapter isolation; not real S3-S9 physical fixture evidence."""
+    import sys
+    from types import ModuleType
+
+    mix, near = _inputs()
+    fake_mixture = ModuleType("tools.plan2_corpus_mixture_v1")
+
+    def stage_mixture(_root, destination):
+        target = destination / "firewall" / "near" / "near-dedup-manifest.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        raw = split._canonical(near)
+        if target.exists() and target.read_bytes() != raw:
+            raise ValueError("upstream near-family drift")
+        target.write_bytes(raw)
+        return mix
+
+    fake_mixture.stage_mixture = stage_mixture
+    fake_physical = ModuleType("tools.plan2_physical_materialization_v1")
+
+    def read_source(root, rel):
+        return (root / rel).read_bytes()
+
+    def read_destination(path):
+        if path.is_symlink():
+            raise ValueError("symlink destination")
+        return path.read_bytes()
+
+    def atomic_write(_destination, target, raw):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+
+    fake_physical._read_source = read_source
+    fake_physical._read_destination = read_destination
+    fake_physical._atomic_write = atomic_write
+    fake_physical._json = json.loads
+    monkeypatch.setitem(sys.modules, "tools.plan2_corpus_mixture_v1", fake_mixture)
+    monkeypatch.setitem(sys.modules, "tools.plan2_physical_materialization_v1", fake_physical)
+    root = tmp_path / "root"
+    policy = root / split.POLICY_PATH
+    policy.parent.mkdir(parents=True)
+    policy.write_bytes(POLICY)
+    dest = tmp_path / "first"
+    first = split.stage_split(root, dest)
+    assert split.stage_split(root, dest) == first
+    fresh = split.stage_split(root, tmp_path / "fresh")
+    assert fresh == first
+    assert (dest / "cluster-split-manifest.json").read_bytes() == (
+        tmp_path / "fresh" / "cluster-split-manifest.json").read_bytes()
+    (dest / "cluster-split-manifest.json").write_text('{"forged":true}')
+    with pytest.raises(split.Plan2ClusterSplitError, match="staging denied"):
+        split.stage_split(root, dest)
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
+    with pytest.raises(split.Plan2ClusterSplitError, match="symlink"):
+        split.stage_split(root, tmp_path / "link" / "sub")
