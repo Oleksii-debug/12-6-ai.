@@ -698,8 +698,8 @@ def test_source_surface_inventory_covers_integrated_main_with_section4_candidate
     assert inventory.observed_main_sha == registry.observed_main_sha
     assert inventory.observed_main_sha == "698531883661e57bbca6e005d571a467fad552ea"
     assert inventory.observed_main_tree_sha == "6e91af737d92cd17ee34404fd86e8e0074d53171"
-    assert inventory.accepted_main_surface_count == 119
-    assert inventory.candidate_overlay_surface_count == 2
+    assert inventory.accepted_main_surface_count == 120
+    assert inventory.candidate_overlay_surface_count == 1
     assert inventory.source_surface_count == 121
     integrated = next(
         surface
@@ -749,15 +749,16 @@ def test_closed_predecessor_sources_leave_only_section4_candidate_overlay() -> N
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 2
-    assert [surface.path for surface in candidate] == [
-        "src/twelve_six/ai_qa_control.py",
-        "src/twelve_six/instruction_post_training.py",
-    ]
+    assert inventory.candidate_overlay_surface_count == 1
+    assert [surface.path for surface in candidate] == ["src/twelve_six/ai_qa_control.py"]
     assert candidate[0].capability_id == "ai-qa-repair-control"
     assert candidate[0].origin == "stacked_candidate"
-    assert candidate[1].capability_id == "post-base-instruction-descendant"
-    assert candidate[1].origin == "stacked_candidate"
+    accepted_instruction = next(
+        surface for surface in inventory.surfaces
+        if surface.path == "src/twelve_six/instruction_post_training.py"
+    )
+    assert accepted_instruction.origin == "accepted_main"
+    assert registry.capability(accepted_instruction.capability_id).status is CapabilityStatus.AVAILABLE
     accepted_research = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/research_engine.py"
