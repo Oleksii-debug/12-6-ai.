@@ -55,7 +55,7 @@ def validate_source(row: Mapping[str, Any]) -> dict[str, Any]:
     if not SOURCE_ID.fullmatch(_text(source["source_family"], "source_family")):
         raise SourceInventoryError("source_family syntax invalid")
     location = _text(source["location"], "location")
-    if not (location.startswith("https://") or location.startswith("repo://")):
+    if not (location.startswith(("https://", "repo://"))):
         raise SourceInventoryError("location must be pinned HTTPS or repo path")
     if any(x in location for x in ("?", "#", "..", "@", "\\")):
         raise SourceInventoryError("location is not a stable unambiguous locator")

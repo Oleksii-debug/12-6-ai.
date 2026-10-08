@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 from twelve_six.data.source_inventory_v1 import (
-    SourceInventoryError, build_inventory, diff_inventories, require_known_inputs,
+    SourceInventoryError,
+    build_inventory,
+    diff_inventories,
+    require_known_inputs,
     verify_inventory,
 )
 
