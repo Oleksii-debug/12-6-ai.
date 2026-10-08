@@ -11,8 +11,9 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from tools.plan2_source_admissibility_v1 import build_catalog, verify_catalog
 from tools.plan2_source_inventory_v1 import build_inventory
@@ -231,7 +232,7 @@ def stage_candidate_cohort(root: Path, destination: Path, *,
     if manifest_path.exists() or manifest_path.is_symlink():
         _need(_read_destination(manifest_path) == expected_data,
               "published cohort identity drift")
-        _need(set(p.name for p in destination.iterdir()) == set(FILES),
+        _need({p.name for p in destination.iterdir()} == set(FILES),
               "published cohort membership gap")
     for name, content in (("raw.snapshot", raw), ("normalized.utf8", normalized)):
         path = destination / name
@@ -245,7 +246,7 @@ def stage_candidate_cohort(root: Path, destination: Path, *,
             "raw" if name == "raw.snapshot" else "normalized"]["sha256"],
               "post-write hash readback failed")
     if not manifest_path.exists():
-        _need(set(p.name for p in destination.iterdir()) ==
+        _need({p.name for p in destination.iterdir()} ==
               {"raw.snapshot", "normalized.utf8"}, "pre-publication membership gap")
         _atomic_write(destination, manifest_path, expected_data)
     _need(_read_destination(manifest_path) == expected_data,

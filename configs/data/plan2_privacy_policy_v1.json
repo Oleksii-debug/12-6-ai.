@@ -1,0 +1,9 @@
+{
+  "schema_version": "12-6.plan2-privacy-policy.v1",
+  "scanner_authority": "twelve_six.data.privacy_execution_authority",
+  "decision": "ALLOW_ONLY",
+  "non_allow_handling": "EXCLUDE_ENTIRE_RECORD",
+  "tombstone_handling": "EXCLUDE_ENTIRE_RECORD",
+  "evidence": "TEXT_FREE_SHA256_AND_DETECTOR_COUNTS",
+  "release_authority": "SOURCE_CANDIDATE_ONLY"
+}
