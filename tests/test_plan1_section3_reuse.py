@@ -12,6 +12,7 @@ from twelve_six.third_party_reuse import (
     require_reviewed_code,
     validate_base_lineage,
     validate_reuse_catalog,
+    verify_reviewed_code_archive,
 )
 
 RAW = (Path(__file__).resolve().parents[1] /
@@ -270,3 +271,57 @@ def test_large_cyclic_lineage_fails_boundedly():
     m["checkpoints"] *= 2049
     with pytest.raises(ValueError, match="complete checkpoint graph"):
         validate_base_lineage(m, GENESIS)
+
+
+def test_real_code_archive_license_and_review_pin_gate(tmp_path):
+    source = tmp_path / "code.whl"
+    notice = tmp_path / "LICENSE"
+    source.write_bytes(b"audited adapter package bytes")
+    notice.write_bytes(b"MIT license text fixture")
+    catalog = json.loads(RAW)
+    catalog["assets"][0].update(
+        {
+            "status": "REVIEWED_CODE_ONLY",
+            "upstream_url": "https://example.org/audit-source",
+            "version": "1.0.0+reviewed",
+            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "license_spdx": "MIT",
+            "license_evidence_sha256": hashlib.sha256(notice.read_bytes()).hexdigest(),
+            "security_posture": "REVIEWED",
+            "data_rights": "NOT_APPLICABLE_CODE",
+        }
+    )
+    pinned = hashlib.sha256(wire(catalog)).hexdigest()
+    assert verify_reviewed_code_archive(
+        wire(catalog), "pytorch", source_archive=source, license_file=notice,
+        independently_pinned_catalog_sha256=pinned,
+    )["version"] == "1.0.0+reviewed"
+    with pytest.raises(ValueError, match="approved catalog"):
+        verify_reviewed_code_archive(
+            wire(catalog), "pytorch", source_archive=source, license_file=notice,
+            independently_pinned_catalog_sha256="0" * 64,
+        )
+    notice.write_bytes(b"modified license content")
+    with pytest.raises(ValueError, match="license bytes drifted"):
+        verify_reviewed_code_archive(
+            wire(catalog), "pytorch", source_archive=source, license_file=notice,
+            independently_pinned_catalog_sha256=pinned,
+        )
+    notice.write_bytes(b"MIT license text fixture")
+    source.write_bytes(b"unapproved replacement")
+    with pytest.raises(ValueError, match="source hash drift"):
+        verify_reviewed_code_archive(
+            wire(catalog), "pytorch", source_archive=source, license_file=notice,
+            independently_pinned_catalog_sha256=pinned,
+        )
+
+
+def test_source_archive_symlink_is_not_admitted(tmp_path):
+    source = tmp_path / "package.tar"
+    source.write_bytes(b"package")
+    link = tmp_path / "package.alias"
+    link.symlink_to(source.name)
+    from twelve_six.third_party_reuse import _hash_regular_archive
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        _hash_regular_archive(link)
