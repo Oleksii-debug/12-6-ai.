@@ -201,6 +201,10 @@ def run_verified_rl(
         except ValueError:
             cause = "unstable_policy_parameters"
             break
+    if cause == "qualified_candidate" and any(
+        _distribution(row)[1] < recipe.min_entropy for row in candidate.logits
+    ):
+        cause = "degenerate_final_policy_entropy"
     positive = sum(x.reward for x in rollouts)
     if positive == 0 and cause == "qualified_candidate":
         cause = "no_verified_success"
