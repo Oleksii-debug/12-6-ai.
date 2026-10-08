@@ -1,0 +1,21 @@
+{
+  "schema_version": "12-6.plan2-source-registry-seed.v1",
+  "revision": "data324-source-candidate-20261008",
+  "sources": [
+    {
+      "source_id": "uk.kubernetes.docs.what-is-kubernetes",
+      "source_family": "kubernetes.website.docs",
+      "location": "repo://data/external/snapshots/data324-kubernetes-ua-v1/normalized/what-is-kubernetes.uk.txt",
+      "acquisition_method": "immutable_snapshot",
+      "language": "uk",
+      "modality": "text",
+      "update_cadence": "pinned",
+      "status": "candidate",
+      "provenance": {
+        "authority_path": "configs/data/data324_kubernetes_ua_current_main_v1.json",
+        "upstream_revision": "25f3dcbed7429ebe20174ccc7000428d0f0aedda",
+        "content_sha256": "12abd14eff9018602ebb8ebb76ee2f60d1a178a2a6b5648d77e08d5e16f2e0b1"
+      }
+    }
+  ]
+}
