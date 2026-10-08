@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from twelve_six.model import InitSpec, ModelSpec
-from twelve_six.scale_experiments import (
+from twelve_six.accelerated_scaling import (
     ArchitectureHypothesis,
     ProxyBudget,
     ProxyProtocol,
@@ -105,7 +105,7 @@ def test_analytic_accounting_and_quadratic_attention_context() -> None:
     ],
 )
 def test_fail_closed_before_model_allocation(budget: ProxyBudget, monkeypatch) -> None:
-    import twelve_six.scale_experiments as target
+    import twelve_six.accelerated_scaling as target
 
     def forbidden(*args, **kwargs):
         raise AssertionError("unauthorized model allocation")
