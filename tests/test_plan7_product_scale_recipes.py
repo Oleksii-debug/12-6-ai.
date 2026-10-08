@@ -20,8 +20,10 @@ def fake_proxy(tier):
     from twelve_six.optional_risk_probes import digest
     tiers = {"200M": "35M", "300M": "50M", "500M": "100M"}
     inner = {"tier": tiers[tier], "full_scale_executed": False,
-             "paid_compute_authorized": False,
-             "proxy_receipt": {"promotion_authorized": False}}
+             "training_authorized": False, "paid_compute_authorized": False,
+             "proxy_receipt": {"promotion_authorized": False,
+                               "training_executed": False,
+                               "paid_compute_authorized": False}}
     record = {"schema_version": 1, "tier": tier,
               "recipe_sha256": scale_recipe(tier)["recipe_sha256"],
               "s4_proxy_receipt_sha256": digest(inner), "proxy": inner,
@@ -179,3 +181,24 @@ def test_s4_nested_receipt_binding_rejects_rehashed_wrapper():
     )
     with pytest.raises(ScaleRecipeDenied, match="invalid S4 proxy evidence"):
         assess_scale("200M", matching, limits(), forged)
+
+
+@pytest.mark.parametrize("marker", (
+    "training_executed", "paid_compute_authorized", "promotion_authorized",
+))
+def test_rehashed_nested_proxy_cannot_launder_execution_or_paid_state(marker):
+    from twelve_six.optional_risk_probes import digest
+
+    original = fake_proxy("200M")
+    original["proxy"]["proxy_receipt"][marker] = True
+    # The caller may rehash both untrusted wrappers; a true execution marker
+    # still must never appear as an accepted proxy capacity receipt.
+    original["s4_proxy_receipt_sha256"] = digest(original["proxy"])
+    original["receipt_sha256"] = digest({
+        k: v for k, v in original.items() if k != "receipt_sha256"
+    })
+    claimed = replace(
+        evidence(), measured_proxy_receipt_sha256=original["receipt_sha256"],
+    )
+    with pytest.raises(ScaleRecipeDenied, match="invalid S4 proxy evidence"):
+        assess_scale("200M", claimed, limits(), original)
