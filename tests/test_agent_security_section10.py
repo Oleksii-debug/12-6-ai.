@@ -144,7 +144,8 @@ def test_signed_grant_delegates_to_existing_tool_and_task_authorities(tmp_path):
                              "artifact_identity": "a" * 64, "accepted": True,
                          })
     assert registry.accept_result(call, result, verify_call=lambda _: True,
-                                  verify_result=lambda *_: True).pending_effects[0].status == "resolved"
+                                  verify_result=lambda *_: True
+                                  ).pending_effects[0].status == "resolved"
 
 
 def test_model_grant_and_permission_escalation_fail_closed(tmp_path):
