@@ -34,6 +34,40 @@ Other D03 evidence on main may contain additional candidate families,
 but is not a lawful Plan-2 release. Candidate source admission, partial
 balance, or independent component success is not final training authority.
 
+## Real public-domain source expansion (2026-10-08)
+
+This branch now physically carries **1,265,481 UTF-8 bytes** from three
+original public-domain books (Austen, Carroll, Shelley), each pinned to its
+exact GITenberg source Git blob and commit in
+`configs/data/plan2_public_domain_books_v1.json`. Project Gutenberg
+trademark and license envelopes were stripped before storing the bodies.
+
+**One source family, three document clusters:** These three works belong to
+the ONE existing canonical
+`en.project-gutenberg.public-domain-books` source family under the
+accepted NEXT100-107 seal. Individual authors/works have different
+`document_family` identities and upstream revisions. They are NOT three
+independent source-family capacity credits.
+
+`tools/plan2_public_domain_books_v1.py` reuses the canonical S1 inventory,
+S2 source rights/materialization receipts, incumbent G06 privacy authority,
+and DATA-232 contamination matching against the pinned synthetic S8 reserve.
+It refuses source/rights/snapshot drift, unauthorized training release,
+source symlinks, inconsistent source-family assignments, broken privacy
+receipt roots, contamination report tampering and changed publications.
+The two clean S15 builds reverify the full real-book snapshots and hash-only
+evidence. New tests and steps are in
+`tests/test_plan2_public_domain_books_v1.py` and the existing Plan-2 CI.
+
+**The new books are NOT a terminal dataset or admitted P9 training input.**
+Source-level legal eligibility and G06/DATA232 candidate audits are not
+real reserved final-test custody, complete S3–S9 multi-source admission,
+balanced train/validation/test splits, frozen physical tokenizer,
+production packed shards, ordered exposures or Plan9 launch approval.
+The older physical S3/S9 cohort remains one separately pinned Ukrainian
+Kubernetes source with allowed use `source_candidate` only. No source
+family was invented or silently promoted into that authority.
+
 ## Qualification commands
 
 From a complete checkout of the exact PR head with project requirements:
