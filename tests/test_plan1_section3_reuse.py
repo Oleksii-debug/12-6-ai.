@@ -368,6 +368,15 @@ def test_checkpoint_lineage_graph_graft_requires_separate_trust_pin(tmp_path):
         )
 
 
+@pytest.mark.parametrize("bad_head", [None, [], {}, True, 1, "untrusted"])
+def test_malformed_lineage_head_fails_closed_before_checkpoint_ingress(bad_head):
+    """Forged JSON ancestry heads must fail as policy errors, not TypeError."""
+    forged = lineage()
+    forged["head_id"] = bad_head
+    with pytest.raises(ValueError, match="invalid checkpoint head"):
+        validate_base_lineage(forged, GENESIS)
+
+
 def test_large_cyclic_lineage_fails_boundedly():
     m = lineage()
     m["checkpoints"] *= 2049

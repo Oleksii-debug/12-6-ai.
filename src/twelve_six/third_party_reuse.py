@@ -361,6 +361,8 @@ def validate_base_lineage(payload: dict[str, Any], trusted_genesis: dict[str, An
             raise ValueError("ambiguous parents")
         parents[node] = refs
     root = payload["genesis_id"]
+    if not _hash(payload["head_id"]):
+        raise ValueError("invalid checkpoint head")
     if root not in parents or parents[root] != [] or payload["head_id"] not in parents:
         raise ValueError("missing scratch genesis/head")
     for node, refs in parents.items():
