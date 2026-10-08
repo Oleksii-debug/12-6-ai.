@@ -153,6 +153,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.receipt.exists() or args.log.exists():
             raise ValueError("receipt/log already exists: use new paths to avoid overwrite")
         signer = _host_signer(args.host_private_key, repo_root)
+        challenge = b"12-6-physical-host-signing-preflight-v1"
+        if host_verify(args.host_key_id, challenge, signer(args.host_key_id, challenge)) is not True:
+            raise ValueError("host signing key does not match trusted host key id")
         _emit({
             "state": "RUNNING",
             "candidate_sha": packet.packet.target_git_sha,
