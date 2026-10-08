@@ -71,7 +71,7 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
 
     overrides = payload["candidate_overrides"]
     assert len(overrides) == 57
-    assert len({entry["path"] for entry in overrides}) == 56
+    assert len({entry["path"] for entry in overrides}) == 57
     assert {
         "path": ".github/workflows/ci.yml",
         "capability_id": "peer-source-qualification-pending",
