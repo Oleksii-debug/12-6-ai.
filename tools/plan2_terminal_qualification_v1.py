@@ -19,6 +19,7 @@ from tools import plan2_corpus_mixture_v1 as mixture
 from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_physical_materialization_v1 as physical
+from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -132,6 +133,10 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
 
 def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     """Reuse all extant component authorities, without creating a second pipeline."""
+    books_cohort = books.stage(root, destination / "public-domain-books")
+    _require(books_cohort["training_corpus_authorized"] is False
+             and books_cohort["production_release_authorized"] is False,
+             "book source was promoted without full S5-S14 clearance")
     cohort = physical.stage_candidate_cohort(root, destination / "source")
     current = mixture.stage_mixture(root, destination / "physical-candidate")
     _require(cohort["source_level_candidate_only"] is True
@@ -186,6 +191,10 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_books_manifest_sha256": books_cohort["manifest_sha256"],
+        "real_books_distinct_document_families":
+            books_cohort["physical_source_families"],
+        "real_books_snapshot_bytes": books_cohort["physical_source_bytes"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_gate_manifest_sha256": gates,
@@ -223,7 +232,7 @@ def audit(root: Path) -> dict[str, Any]:
         "terminal_done": False,
         "blocking_gates": [
             "training_rights_require_independent_authorization",
-            "physical_corpus_requires_multiple_safe_source_families",
+            "book_snapshots_require_s1_s9_multifamily_rights_privacy_eval_admission",
             "production_tokenizer_fit_and_compatibility_not_yet_established",
             "production_packing_shards_exposure_not_yet_materialized",
             "plan9_production_handoff_missing",
