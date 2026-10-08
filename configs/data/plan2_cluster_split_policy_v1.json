@@ -1,0 +1,8 @@
+{
+  "schema_version": "12-6.plan2-cluster-split-policy.v1",
+  "revision": "plan2-cluster-split-fixture-2026-10-08-v1",
+  "purpose": "LOCAL_FREE_CANDIDATE_SPLIT",
+  "seed": "7d24b0810a4f0da9234ca648312784179e3d6cf5ef3ba2f50438917298c601fa",
+  "validation_percent": 10,
+  "test_percent": 10
+}
