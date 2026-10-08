@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
-  "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
+  "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
+  "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 122,
+  "source_surface_count": 149,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -13,7 +13,7 @@
     {
       "path": "src/twelve_six/accelerated_scaling.py",
       "capability_id": "accelerated-scaling-research",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/ai_qa_control.py",
@@ -26,9 +26,34 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/autonomous_curriculum.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/autonomous_research_loop.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/backend_compatibility.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/billion_systems_gate.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/capability_map.py",
       "capability_id": "executable-capability-map",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/champion_lifecycle.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/__init__.py",
@@ -139,6 +164,16 @@
       "path": "src/twelve_six/common_pile_rights.py",
       "capability_id": "data-governance-mechanics",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/continual_learning.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/contracts.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/culturax_bounded_acquisition.py",
@@ -411,6 +446,51 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/distributed_control.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/distributed_transport.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/evolutionary_code.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/experience_replay.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/extreme_moe_paths.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/integration/dependency_lock.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/integration/dependency_security.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/integration/release_fixture.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/large_scale_paths.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/learned20m_capacity_sufficiency_v1.py",
       "capability_id": "learned20m-control-plane",
       "origin": "accepted_main"
@@ -454,6 +534,11 @@
       "path": "src/twelve_six/model.py",
       "capability_id": "model-spec-identity",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/optional_risk_probes.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/packing/__init__.py",
@@ -501,19 +586,34 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/post_base_agentic.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/post_base_instruction.py",
       "capability_id": "post-base-instruction-descendant",
-      "origin": "accepted_main"
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/post_base_preference.py",
       "capability_id": "post-base-preference-descendant",
-      "origin": "accepted_main"
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/post_base_reasoning.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/product_scale_recipes.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/research_engine.py",
       "capability_id": "post-base-research-verification",
-      "origin": "accepted_main"
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/scale141_recovery.py",
@@ -529,6 +629,16 @@
       "path": "src/twelve_six/scale141_strict_json.py",
       "capability_id": "scale141-recovery",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/self_play_engine.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/self_scaling_controller.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/sil_qualification.py",
@@ -549,6 +659,16 @@
       "path": "src/twelve_six/system_architecture.py",
       "capability_id": "replaceable-cognitive-core-shell",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/teacher_council.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/third_party_reuse.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/tokenization/__init__.py",
@@ -606,6 +726,21 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/verified_data_factory.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/very_large_paths.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/very_large_scale_paths.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/windows_operator_cli.py",
       "capability_id": "windows-operator-cli-packaging",
       "origin": "accepted_main"
@@ -616,6 +751,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 122,
-  "candidate_overlay_surface_count": 0
+  "accepted_main_surface_count": 118,
+  "candidate_overlay_surface_count": 31
 }
