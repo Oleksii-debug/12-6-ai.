@@ -31,7 +31,7 @@ permissions:
 jobs:
   qualify-plan2:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -202,3 +202,8 @@ jobs:
           cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-restart.json"
           cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-clean.json"
           diff -r "$RUNNER_TEMP/plan2-s14" "$RUNNER_TEMP/plan2-s14-clean"
+
+      - name: Lint Plan 2 Section 15 non-release qualification audit
+        run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
+      - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_terminal_qualification_v1.py
