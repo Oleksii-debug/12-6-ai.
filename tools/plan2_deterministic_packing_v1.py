@@ -176,7 +176,7 @@ def stage(root: Path, destination: Path) -> dict:
             need(not target.is_symlink() and _read_destination(target) == raw,
                  "corrupt immutable shard")
         else:
-            _atomic_write(destination, target, raw)
+            _atomic_write(folder, target, raw)
         need(_read_destination(target) == raw, "shard readback drift")
     target = destination / "packing-manifest.json"
     raw = canonical(manifest)
