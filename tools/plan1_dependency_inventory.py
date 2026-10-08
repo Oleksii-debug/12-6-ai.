@@ -56,6 +56,9 @@ def inspect(pyproject: Path) -> dict[str, Any]:
             "declared_requirement": f"{raw_name}{operator}{minimum}",
             "installed_version": None,
             "record_sha256_observed_untrusted": None,
+            # Observational signals only; even an SPDX field is NOT legal review.
+            "license_metadata_sha256_observed_untrusted": None,
+            "license_metadata_field_observed_untrusted": None,
             "availability": "NOT_INSTALLED",
             "admission": "DENIED_UNQUALIFIED",
             "external_source_sha256": None,
@@ -76,6 +79,28 @@ def inspect(pyproject: Path) -> dict[str, Any]:
         if type(version) is not str or not version or len(version) > 128:
             raise ValueError(f"unreadable installed version: {name}")
         entry["installed_version"] = version
+        # License text and SPDX expressions may be incomplete or asserted by an
+        # untrusted installation. Digest the exact observed header bytes for an
+        # independent review to compare; NEVER turn it into code admission.
+        expression = dist.metadata.get("License-Expression")
+        legacy_license = dist.metadata.get("License")
+        if expression is not None and type(expression) is not str:
+            raise ValueError(f"invalid License-Expression metadata: {name}")
+        if legacy_license is not None and type(legacy_license) is not str:
+            raise ValueError(f"invalid License metadata: {name}")
+        for field, value in (("License-Expression", expression), ("License", legacy_license)):
+            if value is None:
+                continue
+            encoded_license = value.encode("utf-8")
+            if not encoded_license or len(encoded_license) > MAX_RECORD_BYTES:
+                raise ValueError(f"unbounded installed license metadata: {name}")
+            # Prefer the unambiguous PEP 639 field; neither field is authority.
+            entry["license_metadata_field_observed_untrusted"] = field
+            entry["license_metadata_sha256_observed_untrusted"] = hashlib.sha256(
+                encoded_license
+            ).hexdigest()
+            if field == "License-Expression":
+                break
         record = dist.read_text("RECORD")
         if record is None:
             entry["availability"] = "INSTALLED_RECORD_ABSENT"
