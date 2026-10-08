@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.distributed_control import (
-    ParallelMesh, begin_run, begin_step,
+    DistributedDenied, ParallelMesh, begin_run, begin_step,
     commit_step,
 )
 from twelve_six.distributed_transport import (
@@ -69,7 +69,7 @@ def test_partial_truncated_corrupt_duplicate_or_reordered_denied(tmp_path):
 
 def test_invalid_source_topology_resource_or_uncommitted_denied():
     m, ledger, shards, _, _ = fixture()
-    with pytest.raises(TransportDenied):
+    with pytest.raises(DistributedDenied):
         prepare_transfer(m, replace(ledger, checkpoint_sha256=None), shards, "good",
                          storage_budget_bytes=1000, network_budget_bytes=1000)
     with pytest.raises(TransportDenied):
