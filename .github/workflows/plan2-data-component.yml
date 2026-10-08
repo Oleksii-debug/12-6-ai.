@@ -33,6 +33,17 @@ jobs:
         run: ruff check tools/plan2_physical_materialization_v1.py tests/test_plan2_physical_materialization_v1.py
       - name: Verify integrated S1-S2-S3 and incumbent DATA324
         run: PYTHONPATH=src:. pytest -q tests/test_plan2_source_inventory_v1.py tests/test_plan2_source_admissibility_v1.py tests/test_plan2_physical_materialization_v1.py tests/test_data324_current_main_port.py
+      - name: Lint Plan 2 Section 5 privacy candidate and tests
+        run: ruff check tools/plan2_privacy_gate_v1.py tests/test_plan2_privacy_gate_v1.py
+      - name: Qualify Plan 2 Section 5 privacy positive negative rebuild restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_privacy_gate_v1.py
+      - name: Replay privacy gate CLI on exact candidate without logging payload
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_privacy_gate_v1.py --out-dir "${RUNNER_TEMP}/plan2-privacy-candidate" > "${RUNNER_TEMP}/plan2-privacy-first.json"
+          python tools/plan2_privacy_gate_v1.py --out-dir "${RUNNER_TEMP}/plan2-privacy-candidate" > "${RUNNER_TEMP}/plan2-privacy-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-privacy-first.json" "${RUNNER_TEMP}/plan2-privacy-restart.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
