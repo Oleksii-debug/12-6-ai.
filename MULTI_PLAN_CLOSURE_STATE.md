@@ -33,7 +33,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 3 | 1 | OPEN |
 | 4 | 4 | OPEN |
 | 5 | 4 | OPEN — Section 3 terminal DONE, Section 4 next |
-| 6 | 1 | OPEN |
+| 6 | 2 | OPEN |
 | 7 | 1 | QUALIFYING — canonical PR #3102 at `19b03d478b9fc93e8130300f20afce0d2c5260a5`; new CI #37726869436 queued, old CI #37726451164 failed Ruff I001 (repaired), S1 not merged; no terminal DONE |
 | 8 | 3 | QUALIFYING |
 | 9 | 1 | WAITING_UPSTREAM |
@@ -64,6 +64,13 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | 3 | DONE | `d049b23ff1f55c84797d06d31d29128ca103c55b` | PR #3112 squash-merged; exact candidate `38644b37715d494425e4a1480b32162791c37bbe`. Independent LOCAL_FREE Python scoped test: 6 passed, 0 failed; compileall PASS; local git blob hash parity and post-merge main readback PASS: memory `227dd70bc6f485d01a6f2f51cf53205e54e5fd4d`, test `6741da163252d52aec91f67f74775e0e101506b7`. Four categories, provenance/confidence/expiry, append-only correction/retraction, negative malformed/corruption/duplicate/stale-CAS/concurrency/restart evidence. All retrievals memory-only and require independent live external verification. Hosted whole-repo CI not claimed green; no paid compute or cross-plan integration claim. |
 
 | 3 | DONE | `225999c7da7a46b0fc6d929f91f1024ca95ecf18` | PR #3113, exact accepted candidate `19d742d465dd9292268182858b59f1b43dff1dcc`; local Plan4 sections 1–3 suite **48 passed**, py_compile PASS. Reference generated token IDs match direct `TwelveSixDecoder.generate` for greedy and seeded sampled cases; streaming/nonstream same terminal request/result digests; cancellation, restart, UTF-8, invalid settings/context/prefix, nonfinite/mutated weights and midstream drift negative tests passed. Hosted scoped CI run `37728348554` and shared run `37728348560` queued from runner backlog, NOT reported green. Exact post-merge main code blob `5c1bdb76bb2042a606ad6c5e722ca66d1d8d6b67`, tests `0b09dd5ab8b41846460d931851a41abbe3fda8a0`, docs `6af0c6adbc5740cdef0c0501dad95304e05fa35b`, workflow `b6114ffffee2896ab688555b88ae81936b81e8e1`. Trusted LOCAL_FREE reference component; no model training, final-test access, paid compute, concurrent serving or product packaging claims. |
+
+## Plan 6 — independent post-Base learning and research closures
+
+| Section | State | Accepted main SHA | Evidence and qualification boundaries |
+| ---: | --- | --- | --- |
+| 1 | DONE | `5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67` | PR #3101 merged; exact main research source blob `4d0a3424e033f1be591b5ee99f23a7f38b891ff4` and tests blob `b3199533f797d97cf7dce7f5a45a914b31669838` read back; 16/16 independent LOCAL_FREE scoped tests and compileall PASS; SHA-bound immutable trial, deterministic/holdout/independent/regression/replay, forged/self-issued/foreign/missing/unstable evidence rejection and restart replay. Full hosted CI #37728070229 queued (not green); existing unrelated Plan-8 source inventory failures not claimed fixed. No paid training or Base change. |
+| 2 | OPEN | None | Next ACTIONABLE: instruction descendant post-training engine with provenance/rights/split masking and tiny fixture. |
 
 ## Plan 7 — scaling/distributed component closure
 
