@@ -5,8 +5,10 @@ All fourteen incumbent engines are separately exercised by the workflow.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
+from pathlib import Path
 from dataclasses import asdict, replace
 
 import pytest
@@ -105,6 +107,26 @@ def restore(payload):
     state = LifecycleState(**fields, events=events)
     state.validate()
     return state
+
+
+def test_source_manifest_pins_all_fourteen_exact_engine_blobs():
+    root = Path(__file__).resolve().parents[1]
+    manifest = json.loads(
+        (root / "configs/plan6/evolution_engine_release_v1.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert manifest["schema"] == "12-6.plan6.evolution-engine-release.v1"
+    assert manifest["execution_profile"] == "LOCAL_FREE"
+    assert manifest["limits"]["paid_model_or_teacher_compute"] is False
+    blobs = manifest["engine_git_blobs"]
+    assert set(blobs) == {f"src/twelve_six/{name}.py" for name in ENGINES}
+    for relative, expected in blobs.items():
+        content = (root / relative).read_bytes()
+        observed = hashlib.sha1(
+            f"blob {len(content)}\\0".encode("ascii") + content,
+        ).hexdigest()
+        assert observed == expected, relative
 
 
 def test_fourteen_incumbent_engines_keep_importable_entrypoints():
