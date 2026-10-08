@@ -38,8 +38,8 @@ def _load() -> CapabilityRegistry:
 def test_registry_binds_exact_accepted_main_and_terminal_ci() -> None:
     registry = _load()
 
-    assert registry.observed_main_sha == "698531883661e57bbca6e005d571a467fad552ea"
-    assert registry.observed_main_ci_run_id == 37633474478
+    assert registry.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
+    assert registry.observed_main_ci_run_id == 37659977022
     assert registry.observed_main_ci_conclusion == "success"
     assert len(registry.identity_sha256()) == 64
 
@@ -518,7 +518,7 @@ def test_registry_loader_rejects_duplicate_json_members(tmp_path: Path) -> None:
 def test_registry_loader_rejects_nonfinite_json(tmp_path: Path) -> None:
     text = _REGISTRY.read_text(encoding="utf-8")
     tampered = text.replace(
-        '"run_id": 37633474478',
+        '"run_id": 37659977022',
         '"run_id": NaN',
         1,
     )
@@ -695,11 +695,11 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     assert inventory.observed_main_sha == registry.observed_main_sha
-    assert inventory.observed_main_sha == "698531883661e57bbca6e005d571a467fad552ea"
-    assert inventory.observed_main_tree_sha == "6e91af737d92cd17ee34404fd86e8e0074d53171"
-    assert inventory.accepted_main_surface_count == 122
-    assert inventory.candidate_overlay_surface_count == 0
-    assert inventory.source_surface_count == 122
+    assert inventory.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
+    assert inventory.observed_main_tree_sha == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
+    assert inventory.accepted_main_surface_count == 118
+    assert inventory.candidate_overlay_surface_count == 31
+    assert inventory.source_surface_count == 149
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -741,33 +741,38 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
 
 
 
-def test_closed_sections_through_aiqa_have_zero_candidate_overlay() -> None:
+def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 0
-    assert candidate == []
+    assert inventory.candidate_overlay_surface_count == 31
+    assert len(candidate) == 31
+    assert all(
+        registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
+        for surface in candidate
+    )
+    assert "src/twelve_six/ai_qa_control.py" not in {s.path for s in candidate}
     accepted_instruction = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/post_base_instruction.py"
     )
-    assert accepted_instruction.origin == "accepted_main"
-    assert registry.capability(accepted_instruction.capability_id).status is CapabilityStatus.AVAILABLE
+    assert accepted_instruction.origin == "stacked_candidate"
+    assert registry.capability(accepted_instruction.capability_id).status is CapabilityStatus.UNAVAILABLE
     accepted_preference = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/post_base_preference.py"
     )
-    assert accepted_preference.origin == "accepted_main"
-    assert registry.capability(accepted_preference.capability_id).status is CapabilityStatus.AVAILABLE
+    assert accepted_preference.origin == "stacked_candidate"
+    assert registry.capability(accepted_preference.capability_id).status is CapabilityStatus.UNAVAILABLE
     accepted_research = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/research_engine.py"
     )
-    assert accepted_research.origin == "accepted_main"
-    assert registry.capability(accepted_research.capability_id).status is CapabilityStatus.AVAILABLE
+    assert accepted_research.origin == "stacked_candidate"
+    assert registry.capability(accepted_research.capability_id).status is CapabilityStatus.UNAVAILABLE
 
     capability = registry.capability("executable-capability-map")
     assert capability.status is CapabilityStatus.AVAILABLE
