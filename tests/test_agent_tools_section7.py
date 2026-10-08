@@ -77,7 +77,7 @@ def test_versioned_discovery_does_not_grant_permission(tmp_path):
     with pytest.raises(ToolBoundaryError, match="duplicate"):
         reg.register(descriptor(), verify_descriptor=lambda _: True)
     # A listed descriptor remains unusable without a registered task/effect.
-    assert tasks.load if hasattr(tasks, "load") else False
+    assert reg.discover()[0].tool_id == "file.readwrite"
 
 
 def test_discovery_not_permission_and_no_unreserved_effect(tmp_path):
@@ -212,7 +212,7 @@ def test_descriptor_freezes_mutable_schema_after_registration(tmp_path):
 
 def test_call_must_precede_issue_and_no_blind_retry(tmp_path):
     tasks, reg = harness(tmp_path)
-    original = prepare(reg)
+    prepare(reg)
     snap = tasks.issue_effect("task", "effect", expected_epoch=0, expected_revision=1)
     with pytest.raises(ToolBoundaryError, match="unreserved"):
         prepare(reg, revision=snap.revision)
