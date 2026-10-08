@@ -39,7 +39,7 @@ def trained():
         rope_rotary_dim=8, tie_word_embeddings=False,
     )
     with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(421)
+        torch.manual_seed(420)
         model = TwelveSixDecoder(spec)
     model.train()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
@@ -80,7 +80,7 @@ def test_trained_checkpoint_eval_export_quantization_and_serving(tmp_path, train
         tokenizer_hash=BYTE_TOKENIZER_HASH,
         tokenizer_vocab_hash=BYTE_VOCAB_HASH,
         dataset_manifest_hash="3" * 64, run_manifest_hash="4" * 64,
-        training_config={"steps": 1}, seed=421, precision="float32",
+        training_config={"steps": 1}, seed=420, precision="float32",
         step=1, tokens_seen=4, optimizer={"name": "sgd"}, scheduler=None,
     )
     source = save_checkpoint(tmp_path / "source", model=trained, identity=identity)
