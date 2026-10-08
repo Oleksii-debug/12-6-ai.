@@ -29,7 +29,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | Plan | First unfinished Section at migration | Coordination state |
 | ---: | ---: | --- |
 | 1 | 3 | OPEN |
-| 2 | 2 | OPEN |
+| 2 | 3 | OPEN |
 | 3 | 1 | OPEN |
 | 4 | 2 | OPEN |
 | 5 | 2 | OPEN |
@@ -46,6 +46,7 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | Section | State | Accepted main SHA | Evidence and boundaries |
 | ---: | --- | --- | --- |
 | 1 | DONE | `f9a4a544b8dcc04e2140060644f43543eccd1a54` | PR #3097, qualified candidate `7168efb3a47c2802835baf9c19326b1b935fcdd2`; GitHub Actions run `37725811679`: Ruff and workflow policy PASS; pytest 3752 passed, 8 unrelated Plan-8 failures identical to pre-existing main run `37718796941` (3741 passed / same eight failures). Plan-2 source inventory tests, negative unknown/candidate/rejected/hash-drift/duplicate cases, deterministic replay/revision diff PASS. Post-merge main and source blob readback PASS. This is a component-level source registry, not authorization for corpus training or a green whole-repository CI claim. |
+| 2 | DONE | `a99e2398348903ea9ef971e0a80543b225d78471` | PR #3105, qualified candidate `45f59945fb2dd93ea8e70d97197cd9ba43541ed3`; exact-head Actions run `37726583597`: Ruff and CI policy PASS; pytest 3790 passed, 9 cross-plan failures in the pre-existing Plan-8 executable-surface inventory and Plan-4 dedicated-workflow conflict, no Plan-2 test failure. Synthetic positive fixture, unknown/private/research-only/revoked rights, evidence SHA drift, per-member lineage tampering/duplicate and source-removal/restart readback tests PASS. Incumbent DATA324 CC-BY-4.0 proof pinned to repository bytes; candidate still denied corpus admission. Main file and merged PR readback PASS. Full repository CI remains RED; this is Plan-2 scoped engineering qualification, not production corpus/training authorization. |
 
 ## Plan 4 — independent evaluation Section closures
 
