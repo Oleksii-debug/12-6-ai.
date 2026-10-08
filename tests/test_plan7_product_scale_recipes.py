@@ -4,8 +4,14 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.product_scale_recipes import (
-    CapacityEvidence, ScaleLimits, ScaleRecipeDenied, assess_scale,
-    migration_packet, qualify_proxy, scale_recipe, scale_spec,
+    CapacityEvidence,
+    ScaleLimits,
+    ScaleRecipeDenied,
+    assess_scale,
+    migration_packet,
+    qualify_proxy,
+    scale_recipe,
+    scale_spec,
 )
 
 
