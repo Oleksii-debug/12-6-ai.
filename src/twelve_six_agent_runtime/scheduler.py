@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from .task_state import StateError, TaskStore, _digest, _id, _json, _pairs, _uint
+from .task_state import TaskStore, _digest, _id, _json, _pairs, _uint
 
 SCHEMA = "12-6.agent-scheduler.v1"
 State = Literal["ready", "running", "paused", "done"]
@@ -371,5 +371,41 @@ class SchedulerStore:
             job.update(
                 state="ready", control_epoch=current.control_epoch,
                 task_revision=current.revision,
+            )
+            self._put(db, job)
+
+    def reconcile_interrupted(
+        self, lease: DispatchLease, *, checkpoint_id: str,
+        verifier: Callable[[DispatchLease, str], bool],
+    ) -> None:
+        """Host-attested reconciliation of a stranded lease after process restart.
+
+        Merely opening a database or resuming a task can never retry an effect.
+        The trusted host must prove that the prior execution has stopped and
+        no outstanding external effect remains ambiguous.
+        """
+        if not isinstance(lease, DispatchLease):
+            raise SchedulerError("invalid interrupted lease")
+        _id(checkpoint_id, "checkpoint_id")
+        if not callable(verifier) or verifier(lease, checkpoint_id) is not True:
+            raise SchedulerError("interrupted lease requires verified reconciliation")
+        with self._tx() as db:
+            jobs = self._records(db)
+            job = jobs.get(lease.task_id)
+            if job is None or job["state"] != "running" or (
+                job["lease_id"] != lease.lease_id
+                or job["attempt"] != lease.attempt
+                or job["control_epoch"] != lease.control_epoch
+                or job["task_revision"] != lease.task_revision
+            ):
+                raise SchedulerError("stale interrupted lease")
+            current = self.tasks.load(lease.task_id)
+            if current.control_epoch < lease.control_epoch or any(
+                effect.status != "resolved" for effect in current.pending_effects
+            ):
+                raise SchedulerError("effect/epoch reconciliation incomplete")
+            job.update(
+                state="paused", lease_id=None, checkpoint_id=checkpoint_id,
+                control_epoch=current.control_epoch, task_revision=current.revision,
             )
             self._put(db, job)
