@@ -116,3 +116,36 @@ def test_issued_effect_receipt_binds_only_exact_current_revision(tmp_path):
             expected_epoch=restarted.control_epoch, expected_revision=restarted.revision,
         )
     assert store.load(first.task_id) == resolved
+
+
+def test_real_new_process_resume_and_old_epoch_fencing(tmp_path):
+    import json
+    import subprocess
+    import sys
+
+    store, first = _store(tmp_path)
+    issued = _unresolved(store, first)
+    code = (
+        "import json,sys;"
+        "from twelve_six_agent_runtime.task_state import TaskStore;"
+        "s=TaskStore(sys.argv[1]).resume(sys.argv[2]);"
+        "print(json.dumps({'epoch':s.control_epoch,'revision':s.revision,"
+        "'checkpoint':s.checkpoint_id,'effects':[e.status for e in s.pending_effects]}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(store.path), first.task_id],
+        check=True, capture_output=True, text=True, timeout=20,
+    )
+    child = json.loads(result.stdout)
+    assert child == {
+        "epoch": issued.control_epoch + 1,
+        "revision": issued.revision + 1,
+        "checkpoint": issued.checkpoint_id,
+        "effects": ["unknown"],
+    }
+    with pytest.raises(StaleEpoch):
+        store.resolve_effect(
+            first.task_id, "effect:01", "receipt:late",
+            expected_epoch=issued.control_epoch, expected_revision=issued.revision,
+        )
+    assert store.load(first.task_id).control_epoch == child["epoch"]
