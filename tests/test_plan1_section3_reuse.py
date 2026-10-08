@@ -490,6 +490,7 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
         "version": "1.2.3",
         "record_sha256": pin,
         "verified_files": 1,
+        "unverified_bytecode_files": 0,
         "license_notice_count": 0,
         "license_notice_inventory_sha256": hashlib.sha256(b"[]").hexdigest(),
     }
@@ -1029,6 +1030,7 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     assert result["status"] == "REVIEWED_CODE_ONLY"
     assert result["version"] == "1.2.3"
     assert result["verified_files"] == 2
+    assert result["unverified_bytecode_files"] == 0
     assert result["license_notice_count"] == 1
     assert result["license_notice_inventory_sha256"] == notices_pin
     assert result["data_rights"] == "NOT_APPLICABLE_CODE"
@@ -1074,6 +1076,19 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
             independently_pinned_record_sha256=hashlib.sha256(record.encode()).hexdigest(),
             independently_pinned_notice_inventory_sha256=hashlib.sha256(b"[]").hexdigest(),
         )
+    record = original_record
+    assert check() == result
+
+    # A wheel with interpreter-generated unsigned .pyc must not be treated as
+    # fully attested code even when its publisher RECORD pin is supplied.
+    pycache_record = original_record.replace(
+        "torch-1.2.3.dist-info/RECORD,,\n",
+        "torch/__pycache__/__init__.cpython-313.pyc,,\n"
+        "torch-1.2.3.dist-info/RECORD,,\n",
+    )
+    record = pycache_record
+    with pytest.raises(ValueError, match="unattested executable Python bytecode"):
+        check(independently_pinned_record_sha256=hashlib.sha256(record.encode()).hexdigest())
     record = original_record
     assert check() == result
 
@@ -1148,3 +1163,62 @@ def test_reviewer_json_node_budget_prevents_large_nested_admission():
     # Fits the 1 MiB byte cap but not the bounded object graph budget.
     with pytest.raises(ValueError, match="nesting/node budget"):
         _strict(wire({"nodes": [0] * 33000}))
+
+
+def test_unhashed_interpreter_bytecode_is_observed_but_not_code_admitted(
+    monkeypatch, tmp_path,
+):
+    import base64
+    from importlib import metadata
+
+    from twelve_six.third_party_reuse import verify_installed_wheel_record
+
+    source_path = tmp_path / "example" / "__init__.py"
+    source_path.parent.mkdir()
+    source_path.write_bytes(b"safe-reviewed-source")
+    source_hash = base64.urlsafe_b64encode(
+        hashlib.sha256(source_path.read_bytes()).digest()
+    ).rstrip(b"=").decode()
+    clean_record = (
+        f"example/__init__.py,sha256={source_hash},{source_path.stat().st_size}\n"
+        "example-1.2.3.dist-info/RECORD,,\n"
+    )
+    altered = clean_record.replace(
+        "example-1.2.3.dist-info/RECORD,,\n",
+        "example/__pycache__/__init__.cpython-313.pyc,,\n"
+        "example-1.2.3.dist-info/RECORD,,\n",
+    )
+
+    class FakeDistribution:
+        version = "1.2.3"
+        metadata = {"Name": "example"}
+        record = altered
+
+        def read_text(self, name):
+            assert name == "RECORD"
+            return self.record
+
+        def locate_file(self, name):
+            return tmp_path / name
+
+    distribution = FakeDistribution()
+    monkeypatch.setattr(metadata, "distribution", lambda name: distribution)
+    pin = hashlib.sha256(altered.encode()).hexdigest()
+    receipt = verify_installed_wheel_record(
+        "example", expected_version="1.2.3",
+        independently_pinned_record_sha256=pin,
+    )
+    assert receipt["verified_files"] == 1
+    assert receipt["unverified_bytecode_files"] == 1
+
+    for payload in ("example/malicious.py,,\n", "example/extension.so,,\n"):
+        distribution.record = clean_record.replace(
+            "example-1.2.3.dist-info/RECORD,,\n",
+            payload + "example-1.2.3.dist-info/RECORD,,\n",
+        )
+        forged_pin = hashlib.sha256(distribution.record.encode()).hexdigest()
+        with pytest.raises(ValueError, match="unhashed installed file"):
+            verify_installed_wheel_record(
+                "example", expected_version="1.2.3",
+                independently_pinned_record_sha256=forged_pin,
+            )
