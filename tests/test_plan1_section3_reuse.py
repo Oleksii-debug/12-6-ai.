@@ -46,9 +46,15 @@ def test_reuse_catalog_is_quarantined_and_restart_stable():
     assert len(validate_reuse_catalog(RAW)["assets"]) == 13
     assert validate_reuse_catalog(RAW) == validate_reuse_catalog(bytes(RAW))
     with pytest.raises(ValueError, match="unqualified"):
-        require_reviewed_code(RAW, "pytorch", "e"*64)
+        require_reviewed_code(
+            RAW, "pytorch", "e" * 64,
+            independently_pinned_catalog_sha256=hashlib.sha256(RAW).hexdigest(),
+        )
     with pytest.raises(ValueError, match="unknown external"):
-        require_reviewed_code(RAW, "ghost", "e"*64)
+        require_reviewed_code(
+            RAW, "ghost", "e" * 64,
+            independently_pinned_catalog_sha256=hashlib.sha256(RAW).hexdigest(),
+        )
 
 
 def test_no_second_authority_and_no_untrusted_catalog():
@@ -73,9 +79,19 @@ def test_exact_code_license_security_rights_and_hash_check():
                 version="1.0", source_sha256="e"*64, license_spdx="MIT",
                 license_evidence_sha256="f"*64, security_posture="REVIEWED",
                 data_rights="NOT_APPLICABLE_CODE")
-    assert require_reviewed_code(wire(obj), "pytorch", "e"*64)["version"] == "1.0"
+    pin = hashlib.sha256(wire(obj)).hexdigest()
+    assert require_reviewed_code(
+        wire(obj), "pytorch", "e" * 64, independently_pinned_catalog_sha256=pin
+    )["version"] == "1.0"
+    with pytest.raises(ValueError, match="approved catalog"):
+        require_reviewed_code(
+            wire(obj), "pytorch", "e" * 64,
+            independently_pinned_catalog_sha256="0" * 64,
+        )
     with pytest.raises(ValueError, match="source hash drift"):
-        require_reviewed_code(wire(obj), "pytorch", "d"*64)
+        require_reviewed_code(
+            wire(obj), "pytorch", "d" * 64, independently_pinned_catalog_sha256=pin
+        )
     for key, bad in [("model_weights", "PRETRAINED"), ("license_spdx", "UNKNOWN"),
                      ("data_rights", "ALLOWED"), ("source_sha256", "z"*64),
                      ("security_posture", "UNKNOWN")]:
