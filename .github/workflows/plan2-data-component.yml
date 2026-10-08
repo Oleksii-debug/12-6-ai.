@@ -217,6 +217,20 @@ jobs:
           cmp "$RUNNER_TEMP/plan2-books-1.json" "$RUNNER_TEMP/plan2-books-restart.json"
           cmp "$RUNNER_TEMP/plan2-books-1.json" "$RUNNER_TEMP/plan2-books-clean.json"
           cmp "$RUNNER_TEMP/plan2-books/public-domain-physical-manifest.json" "$RUNNER_TEMP/plan2-books-clean/public-domain-physical-manifest.json"
+      - name: Lint Plan 2 S15 physical-book document split probe
+        run: ruff check tools/plan2_s15_physical_book_split_probe_v1.py tests/test_plan2_s15_physical_book_split_probe_v1.py
+      - name: Verify real-book document split mechanics and negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_book_split_probe_v1.py
+      - name: Verify physical-book split probe restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe" > "$RUNNER_TEMP/s15-book-probe-first.json"
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe" > "$RUNNER_TEMP/s15-book-probe-restart.json"
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe-clean" > "$RUNNER_TEMP/s15-book-probe-clean.json"
+          cmp "$RUNNER_TEMP/s15-book-probe-first.json" "$RUNNER_TEMP/s15-book-probe-restart.json"
+          cmp "$RUNNER_TEMP/s15-book-probe-first.json" "$RUNNER_TEMP/s15-book-probe-clean.json"
+          cmp "$RUNNER_TEMP/s15-book-probe/book-split-probe.json" "$RUNNER_TEMP/s15-book-probe-clean/book-split-probe.json"
       - name: Lint Plan 2 Section 15 non-release qualification audit
         run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
       - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
