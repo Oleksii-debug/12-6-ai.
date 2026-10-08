@@ -195,7 +195,9 @@ def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_
     assert inspect(manifest)["assets"][0] == entry
 
     # A license name under a traversal alias must still fail closed.
-    for unsafe in ("../escape/LICENSE", "pkg" + chr(92) + "LICENSE", "/root/LICENSE", "pkg//LICENSE"):
+    for unsafe in (
+        "../escape/LICENSE", "pkg" + chr(92) + "LICENSE", "/root/LICENSE", "pkg//LICENSE",
+    ):
         dist.files = [unsafe]
         with pytest.raises(ValueError, match="unsafe installed file inventory"):
             inspect(manifest)
