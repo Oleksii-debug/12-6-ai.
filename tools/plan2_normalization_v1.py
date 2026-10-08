@@ -6,7 +6,6 @@ remain authoritative. No training, tokenizer fit or source admission occurs.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 import unicodedata
