@@ -16,6 +16,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 HEX = re.compile(r"^[0-9a-f]{64}$")
+# Bound hashing of untrusted external review artifacts before and during reads.
+MAX_REVIEW_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 AUTHORITIES = {
     "model": "twelve_six.model",
     "checkpoint": "twelve_six.checkpoint",
@@ -256,8 +258,14 @@ def _hash_regular_archive(path: str | Path) -> str:
         opened = os.fstat(handle)
         if not stat.S_ISREG(opened.st_mode) or fingerprint(before) != fingerprint(opened):
             raise ValueError("review artifact changed while opening")
+        if opened.st_size > MAX_REVIEW_ARTIFACT_BYTES:
+            raise ValueError("review artifact size limit exceeded")
         digest = hashlib.sha256()
+        read_bytes = 0
         while chunk := os.read(handle, 1024 * 1024):
+            read_bytes += len(chunk)
+            if read_bytes > MAX_REVIEW_ARTIFACT_BYTES:
+                raise ValueError("review artifact size limit exceeded")
             digest.update(chunk)
         after = os.fstat(handle)
         if fingerprint(opened) != fingerprint(after):
