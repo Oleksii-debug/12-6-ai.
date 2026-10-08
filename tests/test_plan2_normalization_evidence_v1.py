@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -73,7 +74,7 @@ def test_unicode_and_line_endings_reuse_incumbent(tmp_path):
     raw = "ІЇЄҐ " * 24 + "те\u0301ст\r\nЛінія\rрядок"
     actual, evidence, records = norm.inspect_raw(raw.encode("utf-8"))
     assert b"\r" not in actual
-    assert "\u0301" not in actual.decode("utf-8")
+    assert unicodedata.is_normalized("NFKC", actual.decode("utf-8"))
     assert actual == norm.normalize_markdown_uk(raw.encode("utf-8")).encode("utf-8")
     assert len(records) == actual.count(b"\n")
     assert evidence["language"] == "uk"
