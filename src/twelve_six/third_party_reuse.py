@@ -105,6 +105,10 @@ def _valid_https_source(value: object) -> bool:
         return (
             parsed.scheme == "https"
             and bool(parsed.hostname)
+            # Unicode confusables and encoded authority delimiters cannot be
+            # independently reviewed as an unambiguous source origin.
+            and parsed.netloc.isascii()
+            and "%" not in parsed.netloc
             and parsed.username is None
             and parsed.password is None
             and parsed.fragment == ""
