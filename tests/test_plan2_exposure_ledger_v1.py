@@ -94,7 +94,7 @@ def test_corrupted_and_self_resealed_publication_denied(tmp_path):
 
 
 def test_missing_extra_or_symlink_denied(tmp_path):
-    shards, out, manifest = publish(tmp_path)
+    shards, out, _ = publish(tmp_path)
     (out / "unexpected").write_bytes(b"extra")
     with pytest.raises(p.ExposureDenied):
         p.read_exposures(ROOT, shards, out)
@@ -109,7 +109,7 @@ def test_missing_extra_or_symlink_denied(tmp_path):
 
 
 def test_shard_corruption_or_external_replacement_denied(tmp_path):
-    shards, out, manifest = publish(tmp_path)
+    shards, out, _ = publish(tmp_path)
     m, _ = packing.build(ROOT)
     victim = shards / m["shards"][0]["path"]
     victim.write_bytes(b"{}")
