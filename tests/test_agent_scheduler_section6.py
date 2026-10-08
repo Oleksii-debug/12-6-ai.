@@ -1,12 +1,11 @@
 """Plan 5 S6: deterministic scheduling, TaskStore integration and fail-closed recovery."""
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 
 import pytest
 
 from twelve_six_agent_runtime.scheduler import (
-    Lease, SchedulerError, SchedulerStore, WorkSpec,
+    SchedulerError, SchedulerStore, WorkSpec,
 )
 from twelve_six_agent_runtime.task_state import PendingEffect, StateError, TaskStore
 
@@ -48,14 +47,8 @@ def test_resource_pressure_throttle_pause_and_recover(tmp_path):
     s = scheduler(tmp_path)
     s.register(spec("foreground", priority=30))
     s.register(spec("background", priority=90, background=True))
-    assert acquire(s, pressure_ppm=600_000).task_id == "foreground"
-    lease = Lease(
-        "foreground",
-        s.snapshot()[1].revision if s.snapshot()[1].spec.task_id == "foreground"
-        else next(i.revision for i in s.snapshot() if i.spec.task_id == "foreground"),
-        s.tasks.load("foreground").control_epoch,
-        s.tasks.load("foreground").revision,
-    )
+    lease = acquire(s, pressure_ppm=600_000)
+    assert lease.task_id == "foreground"
     state = s.checkpoint(
         lease, used_steps=1, step_id="step1", checkpoint_id="cp1",
         pressure_ppm=900_000,
