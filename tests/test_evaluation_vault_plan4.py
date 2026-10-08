@@ -20,7 +20,7 @@ def setup(tmp_path: Path):
 def test_sealed_scoring_with_terminal_release_and_restart(tmp_path):
     vault, ref, identity = setup(tmp_path)
     receipt = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "wrong"}, **identity)
-    assert set(receipt) == {"schema_version", "evaluation_id", "result_sha256", "state"}
+    assert set(receipt) == {"schema_version", "evaluation_id", "state"}
     assert "yes" not in json.dumps(receipt) and "accuracy" not in receipt
     with pytest.raises(EvaluationBoundaryError, match="unverified"):
         vault.terminal_report(sealed=receipt, trusted_terminal_ids=frozenset())
@@ -96,3 +96,9 @@ def test_version_and_result_digest_bindings_fail_closed(tmp_path):
     with pytest.raises(EvaluationBoundaryError, match="verification failed"):
         vault.terminal_report(sealed=sealed,
                               trusted_terminal_ids=frozenset({sealed["evaluation_id"]}))
+
+def test_duplicate_json_object_fields_rejected(tmp_path):
+    vault, _, _ = setup(tmp_path)
+    with pytest.raises(EvaluationBoundaryError, match="duplicate JSON field"):
+        vault.reserve(dataset=b'{"id":"x","answer":"one","answer":"two"}\\n',
+                      dataset_version="fixture-v2")
