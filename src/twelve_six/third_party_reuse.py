@@ -214,7 +214,12 @@ def require_reviewed_code(
 
 def _hash_regular_archive(path: str | Path) -> str:
     """Digest an actual regular review artifact without trusting path/symlink aliases."""
-    source = Path(path)
+    # Normalize the lexical path without resolving redirects, so inherited
+    # symlinks/junctions cannot redirect a reviewed artifact outside its tree.
+    source = Path(os.path.abspath(os.fspath(path)))
+    for ancestor in source.parents:
+        if ancestor.is_symlink() or getattr(ancestor, "is_junction", lambda: False)():
+            raise ValueError("review artifact parent directory is a symlink/junction")
 
     def fingerprint(info: os.stat_result) -> tuple[int, int, int, int, int]:
         # Catch in-place, same-size replacement during archive verification.
