@@ -91,8 +91,11 @@ def test_exact_eval_overlap_is_excluded_without_exposing_answers():
     result = firewall.inspect_firewall(
         (_fixture("source.a", leaked_text, BASE),), RESERVED)
     assert result["input_training_candidate_count"] == 2
-    assert result["decontaminated_record_count"] == 1
-    assert result["excluded_record_ids"] == ["source.a:r00000000"]
+    assert result["decontaminated_record_count"] == 0
+    assert result["excluded_record_ids"] == [
+        "source.a:r00000000", "source.a:r00000001",
+    ]
+    assert result["data232_report"]["counts"]["quarantined_source_families"] == 1
     assert result["data232_report"]["status"] == "PASS_WITH_EXCLUSIONS"
     assert leaked_text not in json.dumps(result, ensure_ascii=False)
 
@@ -100,7 +103,8 @@ def test_exact_eval_overlap_is_excluded_without_exposing_answers():
 def test_eval_contamination_quarantines_same_training_source_family():
     _config, eval_rows, _authority = firewall._reserve(RESERVED)
     base = eval_rows[0]["text"]
-    altered = base.replace("ізольований", "захищений")
+    # One extra short sentence preserves DATA-232 near-match shingle similarity.
+    altered = base + " Додатковий."
     assert altered != base
     # The clean peer shares the contaminated source family, not a foreign source.
     result = firewall.inspect_firewall((
@@ -109,6 +113,8 @@ def test_eval_contamination_quarantines_same_training_source_family():
     assert result["input_training_candidate_count"] == 2
     assert result["decontaminated_record_count"] == 0
     assert len(result["excluded_record_ids"]) == 2
+    assert any(item["match_type"] == "near_match"
+               for item in result["data232_report"]["match_evidence"])
 
 
 def test_training_reserved_source_identity_alias_is_denied():
