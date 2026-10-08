@@ -4,7 +4,11 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.champion_lifecycle import (
-    Authorization, Descendant, Evaluation, LifecycleState, decide_candidate,
+    Authorization,
+    Descendant,
+    Evaluation,
+    LifecycleState,
+    decide_candidate,
     rollback_promotion,
 )
 from twelve_six.experience_replay import _mac
@@ -29,10 +33,16 @@ def fixture(qualified=True, compatible=True):
 
 
 def trusted(state):
-    return dict(trusted_state_sha256=state.head_sha256, verifier_id='verifier',
-                verifier_version_sha256=D, trusted_evidence_roots=frozenset({D, E}),
-                verifier_key=VER_KEY, authorizer_id='authorizer',
-                authorizer_version_sha256=F, authorizer_key=AUTH_KEY)
+    return {
+        "trusted_state_sha256": state.head_sha256,
+        "verifier_id": "verifier",
+        "verifier_version_sha256": D,
+        "trusted_evidence_roots": frozenset({D, E}),
+        "verifier_key": VER_KEY,
+        "authorizer_id": "authorizer",
+        "authorizer_version_sha256": F,
+        "authorizer_key": AUTH_KEY,
+    }
 
 
 def grant_for(state, candidate, evaluation, action='PROMOTE'):
