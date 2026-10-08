@@ -1,0 +1,19 @@
+{
+  "schema_version": "12-6.plan2-rights-candidate-seed.v1",
+  "grants": [
+    {
+      "source_id": "uk.kubernetes.docs.what-is-kubernetes",
+      "rights_class": "public_licensed",
+      "license_id": "CC-BY-4.0",
+      "terms_ref": "https://creativecommons.org/licenses/by/4.0/",
+      "permission_ref": "repo://configs/data/data324_kubernetes_ua_current_main_v1.json",
+      "legal_basis": "license_grant",
+      "allowed_uses": [
+        "source_candidate"
+      ],
+      "evidence_path": "data/external/rights-evidence/data324/kubernetes-website-cc-by-4.0-25f3dcb.txt",
+      "evidence_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+      "revoked": false
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+name: Plan 4 Evaluation
+on:
+  pull_request:
+    paths:
+      - "tools/evaluation_vault.py"
+      - "tools/evaluation_harness.py"
+      - "tests/test_evaluation_vault_plan4.py"
+      - "tests/test_evaluation_harness_plan4.py"
+      - ".github/workflows/plan4-evaluation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/evaluation_vault.py"
+      - "tools/evaluation_harness.py"
+      - "tests/test_evaluation_vault_plan4.py"
+      - "tests/test_evaluation_harness_plan4.py"
+      - ".github/workflows/plan4-evaluation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lightweight local test dependencies
+        run: python -m pip install pytest ruff
+      - name: Check evaluation isolation code and tests
+        run: |
+          ruff check tools/evaluation_vault.py tests/test_evaluation_vault_plan4.py
+          if test -f tools/evaluation_harness.py; then
+            ruff check tools/evaluation_harness.py tests/test_evaluation_harness_plan4.py
+          fi
+      - name: Exercise evaluation isolation and deterministic restart
+        run: |
+          python -m pytest -q tests/test_evaluation_vault_plan4.py
+          if test -f tools/evaluation_harness.py; then
+            python -m pytest -q tests/test_evaluation_harness_plan4.py
+          fi
