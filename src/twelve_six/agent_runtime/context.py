@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 SCHEMA = "12-6.agent-context.v1"
 POLICY = "critical-pinned-priority-desc-recency-desc-v1"
