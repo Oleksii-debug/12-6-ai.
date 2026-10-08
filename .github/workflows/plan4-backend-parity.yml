@@ -1,0 +1,36 @@
+name: Plan 4 Optimized Backend Parity
+on:
+  pull_request:
+    paths:
+      - "tools/plan4_backend_parity.py"
+      - "tests/test_plan4_backend_parity.py"
+      - "docs/PLAN4_SECTION5_BACKEND_PARITY.md"
+      - ".github/workflows/plan4-backend-parity.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/plan4_backend_parity.py"
+      - "tests/test_plan4_backend_parity.py"
+      - "docs/PLAN4_SECTION5_BACKEND_PARITY.md"
+      - ".github/workflows/plan4-backend-parity.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Lint Plan 4 backend parity
+        run: ruff check tools/plan4_backend_parity.py tests/test_plan4_backend_parity.py
+      - name: Verify Plan 4 backend, reference inference and export
+        run: |
+          python -m compileall -q tools/plan4_backend_parity.py
+          python -m pytest -q tests/test_plan4_backend_parity.py tests/test_inference_runtime_plan4.py tests/test_plan4_safe_export.py
