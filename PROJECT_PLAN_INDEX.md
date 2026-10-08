@@ -9,6 +9,7 @@ The project now uses ten numbered plans in Google Drive folder:
 https://drive.google.com/drive/folders/1dltwOgSMBmc39c35bwPkxkB5AWaZbxdX
 
 Plans 1–8 are independent engineering plans. There is no priority order among them.
+Safe parallel ownership, Migration Contract Baseline v1 and conflict-key rules are defined in `MULTI_PLAN_PARALLELISM_CONTRACT.md`.
 Plan 9 is a training/champion convergence plan.
 Plan 10 is the final whole-product integration/release plan.
 
@@ -51,7 +52,8 @@ Skip every Section marked DONE and start the numerically first unfinished Sectio
 Do not use legacy monolithic Section numbers to choose work.
 
 Plans 1–8 may be worked and completed in any order and in parallel.
-Cross-plan development uses versioned contracts/fixtures/mocks where the other implementation is not yet terminal.
+Live closure status comes from `MULTI_PLAN_CLOSURE_STATE.md`; Drive status lines are snapshots.
+Cross-plan development uses Migration Contract Baseline v1 and versioned contracts/fixtures/mocks where the other implementation is not yet terminal; repository mutations obey `MULTI_PLAN_PARALLELISM_CONTRACT.md`.
 Do not claim whole-product integration from a mock; whole-product convergence belongs to Plan 10.
 
 Plan 9 starts only when the specific required terminal artifacts from upstream engineering plans exist.
