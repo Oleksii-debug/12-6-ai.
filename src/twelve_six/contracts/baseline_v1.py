@@ -7,14 +7,20 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from twelve_six.artifact_identity import ArtifactKind, ArtifactManifest, ArtifactRef
+from twelve_six.artifact_identity import (
+    ArtifactKind, ArtifactManifest, ArtifactRef, GenerationIdentityManifest,
+)
 from twelve_six.system_architecture import (
     canonical_runtime_shell_v1, canonical_system_architecture_v1,
 )
 
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
-_SCHEMAS = {"artifact_ref": ArtifactRef, "artifact_manifest": ArtifactManifest}
+_SCHEMAS = {
+    "artifact_ref": ArtifactRef,
+    "artifact_manifest": ArtifactManifest,
+    "generation_manifest": GenerationIdentityManifest,
+}
 _LIMIT = 1024 * 1024
 
 
@@ -183,6 +189,8 @@ def decode_v1(data: bytes) -> Any:
     try:
         raw = json.loads(data.decode("utf-8", "strict"), object_pairs_hook=_no_duplicates,
                          parse_constant=_reject_constant)
+    except ContractPackageError:
+        raise
     except (UnicodeError, ValueError, RecursionError) as exc:
         raise ContractPackageError("invalid contract JSON") from exc
     envelope = _fields(raw, {"schema", "kind", "version", "baseline_sha256", "payload"})
