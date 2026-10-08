@@ -125,7 +125,7 @@ def test_license_metadata_hash_never_grants_rights(monkeypatch, tmp_path):
 
         def read_text(self, name):
             assert name == "RECORD"
-            return "torch/__init__.py,sha256=untrusted,10\\n"
+            return "torch/__init__.py,sha256=untrusted,10\n"
 
     dist = Distribution()
     monkeypatch.setattr(metadata, "distribution", lambda name: dist)
@@ -172,7 +172,7 @@ def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_
 
         def read_text(self, name):
             assert name == "RECORD"
-            return "safetensors/__init__.py,sha256=untrusted,10\\n"
+            return "safetensors/__init__.py,sha256=untrusted,10\n"
 
     dist = Distribution()
     monkeypatch.setattr(metadata, "distribution", lambda name: dist)
@@ -187,7 +187,7 @@ def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_
     assert entry["admission"] == "DENIED_UNQUALIFIED"
     assert inspect(manifest)["assets"][0] == entry
 
-    for unsafe in ("../escape/LICENSE", "pkg\\\\LICENSE", "/root/LICENSE", "pkg//LICENSE"):
+    for unsafe in ("../escape/LICENSE", "pkg" + chr(92) + "LICENSE", "/root/LICENSE", "pkg//LICENSE"):
         dist.files = [unsafe]
         with pytest.raises(ValueError, match="unsafe installed file inventory"):
             inspect(manifest)
