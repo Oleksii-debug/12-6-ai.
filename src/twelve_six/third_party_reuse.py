@@ -548,6 +548,7 @@ def verify_installed_wheel_record(
     observed_paths: set[str] = set()
     self_records = 0
     verified_files = 0
+    license_notices: list[tuple[str, str]] = []
     for row in rows:
         if len(row) != 3:
             raise ValueError("invalid wheel RECORD row")
@@ -627,9 +628,25 @@ def verify_installed_wheel_record(
         ):
             raise ValueError("installed file contents drift")
         verified_files += 1
+        # All observed notice bytes were verified against a trusted wheel
+        # RECORD above. This inventory is a reviewer lead, NOT legal approval.
+        basename = name.split("/")[-1].lower()
+        if re.fullmatch(
+            r"(?:licen[cs]e|licenses|notices?|copying|copyright)"
+            r"(?:[._-][a-z0-9._+-]{1,100})?",
+            basename,
+        ):
+            license_notices.append((name, actual_hash))
+            if len(license_notices) > 256:
+                raise ValueError("too many wheel license notices")
     if self_records != 1 or not verified_files:
         raise ValueError("incomplete installed RECORD")
+    notice_identity = hashlib.sha256(json.dumps(
+        sorted(license_notices), separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")).hexdigest()
     return {
+        "license_notice_count": len(license_notices),
+        "license_notice_inventory_sha256": notice_identity,
         "distribution": normalize(actual_name),
         "version": dist.version,
         "record_sha256": observed_pin,
@@ -646,6 +663,7 @@ def verify_reviewed_installed_backend(
     distribution: str,
     independently_pinned_catalog_sha256: str,
     independently_pinned_record_sha256: str,
+    independently_pinned_notice_inventory_sha256: str,
 ) -> dict[str, Any]:
     """Admit code only after BOTH upstream review and installed wheel checks.
 
@@ -662,6 +680,8 @@ def verify_reviewed_installed_backend(
         raise ValueError("invalid external distribution")
     if not _hash(independently_pinned_record_sha256):
         raise ValueError("independent installed RECORD pin required")
+    if not _hash(independently_pinned_notice_inventory_sha256):
+        raise ValueError("independent full-license-notice inventory pin required")
     # Reviewed source and installed wheel must denote the SAME published code.
     # Other optional asset-to-wheel aliases require their own versioned,
     # reviewed mapping; never guess a distribution from untrusted input.
@@ -699,6 +719,13 @@ def verify_reviewed_installed_backend(
         expected_version=reviewed["version"],
         independently_pinned_record_sha256=independently_pinned_record_sha256,
     )
+    if installed["license_notice_count"] < 1:
+        raise ValueError("wheel has no reviewable LICENSE/NOTICE file")
+    if not hmac.compare_digest(
+        installed["license_notice_inventory_sha256"],
+        independently_pinned_notice_inventory_sha256,
+    ):
+        raise ValueError("wheel license inventory digest drift")
     # The return value records checks only. It does not create a second package
     # registry, nor confer permission to load foreign model/data artifacts.
     return {
@@ -713,6 +740,8 @@ def verify_reviewed_installed_backend(
         "replacement_boundary": reviewed["replacement_boundary"],
         "distribution": installed["distribution"],
         "record_sha256": installed["record_sha256"],
+        "license_notice_count": installed["license_notice_count"],
+        "license_notice_inventory_sha256": installed["license_notice_inventory_sha256"],
         "verified_files": installed["verified_files"],
         "data_rights": "NOT_APPLICABLE_CODE",
         "model_weights": "NONE",
