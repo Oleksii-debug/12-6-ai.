@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from tools import plan2_corpus_mixture_v1 as mixture
-from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
+from tools import plan2_reserved_eval_firewall_v1 as firewall
+from tools.plan2_physical_materialization_v1 import (
+    _atomic_write, _json, _read_destination,
+)
 from twelve_six import split_robustness as canonical
 
 SCHEMA = "12-6.plan2-cluster-safe-split-candidate.v1"
@@ -216,12 +219,45 @@ def stage_fixture(root: Path, destination: Path) -> dict[str, Any]:
     return result
 
 
+def stage_candidate(root: Path, destination: Path) -> dict[str, Any]:
+    """Bind physical S8→S9 source bytes; never invent independent documents."""
+    _need(not any(p.is_symlink() for p in (destination, *destination.parents)),
+          "symlink split destination")
+    s9 = mixture.stage_mixture(root, destination / "mixture")
+    prefix = destination / "mixture" / "firewall" / "near" / "exact" / "privacy"
+    normalized = _json(_read_destination(
+        prefix / "normalization" / "normalization-manifest.json"))
+    payload = _read_destination(
+        prefix / "normalization" / "cohort" / "normalized.utf8")
+    privacy = _json(_read_destination(prefix / "privacy-manifest.json"))
+    try:
+        _s7, survivors = firewall._retained_rows(((normalized, payload, privacy),))
+        selected = set(s9["selected_record_ids"])
+        rows = [{"record_id": row["record_id"],
+                 "source_id": row["source_id"], "text": row["text"]}
+                for row in survivors if row["record_id"] in selected]
+        policy = _policy((root / POLICY_PATH).read_bytes())
+        result = build_cluster_split(s9, rows, policy)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise Plan2SplitError("S9 physical split admission denied") from exc
+    target = destination / "cluster-split-manifest.json"
+    blob = _canonical(result)
+    if target.exists() or target.is_symlink():
+        _need(_read_destination(target) == blob, "immutable split manifest drift")
+    else:
+        _atomic_write(destination, target, blob)
+    _need(_read_destination(target) == blob, "physical split readback drift")
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plan2 S10 LOCAL_FREE fixture")
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--physical-candidate", action="store_true")
     args = parser.parse_args()
-    receipt = stage_fixture(args.root, args.out_dir)
+    receipt = (stage_candidate(args.root, args.out_dir) if args.physical_candidate
+               else stage_fixture(args.root, args.out_dir))
     print(json.dumps({"status": "PASS_FIXTURE_ONLY",
                       "split_manifest_sha256": receipt["split_manifest_sha256"],
                       "cluster_leakage_count": receipt["cluster_leakage_count"],
