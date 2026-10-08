@@ -227,6 +227,25 @@ def test_physical_restart_rebuild_and_corruption_fail_closed(tmp_path):
         mixture.stage_mixture(ROOT, tmp_path / "first")
 
 
+def test_physical_staging_denies_source_family_registry_drift(
+    tmp_path, monkeypatch,
+):
+    original = mixture._read_source
+
+    def source_with_forged_family(root, relative):
+        raw = original(root, relative)
+        if relative == "configs/data/plan2_source_inventory_v1.json":
+            data = json.loads(raw)
+            data["sources"][0]["source_family"] = "forged.family"
+            return json.dumps(data).encode("utf-8")
+        return raw
+
+    monkeypatch.setattr(mixture, "_read_source", source_with_forged_family)
+    with pytest.raises(mixture.Plan2MixtureError,
+                       match="mixture staging denied"):
+        mixture.stage_mixture(ROOT, tmp_path / "reject-family-drift")
+
+
 def test_symlink_staging_refused(tmp_path):
     (tmp_path / "real").mkdir()
     (tmp_path / "linked").symlink_to(tmp_path / "real", target_is_directory=True)
