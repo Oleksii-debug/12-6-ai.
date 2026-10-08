@@ -8,7 +8,13 @@ The incumbent `twelve_six.model`, `twelve_six.checkpoint`,
 `twelve_six.training` and Plan-8 evaluation/capability authorities remain
 the only authorities. The 13 entries in `plan1_reuse_assets_v1.json` are
 **CANDIDATE_UNQUALIFIED** and must never be treated as admitted packages.
-Code licenses do not grant dataset usage or model-weight ancestry rights.\nThe reviewed-code claim checker additionally requires an approved catalog SHA-256\nfrom a **separate trusted reviewer**: supplying the hash of one's own untrusted\ncatalog is never sufficient evidence. Real source bytes/license bytes/security\nreview must be independently checked before promotion.
+Code licenses do not grant dataset usage or model-weight ancestry rights.
+The reviewed-code claim checker requires an approved catalog SHA-256 from a
+**separate trusted reviewer**. Self-hashing untrusted catalog bytes is not
+independent evidence. `verify_reviewed_code_archive` additionally digests
+actual regular source-archive and license-file bytes, rejects symlinks, and
+checks both against the independently pinned review catalog. This does not
+perform the human security review or authorize foreign model weights.
 The explicit code-only admission path requires pinned version/source hash,
 license evidence and security review. No packages, weights or cloud resources
 are installed or downloaded by this adapter.
