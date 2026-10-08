@@ -20,9 +20,10 @@ learned model is fit to use, or permission to run expensive training.
 
 ## Qualification contract
 
-`.github/workflows/plan6-terminal-local-free.yml` runs the **fourteen**
-existing component suites plus `tests/test_plan6_terminal_qualification.py`
-on a clean LOCAL_FREE Python installation. No teacher/service/network,
+The canonical `.github/workflows/ci.yml` runs the **fourteen** existing
+component suites and `tests/test_plan6_terminal_qualification.py` under
+its repository-wide `pytest -q` gate, after its central workflow-budget policy
+and `ruff check src tests` gates. No teacher/service/network,
 production checkpoint or materially paid compute is required.
 
 The terminal cross-engine test composes the incumbent Section-1 independently
@@ -53,8 +54,14 @@ satisfies Plan-10 user/device/release acceptance.
 
 - Exact fourteen incumbent source blob identities: in manifest; verified by
   `test_source_manifest_pins_all_fourteen_exact_engine_blobs`.
-- Complete focused test matrix and cross-engine tests: in dedicated workflow.
-- Exact candidate SHA and test execution: must be captured from the completed
-  qualification result; QUEUED/UNAVAILABLE is never a successful run.
+- Complete focused test matrix and cross-engine tests: included in shared CI
+  `pytest -q`; the explicit 15-file LOCAL_FREE matrix independently passed
+  **168/168** tests using the exact GitHub source/test files with canonical
+  `twelve_six.training` imports on a local Python 3.13 CPU fixture; `compileall`
+  also passed. This local result does not assert hosted CI success.
+- GitHub shared-CI status and exact candidate SHA: read from the current
+  workflow on the frozen candidate. The earlier dedicated-workflow attempt
+  violated the incumbent workflow-budget gate; the extra workflow is removed,
+  rather than bypassing or changing central CI policy.
 - Accepted-main merge/readback and Drive Section-15 status: required before
   calling the overall plan terminal DONE.
