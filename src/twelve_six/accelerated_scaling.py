@@ -1401,6 +1401,33 @@ def _growth_inputs(spec: ModelSpec, protocol: ProxyProtocol) -> torch.Tensor:
     )
 
 
+def _admit_growth_operation(
+    parent: ModelSpec, target: ModelSpec,
+    protocol: ProxyProtocol, budget: ProxyBudget,
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Fail closed on joint parent+descendant resource upper bounds preallocation."""
+    previous = admit_proxy(parent, protocol, budget)
+    candidate = admit_proxy(target, protocol, budget)
+    joint = {
+        "joint_planning_memory_bytes": (
+            previous["planning_memory_bytes"] + candidate["planning_memory_bytes"]
+        ),
+        "joint_proxy_flops": (
+            previous["total_proxy_flops"] + candidate["total_proxy_flops"]
+        ),
+        "joint_proxy_tokens": (
+            previous["total_proxy_tokens"] + candidate["total_proxy_tokens"]
+        ),
+    }
+    if joint["joint_planning_memory_bytes"] > budget.max_memory_bytes:
+        raise ScaleAdmissionError("joint parent/descendant memory budget exceeded")
+    if joint["joint_proxy_flops"] > budget.max_flops:
+        raise ScaleAdmissionError("joint parent/descendant FLOP budget exceeded")
+    if joint["joint_proxy_tokens"] > budget.max_tokens:
+        raise ScaleAdmissionError("joint parent/descendant token budget exceeded")
+    return candidate, joint
+
+
 def grow_function_preserving(
     parent: TwelveSixDecoder,
     target: ModelSpec,
@@ -1422,8 +1449,9 @@ def grow_function_preserving(
         raise GrowthRejected("parity tolerance exceeds the bounded acceptance envelope")
     _growth_validate_parent(parent)
     width_added, layers_added = _growth_target(parent.spec, target)
-    resources = admit_proxy(target, protocol, budget)  # Before allocating descendant
-    admit_proxy(parent.spec, protocol, budget)
+    resources, joint_resources = _admit_growth_operation(
+        parent.spec, target, protocol, budget,
+    )  # Before allocating descendant
     parent_modelspec_sha = parent.spec.identity_sha256()
     parent_state_sha = _growth_state_sha256(parent)
     with torch.random.fork_rng(devices=[]):
@@ -1456,6 +1484,7 @@ def grow_function_preserving(
         "added_layers": layers_added,
         "tensor_mapping": mapping,
         "resource_admission": resources,
+        "joint_resource_admission": joint_resources,
         "parity_max_abs_error": max_error,
         "parity_atol": parity_atol,
         "function_preserved_on_fixture": True,
@@ -1483,7 +1512,9 @@ def fresh_init_scale_up(
     _growth_validate_parent(parent)
     if target.identity_sha256() == parent.spec.identity_sha256():
         raise GrowthRejected("fresh-init scale-up must change model identity")
-    resources = admit_proxy(target, protocol, budget)
+    resources, joint_resources = _admit_growth_operation(
+        parent.spec, target, protocol, budget,
+    )
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(seed)
         descendant = TwelveSixDecoder(target, parent.init_spec).cpu().eval()
@@ -1500,6 +1531,7 @@ def fresh_init_scale_up(
         "seed": seed,
         "tensor_mapping": [],
         "resource_admission": resources,
+        "joint_resource_admission": joint_resources,
         "function_preserved_on_fixture": False,
         "parity_max_abs_error": None,
         "optimizer_state_transferred": False,
