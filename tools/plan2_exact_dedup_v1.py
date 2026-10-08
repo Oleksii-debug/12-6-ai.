@@ -15,8 +15,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from twelve_six.data.privacy_filter_v3 import assert_hash_safe_evidence
-
 from tools import plan2_normalization_evidence_v1 as norm
 from tools import plan2_privacy_gate_v1 as privacy
 from tools.plan2_physical_materialization_v1 import (
@@ -25,6 +23,7 @@ from tools.plan2_physical_materialization_v1 import (
     _read_destination,
     stage_candidate_cohort,
 )
+from twelve_six.data.privacy_filter_v3 import assert_hash_safe_evidence
 
 SCHEMA = "12-6.plan2-exact-dedup.v1"
 EQUIVALENCE = "exact-sha256+exact-byte-length+kind+normalization-policy.v1"
