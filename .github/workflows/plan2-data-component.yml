@@ -102,20 +102,29 @@ jobs:
           cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-restart.json"
           cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-clean.json"
           cmp "${RUNNER_TEMP}/plan2-s9/corpus-mixture-manifest.json" "${RUNNER_TEMP}/plan2-s9-fresh/corpus-mixture-manifest.json"
-      - name: Lint Plan 2 Section 10 cluster split and tests
+      - name: Lint Plan 2 Section 10 document cluster split
         run: ruff check tools/plan2_cluster_split_v1.py tests/test_plan2_cluster_split_v1.py
-      - name: Qualify S10 three-way cluster isolation provenance and adversarial gates
-        run: PYTHONPATH=src:. pytest -q tests/test_plan2_cluster_split_v1.py tests/test_plan2_corpus_mixture_v1.py tests/test_plan2_near_dedup_v1.py
-      - name: Verify S10 physical restart and independent clean rebuild
+      - name: Qualify S10 train validation test family isolation and negative recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_cluster_split_v1.py tests/test_split_robustness.py
+      - name: Verify S10 LOCAL_FREE fixture restart and clean rebuild
         shell: bash
         run: |
           export PYTHONPATH=src:.
-          python tools/plan2_cluster_split_v1.py --out-dir "$RUNNER_TEMP/plan2-s10" > "$RUNNER_TEMP/plan2-s10-first.json"
-          python tools/plan2_cluster_split_v1.py --out-dir "$RUNNER_TEMP/plan2-s10" > "$RUNNER_TEMP/plan2-s10-restart.json"
-          python tools/plan2_cluster_split_v1.py --out-dir "$RUNNER_TEMP/plan2-s10-fresh" > "$RUNNER_TEMP/plan2-s10-clean.json"
-          cmp "$RUNNER_TEMP/plan2-s10-first.json" "$RUNNER_TEMP/plan2-s10-restart.json"
-          cmp "$RUNNER_TEMP/plan2-s10-first.json" "$RUNNER_TEMP/plan2-s10-clean.json"
-          cmp "$RUNNER_TEMP/plan2-s10/cluster-split-manifest.json" "$RUNNER_TEMP/plan2-s10-fresh/cluster-split-manifest.json"
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10" > "${RUNNER_TEMP}/plan2-s10-first.json"
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10" > "${RUNNER_TEMP}/plan2-s10-restart.json"
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10-fresh" > "${RUNNER_TEMP}/plan2-s10-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s10-first.json" "${RUNNER_TEMP}/plan2-s10-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-s10-first.json" "${RUNNER_TEMP}/plan2-s10-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s10/cluster-split-manifest.json" "${RUNNER_TEMP}/plan2-s10-fresh/cluster-split-manifest.json"
+      - name: Verify actual S9 single-document split fails closed
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          if python tools/plan2_cluster_split_v1.py --physical-candidate --out-dir "${RUNNER_TEMP}/plan2-s10-single-source"; then
+            echo "ERROR: single-document candidate was incorrectly released" >&2
+            exit 1
+          fi
+          test ! -f "${RUNNER_TEMP}/plan2-s10-single-source/cluster-split-manifest.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |

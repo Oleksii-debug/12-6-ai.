@@ -1,253 +1,266 @@
-"""Plan 2 Section 10: candidate-only cluster-safe three-way split over S9.
+"""Plan 2 S10: strict document-family train/validation/test split candidate.
 
-This adapter consumes the accepted S9 selection and S7 near-family authority.
-It does not redefine dedup, obtain raw reserved evaluation data, or authorize training.
+Reuses the pinned incumbent cluster split mechanics. The transient
+training_eligible=True SplitRecord is a mechanics adapter ONLY; release remains
+fail-closed. One-document candidate cannot be split without leakage.
 """
-
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-SCHEMA = "12-6.plan2-cluster-safe-split.v1"
+from tools import plan2_corpus_mixture_v1 as mixture
+from tools import plan2_reserved_eval_firewall_v1 as firewall
+from tools.plan2_physical_materialization_v1 import (
+    _atomic_write, _json, _read_destination,
+)
+from twelve_six import split_robustness as canonical
+
+SCHEMA = "12-6.plan2-cluster-safe-split-candidate.v1"
 POLICY_SCHEMA = "12-6.plan2-cluster-split-policy.v1"
 POLICY_PATH = "configs/data/plan2_cluster_split_policy_v1.json"
-POLICY_GIT_BLOB = "6abca62603be0abf540e2f7d3e1490be5fc135cc"
-PARTITIONS = ("train", "validation", "test")
+SPLIT_BLOB = "e49518f2e431dc8576005be4938c1f15881897c4"
+POLICY_GIT_BLOB = "ee5adc07d137cf846048000b986b3254fdbe30dc"
 
 
-class Plan2ClusterSplitError(ValueError):
-    """Upstream selection, split policy, or immutable output is invalid."""
+class Plan2SplitError(ValueError):
+    """Invalid upstream, cluster mapping, policy, or output identity."""
 
 
-def _need(condition: bool, why: str) -> None:
-    if not condition:
-        raise Plan2ClusterSplitError(why)
+def _need(ok: bool, message: str) -> None:
+    if not ok:
+        raise Plan2SplitError(message)
+
+
+def _sha(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _canonical(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True,
-                       separators=(",", ":"), allow_nan=False) + "\n").encode()
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    return mixture._canonical(value)
 
 
 def _git_blob(raw: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+    return mixture._git_blob(raw)
 
 
-def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    data: dict[str, Any] = {}
-    for key, value in pairs:
-        _need(key not in data, "duplicate split policy JSON key")
-        data[key] = value
-    return data
-
-
-def _not_constant(_: str) -> None:
-    raise Plan2ClusterSplitError("nonfinite split policy")
-
-
-def parse_policy(raw: bytes) -> dict[str, Any]:
-    _need(type(raw) is bytes and _git_blob(raw) == POLICY_GIT_BLOB,
-          "unapproved split policy Git blob")
+def _policy(raw: bytes) -> dict[str, Any]:
+    _need(_git_blob(raw) == POLICY_GIT_BLOB, "unapproved split policy blob")
     try:
-        obj = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=_pairs,
-                         parse_constant=_not_constant)
-    except (UnicodeError, ValueError, TypeError) as exc:
-        raise Plan2ClusterSplitError("split policy malformed") from exc
-    _need(type(obj) is dict and set(obj) == {
-        "schema_version", "revision", "purpose", "seed", "validation_percent",
-        "test_percent",
-    }, "split policy schema keys")
-    _need(obj["schema_version"] == POLICY_SCHEMA
-          and obj["purpose"] == "LOCAL_FREE_CANDIDATE_SPLIT"
-          and type(obj["revision"]) is str and bool(obj["revision"].strip())
-          and type(obj["seed"]) is str
-          and re.fullmatch(r"[0-9a-f]{64}", obj["seed"]) is not None,
+        value = json.loads(raw)
+    except (UnicodeError, ValueError) as exc:
+        raise Plan2SplitError("malformed split policy") from exc
+    _need(type(value) is dict and set(value) == {
+        "schema_version", "revision", "seed", "test_fraction",
+        "validation_fraction_remaining", "cluster_boundary", "purpose",
+    }, "split policy fields drift")
+    _need(value["schema_version"] == POLICY_SCHEMA
+          and value["purpose"] == "LOCAL_FREE_CANDIDATE_ONLY"
+          and value["cluster_boundary"] == "WHOLE_DOCUMENT_SOURCE_ID"
+          and type(value["revision"]) is str and bool(value["revision"])
+          and type(value["seed"]) is str
+          and re.fullmatch("[0-9a-f]{64}", value["seed"]) is not None,
           "split policy authority invalid")
-    valid = (type(obj["validation_percent"]) is int
-             and type(obj["test_percent"]) is int
-             and 1 <= obj["validation_percent"] <= 30
-             and 1 <= obj["test_percent"] <= 30
-             and obj["validation_percent"] + obj["test_percent"] < 50)
-    _need(valid, "split policy fractions invalid")
-    return obj
+    for key in ("test_fraction", "validation_fraction_remaining"):
+        _need(type(value[key]) is float and 0 < value[key] < 0.5,
+              "invalid split fraction")
+    return value
 
 
-def _check_receipt(receipt: Mapping[str, Any], key: str,
-                   schema: str) -> None:
-    _need(type(receipt) is dict and receipt.get("schema_version") == schema,
-          f"{key} schema invalid")
-    claimed = receipt.get(key)
-    _need(type(claimed) is str and re.fullmatch(r"[0-9a-f]{64}", claimed)
-          is not None, f"{key} missing")
-    core = {k: v for k, v in receipt.items() if k != key}
-    _need(_sha(_canonical(core)) == claimed, f"{key} self-hash mismatch")
+def _verify_incumbent() -> None:
+    raw = Path(canonical.__file__).read_bytes()
+    _need(_git_blob(raw) == SPLIT_BLOB,
+          "canonical split mechanics changed without requalification")
 
 
-def _part_sizes(n: int, policy: Mapping[str, Any]) -> tuple[int, int]:
-    _need(n >= 3, "at least three independent S7 clusters required")
-    val = max(1, (n * policy["validation_percent"] + 50) // 100)
-    test = max(1, (n * policy["test_percent"] + 50) // 100)
-    _need(val + test < n, "split would empty train partition")
-    return val, test
-
-
-def compose_split(
-    s9: Mapping[str, Any], s7: Mapping[str, Any], policy: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Assign whole verified S7 near families, never individual members."""
-    _check_receipt(s9, "dataset_candidate_sha256",
-                   "12-6.plan2-corpus-mixture-candidate.v1")
-    _check_receipt(s7, "manifest_sha256", "12-6.plan2-near-dedup-candidate.v1")
+def _verify_s9(s9: Mapping[str, Any]) -> list[str]:
+    _need(type(s9) is dict and s9.get("schema_version") == mixture.SCHEMA,
+          "unverified S9 split boundary")
+    expected = s9.get("dataset_candidate_sha256")
+    core = {k: v for k, v in s9.items() if k != "dataset_candidate_sha256"}
+    _need(type(expected) is str and expected == _sha(_canonical(core)),
+          "S9 candidate identity mismatch")
     _need(s9.get("training_corpus_authorized") is False
           and s9.get("tokenizer_fit_authorized") is False
           and s9.get("real_final_test_material_accessed") is False,
-          "S9 candidate-only claim boundary widened")
+          "S9 permissions widened")
     ids = s9.get("selected_record_ids")
-    retained = s7.get("retained_record_ids")
-    excluded = s9.get("excluded")
-    _need(type(ids) is list and bool(ids)
-          and all(type(x) is str and bool(x) for x in ids)
-          and len(set(ids)) == len(ids)
-          and ids == sorted(ids)
-          and type(s9.get("selected_record_count")) is int
-          and len(ids) == s9["selected_record_count"],
-          "S9 selected record identities invalid")
-    _need(type(retained) is list and len(set(retained)) == len(retained)
-          and set(ids).issubset(set(retained)),
-          "S9 selection does not belong to S7 survivor boundary")
-    _need(type(excluded) is list
-          and all(type(row) is dict and type(row.get("record_id")) is str
-                  for row in excluded)
-          and set(ids).isdisjoint({row["record_id"] for row in excluded}),
-          "S9 excluded record entered split")
-    _need(s9.get("physical_s8_manifest_sha256") is not None
-          and s9.get("upstream_s8_manifest_sha256") is not None,
-          "S9 physical S8 binding missing")
-    _need(s7.get("retained_family_cap") is None,
-          "unexpected alternate S7 family authority")
+    _need(type(ids) is list and len(ids) >= 4
+          and all(type(rid) is str and rid for rid in ids)
+          and ids == sorted(set(ids))
+          and s9.get("selected_record_count") == len(ids),
+          "S9 selected identity set invalid")
+    return ids
 
-    family_by_member: dict[str, str] = {}
-    groups = s7.get("near_families")
-    _need(type(groups) is list, "S7 family evidence missing")
-    for group in groups:
-        _need(type(group) is dict
-              and type(group.get("members")) is list
-              and len(group["members"]) >= 2
-              and len(set(group["members"])) == len(group["members"])
-              and group.get("members") == sorted(group["members"])
-              and group.get("representative_record_id") == group["members"][0]
-              and group.get("retained_family_cap") == 1
-              and group.get("family_id_sha256") == _sha(_canonical(group["members"])),
-              "S7 near family proof invalid")
-        for member in group["members"]:
-            _need(member not in family_by_member, "overlapping S7 family membership")
-            family_by_member[member] = group["family_id_sha256"]
-        _need(set(group["members"]) & set(retained)
-              == {group["representative_record_id"]},
-              "S7 near duplicate family cap broken")
 
-    clusters: dict[str, list[str]] = {}
-    for rid in ids:
-        cluster = family_by_member.get(rid, _sha(_canonical([rid])))
-        clusters.setdefault(cluster, []).append(rid)
-    _need(sum(map(len, clusters.values())) == len(ids),
-          "split cluster accounting mismatch")
-    n_val, n_test = _part_sizes(len(clusters), policy)
-    ranked = sorted(clusters, key=lambda key: (
-        _sha((policy["seed"] + ":" + key).encode()), key))
-    assigned: dict[str, list[str]] = {key: [] for key in PARTITIONS}
-    cluster_splits: dict[str, str] = {}
-    for i, cluster in enumerate(ranked):
-        partition = ("test" if i < n_test else
-                     "validation" if i < n_test + n_val else "train")
-        cluster_splits[cluster] = partition
-        assigned[partition].extend(clusters[cluster])
-    assigned = {part: sorted(records) for part, records in assigned.items()}
-    _need(all(assigned.values())
-          and set().union(*(set(p) for p in assigned.values())) == set(ids)
-          and sum(map(len, assigned.values())) == len(ids),
-          "train/validation/test coverage or isolation failed")
+def build_cluster_split(
+    s9: Mapping[str, Any], rows: Sequence[Mapping[str, str]],
+    policy: Mapping[str, Any], *, fixture: bool = False,
+) -> dict[str, Any]:
+    """Assign whole document clusters, never individual normalized line records."""
+    selected = set(_verify_s9(s9))
+    trusted = _policy((Path(__file__).resolve().parents[1] / POLICY_PATH).read_bytes())
+    _need(_canonical(policy) == _canonical(trusted), "unapproved split policy mutation")
+    _verify_incumbent()
+    _need(type(policy) is dict and policy.get("cluster_boundary") ==
+          "WHOLE_DOCUMENT_SOURCE_ID", "untrusted cluster boundary")
+    seen: set[str] = set()
+    projections = []
+    for row in rows:
+        _need(type(row) is dict and set(row) == {
+            "record_id", "source_id", "text"
+        }, "untrusted split row shape")
+        rid, source, value = row["record_id"], row["source_id"], row["text"]
+        _need(type(rid) is str and rid in selected and rid not in seen,
+              "extra/duplicate split record")
+        _need(type(source) is str and rid.startswith(source + ":r")
+              and type(value) is str and bool(value.strip()),
+              "split record source/text invalid")
+        seen.add(rid)
+        # This is a transient adapter to existing mechanics, NOT training admission.
+        projections.append(canonical.SplitRecord(
+            id=rid, text=value, source_id=source,
+            modality="text", content_sha256=_sha(value.encode("utf-8")),
+            near_duplicate_cluster_id="document:" + source,
+            training_eligible=True, purpose="pretraining_eligible",
+        ))
+    _need(seen == selected, "missing S9 selected records")
+    try:
+        test_clusters = set(canonical._choose_validation_clusters(
+            projections, seed=policy["seed"] + ":test",
+            validation_fraction=policy["test_fraction"]))
+        test = {r.id for r in projections if r.near_duplicate_cluster_id in test_clusters}
+        other = [r for r in projections if r.id not in test]
+        val_clusters = set(canonical._choose_validation_clusters(
+            other, seed=policy["seed"] + ":validation",
+            validation_fraction=policy["validation_fraction_remaining"]))
+        validation = {r.id for r in other if r.near_duplicate_cluster_id in val_clusters}
+        train = selected - validation - test
+        _need(bool(train) and bool(validation) and bool(test),
+              "three-way cluster-safe split has empty partition")
+    except canonical.SplitRobustnessError as exc:
+        raise Plan2SplitError("insufficient independent document families") from exc
+    assignments = {rid: ("test" if rid in test else
+                         "validation" if rid in validation else "train")
+                   for rid in sorted(selected)}
+    families: dict[str, set[str]] = {}
+    for row in rows:
+        families.setdefault(row["source_id"], set()).add(assignments[row["record_id"]])
+    _need(all(len(v) == 1 for v in families.values()),
+          "document-family leakage between partitions")
     core = {
         "schema_version": SCHEMA,
-        "policy_schema_version": POLICY_SCHEMA,
+        "purpose": "LOCAL_FREE_SYNTHETIC_COMPONENT" if fixture else "S9_CANDIDATE_ONLY",
         "policy_revision": policy["revision"],
         "policy_sha256": _sha(_canonical(policy)),
-        "seed": policy["seed"],
         "upstream_s9_dataset_candidate_sha256": s9["dataset_candidate_sha256"],
-        "upstream_s7_near_manifest_sha256": s7["manifest_sha256"],
-        "upstream_s8_manifest_sha256": s9["upstream_s8_manifest_sha256"],
-        "cluster_authority": "S7_COMPLETE_LINK_NEAR_FAMILY_WITH_SINGLETONS",
-        "selected_record_count": len(ids),
-        "cluster_count": len(clusters),
-        "splits": assigned,
-        "split_cluster_counts": {part: sum(x == part for x in cluster_splits.values())
-                                 for part in PARTITIONS},
-        "record_cluster_sha256": dict(sorted((rid, cluster)
-                                              for cluster, members in clusters.items()
-                                              for rid in members)),
+        "canonical_split_git_blob": SPLIT_BLOB,
+        "canonical_corpus_identity": canonical.eligible_corpus_identity(projections),
+        "canonical_dedup_relations_identity": canonical.dedup_relations_identity(projections),
+        "cluster_boundary": "WHOLE_DOCUMENT_SOURCE_ID",
+        "seed": policy["seed"],
+        "train_record_ids": sorted(train),
+        "validation_record_ids": sorted(validation),
+        "test_record_ids": sorted(test),
+        "record_assignments": assignments,
+        "document_cluster_count": len(families),
+        "cluster_leakage_count": 0,
         "training_corpus_authorized": False,
+        "evaluation_release_authorized": False,
         "tokenizer_fit_authorized": False,
-        "real_final_test_material_accessed": False,
-        "production_test_release_authorized": False,
         "paid_compute_used": False,
+        "actual_model_tokens": None,
     }
     return {**core, "split_manifest_sha256": _sha(_canonical(core))}
 
 
-def verify_split(manifest: Mapping[str, Any], s9: Mapping[str, Any],
-                 s7: Mapping[str, Any], policy: Mapping[str, Any]) -> None:
-    _need(dict(manifest) == compose_split(s9, s7, policy),
-          "cluster split semantic identity/content mismatch")
+def _synthetic_rows() -> tuple[dict[str, Any], list[dict[str, str]]]:
+    rows = [
+        {"record_id": f"fixture.document.{i:03d}:r{j:08d}",
+         "source_id": f"fixture.document.{i:03d}",
+         "text": f"Independent public synthetic document {i}, line {j}, safe fixture."}
+        for i in range(16) for j in range(2)
+    ]
+    core = {
+        "schema_version": mixture.SCHEMA,
+        "selected_record_ids": sorted(r["record_id"] for r in rows),
+        "selected_record_count": len(rows),
+        "training_corpus_authorized": False,
+        "tokenizer_fit_authorized": False,
+        "real_final_test_material_accessed": False,
+        "fixture_only": True,
+    }
+    return {**core, "dataset_candidate_sha256": _sha(_canonical(core))}, rows
 
 
-def stage_split(root: Path, destination: Path) -> dict[str, Any]:
-    """Replay S3→S9, publish immutable S10 split and verify exact bytes."""
-    from tools import plan2_corpus_mixture_v1 as mixture
-    from tools.plan2_physical_materialization_v1 import (
-        _atomic_write, _json, _read_destination, _read_source,
-    )
-
-    _need(not any(x.is_symlink() for x in (destination, *destination.parents)),
+def stage_fixture(root: Path, destination: Path) -> dict[str, Any]:
+    _need(not any(p.is_symlink() for p in (destination, *destination.parents)),
           "symlink split destination")
+    raw = (root / POLICY_PATH).read_bytes()
+    policy = _policy(raw)
+    s9, rows = _synthetic_rows()
+    result = build_cluster_split(s9, rows, policy, fixture=True)
+    destination.mkdir(parents=True, exist_ok=True)
+    target = destination / "cluster-split-manifest.json"
+    blob = _canonical(result)
     try:
-        raw = _read_source(root, POLICY_PATH)
-        policy = parse_policy(raw)
-        s9 = mixture.stage_mixture(root, destination / "mixture")
-        s7 = _json(_read_destination(destination / "mixture" / "firewall" /
-                                     "near" / "near-dedup-manifest.json"))
-        manifest = compose_split(s9, s7, policy)
-        verify_split(manifest, s9, s7, policy)
-        target = destination / "cluster-split-manifest.json"
-        payload = _canonical(manifest)
         if target.exists() or target.is_symlink():
-            _need(_read_destination(target) == payload, "immutable split manifest drift")
+            _need(_read_destination(target) == blob, "immutable split manifest drift")
         else:
-            _atomic_write(destination, target, payload)
-        _need(_read_destination(target) == payload, "split readback drift")
-        return manifest
-    except (OSError, KeyError, ValueError, TypeError) as exc:
-        raise Plan2ClusterSplitError("physical S10 split staging denied") from exc
+            _atomic_write(destination, target, blob)
+        _need(_read_destination(target) == blob, "split readback drift")
+    except (OSError, ValueError) as exc:
+        raise Plan2SplitError("split manifest publication failed") from exc
+    return result
+
+
+def stage_candidate(root: Path, destination: Path) -> dict[str, Any]:
+    """Bind physical S8→S9 source bytes; never invent independent documents."""
+    _need(not any(p.is_symlink() for p in (destination, *destination.parents)),
+          "symlink split destination")
+    s9 = mixture.stage_mixture(root, destination / "mixture")
+    prefix = destination / "mixture" / "firewall" / "near" / "exact" / "privacy"
+    normalized = _json(_read_destination(
+        prefix / "normalization" / "normalization-manifest.json"))
+    payload = _read_destination(
+        prefix / "normalization" / "cohort" / "normalized.utf8")
+    privacy = _json(_read_destination(prefix / "privacy-manifest.json"))
+    try:
+        _s7, survivors = firewall._retained_rows(((normalized, payload, privacy),))
+        selected = set(s9["selected_record_ids"])
+        rows = [{"record_id": row["record_id"],
+                 "source_id": row["source_id"], "text": row["text"]}
+                for row in survivors if row["record_id"] in selected]
+        policy = _policy((root / POLICY_PATH).read_bytes())
+        result = build_cluster_split(s9, rows, policy)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise Plan2SplitError("S9 physical split admission denied") from exc
+    target = destination / "cluster-split-manifest.json"
+    blob = _canonical(result)
+    if target.exists() or target.is_symlink():
+        _need(_read_destination(target) == blob, "immutable split manifest drift")
+    else:
+        _atomic_write(destination, target, blob)
+    _need(_read_destination(target) == blob, "physical split readback drift")
+    return result
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Plan2 S10 LOCAL_FREE split")
+    parser = argparse.ArgumentParser(description="Plan2 S10 LOCAL_FREE fixture")
     parser.add_argument("--root", type=Path, default=Path("."))
-    parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--physical-candidate", action="store_true")
     args = parser.parse_args()
-    result = stage_split(args.root, args.out_dir)
-    print(json.dumps({"status": "PASS_LOCAL_FREE_CANDIDATE_ONLY",
-                      "split_manifest_sha256": result["split_manifest_sha256"],
-                      "split_record_counts": {k: len(v) for k, v in result["splits"].items()},
+    receipt = (stage_candidate(args.root, args.out_dir) if args.physical_candidate
+               else stage_fixture(args.root, args.out_dir))
+    print(json.dumps({"status": "PASS_FIXTURE_ONLY",
+                      "split_manifest_sha256": receipt["split_manifest_sha256"],
+                      "cluster_leakage_count": receipt["cluster_leakage_count"],
                       "training_corpus_authorized": False}, sort_keys=True))
     return 0
 
