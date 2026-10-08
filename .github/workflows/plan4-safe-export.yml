@@ -1,0 +1,36 @@
+name: Plan 4 Safe Export
+on:
+  pull_request:
+    paths:
+      - "tools/plan4_safe_export.py"
+      - "tests/test_plan4_safe_export.py"
+      - "docs/PLAN4_SECTION4_SAFE_EXPORT.md"
+      - ".github/workflows/plan4-safe-export.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/plan4_safe_export.py"
+      - "tests/test_plan4_safe_export.py"
+      - "docs/PLAN4_SECTION4_SAFE_EXPORT.md"
+      - ".github/workflows/plan4-safe-export.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  safe-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Lint Plan 4 safe export
+        run: ruff check tools/plan4_safe_export.py tests/test_plan4_safe_export.py
+      - name: Verify Plan 4 export, existing D05 export and S3 inference
+        run: |
+          python -m py_compile tools/plan4_safe_export.py
+          python -m pytest -q tests/test_plan4_safe_export.py tests/test_hf_export.py tests/test_hf_export_transactional.py tests/test_inference_runtime_plan4.py
