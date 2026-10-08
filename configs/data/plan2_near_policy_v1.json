@@ -1,0 +1,12 @@
+{
+  "schema_version": "12-6.plan2-near-dedup-policy.v1",
+  "algorithm": "NFKC_CASEFOLD_WORD_TRIGRAM_SET_JACCARD_CONTAINMENT_V1",
+  "jaccard_min": 0.82,
+  "containment_min": 0.94,
+  "containment_length_ratio_min": 0.5,
+  "min_near_shingles": 3,
+  "family_cap": 1,
+  "max_candidate_pairs": 200000,
+  "output": "TEXT_FREE_CLUSTER_PROVENANCE_ONLY",
+  "admission": "SOURCE_CANDIDATE_ONLY"
+}
