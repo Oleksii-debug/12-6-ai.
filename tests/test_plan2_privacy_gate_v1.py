@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import plan2_privacy_gate_v1 as privacy
 from tools import plan2_normalization_evidence_v1 as norm
+from tools import plan2_privacy_gate_v1 as privacy
 
 ROOT = Path(__file__).resolve().parents[1]
 
