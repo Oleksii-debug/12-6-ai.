@@ -166,7 +166,7 @@ def issue_verified_stage(
         raise ValueError("self-issued model claim cannot be evidence")
     key = _key(verifier_key)
     if not callable(evaluator):
-        raise ValueError("missing evaluator")
+        raise TypeError("missing evaluator")
     expected = _digest(_canonical(expected_output))
     observed = _digest(_canonical(evaluator(trial.seed, sample)))
     replay = _digest(_canonical(evaluator(trial.seed, sample)))
