@@ -8,12 +8,14 @@ on:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
+      - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
+      - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
@@ -68,6 +70,19 @@ jobs:
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-first.json"
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-restart.json"
           cmp "${RUNNER_TEMP}/plan2-near-first.json" "${RUNNER_TEMP}/plan2-near-restart.json"
+      - name: Lint Plan 2 Section 8 reserved evaluation firewall
+        run: ruff check tools/plan2_eval_firewall_v1.py tests/test_plan2_eval_firewall_v1.py
+      - name: Qualify Plan 2 Section 8 actual DATA-232 overlap negative and recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_eval_firewall_v1.py
+      - name: Verify Section 8 physical firewall CLI restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-firewall" > "${RUNNER_TEMP}/plan2-firewall-first.json"
+          python tools/plan2_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-firewall" > "${RUNNER_TEMP}/plan2-firewall-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-firewall-first.json" "${RUNNER_TEMP}/plan2-firewall-restart.json"
+          python tools/plan2_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-firewall-clean" > "${RUNNER_TEMP}/plan2-firewall-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-firewall-first.json" "${RUNNER_TEMP}/plan2-firewall-clean.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
