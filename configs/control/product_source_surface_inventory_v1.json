@@ -413,7 +413,7 @@
     {
       "path": "src/twelve_six/instruction_post_training.py",
       "capability_id": "post-base-instruction-descendant",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/learned20m_capacity_sufficiency_v1.py",
@@ -611,6 +611,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 119,
-  "candidate_overlay_surface_count": 2
+  "accepted_main_surface_count": 120,
+  "candidate_overlay_surface_count": 1
 }
