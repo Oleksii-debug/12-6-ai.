@@ -549,6 +549,7 @@ def verify_installed_wheel_record(
     self_records = 0
     verified_files = 0
     license_notices: list[tuple[str, str]] = []
+    unverified_bytecode_files = 0
     for row in rows:
         if len(row) != 3:
             raise ValueError("invalid wheel RECORD row")
@@ -583,6 +584,23 @@ def verify_installed_wheel_record(
             raise ValueError("unsafe or duplicate installed file path")
         observed_paths.add(name)
         if not digest_field:
+            # Python installers create interpreter-specific .pyc caches that
+            # do not belong to the publisher's signed wheel. Observe these
+            # but NEVER count them as verified code in an admission receipt.
+            # Source/native binaries and arbitrary unhashed files stay denied.
+            parts = name.split("/")
+            if (
+                not size_field
+                and len(parts) >= 3
+                and parts[-2] == "__pycache__"
+                and re.fullmatch(
+                    r"[a-zA-Z_][a-zA-Z0-9_.-]*\.cpython-\d+"
+                    r"(?:\.opt-[0-2])?\.pyc",
+                    parts[-1],
+                )
+            ):
+                unverified_bytecode_files += 1
+                continue
             if (
                 not name.endswith(".dist-info/RECORD")
                 or size_field
@@ -645,6 +663,7 @@ def verify_installed_wheel_record(
         sorted(license_notices), separators=(",", ":"), ensure_ascii=True
     ).encode("ascii")).hexdigest()
     return {
+        "unverified_bytecode_files": unverified_bytecode_files,
         "license_notice_count": len(license_notices),
         "license_notice_inventory_sha256": notice_identity,
         "distribution": normalize(actual_name),
@@ -719,6 +738,8 @@ def verify_reviewed_installed_backend(
         expected_version=reviewed["version"],
         independently_pinned_record_sha256=independently_pinned_record_sha256,
     )
+    if installed["unverified_bytecode_files"]:
+        raise ValueError("installed wheel has unattested executable Python bytecode")
     if installed["license_notice_count"] < 1:
         raise ValueError("wheel has no reviewable LICENSE/NOTICE file")
     if not hmac.compare_digest(
@@ -743,6 +764,7 @@ def verify_reviewed_installed_backend(
         "license_notice_count": installed["license_notice_count"],
         "license_notice_inventory_sha256": installed["license_notice_inventory_sha256"],
         "verified_files": installed["verified_files"],
+        "unverified_bytecode_files": installed["unverified_bytecode_files"],
         "data_rights": "NOT_APPLICABLE_CODE",
         "model_weights": "NONE",
     }
