@@ -11,8 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from twelve_six.checkpoint import CheckpointIntegrityError
-from twelve_six.checkpoint import hf_export as hf
+from twelve_six.checkpoint import CheckpointIntegrityError, hf_export as hf
 from twelve_six.tokenization.byte import (
     BYTE_TOKENIZER_HASH,
     BYTE_VOCAB_HASH,
