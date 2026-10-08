@@ -86,7 +86,7 @@ def test_unverified_or_self_generated_evidence_cannot_update_self_model(tmp_path
         with pytest.raises((SelfModelError, ValueError)):
             store.append(bad, expected_revision=0, verifier=trusted)
     with pytest.raises(SelfModelError):
-        store.append(observation(), expected_revision=0, verifier=lambda _: True if False else False)
+        store.append(observation(), expected_revision=0, verifier=lambda _: False)
     with pytest.raises(SelfModelError):
         store.append(observation(), expected_revision=0, verifier=None)
     assert store.history() == ()
