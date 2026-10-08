@@ -105,11 +105,27 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
     _require(stages["reserved_eval"]["physical_s7_manifest_sha256"] ==
              stages["near_dedup"]["manifest_sha256"],
              "S7-S8 decontamination lineage disconnected")
-    mixture_doc = _read_gate(candidate / "corpus-mixture-manifest.json")
-    _require(mixture_doc["dataset_candidate_sha256"] == mixture_hash
-             and mixture_doc["physical_s8_manifest_sha256"] ==
-             stages["reserved_eval"]["manifest_sha256"],
-             "S8-S9 mixture lineage disconnected")
+    mixture_raw = physical._read_destination(
+        candidate / "corpus-mixture-manifest.json"
+    )
+    try:
+        mixture_doc = json.loads(mixture_raw.decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise QualificationDenied("invalid physical mixture JSON") from exc
+    _require(type(mixture_doc) is dict
+             and mixture_raw == _canonical(mixture_doc),
+             "noncanonical physical mixture JSON")
+    mixture_core = {
+        k: v for k, v in mixture_doc.items() if k != "dataset_candidate_sha256"
+    }
+    _require(
+        mixture_doc.get("dataset_candidate_sha256") == _digest(_canonical(mixture_core))
+        and mixture_doc["dataset_candidate_sha256"] == mixture_hash
+        and mixture_doc["training_corpus_authorized"] is False
+        and mixture_doc["physical_s8_manifest_sha256"] ==
+        stages["reserved_eval"]["manifest_sha256"],
+        "S8-S9 mixture lineage disconnected",
+    )
     return {key: value["manifest_sha256"] for key, value in stages.items()}
 
 
