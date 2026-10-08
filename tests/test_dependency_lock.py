@@ -145,3 +145,33 @@ def test_unknown_lock_profile_is_rejected() -> None:
         build_profile_manifest(
             root=ROOT, profile_id="windows-amd64", lock_files={}, package_counts={},
         )
+
+
+def test_forged_index_parent_traversal_is_rejected_even_with_valid_self_hash(
+    tmp_path: Path,
+) -> None:
+    from twelve_six.integration.dependency_lock import (
+        canonical_json_bytes, sha256_bytes,
+    )
+
+    root = _copy_lock_fixture(tmp_path)
+    path = root / "requirements/locks/index.json"
+    index = json.loads(path.read_text(encoding="utf-8"))
+    index["profiles"]["linux-x86_64"]["path"] = "../outside.json"
+    index.pop("index_sha256")
+    index["index_sha256"] = sha256_bytes(canonical_json_bytes(index))
+    path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(DependencyLockError, match="unsafe lock path"):
+        validate_lock_index(root=root, index_path="requirements/locks/index.json")
+
+
+def test_lock_symlink_is_rejected_even_if_contents_hash_match(tmp_path: Path) -> None:
+    root = _copy_lock_fixture(tmp_path)
+    path = root / "requirements/locks/linux-x86_64/runtime.lock.txt"
+    backup = path.with_name("runtime.lock.real")
+    path.rename(backup)
+    path.symlink_to(backup.name)
+
+    with pytest.raises(DependencyLockError, match="symlink lock path refused"):
+        validate_lock_index(root=root, index_path="requirements/locks/index.json")
