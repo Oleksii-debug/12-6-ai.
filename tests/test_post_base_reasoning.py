@@ -7,7 +7,11 @@ import pytest
 
 from twelve_six.post_base_instruction import canonical_digest
 from twelve_six.post_base_reasoning import (
-    ReasoningRecipe, TinyPolicy, VerifiedTask, run_verified_rl, verify_reasoning_run,
+    ReasoningRecipe,
+    TinyPolicy,
+    VerifiedTask,
+    run_verified_rl,
+    verify_reasoning_run,
 )
 
 H = "a" * 64
