@@ -360,7 +360,9 @@ class SchedulerStore:
             if item is None or item.status not in ("leased", "paused"):
                 raise SchedulerError("nothing recoverable for this task")
             state = self.tasks.load(task_id)
-            if not self._safe(state) or not callable(verifier) or verifier(state) is not True:
+            if not self._safe(state):
+                raise SchedulerError("unresolved effect requires an external receipt")
+            if not callable(verifier) or verifier(state) is not True:
                 raise SchedulerError("external reconciliation evidence absent")
             if item.status == "paused" and item.pause_reason == "budget_exhausted":
                 raise SchedulerError("budget cannot be replenished by recovery")
