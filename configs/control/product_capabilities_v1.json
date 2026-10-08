@@ -870,7 +870,7 @@
     {
       "capability_id": "post-base-instruction-descendant",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.instruction_post_training.InstructionRecipe",
       "dependencies": [
         "unified-generation-identity",
@@ -882,7 +882,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -903,8 +903,8 @@
           "target": "source:src/twelve_six/instruction_post_training.py"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Plan 6 Section 2 candidate awaiting exact-head component/adversarial qualification, integration and accepted-main readback. CPU fixture is not training authorization."
+      "integrated_result": "PR #3119 merged on main e3dc8533ebe051feb8ec77bca0564c0db197dd8e; exact source blob c845227868639cd3555202d3130adbcb0b468656 and tests blob 131d234df631e3ce98c88658cb116fe6cd38ff5f; 24/24 local fixture tests with temporary D02 interface shim, Python compile PASS. Hosted CI #37729086102 queued, NOT claimed green. Bounded CPU experiment only; no real model/campaign promotion.",
+      "unavailable_reason": null
     }
   ],
   "journeys": [
