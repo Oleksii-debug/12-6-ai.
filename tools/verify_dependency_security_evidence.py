@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import subprocess
 from pathlib import Path
 
 from _dependency_contract_loader import load_dependency_contracts
@@ -22,6 +23,11 @@ def main() -> int:
     parser.add_argument("--max-age-hours", type=float, default=168.0)
     parser.add_argument("--require-no-review-findings", action="store_true")
     args = parser.parse_args()
+    actual_sha = subprocess.check_output(
+        ["git", "-C", str(args.root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual_sha != args.source_sha:
+        raise ValueError("evidence source SHA does not match checked-out HEAD")
 
     evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
     validated = SECURITY.validate_security_evidence(

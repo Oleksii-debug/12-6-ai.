@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib
 import json
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -139,6 +140,11 @@ def main() -> int:
     parser.add_argument("--notices-out", type=Path, default=Path("third-party-notices.json"))
     parser.add_argument("--fail-on-review-required", action="store_true")
     args = parser.parse_args()
+    actual_sha = subprocess.check_output(
+        ["git", "-C", str(args.root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual_sha != args.source_sha:
+        raise EvidenceCollectionError("source SHA does not match checked-out HEAD")
 
     sbom = SECURITY.build_lock_sbom(root=args.root, source_sha=args.source_sha)
     components = SECURITY.unique_components(sbom)
