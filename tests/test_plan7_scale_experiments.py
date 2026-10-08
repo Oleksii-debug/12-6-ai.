@@ -6,7 +6,6 @@ from dataclasses import replace
 import pytest
 import torch
 
-from twelve_six.model import InitSpec, ModelSpec
 from twelve_six.accelerated_scaling import (
     ArchitectureHypothesis,
     ProxyBudget,
@@ -17,6 +16,7 @@ from twelve_six.accelerated_scaling import (
     estimate_proxy_resources,
     run_proxy,
 )
+from twelve_six.model import InitSpec, ModelSpec
 
 
 def spec() -> ModelSpec:
