@@ -296,6 +296,18 @@ class TaskStore:
         def update(old: TaskSnapshot) -> TaskSnapshot:
             if checkpoint_id == old.checkpoint_id:
                 raise StateError("new checkpoint_id required")
+            if type(pending_effects) is not tuple:
+                raise StateError("pending_effects must be a tuple")
+            existing = {effect.effect_id: effect for effect in old.pending_effects}
+            incoming = {effect.effect_id: effect for effect in pending_effects
+                        if isinstance(effect, PendingEffect)}
+            if len(incoming) != len(pending_effects):
+                raise StateError("invalid or duplicate pending effects")
+            if any(incoming.get(key) != effect for key, effect in existing.items()):
+                raise StateError("checkpoint cannot erase or rewrite a reserved effect")
+            if any(effect.status != "pending" for effect_id, effect in incoming.items()
+                   if effect_id not in existing):
+                raise StateError("new effects must begin pending")
             return replace(
                 old, revision=old.revision + 1, step_id=step_id,
                 checkpoint_id=checkpoint_id, pending_effects=pending_effects,
