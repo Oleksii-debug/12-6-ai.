@@ -101,6 +101,7 @@ def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value
         "https://example.org/\\nambiguous",
         "https://example.org:invalid/archive",
         "https://example.org:0/archive",
+        "https://example.org:/archive",
         "https://github.com\u200b.evil.example/archive",
         "https://github.com\u202eevil.example/archive",
         "https://github.com%2Eevil.example/archive",
