@@ -894,7 +894,7 @@
         {
           "vector_id": "plan6-instruction-integration",
           "level": "integration",
-          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py tests/test_training.py"
+          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py tests/test_trainer_checkpoint_adapter.py"
         }
       ],
       "evidence_targets": [
