@@ -42,6 +42,11 @@ jobs:
         run: |
           ruff check src/twelve_six/third_party_reuse.py tests/test_plan1_section3_reuse.py tools/plan1_dependency_inventory.py tests/test_plan1_dependency_inventory.py
           pytest -q tests/test_plan1_section3_reuse.py tests/test_plan1_dependency_inventory.py
+      - name: Plan 1 Section 4 exact-source offline environment tests
+        if: github.event_name == 'pull_request' && github.head_ref == 'plan1/s4-environment-locks-20261008'
+        run: |
+          python -m ruff check src/twelve_six/environment_lock.py tests/test_plan1_environment_lock.py tools/plan1_environment.py
+          python -m pytest -q tests/test_plan1_environment_lock.py
       - run: ruff check src tests
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
@@ -60,6 +65,31 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           path: artifacts/eval647/current_corpus_overlap_v1.json
+
+  plan1-s4-clean-windows:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/s4-environment-locks-20261008'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Bind exact candidate and test isolated Windows offline restore
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "${{ github.event.pull_request.head.sha }}") { exit 1 }
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_plan1_environment_lock.py
 
   d03-current-clean-physical:
     if: >-
