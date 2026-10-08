@@ -113,7 +113,6 @@ def test_unknown_effect_never_automatically_reissued(tmp_path):
     s = scheduler(tmp_path)
     s.register(spec())
     token = acquire(s)
-    state = s.tasks.load("task-a")
     nextstate = s.tasks.checkpoint(
         "task-a", expected_epoch=token.control_epoch,
         expected_revision=token.task_revision, step_id="tool",
