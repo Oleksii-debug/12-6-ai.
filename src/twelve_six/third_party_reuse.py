@@ -350,7 +350,8 @@ def verify_installed_wheel_record(
     if not _hash(independently_pinned_record_sha256):
         raise ValueError("independent installed RECORD pin required")
 
-    normalize = lambda value: re.sub(r"[-_.]+", "-", value).lower()
+    def normalize(value: str) -> str:
+        return re.sub(r"[-_.]+", "-", value).lower()
     dist = metadata.distribution(package)
     actual_name = dist.metadata.get("Name")
     if (
