@@ -118,6 +118,20 @@ def test_exact_code_license_security_rights_and_hash_check():
             validate_reuse_catalog(wire(other))
 
 
+
+@pytest.mark.parametrize("boundary", [
+    "adapter:",
+    "adapter:pytorch.model_registry",
+    "adapter:pytorch:checkpoint",
+    "adapter:checkpoint",
+])
+def test_adapter_path_cannot_smuggle_duplicate_authority(boundary):
+    candidate = json.loads(RAW)
+    candidate["assets"][0]["replacement_boundary"] = boundary
+    with pytest.raises(ValueError, match="adapter boundary"):
+        validate_reuse_catalog(wire(candidate))
+
+
 def test_closed_canonical_lineage_is_deterministic():
     assert validate_base_lineage(lineage(), GENESIS) == validate_base_lineage(
         copy.deepcopy(lineage()), copy.deepcopy(GENESIS)
