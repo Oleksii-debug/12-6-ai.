@@ -64,3 +64,30 @@ def test_rejects_rehashed_absolute_profile_path(tmp_path: Path) -> None:
     path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     with pytest.raises(DependencyLockError, match="unsafe|absolute|escape"):
         validate_lock_index(root=checkout, index_path=INDEX)
+
+
+def _load_verifier():
+    import importlib.util
+
+    path = ROOT / "tools/verify_locked_environment.py"
+    spec = importlib.util.spec_from_file_location("plan1_s4_verifier", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_windows_venv_python_layout(tmp_path: Path) -> None:
+    verifier = _load_verifier()
+    environment = tmp_path / "Windows Unicode Україна" / "venv"
+    executable = environment / "Scripts" / "python.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"fixture")
+    assert verifier._venv_python(environment) == executable
+
+
+def test_zip_safe_reproducible_epoch() -> None:
+    verifier = _load_verifier()
+    environment = verifier._offline_env()
+    assert environment["PIP_NO_INDEX"] == "1"
+    assert int(environment["SOURCE_DATE_EPOCH"]) >= 315532800
