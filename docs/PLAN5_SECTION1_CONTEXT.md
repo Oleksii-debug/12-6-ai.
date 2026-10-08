@@ -2,7 +2,7 @@
 
 ## Contract
 
-- Python entrypoint: `twelve_six.agent_runtime.context.build_context`.
+- Python entrypoint: `twelve_six_agent_runtime.context.build_context`.
 - Versioned provider-neutral envelope: `12-6.agent-context.v1`.
 - Trusted caller supplies `ContextEntry(entry_id, source_id, source_kind, recency, priority, content, critical)`; generated/retrieved content must never self-declare trusted source identity or `critical`.
 - Critical content may be pinned only for verified `system` / `owner` sources. Every protected entry is retained **byte for byte**, or the operation fails closed with `ContextError`.
