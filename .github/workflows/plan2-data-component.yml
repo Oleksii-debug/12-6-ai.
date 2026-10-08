@@ -8,12 +8,20 @@ on:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
+      - 'configs/data/plan2_reserved_eval_fixture_v1.json'
+      - 'configs/data/plan2_corpus_mixture_policy_v1.json'
+      - 'configs/data/plan2_cluster_split_policy_v1.json'
+      - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
+      - 'configs/data/plan2_reserved_eval_fixture_v1.json'
+      - 'configs/data/plan2_corpus_mixture_policy_v1.json'
+      - 'configs/data/plan2_cluster_split_policy_v1.json'
+      - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
@@ -68,6 +76,85 @@ jobs:
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-first.json"
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-restart.json"
           cmp "${RUNNER_TEMP}/plan2-near-first.json" "${RUNNER_TEMP}/plan2-near-restart.json"
+      - name: Lint Plan 2 Section 8 reserved evaluation firewall
+        run: ruff check tools/plan2_reserved_eval_firewall_v1.py tests/test_plan2_reserved_eval_firewall_v1.py
+      - name: Qualify Plan 2 Section 8 reserve / exclusion / negative / restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_reserved_eval_firewall_v1.py tests/test_data232_decontamination_authority_v2.py
+      - name: Verify S8 physical firewall CLI restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_reserved_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-s8" > "${RUNNER_TEMP}/plan2-s8-first.json"
+          python tools/plan2_reserved_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-s8" > "${RUNNER_TEMP}/plan2-s8-restart.json"
+          python tools/plan2_reserved_eval_firewall_v1.py --out-dir "${RUNNER_TEMP}/plan2-s8-fresh" > "${RUNNER_TEMP}/plan2-s8-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s8-first.json" "${RUNNER_TEMP}/plan2-s8-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-s8-first.json" "${RUNNER_TEMP}/plan2-s8-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s8/reserved-eval-firewall-manifest.json" "${RUNNER_TEMP}/plan2-s8-fresh/reserved-eval-firewall-manifest.json"
+      - name: Lint Plan 2 Section 9 corpus mixture and tests
+        run: ruff check tools/plan2_corpus_mixture_v1.py tests/test_plan2_corpus_mixture_v1.py
+      - name: Qualify S9 weights caps versioning decontamination recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_corpus_mixture_v1.py tests/test_plan2_reserved_eval_firewall_v1.py tests/test_data232_decontamination_authority_v2.py
+      - name: Verify S9 exact restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9" > "${RUNNER_TEMP}/plan2-s9-first.json"
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9" > "${RUNNER_TEMP}/plan2-s9-restart.json"
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9-fresh" > "${RUNNER_TEMP}/plan2-s9-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s9/corpus-mixture-manifest.json" "${RUNNER_TEMP}/plan2-s9-fresh/corpus-mixture-manifest.json"
+      - name: Lint Plan 2 Section 10 document cluster split
+        run: ruff check tools/plan2_cluster_split_v1.py tests/test_plan2_cluster_split_v1.py
+      - name: Qualify S10 train validation test family isolation and negative recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_cluster_split_v1.py tests/test_split_robustness.py
+      - name: Verify S10 LOCAL_FREE fixture restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10" > "${RUNNER_TEMP}/plan2-s10-first.json"
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10" > "${RUNNER_TEMP}/plan2-s10-restart.json"
+          python tools/plan2_cluster_split_v1.py --out-dir "${RUNNER_TEMP}/plan2-s10-fresh" > "${RUNNER_TEMP}/plan2-s10-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s10-first.json" "${RUNNER_TEMP}/plan2-s10-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-s10-first.json" "${RUNNER_TEMP}/plan2-s10-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s10/cluster-split-manifest.json" "${RUNNER_TEMP}/plan2-s10-fresh/cluster-split-manifest.json"
+      - name: Verify actual S9 single-document split fails closed
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          if python tools/plan2_cluster_split_v1.py --physical-candidate --out-dir "${RUNNER_TEMP}/plan2-s10-single-source"; then
+            echo "ERROR: single-document candidate was incorrectly released" >&2
+            exit 1
+          fi
+          test ! -f "${RUNNER_TEMP}/plan2-s10-single-source/cluster-split-manifest.json"
+      - name: Lint Plan 2 Section 11 tokenizer candidate component
+        run: ruff check tools/plan2_tokenizer_candidates_v1.py tests/test_plan2_tokenizer_candidates_v1.py
+      - name: Qualify Plan 2 Section 11 tokenizer candidates and incumbent compatibility
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_tokenizer_candidates_v1.py tests/test_tokenization.py tests/test_tokenizer_migration_compatibility.py
+      - name: Verify S11 fixture probe restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_tokenizer_candidates_v1.py --out-dir "$RUNNER_TEMP/plan2-s11" > "$RUNNER_TEMP/plan2-s11-first.json"
+          python tools/plan2_tokenizer_candidates_v1.py --out-dir "$RUNNER_TEMP/plan2-s11" > "$RUNNER_TEMP/plan2-s11-restart.json"
+          python tools/plan2_tokenizer_candidates_v1.py --out-dir "$RUNNER_TEMP/plan2-s11-clean" > "$RUNNER_TEMP/plan2-s11-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s11-first.json" "$RUNNER_TEMP/plan2-s11-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s11-first.json" "$RUNNER_TEMP/plan2-s11-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s11/tokenizer-candidate-manifest.json" "$RUNNER_TEMP/plan2-s11-clean/tokenizer-candidate-manifest.json"
+      - name: Lint Plan 2 Section 12 tokenizer fit and freeze
+        run: ruff check tools/plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_tokenizer_fit_freeze_v1.py
+      - name: Qualify Plan 2 Section 12 immutable tokenizer and compatibility
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_tokenizer_candidates_v1.py tests/test_tokenization.py tests/test_tokenizer_migration_compatibility.py tests/test_plan2_cluster_split_v1.py
+      - name: Verify S12 frozen fixture restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12" > "$RUNNER_TEMP/plan2-s12-first.json"
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12" > "$RUNNER_TEMP/plan2-s12-restart.json"
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12-clean" > "$RUNNER_TEMP/plan2-s12-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s12-first.json" "$RUNNER_TEMP/plan2-s12-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s12-first.json" "$RUNNER_TEMP/plan2-s12-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s12/frozen-tokenizer-fixture.json" "$RUNNER_TEMP/plan2-s12-clean/frozen-tokenizer-fixture.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
@@ -84,3 +171,34 @@ jobs:
             ${{ runner.temp }}/plan2-first-readback.json
             ${{ runner.temp }}/plan2-restart-readback.json
           if-no-files-found: error
+
+      - name: Lint Plan 2 Section 13 deterministic fixture packing
+        run: ruff check tools/plan2_deterministic_packing_v1.py tests/test_plan2_deterministic_packing_v1.py
+      - name: Qualify Plan 2 Section 13 packing negative recovery and parent contracts
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_deterministic_packing_v1.py tests/test_plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_cluster_split_v1.py
+      - name: Verify S13 packed shards restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13" > "$RUNNER_TEMP/plan2-s13-first.json"
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13" > "$RUNNER_TEMP/plan2-s13-restart.json"
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13-clean" > "$RUNNER_TEMP/plan2-s13-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s13-first.json" "$RUNNER_TEMP/plan2-s13-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s13-first.json" "$RUNNER_TEMP/plan2-s13-clean.json"
+          diff -r "$RUNNER_TEMP/plan2-s13" "$RUNNER_TEMP/plan2-s13-clean"
+
+      - name: Lint Plan 2 Section 14 ordered exposures
+        run: ruff check tools/plan2_exposure_ledger_v1.py tests/test_plan2_exposure_ledger_v1.py
+      - name: Qualify Plan 2 Section 14 target IDs, causal chain and restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_exposure_ledger_v1.py tests/test_plan2_deterministic_packing_v1.py
+      - name: Verify S14 exact replay, clean rebuild, and immutable release
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s14-input"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14" > "$RUNNER_TEMP/plan2-s14-first.json"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14" > "$RUNNER_TEMP/plan2-s14-restart.json"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14-clean" > "$RUNNER_TEMP/plan2-s14-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-clean.json"
+          diff -r "$RUNNER_TEMP/plan2-s14" "$RUNNER_TEMP/plan2-s14-clean"

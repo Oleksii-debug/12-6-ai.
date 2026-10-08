@@ -1,0 +1,42 @@
+{
+  "schema_version": "12-6.plan2-tokenizer-architecture-policy.v1",
+  "revision": "plan2-s11-local-free-2026-10-08-v1",
+  "purpose": "LOCAL_FREE_ARCHITECTURE_PROBE_NO_FIT",
+  "candidates": [
+    {
+      "candidate_id": "canonical-byte-baseline-v1",
+      "algorithm": "utf8_byte",
+      "normalization": "none",
+      "vocab_target": 256,
+      "special_token_names": [],
+      "probe_pieces": []
+    },
+    {
+      "candidate_id": "byte-bpe-32k-candidate-v1",
+      "algorithm": "byte_bpe",
+      "normalization": "none",
+      "vocab_target": 32768,
+      "special_token_names": [
+        "<pad>",
+        "<bos>",
+        "<eos>",
+        "<unk>"
+      ],
+      "probe_pieces": [
+        "Укра",
+        "ін",
+        "мод",
+        "token",
+        "text",
+        "def ",
+        "import ",
+        "return ",
+        "function",
+        "model",
+        "class ",
+        " data",
+        "Python"
+      ]
+    }
+  ]
+}

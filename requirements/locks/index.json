@@ -1,0 +1,23 @@
+{
+  "index_sha256": "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a",
+  "profiles": {
+    "linux-aarch64": {
+      "manifest_sha256": "d46ba893429bc6ffbc39bff65b01ec0c82b0fbdf77ba0f67bd0c65b130f0127b",
+      "path": "requirements/locks/linux-aarch64/profile.json",
+      "sha256": "6b334289b4702ef12caf62fbd529aaac0a105385255595b02a7873123cd0535d"
+    },
+    "linux-x86_64": {
+      "manifest_sha256": "228c56f5bd688785f9e6f7d02180b17423a5d6cfcf4fe12be92e7efdf72de077",
+      "path": "requirements/locks/linux-x86_64/profile.json",
+      "sha256": "263396c9e2d18afd60736d0e9c5e563c0fd463a8b37004a808debf1e4942701d"
+    },
+    "windows-x86_64": {
+      "manifest_sha256": "4a16d2c8d63321eae1d82f3eb072a39c5ac67c7450c28d55567f6027a11a2539",
+      "path": "requirements/locks/windows-x86_64/profile.json",
+      "sha256": "7ab5f9c497653cc701b89aeab5510154e1e62c1a9ea35012f8ff17d05e49e30c"
+    }
+  },
+  "project": "twelve-six-ai",
+  "python_version": "3.11.16",
+  "schema_version": "12-6.dependency-lock-index.v1"
+}
