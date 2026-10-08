@@ -46,7 +46,7 @@ def _hex(value: object, label: str) -> str:
     return value
 
 
-def _closed(properties: dict[str, dict[str, object]], required: tuple[str, ...]) -> dict[str, object]:
+def _closed(\n    properties: dict[str, dict[str, object]], required: tuple[str, ...],\n) -> dict[str, object]:
     return {"type": "object", "properties": properties,
             "required": list(required), "additionalProperties": False}
 
@@ -64,8 +64,8 @@ def ui_tool_descriptor() -> ToolDescriptor:
         input_schema=_closed({
             "snapshot_digest": _string(64), "target_digest": _string(64),
             "action": _string(32), "expected_state": _string(256),
-            "method": _string(16),
-        }, ("snapshot_digest", "target_digest", "action", "expected_state", "method")),
+            "method": _string(16), "fallback_evidence_id": _string(256),
+        }, ("snapshot_digest", "target_digest", "action", "expected_state",\n            "method", "fallback_evidence_id")),
         output_schema=_closed({
             "target_digest": _string(64), "state": _string(256),
             "ok": {"type": "boolean"},
