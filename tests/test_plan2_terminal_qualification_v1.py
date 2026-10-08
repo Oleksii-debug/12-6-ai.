@@ -177,3 +177,19 @@ def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
     )
     with pytest.raises(terminal.QualificationDenied, match="lineage disconnected"):
         terminal._audit_physical_gates(candidate, forged_hash)
+
+
+@pytest.mark.parametrize("unsafe_flag", [
+    "tokenizer_fit_authorized",
+    "evaluation_authorized",
+    "generated_auto_reentry_authorized",
+    "raw_text_emitted",
+    "real_final_test_material_accessed",
+])
+def test_signed_gate_rejects_authority_and_payload_leaks(
+    tmp_path: Path, unsafe_flag: str,
+) -> None:
+    target = tmp_path / "gate.json"
+    _signed_gate(target, **{unsafe_flag: True})
+    with pytest.raises(terminal.QualificationDenied, match="incorrectly authorizes"):
+        terminal._read_gate(target)
