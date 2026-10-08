@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.evaluation_vault import EvaluationBoundaryError, EvaluationVault
+from tools.evaluation_vault import EvaluationBoundaryError, EvaluationVault
 
 
 def setup(tmp_path: Path):
