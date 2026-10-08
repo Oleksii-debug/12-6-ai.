@@ -1,0 +1,51 @@
+name: Plan 2 Data Component Qualification
+
+on:
+  push:
+    branches:
+      - 'plan2/**'
+    paths:
+      - 'tools/plan2_*.py'
+      - 'tests/test_plan2_*.py'
+      - '.github/workflows/plan2-data-component.yml'
+  pull_request:
+    paths:
+      - 'tools/plan2_*.py'
+      - 'tests/test_plan2_*.py'
+      - '.github/workflows/plan2-data-component.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-plan2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal LOCAL_FREE test dependencies
+        run: python -m pip install pytest ruff
+      - name: Lint new Plan 2 Section 3 surfaces
+        run: ruff check tools/plan2_physical_materialization_v1.py tests/test_plan2_physical_materialization_v1.py
+      - name: Verify integrated S1-S2-S3 and incumbent DATA324
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_source_inventory_v1.py tests/test_plan2_source_admissibility_v1.py tests/test_plan2_physical_materialization_v1.py tests/test_data324_current_main_port.py
+      - name: Materialize source-level candidate and replay exact restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_physical_materialization_v1.py --out-dir "${RUNNER_TEMP}/plan2-current-candidate" > "${RUNNER_TEMP}/plan2-first-readback.json"
+          python tools/plan2_physical_materialization_v1.py --out-dir "${RUNNER_TEMP}/plan2-current-candidate" > "${RUNNER_TEMP}/plan2-restart-readback.json"
+          cmp "${RUNNER_TEMP}/plan2-first-readback.json" "${RUNNER_TEMP}/plan2-restart-readback.json"
+      - name: Retain manifest-only hash evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s3-physical-manifest
+          path: |
+            ${{ runner.temp }}/plan2-current-candidate/manifest.json
+            ${{ runner.temp }}/plan2-first-readback.json
+            ${{ runner.temp }}/plan2-restart-readback.json
+          if-no-files-found: error
