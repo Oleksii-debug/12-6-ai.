@@ -22,6 +22,10 @@ def test_three_independent_real_books_rebuild_and_restart(tmp_path: Path) -> Non
     assert first["g06_counts"]["records"] == 3
     assert len(first["g06_execution_identity_sha256"]) == 64
     assert len(first["g06_input_root_sha256"]) == 64
+    assert len(first["data232_report_sha256"]) == 64
+    assert first["data232_fixture_eval_only"] is True
+    assert first["data232_status"].startswith("PASS_")
+    assert 0 <= first["data232_excluded_record_count"] <= 3
     assert len(first["g06_privacy_policy_git_blob"]) == 40
     assert isinstance(first["g06_rejected_record_ids"], list)
     assert first["training_corpus_authorized"] is False
@@ -146,4 +150,16 @@ def test_broken_g06_privacy_identity_cannot_be_published(monkeypatch) -> None:
 
     monkeypatch.setattr(books.g06, "build_privacy_execution_authority", corrupted)
     with pytest.raises(ValueError, match="identity|hash|drift|mismatch"):
+        books.inspect(ROOT)
+
+
+def test_tampered_reserved_fixture_cannot_qualify_book_corpus(monkeypatch) -> None:
+    original = books.read_checked
+
+    def changed(root: Path, name: str) -> bytes:
+        raw = original(root, name)
+        return raw + b"tampered" if name == books.firewall.RESERVE_PATH else raw
+
+    monkeypatch.setattr(books, "read_checked", changed)
+    with pytest.raises(ValueError, match="fixture|identity|drift"):
         books.inspect(ROOT)
