@@ -8,7 +8,9 @@ import hashlib
 import hmac
 import json
 import math
+import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +159,63 @@ def require_reviewed_code(
                 raise ValueError("source hash drift")
             return dict(asset)
     raise ValueError("unknown external asset")
+
+
+
+def _hash_regular_archive(path: str | Path) -> str:
+    """Digest an actual regular review artifact without trusting path/symlink aliases."""
+    source = Path(path)
+    before = source.lstat()
+    if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
+        raise ValueError("review artifact must be a regular non-symlink file")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        handle = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError("review artifact cannot be opened safely") from exc
+    try:
+        opened = os.fstat(handle)
+        if not stat.S_ISREG(opened.st_mode) or (
+            before.st_dev, before.st_ino, before.st_size
+        ) != (opened.st_dev, opened.st_ino, opened.st_size):
+            raise ValueError("review artifact changed while opening")
+        digest = hashlib.sha256()
+        while chunk := os.read(handle, 1024 * 1024):
+            digest.update(chunk)
+        after = os.fstat(handle)
+        if (opened.st_dev, opened.st_ino, opened.st_size) != (
+            after.st_dev, after.st_ino, after.st_size
+        ):
+            raise ValueError("review artifact changed while reading")
+        return digest.hexdigest()
+    finally:
+        os.close(handle)
+
+
+def verify_reviewed_code_archive(
+    catalog: bytes,
+    name: str,
+    *,
+    source_archive: str | Path,
+    license_file: str | Path,
+    independently_pinned_catalog_sha256: str,
+) -> dict[str, Any]:
+    """Check concrete source and license bytes against a separately approved record.
+
+    This never installs or executes the reviewed asset. It does not perform the
+    human/security review: the out-of-band catalog SHA-256 must attest that review.
+    """
+    actual_source = _hash_regular_archive(source_archive)
+    approved = require_reviewed_code(
+        catalog,
+        name,
+        actual_source,
+        independently_pinned_catalog_sha256=independently_pinned_catalog_sha256,
+    )
+    license_hash = _hash_regular_archive(license_file)
+    if not hmac.compare_digest(license_hash, approved["license_evidence_sha256"]):
+        raise ValueError("reviewed code license bytes drifted")
+    return approved
 
 
 def validate_base_lineage(payload: dict[str, Any], trusted_genesis: dict[str, Any]) -> str:
