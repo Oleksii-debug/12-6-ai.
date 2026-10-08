@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.distributed_control import (
-    ParallelMesh, ResourceAdmission, admit_distributed, begin_run, begin_step,
+    ParallelMesh, begin_run, begin_step,
     commit_step,
 )
 from twelve_six.distributed_transport import (
