@@ -117,6 +117,18 @@ class EvaluationVault:
         except FileExistsError:
             if _digest(_regular_private(path)) != digest:
                 raise EvaluationBoundaryError("reserved dataset collision") from None
+        manifest = self.reserved / (digest + ".manifest.json")
+        metadata = _canonical({"schema_version": SCHEMA, "dataset_sha256": digest,
+                               "dataset_version": dataset_version})
+        try:
+            with manifest.open("xb") as f:
+                f.write(metadata)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(manifest, 0o600)
+        except FileExistsError:
+            if _regular_private(manifest) != metadata:
+                raise EvaluationBoundaryError("immutable dataset version mismatch") from None
         return {"schema_version": SCHEMA, "dataset_sha256": digest,
                 "dataset_version": dataset_version}
 
@@ -140,6 +152,11 @@ class EvaluationVault:
                                                 for k, v in predictions.items()):
             raise EvaluationBoundaryError("invalid predictions")
         try:
+            metadata = _regular_private(
+                self.reserved / (dataset_ref["dataset_sha256"] + ".manifest.json")
+            )
+            if json.loads(metadata) != dataset_ref:
+                raise EvaluationBoundaryError("dataset version binding mismatch")
             data = _regular_private(self.reserved / (dataset_ref["dataset_sha256"] + ".jsonl"))
             if _digest(data) != dataset_ref["dataset_sha256"]:
                 raise EvaluationBoundaryError("reserved digest mismatch")
@@ -169,7 +186,8 @@ class EvaluationVault:
         except FileExistsError:
             if _regular_private(result_path) != encoded:
                 raise EvaluationBoundaryError("immutable result mismatch") from None
-        return {"schema_version": SCHEMA, "evaluation_id": evaluation_id, "state": "SEALED"}
+        return {"schema_version": SCHEMA, "evaluation_id": evaluation_id,
+                "result_sha256": _digest(encoded), "state": "SEALED"}
 
     def terminal_report(
         self,
@@ -178,14 +196,17 @@ class EvaluationVault:
         trusted_terminal_ids: frozenset[str],
     ) -> dict[str, Any]:
         """Release only an independently verified exact terminal evaluation identity."""
-        if (type(sealed) is not dict or set(sealed) != {"schema_version", "evaluation_id", "state"}
+        if (type(sealed) is not dict or set(sealed) != {"schema_version", "evaluation_id", "result_sha256", "state"}
                 or sealed.get("schema_version") != SCHEMA or sealed.get("state") != "SEALED"
-                or not _sha(sealed.get("evaluation_id"))):
+                or not _sha(sealed.get("evaluation_id")) or not _sha(sealed.get("result_sha256"))):
             raise EvaluationBoundaryError("invalid sealed receipt")
         if type(trusted_terminal_ids) is not frozenset or sealed["evaluation_id"] not in trusted_terminal_ids:
             raise EvaluationBoundaryError("terminal evaluation authority unverified")
         try:
-            payload = json.loads(_regular_private(self.results / (sealed["evaluation_id"] + ".json")))
+            raw = _regular_private(self.results / (sealed["evaluation_id"] + ".json"))
+            if _digest(raw) != sealed["result_sha256"]:
+                raise EvaluationBoundaryError("result digest drift")
+            payload = json.loads(raw)
             if payload["evaluation_id"] != sealed["evaluation_id"]:
                 raise EvaluationBoundaryError("result identity drift")
             identity = {k: payload[k] for k in (
