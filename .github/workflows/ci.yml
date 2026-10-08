@@ -37,6 +37,11 @@ jobs:
         run: |
           python -m ruff check tests/test_plan7_terminal_scaling_qualification.py
           python -m pytest -q tests/test_plan7_*.py
+      - name: Plan 1 Section 3 exact-head scoped qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3103
+        run: |
+          ruff check src/twelve_six/third_party_reuse.py tests/test_plan1_section3_reuse.py tools/plan1_dependency_inventory.py tests/test_plan1_dependency_inventory.py
+          pytest -q tests/test_plan1_section3_reuse.py tests/test_plan1_dependency_inventory.py
       - run: ruff check src tests
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
