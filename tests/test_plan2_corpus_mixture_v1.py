@@ -63,6 +63,12 @@ def test_exact_pinned_policy_and_current_source_metadata():
     policy = _policy()
     assert mixture._git_blob(POLICY_RAW) == mixture.POLICY_GIT_BLOB
     assert policy["sources"][0]["source_id"] == SOURCE
+    authority_seed = json.loads(
+        (ROOT / "configs/data/plan2_source_inventory_v1.json").read_text(
+            encoding="utf-8"))
+    assert policy["sources"][0]["source_family"] == next(
+        src["source_family"] for src in authority_seed["sources"]
+        if src["source_id"] == SOURCE)
     assert policy["sources"][0]["domain"] == "technical_documentation"
     assert policy["sources"][0]["sampling_weight"] == 1
 
