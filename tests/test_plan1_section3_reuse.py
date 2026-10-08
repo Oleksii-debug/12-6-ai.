@@ -958,8 +958,8 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
         hashlib.sha256(installed_file.read_bytes()).digest()
     ).rstrip(b"=").decode("ascii")
     record = (
-        f"example/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\\n"
-        "example-1.2.3.dist-info/RECORD,,\\n"
+        f"example/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\n"
+        "example-1.2.3.dist-info/RECORD,,\n"
     )
 
     class FakeDistribution:
