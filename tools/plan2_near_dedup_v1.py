@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from tools import plan2_exact_dedup_v1 as exact
-from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
+from tools.plan2_physical_materialization_v1 import _atomic_write, _json, _read_destination
 
 SCHEMA = "12-6.plan2-near-dedup-candidate.v1"
 POLICY = "NFKC_CASEFOLD_TOKEN_TEMPLATE_CHAR5_COMPLETE_LINK_V1"
@@ -164,7 +164,7 @@ def audit_samples(root: Path) -> dict[str, Any]:
     _need(path.is_file() and not path.is_symlink(), "S7 audit fixture missing")
     raw = path.read_bytes()
     try:
-        data = json.loads(raw.decode("utf-8", "strict"))
+        data = _json(raw)
     except (ValueError, UnicodeError) as exc:
         raise NearDedupError("S7 audit fixture invalid") from exc
     _need(isinstance(data, dict) and set(data) == {"schema", "samples"} and
