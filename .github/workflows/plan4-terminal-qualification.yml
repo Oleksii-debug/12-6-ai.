@@ -1,0 +1,60 @@
+name: Plan 4 Terminal Qualification
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tests/test_plan4_terminal_qualification.py"
+      - "tools/evaluation_vault.py"
+      - "tools/evaluation_harness.py"
+      - "tools/inference_runtime.py"
+      - "tools/plan4_*.py"
+      - "tests/test_plan4_*.py"
+      - "docs/PLAN4_SECTION10_TERMINAL_QUALIFICATION.md"
+      - ".github/workflows/plan4-terminal-qualification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tests/test_plan4_terminal_qualification.py"
+      - "tools/evaluation_vault.py"
+      - "tools/evaluation_harness.py"
+      - "tools/inference_runtime.py"
+      - "tools/plan4_*.py"
+      - "tests/test_plan4_*.py"
+      - "docs/PLAN4_SECTION10_TERMINAL_QUALIFICATION.md"
+      - ".github/workflows/plan4-terminal-qualification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install LOCAL_FREE CPU test environment
+        run: python -m pip install -e ".[dev]"
+      - name: Lint final qualification tests
+        run: ruff check tests/test_plan4_terminal_qualification.py
+      - name: Compile final qualification tests
+        run: python -m py_compile tests/test_plan4_terminal_qualification.py
+      - name: Execute accepted Plan 4 contracts and cross-section tiny-trained gate
+        run: |
+          python -m pytest -q \
+            tests/test_evaluation_vault_plan4.py \
+            tests/test_evaluation_harness_plan4.py \
+            tests/test_inference_runtime_plan4.py \
+            tests/test_hf_export.py \
+            tests/test_hf_export_transactional.py \
+            tests/test_plan4_safe_export.py \
+            tests/test_plan4_backend_parity.py \
+            tests/test_plan4_model_service.py \
+            tests/test_plan4_model_gateway.py \
+            tests/test_plan4_multimodel_serving.py \
+            tests/test_plan4_serving_observability.py \
+            tests/test_plan4_terminal_qualification.py
