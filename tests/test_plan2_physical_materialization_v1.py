@@ -30,7 +30,7 @@ def test_current_candidate_physically_materializes_with_two_distinct_exact_hashe
     assert receipt["raw"]["sha256"] != receipt["normalized"]["sha256"]
     assert receipt["raw"]["sha256"] == _digest((dest / "raw.snapshot").read_bytes())
     assert receipt["normalized"]["sha256"] == _digest((dest / "normalized.utf8").read_bytes())
-    assert set(p.name for p in dest.iterdir()) == {"raw.snapshot", "normalized.utf8", "manifest.json"}
+    assert {p.name for p in dest.iterdir()} == {"raw.snapshot", "normalized.utf8", "manifest.json"}
     assert json.loads((dest / "manifest.json").read_text()) == receipt
 
 
@@ -53,7 +53,7 @@ def test_interrupted_before_manifest_resumes_without_duplicate_members(tmp_path)
     repaired = stage_candidate_cohort(ROOT, dest)
     assert repaired == receipt
     assert not (dest / ".plan2-partial-crash").exists()
-    assert set(p.name for p in dest.iterdir()) == {"raw.snapshot", "normalized.utf8", "manifest.json"}
+    assert {p.name for p in dest.iterdir()} == {"raw.snapshot", "normalized.utf8", "manifest.json"}
 
 
 @pytest.mark.parametrize("member", ["raw.snapshot", "normalized.utf8", "manifest.json"])
