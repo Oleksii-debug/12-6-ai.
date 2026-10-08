@@ -171,3 +171,34 @@ jobs:
             ${{ runner.temp }}/plan2-first-readback.json
             ${{ runner.temp }}/plan2-restart-readback.json
           if-no-files-found: error
+
+      - name: Lint Plan 2 Section 13 deterministic fixture packing
+        run: ruff check tools/plan2_deterministic_packing_v1.py tests/test_plan2_deterministic_packing_v1.py
+      - name: Qualify Plan 2 Section 13 packing negative recovery and parent contracts
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_deterministic_packing_v1.py tests/test_plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_cluster_split_v1.py
+      - name: Verify S13 packed shards restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13" > "$RUNNER_TEMP/plan2-s13-first.json"
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13" > "$RUNNER_TEMP/plan2-s13-restart.json"
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s13-clean" > "$RUNNER_TEMP/plan2-s13-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s13-first.json" "$RUNNER_TEMP/plan2-s13-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s13-first.json" "$RUNNER_TEMP/plan2-s13-clean.json"
+          diff -r "$RUNNER_TEMP/plan2-s13" "$RUNNER_TEMP/plan2-s13-clean"
+
+      - name: Lint Plan 2 Section 14 ordered exposures
+        run: ruff check tools/plan2_exposure_ledger_v1.py tests/test_plan2_exposure_ledger_v1.py
+      - name: Qualify Plan 2 Section 14 target IDs, causal chain and restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_exposure_ledger_v1.py tests/test_plan2_deterministic_packing_v1.py
+      - name: Verify S14 exact replay, clean rebuild, and immutable release
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_deterministic_packing_v1.py --out-dir "$RUNNER_TEMP/plan2-s14-input"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14" > "$RUNNER_TEMP/plan2-s14-first.json"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14" > "$RUNNER_TEMP/plan2-s14-restart.json"
+          python tools/plan2_exposure_ledger_v1.py --shards-dir "$RUNNER_TEMP/plan2-s14-input" --out-dir "$RUNNER_TEMP/plan2-s14-clean" > "$RUNNER_TEMP/plan2-s14-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-clean.json"
+          diff -r "$RUNNER_TEMP/plan2-s14" "$RUNNER_TEMP/plan2-s14-clean"
