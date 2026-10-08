@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -1241,3 +1242,50 @@ def test_signed_physical_authority_ignores_rebound_class_methods(
             resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
         )
 
+
+
+def test_operator_keyboard_interrupt_terminates_qualified_process_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    action = QualificationAction(
+        action_id="keyboard-interrupt",
+        pytest_targets=("tests/test_physical_qualification_section5.py",),
+        timeout_seconds=10,
+        max_output_bytes=256,
+        required_resources=(),
+    )
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"")
+            self.wait_calls = 0
+
+        def wait(self, timeout: int | None = None) -> int:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise KeyboardInterrupt
+            return 130
+
+    process = FakeProcess()
+    terminated: list[FakeProcess] = []
+    monkeypatch.setattr(
+        physical_qualification, "_validate_checked_in_pytest_targets", lambda *_: None
+    )
+    monkeypatch.setattr(
+        physical_qualification, "_popen_process_group_kwargs", lambda: {}
+    )
+    monkeypatch.setattr(
+        physical_qualification.subprocess, "Popen", lambda *_, **__: process
+    )
+    monkeypatch.setattr(
+        physical_qualification,
+        "_terminate_process_tree",
+        lambda item: terminated.append(item),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        run_bounded_pytest(action, tmp_path)
+    assert terminated == [process]
+    assert process.wait_calls == 2
