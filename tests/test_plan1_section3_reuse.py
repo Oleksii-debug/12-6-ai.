@@ -713,10 +713,10 @@ def test_wheel_record_current_environment_console_scripts(monkeypatch, tmp_path)
     self_row = "example-1.2.3.dist-info/RECORD,,\n"
 
     class Installed:
-        metadata = {"Name": "example"}
         version = "1.2.3"
 
         def __init__(self):
+            self.metadata = {"Name": "example"}
             self.record = module_row + row("../../../bin/wheel-tool", b"script") + self_row
 
         def read_text(self, name):
