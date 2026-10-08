@@ -236,6 +236,10 @@ class InferenceSession:
         for _ in range(self.config.max_new_tokens):
             if self._cancel_requested:
                 break
+            if (_model_weights_sha(self.runtime.model) != self.runtime.model_weights_sha256
+                    or _object_sha(self.runtime.tokenizer.identity.to_dict())
+                    != self.runtime.tokenizer_sha256):
+                raise InferenceError("model/tokenizer drift during streaming")
             try:
                 produced = self.runtime.model.generate(
                     self._input, max_new_tokens=1,
