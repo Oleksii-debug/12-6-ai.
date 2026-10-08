@@ -4,6 +4,8 @@ from twelve_six.artifact_identity import (
     ParentBinding, bind_artifact, parse_generation_identity_manifest, verify_parent_bindings,
 )
 from twelve_six.system_architecture import (
+    CognitiveCoreBinding, CognitiveCoreIdentity, CoreReplacementReceipt,
+    ProductAssembly, replace_cognitive_core,
     InterfaceContract, RuntimeShellContract, SystemArchitectureManifest, TypedBoundary,
     canonical_runtime_shell_v1, canonical_system_architecture_v1,
 )
@@ -17,7 +19,9 @@ __all__ = [
     "ArtifactKind", "ArtifactManifest", "ArtifactRef", "GenerationIdentityManifest",
     "ParentBinding", "bind_artifact", "parse_generation_identity_manifest",
     "verify_parent_bindings", "InterfaceContract", "RuntimeShellContract",
-    "SystemArchitectureManifest", "TypedBoundary", "canonical_runtime_shell_v1",
+    "SystemArchitectureManifest", "TypedBoundary",
+    "CognitiveCoreBinding", "CognitiveCoreIdentity", "CoreReplacementReceipt",
+    "ProductAssembly", "replace_cognitive_core", "canonical_runtime_shell_v1",
     "canonical_system_architecture_v1", "ContractPackageError", "EvidenceRef",
     "ErrorRecord", "LifecycleObservation", "baseline_manifest_v1", "encode_v1",
     "decode_v1", "ContractEvolutionError", "propose_version_change",

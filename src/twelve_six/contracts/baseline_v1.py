@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from twelve_six.artifact_identity import (
@@ -139,6 +140,8 @@ _SCHEMAS.update({
     "evidence_ref": EvidenceRef, "error_record": ErrorRecord,
     "lifecycle_observation": LifecycleObservation,
 })
+_SCHEMAS = MappingProxyType(_SCHEMAS)  # closed catalog: no runtime schema promotion
+
 
 
 def baseline_manifest_v1() -> dict[str, Any]:

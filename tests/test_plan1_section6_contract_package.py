@@ -145,3 +145,25 @@ def test_evolution_forged_approval_or_fixture_sha_refused() -> None:
         forged.update(mutation)
         with pytest.raises(ContractEvolutionError):
             validate_version_change(forged)
+
+
+def test_contract_catalog_cannot_be_extended_at_runtime() -> None:
+    import twelve_six.contracts.baseline_v1 as contract_wire
+
+    with pytest.raises(TypeError):
+        contract_wire._SCHEMAS["foreign_runtime"] = object
+    with pytest.raises(ContractPackageError, match="unknown contract type"):
+        encode_v1("foreign_runtime", _artifact())
+
+
+def test_extended_core_aliases_remain_exact_incumbent_objects() -> None:
+    from twelve_six.contracts import (
+        CognitiveCoreBinding, CognitiveCoreIdentity, CoreReplacementReceipt,
+        ProductAssembly, replace_cognitive_core,
+    )
+
+    assert CognitiveCoreBinding is original_architecture.CognitiveCoreBinding
+    assert CognitiveCoreIdentity is original_architecture.CognitiveCoreIdentity
+    assert CoreReplacementReceipt is original_architecture.CoreReplacementReceipt
+    assert ProductAssembly is original_architecture.ProductAssembly
+    assert replace_cognitive_core is original_architecture.replace_cognitive_core
