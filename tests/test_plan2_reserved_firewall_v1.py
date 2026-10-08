@@ -117,7 +117,7 @@ def test_reservation_source_substitution_denied_by_independent_pin():
     cohorts, declarations = sources()
     expected = firewall.reservation_identity(declarations)
     forged = copy.deepcopy(declarations)
-    forged["eval-final"]["role"] = "train_candidate"
+    forged["eval-final"]["origin"] = "teacher_generated"
     with pytest.raises(firewall.FirewallError, match="reservation"):
         firewall.inspect_firewall(cohorts, forged, expected_reservation_sha256=expected)
 
