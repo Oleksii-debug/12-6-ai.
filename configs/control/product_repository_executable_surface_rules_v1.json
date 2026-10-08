@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
-  "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
-  "current_repository_main_sha": "14bac89097ba9c1a6ed1b348ed0065afac34859d",
-  "current_repository_main_tree_sha": "2a91aed55fed370e4d17e3022a1bb1809fbd6619",
+  "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
+  "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
+  "current_repository_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
+  "current_repository_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "expected_main_surface_count": 120,
   "expected_main_capability_counts": {
     "accelerated-scaling-research": 2,
@@ -92,5 +92,230 @@
       "capability_id": "executable-capability-map"
     }
   ],
-  "candidate_overrides": []
+  "candidate_overrides": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan2-data-component.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan2-normalization-component.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-backend-parity.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-evaluation.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-inference.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-model-gateway.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-model-service.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-multimodel-serving.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-safe-export.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan4-serving-observability.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_fixture_integration.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_multimodal.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_scheduler.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_security.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_self_model.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_task_state.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_terminal_qualification.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan5_ui_control.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-billion-systems-gate.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-distributed-control.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-distributed-transport.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-extreme-moe.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-large-paths.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-product-scale-recipes.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": ".github/workflows/plan7-very-large-paths.yml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/_dependency_contract_loader.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/bootstrap_dependency_lock.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/collect_dependency_security_evidence.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/evaluation_harness.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/evaluation_vault.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/inference_runtime.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan1_dependency_inventory.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan1_section8_qualify.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_cluster_split_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_corpus_mixture_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_deterministic_packing_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_exact_dedup_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_exposure_ledger_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_near_dedup_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_normalization_evidence_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_physical_materialization_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_privacy_gate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_reserved_eval_firewall_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_source_admissibility_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_source_inventory_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_tokenizer_candidates_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_tokenizer_fit_freeze_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_backend_parity.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_model_gateway.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_model_service.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_multimodel_serving.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_safe_export.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan4_serving_observability.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/verify_dependency_security_evidence.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/verify_locked_environment.py",
+      "capability_id": "peer-source-qualification-pending"
+    }
+  ]
 }
