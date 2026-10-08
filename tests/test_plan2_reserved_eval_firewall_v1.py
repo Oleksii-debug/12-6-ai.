@@ -100,13 +100,22 @@ def test_exact_eval_overlap_is_excluded_without_exposing_answers():
 def test_eval_contamination_transitively_excludes_related_training_family():
     _config, eval_rows, _authority = firewall._reserve(RESERVED)
     base = eval_rows[0]["text"]
-    altered = base.replace("процедури", "практики")
+    altered = base.replace("ізольований", "захищений")
+    assert altered != base
     result = firewall.inspect_firewall((
         _fixture("source.a", altered), _fixture("source.b", BASE)
     ), RESERVED)
     assert result["input_training_candidate_count"] in {1, 2}
     assert result["decontaminated_record_count"] == 0
     assert len(result["excluded_record_ids"]) == result["input_training_candidate_count"]
+
+
+def test_training_reserved_source_identity_alias_is_denied():
+    _config, eval_rows, _authority = firewall._reserve(RESERVED)
+    aliased = _fixture(eval_rows[0]["source_id"], BASE)
+    with pytest.raises(firewall.Plan2EvalFirewallError, match="aliases"):
+        firewall.inspect_firewall((aliased,), RESERVED)
+
 
 
 def test_tombstone_or_exact_duplicate_never_reappears():
