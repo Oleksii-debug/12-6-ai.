@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from twelve_six.data import privacy_execution_authority as g06
 from twelve_six.data.privacy_filter_v3 import assert_hash_safe_evidence
