@@ -1147,6 +1147,16 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
         _terminate_process_tree(process)
         process.wait()
         return_code = 124
+    except BaseException:
+        # SIGINT/agent shutdown must not orphan a signed test process tree.
+        _terminate_process_tree(process)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+        for reader in readers:
+            reader.join(timeout=5)
+        raise
 
     for reader in readers:
         reader.join(timeout=5)
