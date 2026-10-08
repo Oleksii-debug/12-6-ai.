@@ -120,7 +120,7 @@ def test_two_concurrent_writers_have_one_cas_winner(tmp_path: Path) -> None:
 
     def write(name: str) -> str:
         try:
-            TaskStore(db).checkpoint(
+            store.checkpoint(
                 "t", expected_epoch=0, expected_revision=0,
                 step_id=name, checkpoint_id=f"checkpoint-{name}", pending_effects=(),
             )
