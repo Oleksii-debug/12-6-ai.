@@ -5,7 +5,7 @@ import pytest
 
 from twelve_six.autonomous_research_loop import (
     GENESIS, ExperimentProposal, ForecastEvidence, OutcomeEvidence,
-    ResearchChoice, ResearchMap, ResearchPolicy, record_experiment, select_experiment,
+    ResearchMap, ResearchPolicy, record_experiment, select_experiment,
 )
 from twelve_six.experience_replay import _mac
 from twelve_six.research_engine import (
