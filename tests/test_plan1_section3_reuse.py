@@ -95,6 +95,12 @@ def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value
     [
         "https://",
         "https:///missing-host",
+        "https://127.0.0.1/source",
+        "https://169.254.169.254/source",
+        "https://192.168.1.1/source",
+        "https://8.8.8.8/source",
+        "https://127.0.1/source",
+        "https://0.0.0.0/source",
         "https://user:secret@example.org/archive",
         "https://example.org/archive#unbound-fragment",
         " https://example.org/archive",
