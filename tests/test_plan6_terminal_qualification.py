@@ -8,18 +8,26 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
-from pathlib import Path
 from dataclasses import asdict, replace
+from pathlib import Path
 
 import pytest
 
 from twelve_six.champion_lifecycle import (
-    Authorization, Descendant, Evaluation, LifecycleEvent, LifecycleState,
-    decide_candidate, rollback_promotion,
+    Authorization,
+    Descendant,
+    Evaluation,
+    LifecycleEvent,
+    LifecycleState,
+    decide_candidate,
+    rollback_promotion,
 )
 from twelve_six.experience_replay import _mac
 from twelve_six.research_engine import (
-    STAGES, ResearchTrial, issue_verified_stage, verify_research_bundle,
+    STAGES,
+    ResearchTrial,
+    issue_verified_stage,
+    verify_research_bundle,
 )
 
 BASE, CHAMPION, CHILD = "a" * 64, "b" * 64, "c" * 64
@@ -86,13 +94,16 @@ def evaluated(subject, receipt, qualified=True):
 
 
 def trusted(state, receipt):
-    return dict(
-        trusted_state_sha256=state.head_sha256,
-        verifier_id="independent-verifier", verifier_version_sha256=PROTOCOL,
-        trusted_evidence_roots=frozenset({PROTOCOL, receipt}),
-        verifier_key=VERIFIER_KEY, authorizer_id="release-authorizer",
-        authorizer_version_sha256=DATA, authorizer_key=AUTHOR_KEY,
-    )
+    return {
+        "trusted_state_sha256": state.head_sha256,
+        "verifier_id": "independent-verifier",
+        "verifier_version_sha256": PROTOCOL,
+        "trusted_evidence_roots": frozenset({PROTOCOL, receipt}),
+        "verifier_key": VERIFIER_KEY,
+        "authorizer_id": "release-authorizer",
+        "authorizer_version_sha256": DATA,
+        "authorizer_key": AUTHOR_KEY,
+    }
 
 
 def authorized(state, subject, evaluation, action="PROMOTE"):
