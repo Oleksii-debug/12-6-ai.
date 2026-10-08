@@ -1,0 +1,34 @@
+name: Plan 4 MultiModel Serving
+on:
+  pull_request:
+    paths:
+      - "tools/plan4_multimodel_serving.py"
+      - "tests/test_plan4_multimodel_serving.py"
+      - "docs/PLAN4_SECTION8_MULTIMODEL_SERVING.md"
+      - ".github/workflows/plan4-multimodel-serving.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/plan4_multimodel_serving.py"
+      - "tests/test_plan4_multimodel_serving.py"
+      - "docs/PLAN4_SECTION8_MULTIMODEL_SERVING.md"
+      - ".github/workflows/plan4-multimodel-serving.yml"
+permissions:
+  contents: read
+jobs:
+  multi-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Lint serving and tests
+        run: ruff check tools/plan4_multimodel_serving.py tests/test_plan4_multimodel_serving.py
+      - name: Run multi-model and incumbent gateway/service tests
+        run: |
+          python -m py_compile tools/plan4_multimodel_serving.py
+          python -m pytest -q tests/test_plan4_multimodel_serving.py tests/test_plan4_model_gateway.py tests/test_plan4_model_service.py

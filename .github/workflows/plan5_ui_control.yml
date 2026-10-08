@@ -1,0 +1,26 @@
+name: Plan 5 UI Control Contract
+on:
+  push:
+    paths:
+      - 'src/twelve_six_agent_runtime/ui_control.py'
+      - 'tests/test_agent_ui_control_section8.py'
+      - 'docs/PLAN5_SECTION8_SEMANTIC_UI_CONTROL.md'
+      - '.github/workflows/plan5_ui_control.yml'
+  pull_request:
+    paths:
+      - 'src/twelve_six_agent_runtime/ui_control.py'
+      - 'tests/test_agent_ui_control_section8.py'
+      - '.github/workflows/plan5_ui_control.yml'
+jobs:
+  local-free:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest ruff
+      - run: PYTHONPATH=src python -m pytest -q tests/test_agent_ui_control_section8.py tests/test_agent_tools_section7.py tests/test_agent_task_state_section2.py
+      - run: PYTHONPATH=src python -m compileall -q src/twelve_six_agent_runtime
+      - run: ruff check src/twelve_six_agent_runtime/ui_control.py tests/test_agent_ui_control_section8.py
