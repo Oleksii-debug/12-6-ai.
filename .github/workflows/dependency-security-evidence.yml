@@ -1,0 +1,47 @@
+name: Dependency Security Evidence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Collect lock-bound SBOM, OSV and PyPI evidence
+        run: >-
+          python tools/collect_dependency_security_evidence.py
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --sbom-out dependency-sbom.json
+          --evidence-out dependency-security-evidence.json
+      - name: Verify retained evidence offline
+        run: >-
+          python tools/verify_dependency_security_evidence.py
+          --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          --evidence dependency-security-evidence.json
+          --max-age-hours 24
+      - name: Upload dependency security evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-security-evidence
+          path: |
+            dependency-sbom.json
+            dependency-security-evidence.json
+          if-no-files-found: error
+          retention-days: 30
