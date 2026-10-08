@@ -763,3 +763,72 @@ jobs:
           name: plan1-s4-linux-lock-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/plan1-s4-linux-lock.json
           if-no-files-found: error
+
+  plan1-s4-exact-source-archive:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/section4-lock-convergence-20261008'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Bind exact candidate source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$candidate"
+          git archive --format=zip --output="$RUNNER_TEMP/plan1-s4-source.zip" "$candidate"
+          sha256sum "$RUNNER_TEMP/plan1-s4-source.zip" | cut -d' ' -f1 > "$RUNNER_TEMP/plan1-s4-source.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan1-s4-exact-source-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/plan1-s4-source.zip
+            ${{ runner.temp }}/plan1-s4-source.sha256
+          if-no-files-found: error
+
+  plan1-s4-windows-locked-qualification:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/section4-lock-convergence-20261008'
+    needs: plan1-s4-exact-source-archive
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+      - uses: actions/download-artifact@v4
+        with:
+          name: plan1-s4-exact-source-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-source
+      - name: Validate source ZIP and physically restore Windows locks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifact = Join-Path $env:RUNNER_TEMP 'plan1-s4-source'
+          $zip = Join-Path $artifact 'plan1-s4-source.zip'
+          $expected = (Get-Content -LiteralPath (Join-Path $artifact 'plan1-s4-source.sha256') -Raw).Trim()
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'exact source archive SHA256 mismatch' }
+          $checkout = Join-Path $env:RUNNER_TEMP '12-6 Locked Windows Україна'
+          New-Item -ItemType Directory -Path $checkout -Force | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath $checkout
+          Set-Location -LiteralPath $checkout
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          python tools/verify_locked_environment.py --profile windows-x86_64 --validate-only
+          if ($LASTEXITCODE -ne 0) { throw 'Windows lock validation failed' }
+          python tools/verify_locked_environment.py --profile windows-x86_64 --source-sha '${{ github.event.pull_request.head.sha }}' --evidence-out (Join-Path $env:RUNNER_TEMP 'plan1-s4-windows-lock.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows clean wheel restore failed' }
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: plan1-s4-windows-lock-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-windows-lock.json
+          if-no-files-found: error
