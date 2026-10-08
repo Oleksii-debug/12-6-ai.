@@ -55,6 +55,17 @@ jobs:
           python tools/plan2_exact_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-exact" > "${RUNNER_TEMP}/plan2-exact-first.json"
           python tools/plan2_exact_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-exact" > "${RUNNER_TEMP}/plan2-exact-restart.json"
           cmp "${RUNNER_TEMP}/plan2-exact-first.json" "${RUNNER_TEMP}/plan2-exact-restart.json"
+      - name: Lint Plan 2 Section 7 near family candidate
+        run: ruff check tools/plan2_near_dedup_v1.py tests/test_plan2_near_dedup_v1.py
+      - name: Qualify Plan 2 Section 7 near families and restart negatives
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_near_dedup_v1.py
+      - name: Verify S7 near family CLI byte-for-byte restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-first.json"
+          python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-near-first.json" "${RUNNER_TEMP}/plan2-near-restart.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
