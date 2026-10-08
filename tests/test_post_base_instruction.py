@@ -8,8 +8,11 @@ import torch
 from torch import nn
 
 from twelve_six.post_base_instruction import (
-    InstructionExample, InstructionRecipe, format_instruction_batch,
-    state_sha256, train_instruction_descendant,
+    InstructionExample,
+    InstructionRecipe,
+    format_instruction_batch,
+    state_sha256,
+    train_instruction_descendant,
 )
 
 H = "a" * 64
