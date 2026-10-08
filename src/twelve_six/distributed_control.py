@@ -12,9 +12,9 @@ from typing import Any
 from twelve_six.billion_systems_gate import (
     _digest,
     _finite,
-    inspect_shards,
     _positive,
     _sha,
+    inspect_shards,
     shard_manifest,
 )
 from twelve_six.extreme_moe_paths import MoEPolicy
