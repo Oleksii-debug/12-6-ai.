@@ -427,8 +427,8 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
         "example-9.9.9.dist-info/RECORD",
     ):
         foreign_record = (
-            f"example/__init__.py,sha256={digest},4\\n"
-            f"{forged_self},,\\n"
+            f"example/__init__.py,sha256={digest},4\n"
+            f"{forged_self},,\n"
         )
         installed.record = foreign_record
         foreign_pin = hashlib.sha256(foreign_record.encode()).hexdigest()
@@ -437,7 +437,7 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
     installed.record = good_record
     assert check() == result
 
-    unsafe_record = "../escape,sha256=" + digest + ",4\\n"
+    unsafe_record = "../escape,sha256=" + digest + ",4\n"
     unsafe_record += "example-1.2.3.dist-info/RECORD,,\n"
     installed.record = unsafe_record
     with pytest.raises(ValueError, match="unsafe"):
