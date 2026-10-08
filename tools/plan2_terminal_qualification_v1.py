@@ -140,15 +140,15 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     _require(current["training_corpus_authorized"] is False,
              "physical mixture unexpectedly grants training")
 
-    gates = _audit_physical_gates(
-        destination / "physical-candidate", current["dataset_candidate_sha256"]
-    )
-
-    # Assert the independent-family count before explaining the split refusal.
+    # A changed source-family count must refuse before reading stale S9 hashes.
     # Never mislabel an unrelated integrity error as a known corpus limitation.
     families = current["contributions"]["family"]
     _require(type(families) is dict and len(families) == 1,
              "physical source-family count changed; release requires requalification")
+
+    gates = _audit_physical_gates(
+        destination / "physical-candidate", current["dataset_candidate_sha256"]
+    )
     try:
         split.stage_candidate(root, destination / "physical-split")
     except split.Plan2SplitError as exc:
