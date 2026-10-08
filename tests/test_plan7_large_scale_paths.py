@@ -1,6 +1,6 @@
 """Plan 7 Section 7: 3B/7B/13B resource, shard and recovery gates."""
 import hashlib
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -88,7 +88,7 @@ def test_adversarial_types_and_adapter_tamper():
     for changes in ({"workers": True}, {"tokens_per_second": float("nan")},
                     {"paid_compute_requested": "false"}):
         with pytest.raises(ValueError):
-            LargeCapacity(**{**c.__dict__, **changes})
+            LargeCapacity(**{**asdict(c), **changes})
     object.__setattr__(a, "same_run_resume_tested", "true")
     with pytest.raises(ValueError):
         assess_large("3B", c, l, a, shards, manifest)
