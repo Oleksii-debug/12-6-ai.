@@ -74,7 +74,8 @@ def _read_gate(path: Path) -> dict[str, Any]:
     _require(value.get("training_corpus_authorized") is False,
              "physical gate incorrectly authorizes training")
     for capability in ("tokenizer_fit_authorized", "evaluation_authorized",
-                       "generated_auto_reentry_authorized"):
+                       "generated_auto_reentry_authorized", "raw_text_emitted",
+                       "real_final_test_material_accessed"):
         if capability in value:
             _require(value[capability] is False,
                      "physical gate incorrectly authorizes " + capability)
