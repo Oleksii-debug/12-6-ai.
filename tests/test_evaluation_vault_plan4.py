@@ -12,8 +12,8 @@ def setup(tmp_path: Path):
     vault = EvaluationVault(tmp_path / "eval", training_roots=(tmp_path / "train",))
     data = b'{"id":"a","answer":"yes"}\n{"id":"b","answer":"no"}\n'
     ref = vault.reserve(dataset=data, dataset_version="fixture-v1")
-    identities = dict(model_sha256="1" * 64, config_sha256="2" * 64,
-                      evaluator_sha256="3" * 64)
+    identities = {"model_sha256": "1" * 64, "config_sha256": "2" * 64,
+                  "evaluator_sha256": "3" * 64}
     return vault, ref, identities
 
 
