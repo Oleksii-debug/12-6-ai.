@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import hashlib
+from dataclasses import replace
 
 import pytest
 import torch
@@ -89,11 +89,18 @@ def test_bad_data_and_special_token_injection_fail_closed(change):
 def test_untrusted_rights_quality_eval_leakage_and_duplicate_rejected():
     _, recipe, examples, policy = fixture()
     with pytest.raises(ValueError, match="rights"):
-        admit_instruction_examples(recipe, examples, **(policy | {"approved_rights": frozenset((sha("r1"),))}))
+        admit_instruction_examples(
+            recipe, examples, **(policy | {"approved_rights": frozenset((sha("r1"),))})
+        )
     with pytest.raises(ValueError, match="quality"):
-        admit_instruction_examples(recipe, examples, **(policy | {"approved_quality": frozenset((sha("q1"),))}))
+        admit_instruction_examples(
+            recipe, examples, **(policy | {"approved_quality": frozenset((sha("q1"),))})
+        )
     with pytest.raises(ValueError, match="leakage"):
-        admit_instruction_examples(recipe, examples, **(policy | {"reserved_eval_content": frozenset((examples[0].content_sha256,))}))
+        admit_instruction_examples(
+            recipe, examples,
+            **(policy | {"reserved_eval_content": frozenset((examples[0].content_sha256,))}),
+        )
     with pytest.raises(ValueError, match="duplicate"):
         admit_instruction_examples(recipe, (examples[0], examples[0]), **policy)
     with pytest.raises(ValueError, match="independent"):
@@ -133,4 +140,5 @@ def test_deterministic_batches_and_recipe_manifest_identity():
         for name in a:
             assert torch.equal(a[name], b[name])
     assert replace(recipe, seed=18).identity_sha256 != recipe.identity_sha256
-    assert replace(recipe, base_checkpoint_sha256=sha("another")).identity_sha256 != recipe.identity_sha256
+    other_parent = replace(recipe, base_checkpoint_sha256=sha("another"))
+    assert other_parent.identity_sha256 != recipe.identity_sha256
