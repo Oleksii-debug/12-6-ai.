@@ -1,0 +1,24 @@
+{
+  "schema_version": "12-6.plan2-corpus-mixture-policy.v1",
+  "revision": "plan2-mixture-fixture-2026-10-08-v1",
+  "purpose": "LOCAL_FREE_CANDIDATE_MIXTURE",
+  "seed": "9e78cf76390f4568b6e330d502d1872ef95698063127cb0cad40574de1d58064d",
+  "max_records_total": 50,
+  "caps": {
+    "source": 50,
+    "family": 50,
+    "language": 50,
+    "domain": 50,
+    "modality": 50
+  },
+  "sources": [
+    {
+      "source_id": "uk.kubernetes.docs.what-is-kubernetes",
+      "source_family": "uk.kubernetes.docs",
+      "language": "uk",
+      "domain": "technical_documentation",
+      "modality": "text",
+      "sampling_weight": 1
+    }
+  ]
+}
