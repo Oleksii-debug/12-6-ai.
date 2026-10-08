@@ -19,3 +19,15 @@ The physical S9 corpus currently has a single source family and cannot create
 an admissible three-way split. Hence this is fixture-only engineering; no real
 corpus admission, model training, physical tokenizer fit, paid compute or
 production release is claimed.
+
+
+The component's `read_blocks(root, destination, start_block=N)` provides a
+runtime/optimizer-independent restart cursor. Before returning any block it
+rebuilds the expected S10/S12 fixture manifest, verifies canonical manifest and
+every shard byte/hash, rejects missing/extra/symlink members, and refuses
+negative, bool, non-integer, or out-of-range cursors. Each yielded list item
+has `block_index`, `next_block` and the exact packed block; retries with a
+persisted cursor reproduce the suffix without changing shard order. The
+training owner must atomically checkpoint its own optimizer state together
+with `next_block`; this data-side component does not assert exactly-once
+optimizer commits or production exposure authority.
