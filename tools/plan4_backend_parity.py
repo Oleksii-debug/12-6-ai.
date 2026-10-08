@@ -19,7 +19,6 @@ from torch import nn
 
 from tools.inference_runtime import (
     GenerationConfig,
-    InferenceError,
     ReferenceInference,
     _model_weights_sha,
 )
