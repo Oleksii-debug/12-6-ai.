@@ -6,12 +6,12 @@ import pytest
 
 from twelve_six.billion_systems_gate import shard_manifest
 from twelve_six.extreme_moe_paths import (
+    ExtremeDenied,
+    MoEPolicy,
     assess_extreme,
     expert_placement,
     extreme_recipe,
     extreme_spec,
-    ExtremeDenied,
-    MoEPolicy,
     route_tiny,
 )
 from twelve_six.large_scale_paths import LargeAdapter, LargeCapacity, LargeLimits
