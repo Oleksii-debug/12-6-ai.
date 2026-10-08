@@ -219,6 +219,18 @@ def stage_mixture(root: Path, destination: Path) -> dict[str, Any]:
     try:
         policy = _read_source(root, POLICY_PATH)
         reserved = _read_source(root, firewall.RESERVE_PATH)
+        source_seed = _json(_read_source(
+            root, "configs/data/plan2_source_inventory_v1.json"))
+        seed_rows = source_seed.get("sources")
+        _need(type(seed_rows) is list and bool(seed_rows),
+              "S1 source registry unavailable for family binding")
+        source_families = {
+            row["source_id"]: row["source_family"] for row in seed_rows
+        }
+        _need(len(source_families) == len(seed_rows) and all(
+            row["source_family"] == source_families.get(row["source_id"])
+            for row in _parse_policy(policy)["sources"]
+        ), "mixture source family disagrees with canonical S1 registry")
         s8 = firewall.stage_firewall(root, destination / "firewall")
         prefix = destination / "firewall" / "near" / "exact" / "privacy"
         normalized = _json(_read_destination(
