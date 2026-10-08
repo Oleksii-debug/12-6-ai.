@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from .task_state import _digest, _id, _json, _pairs, _uint
+from .task_state import StateError, _digest, _id, _json, _pairs, _uint
 
 SCHEMA = "12-6.agent-self-model.v1"
 Category = Literal["capability", "limit", "readiness", "error_pattern", "resource"]
@@ -191,8 +191,11 @@ class SelfModelStore:
 
     def profile(self, *, now: int, min_confidence_ppm: int = 800_000) -> dict[str, object]:
         """Return advisory assessment; never an execution authorization."""
-        _uint(now, "now")
-        _uint(min_confidence_ppm, "min_confidence_ppm")
+        try:
+            _uint(now, "now")
+            _uint(min_confidence_ppm, "min_confidence_ppm")
+        except StateError as exc:
+            raise SelfModelError("invalid profile bounds") from exc
         if min_confidence_ppm > 1_000_000:
             raise SelfModelError("invalid confidence threshold")
         items = self.history()
