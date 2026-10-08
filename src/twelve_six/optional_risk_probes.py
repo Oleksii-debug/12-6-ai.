@@ -81,7 +81,9 @@ class RiskEvidence:
     paid_compute_requested: bool = False
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1 or not isinstance(self.run_id, str):
+        if (not isinstance(self.schema_version, int)
+                or isinstance(self.schema_version, bool)
+                or self.schema_version != 1 or not isinstance(self.run_id, str)):
             raise RiskProbeDenied("unsupported evidence")
         if not self.run_id.strip():
             raise RiskProbeDenied("missing run")
