@@ -4,12 +4,21 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.autonomous_research_loop import (
-    GENESIS, ExperimentProposal, ForecastEvidence, OutcomeEvidence,
-    ResearchMap, ResearchPolicy, record_experiment, select_experiment,
+    GENESIS,
+    ExperimentProposal,
+    ForecastEvidence,
+    OutcomeEvidence,
+    ResearchMap,
+    ResearchPolicy,
+    record_experiment,
+    select_experiment,
 )
 from twelve_six.experience_replay import _mac
 from twelve_six.research_engine import (
-    STAGES, ResearchTrial, issue_verified_stage, verify_research_bundle,
+    STAGES,
+    ResearchTrial,
+    issue_verified_stage,
+    verify_research_bundle,
 )
 
 H = "a" * 64
@@ -27,7 +36,9 @@ POLICY = ResearchPolicy(
 )
 
 
-def make_proposal(state=ResearchMap(), name="trial-01", cost=2):
+def make_proposal(state=None, name="trial-01", cost=2):
+    if state is None:
+        state = ResearchMap()
     config = {
         "experiment_id": name,
         "hypothesis": "A verifiable improvement changes known scores.",
@@ -64,7 +75,9 @@ def trust(state):
     }
 
 
-def choose(state=ResearchMap(), name="trial-01", gain=80, cost=2):
+def choose(state=None, name="trial-01", gain=80, cost=2):
+    if state is None:
+        state = ResearchMap()
     p = make_proposal(state, name, cost)
     f = make_forecast(p, gain)
     return p, f, select_experiment(state, POLICY, (p,), (f,), **trust(state))
