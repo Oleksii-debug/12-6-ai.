@@ -87,6 +87,12 @@ def inspect(root: Path) -> dict[str, Any]:
     candidate = split.build_cluster_split(
         s9_fixture, rows, policy, fixture=True)
     assignments = candidate["record_assignments"]
+    need(type(assignments) is dict and set(assignments) == set(ids),
+         "partition membership identity drift")
+    for name in ("train", "validation", "test"):
+        actual = {rid for rid, assigned in assignments.items() if assigned == name}
+        need(actual == set(candidate[f"{name}_record_ids"]),
+             "partition assignments contradict S10 receipt")
     by_book = {}
     for row in rows:
         by_book.setdefault(row["source_id"], set()).add(
