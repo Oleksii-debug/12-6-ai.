@@ -34,7 +34,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 4 | 2 | OPEN |
 | 5 | 1 | OPEN |
 | 6 | 1 | OPEN |
-| 7 | 1 | OPEN |
+| 7 | 1 | QUALIFYING — PR #3102 (`533a853fe6cced0a890e4d6fef9a2dfece9b5e2d`); CI run `37725946383` FAIL (3769 passed, 10 failed: 2 new Plan-7 `scale_experiments.py` inventory omissions and 8 pre-existing Plan-8 capability-bearing surface drift failures). S1 implementation not yet integrated; no terminal DONE |
 | 8 | 3 | QUALIFYING |
 | 9 | 1 | WAITING_UPSTREAM |
 | 10 | 1 | WAITING_UPSTREAM |
@@ -52,3 +52,10 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | Section | State | Accepted main SHA | Evidence and boundaries |
 | ---: | --- | --- | --- |
 | 1 | DONE | `d1afe07134f386f1c69d05564034387440c8d968` | PR #3099; exact qualified head `0a7a1d32e0b0dad5f5be1aa1d83b15186e02c432`; Plan-4 evaluation CI `37726266831` Ruff PASS, 12 tests PASS (isolation, immutable identity/version, sealed score, corruption, negative cases, restart); post-merge main readback of vault/tests/workflow blobs PASS; post-merge run `37726469856` PASS. Full shared CI retains eight pre-existing Plan-8 source-map failures (baseline run `37718796941`); this is not a whole-repository green claim. Evaluator is a LOCAL_FREE, separately deployed evaluator-only component, not an OS process sandbox or permission to train, access final test, or use paid compute. |
+
+## Plan 7 — scaling/distributed component closure
+
+| Section | State | Candidate / accepted main | Evidence and remaining gate |
+| ---: | --- | --- | --- |
+| 1 | QUALIFYING | PR #3102, head `533a853fe6cced0a890e4d6fef9a2dfece9b5e2d` (not merged) | Ruff PASS; GitHub Actions CI run `37725946383`: 3769 pytest PASS / 10 FAIL, where two failures are unregistered new source `src/twelve_six/scale_experiments.py` in the qualified capability inventory and eight are the existing Plan-8 `ai_qa_control.py` baseline drift. Do not mislabel as DONE or mark complete until Plan-7-owned executable surface is classified under the shared versioned capability mapping, scoped qualification and integration/readback pass. No paid compute authorized or run. |
+| 2 | OPEN | None | Ordered after Section 1 terminal closure; function-preserving growth not qualified. |
