@@ -3,7 +3,7 @@
   "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
   "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
   "source_root": "src/twelve_six",
-  "source_surface_count": 119,
+  "source_surface_count": 120,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -501,6 +501,11 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/research_engine.py",
+      "capability_id": "post-base-research-verification",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/scale141_recovery.py",
       "capability_id": "scale141-recovery",
       "origin": "accepted_main"
@@ -602,5 +607,5 @@
     }
   ],
   "accepted_main_surface_count": 118,
-  "candidate_overlay_surface_count": 1
+  "candidate_overlay_surface_count": 2
 }
