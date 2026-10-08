@@ -20,6 +20,7 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["production_release_authorized"] is False
     assert report["physical_corpus_training_authorized"] is False
     assert report["evidence"]["physical_split"] == "DENIED_SINGLE_SOURCE_FAMILY"
+    assert report["evidence"]["physical_source_family_count"] == 1
     assert report["evidence"]["synthetic_target_count"] > 0
     assert len(report["evidence"]["member_sha256"]) >= 7
     assert len(report["blocking_gates"]) == 5
@@ -62,4 +63,25 @@ def test_missing_physical_source_does_not_fallback_to_fixture(monkeypatch) -> No
 
     monkeypatch.setattr(terminal.physical, "stage_candidate_cohort", no_source)
     with pytest.raises(terminal.physical.Plan2MaterializationError, match="missing"):
+        terminal.audit(ROOT)
+
+
+def test_unexpected_split_error_is_not_misclassified(tmp_path: Path, monkeypatch) -> None:
+    def broken_split(*_args, **_kwargs):
+        raise terminal.split.Plan2SplitError("unexpected integrity failure")
+
+    monkeypatch.setattr(terminal.split, "stage_candidate", broken_split)
+    with pytest.raises(terminal.QualificationDenied, match="unexpected physical split"):
+        terminal.audit(ROOT)
+
+
+def test_changed_physical_family_count_refuses_stale_audit(monkeypatch) -> None:
+    def multiple_families(*_args, **_kwargs):
+        return {
+            "training_corpus_authorized": False,
+            "contributions": {"family": {"document-a": {}, "document-b": {}}},
+        }
+
+    monkeypatch.setattr(terminal.mixture, "stage_mixture", multiple_families)
+    with pytest.raises(terminal.QualificationDenied, match="source-family count changed"):
         terminal.audit(ROOT)
