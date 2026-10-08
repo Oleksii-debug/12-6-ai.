@@ -17,7 +17,9 @@ operator = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(operator)
 
 
-def test_status_not_run_is_accessible_text(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_status_not_run_is_accessible_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     result = operator.main(["status", "--receipt", str(tmp_path / "none.json")])
     text = json.loads(capsys.readouterr().out)
     assert result == 0
@@ -133,7 +135,10 @@ def test_run_denies_existing_receipt_before_any_effect(
     receipt.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(operator, "_public_key_verifier", lambda *_: lambda *_: True)
     mock_packet = SimpleNamespace(
-        packet=SimpleNamespace(target_git_sha="a" * 40, execution_mode=operator.ExecutionMode.SIMULATION)
+        packet=SimpleNamespace(
+            target_git_sha="a" * 40,
+            execution_mode=operator.ExecutionMode.SIMULATION,
+        )
     )
     monkeypatch.setattr(operator, "load_verified_signed_packet", lambda *_, **__: mock_packet)
     def forbidden(*_args: object, **_kwargs: object) -> None:
@@ -155,7 +160,10 @@ def test_verify_requires_physical_pass_unless_simulation_is_explicit(
 ) -> None:
     monkeypatch.setattr(operator, "_public_key_verifier", lambda *_: lambda *_: True)
     mock_packet = SimpleNamespace(
-        packet=SimpleNamespace(target_git_sha="a" * 40, execution_mode=operator.ExecutionMode.SIMULATION)
+        packet=SimpleNamespace(
+            target_git_sha="a" * 40,
+            execution_mode=operator.ExecutionMode.SIMULATION,
+        )
     )
     monkeypatch.setattr(operator, "load_verified_signed_packet", lambda *_, **__: mock_packet)
     observed: list[bool] = []
