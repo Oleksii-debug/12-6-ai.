@@ -40,7 +40,7 @@ def test_committed_index_binds_complete_profile_set() -> None:
     assert set(index["profiles"]) == SUPPORTED_PROFILES
     assert index["python_version"] == EXACT_PYTHON_VERSION
     assert index["index_sha256"] == (
-        "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341"
+        "ab8f32448b06ad65b8e6541c55e9c653659fde5925034a3007a0cf0a787dedc3"
     )
 
 
@@ -104,3 +104,44 @@ def test_lock_text_rejects_duplicate_distribution(tmp_path: Path) -> None:
     )
     with pytest.raises(verifier.LOCK.DependencyLockError, match="duplicate locked distribution"):
         verifier._validate_lock_text(path, 2)
+
+
+def test_current_project_metadata_and_platform_contract_are_bound() -> None:
+    from twelve_six.integration.dependency_lock import (
+        CONSOLE_SCRIPTS,
+        SUPPORTED_REQUIRES_PYTHON,
+        _project_metadata,
+    )
+
+    assert SUPPORTED_REQUIRES_PYTHON == ">=3.11"
+    assert CONSOLE_SCRIPTS == {"twelve-six-windows": "twelve_six.windows_operator_cli:main"}
+    metadata = _project_metadata(ROOT / "pyproject.toml")
+    assert metadata["runtime_requirements"] == [
+        "numpy>=1.26", "safetensors>=0.5", "torch>=2.5",
+    ]
+    assert metadata["dev_requirements"] == [
+        "pytest>=8", "ruff>=0.12", "setuptools>=75", "wheel",
+    ]
+
+
+def test_all_locked_profiles_validate_against_current_project() -> None:
+    index = validate_lock_index(root=ROOT, index_path="requirements/locks/index.json")
+    for name, binding in index["profiles"].items():
+        profile = validate_profile_manifest(
+            root=ROOT, manifest_path=binding["path"], enforce_current_platform=False,
+        )
+        assert profile["profile_id"] == name
+        assert profile["pyproject_sha256"] == (
+            "580c99035e0e10fce63dbf46413ec5231692afcf0d05c04fd75153cb74d32831"
+        )
+        assert profile["declared_requirements"]["dev_requirements"] == [
+            "pytest>=8", "ruff>=0.12", "setuptools>=75", "wheel",
+        ]
+
+
+def test_unknown_lock_profile_is_rejected() -> None:
+    from twelve_six.integration.dependency_lock import build_profile_manifest
+    with pytest.raises(DependencyLockError, match="unsupported profile id"):
+        build_profile_manifest(
+            root=ROOT, profile_id="windows-amd64", lock_files={}, package_counts={},
+        )
