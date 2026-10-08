@@ -187,3 +187,25 @@ def test_symlink_publication_denied(tmp_path):
         tmp_path / "actual", target_is_directory=True)
     with pytest.raises(near.NearDedupError, match="symlink"):
         near.stage_near(ROOT, tmp_path / "alias" / "candidate")
+
+def test_complete_link_does_not_collapse_unrelated_bridge_endpoints():
+    """A~B and B~C must not silently imply A~C."""
+    a_words = [f"унікальне_слово_{index:03d}" for index in range(100)]
+    b_words = a_words.copy()
+    c_words = a_words.copy()
+    for index in range(5, 10):
+        b_words[index] = f"іншетематичне{index}"
+        c_words[index] = f"іншетематичне{index}"
+    for index in range(40, 45):
+        c_words[index] = f"відміннийтекст{index}"
+    a, b, c = (" ".join(words) for words in (a_words, b_words, c_words))
+
+    assert near.match_kind(a, b) is not None
+    assert near.match_kind(b, c) is not None
+    assert near.match_kind(a, c) is None
+    cohort = (_fixture("a", a), _fixture("b", b), _fixture("c", c))
+    receipt = near.inspect_near(cohort)
+    assert receipt == near.inspect_near(tuple(reversed(cohort)))
+    assert receipt["retained_record_count"] == 2
+    assert receipt["suppressed_near_record_count"] == 1
+    assert receipt["retained_record_ids"] == ["a:r00000000", "c:r00000000"]
