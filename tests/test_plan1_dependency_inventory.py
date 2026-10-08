@@ -153,3 +153,41 @@ def test_license_metadata_hash_never_grants_rights(monkeypatch, tmp_path):
     dist.metadata["License-Expression"] = "X" * (4 * 1024 * 1024 + 1)
     with pytest.raises(ValueError, match="unbounded installed license"):
         inspect(manifest)
+
+
+def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_path):
+    """Real dist-info LICENSE paths are observed, never accepted as legal authority."""
+    from importlib import metadata
+
+    class Distribution:
+        version = "0.7.0"
+
+        def __init__(self):
+            self.metadata = {"Name": "safetensors"}
+            self.files = [
+                "safetensors-0.7.0.dist-info/licenses/LICENSE",
+                "safetensors-0.7.0.dist-info/licenses/NOTICE",
+                "safetensors/__init__.py",
+            ]
+
+        def read_text(self, name):
+            assert name == "RECORD"
+            return "safetensors/__init__.py,sha256=untrusted,10\\n"
+
+    dist = Distribution()
+    monkeypatch.setattr(metadata, "distribution", lambda name: dist)
+    manifest = project(tmp_path, ["safetensors>=0.5"])
+    entry = inspect(manifest)["assets"][0]
+    assert entry["license_metadata_sha256_observed_untrusted"] is None
+    assert entry["license_notice_paths_observed_untrusted"] == [
+        "safetensors-0.7.0.dist-info/licenses/LICENSE",
+        "safetensors-0.7.0.dist-info/licenses/NOTICE",
+    ]
+    assert entry["independently_reviewed_license"] is False
+    assert entry["admission"] == "DENIED_UNQUALIFIED"
+    assert inspect(manifest)["assets"][0] == entry
+
+    for unsafe in ("../escape/LICENSE", "pkg\\\\LICENSE", "/root/LICENSE", "pkg//LICENSE"):
+        dist.files = [unsafe]
+        with pytest.raises(ValueError, match="unsafe installed file inventory"):
+            inspect(manifest)
