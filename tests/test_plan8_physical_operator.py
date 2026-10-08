@@ -185,3 +185,31 @@ def test_verify_requires_physical_pass_unless_simulation_is_explicit(
     assert operator.main(args + ["--allow-simulation"]) == 0
     assert observed == [True, False]
     assert '"state": "VERIFIED"' in capsys.readouterr().out
+
+
+def test_mismatched_host_key_denies_before_execution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(operator, "_public_key_verifier", lambda *_: lambda *_: False)
+    mock_packet = SimpleNamespace(
+        packet=SimpleNamespace(
+            target_git_sha="a" * 40,
+            execution_mode=operator.ExecutionMode.REAL_HOST,
+        )
+    )
+    monkeypatch.setattr(operator, "load_verified_signed_packet", lambda *_, **__: mock_packet)
+    monkeypatch.setattr(operator, "_host_signer", lambda *_: lambda *_: b"x" * 64)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("no action without trusted host signing identity")
+
+    monkeypatch.setattr(operator, "execute_qualification", forbidden)
+    args = [
+        "run",
+        "--packet", str(tmp_path / "packet"), "--authority-keys", str(tmp_path / "auth"),
+        "--host-keys", str(tmp_path / "host"), "--repo-root", str(tmp_path),
+        "--receipt", str(tmp_path / "new.json"), "--log", str(tmp_path / "new.log"),
+        "--host-private-key", str(tmp_path / "private"), "--host-key-id", "host-1",
+    ]
+    with pytest.raises(ValueError, match="does not match trusted"):
+        operator.main(args)
