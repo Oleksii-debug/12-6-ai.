@@ -1,5 +1,5 @@
 """Plan 6 Section 11 LOCAL_FREE capability/holdout/curriculum qualification."""
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -29,13 +29,15 @@ def setup():
     snapshot = measure_capability_gaps(policy, (area,), trusted_suite_roots=trusted_suites)
     proposal = CurriculumProposal("candidate-A", "planning", "data", "generator",
                                   "trusted-independent", H, H, H,
-                                  ("train_probe",), 80, 80, 10)
+                                  ("train_probe",), 80, 80, 10,
+                                  ("new_training_context",))
     proposal = replace(proposal, signature=_mac(KEY, proposal.payload()))
     other = replace(proposal, proposal_id="candidate-B", kind="experiment", cost_units=50)
     other = replace(other, signature=_mac(KEY, other.payload()))
     recipe = CurriculumRecipe(snapshot.manifest_sha256, max_targets=2, budget_units=30)
     kwargs = dict(trusted_verifier_id="trusted-independent", trusted_verifier_version_sha256=H,
-                  trusted_proposal_roots=frozenset({H}), verifier_key=KEY)
+                  trusted_proposal_roots=frozenset({H}), verifier_key=KEY,
+                  champion=policy, trusted_suite_roots=trusted_suites)
     return policy, (area,), trusted_suites, snapshot, (proposal, other), recipe, kwargs
 
 
@@ -128,3 +130,38 @@ def test_replay_tamper_denied():
                 replace(actual, promotion_authorized=True)):
         with pytest.raises(ValueError):
             verify_curriculum_restart(a[3], a[1], a[4], a[5], bad, **a[6])
+
+
+def test_forged_self_resealed_snapshot_cannot_change_capability_gap():
+    a = setup()
+    from_dataclass = a[3]
+    forged_gap = replace(from_dataclass.gaps[0], conservative_gap=0.0,
+                         generalization_accuracy=1.0)
+    forged_receipt = digest({
+        "champion": from_dataclass.champion_sha256,
+        "suites": from_dataclass.suite_roots_sha256,
+        "areas": from_dataclass.areas_sha256,
+        "gaps": [asdict(forged_gap)],
+    })
+    forged = replace(from_dataclass, gaps=(forged_gap,),
+                     manifest_sha256=forged_receipt)
+    changed_recipe = replace(a[5], snapshot_sha256=forged_receipt)
+    with pytest.raises(ValueError, match="forged/stale"):
+        plan_curriculum(forged, a[1], a[4], changed_recipe, **a[6])
+
+
+def test_training_alias_of_holdout_context_denied_even_if_task_id_changes():
+    a = setup()
+    forged = replace(a[4][0], train_task_ids=("fresh_train_id",),
+                     train_context_ids=("unknown",))
+    forged = replace(forged, signature=_mac(KEY, forged.payload()))
+    with pytest.raises(ValueError, match="holdout-leaking"):
+        plan_curriculum(a[3], a[1], (forged,), a[5], **a[6])
+
+
+def test_unbound_training_contexts_fail_closed():
+    a = setup()
+    for ctxs in ((), ("x", "x"), ["new_training_context"]):
+        invalid = replace(a[4][0], train_context_ids=ctxs)
+        with pytest.raises(ValueError):
+            plan_curriculum(a[3], a[1], (invalid,), a[5], **a[6])
