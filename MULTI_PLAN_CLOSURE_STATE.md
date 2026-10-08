@@ -30,7 +30,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | ---: | ---: | --- |
 | 1 | 3 | OPEN |
 | 2 | 3 | OPEN |
-| 3 | 1 | OPEN |
+| 3 | 1 | QUALIFYING — ACTIONABLE; canonical Plan-3 S1 finisher PR #3098 (`058d09eaa7549602530f45e4b45910024aa4019e`), exact CI #37726702494 RED: 3793 passed / 11 failed / 1 skipped (Ruff PASS); 2 candidate-specific Plan-8 source-classification failures; no terminal DONE or Section-2 advance |
 | 4 | 4 | OPEN |
 | 5 | 5 | OPEN — Sections 3–4 terminal DONE; Section 5 next |
 | 6 | 3 | OPEN |
