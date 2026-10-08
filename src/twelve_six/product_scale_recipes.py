@@ -180,7 +180,9 @@ def assess_scale(tier: str, evidence: CapacityEvidence, limits: ScaleLimits,
         raise ScaleRecipeDenied("proxy identity or authority mismatch")
     # Check nested S4 receipts at their trust boundary; no forged opaque grant.
     inner = proxy.get("proxy")
-    if (not isinstance(inner, dict) or inner.get("tier") != PROXY_TIERS[tier]
+    if (not isinstance(inner, dict)
+            or proxy.get("s4_proxy_receipt_sha256") != digest(inner)
+            or inner.get("tier") != PROXY_TIERS[tier]
             or inner.get("full_scale_executed") is not False
             or inner.get("paid_compute_authorized") is not False
             or not isinstance(inner.get("proxy_receipt"), dict)
