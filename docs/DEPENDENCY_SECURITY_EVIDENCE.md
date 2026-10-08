@@ -21,7 +21,7 @@ Any current-lock drift, source-SHA mismatch, missing/extra component, malformed 
 
 ## Deterministic lock-derived SBOM
 
-`build_lock_sbom()` validates the complete dependency-lock index first and then reconstructs every exact distribution from the toolchain/runtime/dev lock groups for both supported Linux profiles. It records:
+`build_lock_sbom()` validates the complete dependency-lock index first and then reconstructs every exact distribution from the toolchain/runtime/dev lock groups for Linux x86-64, Linux arm64, and Windows x86-64. It records:
 
 - normalized PyPI distribution name and exact version;
 - package URL (`pkg:pypi/...`);
@@ -58,9 +58,9 @@ The optional `--require-no-review-findings` flag is a strict policy gate. It ret
 
 ## CI artifact
 
-`.github/workflows/dependency-security-evidence.yml` is intentionally separate from the primary locked CI workflow. It uses immutable action SHAs, exact CPython 3.11.16, no `pip install`, and uploads both the source-bound SBOM and security-evidence JSON for 30 days. Collection failure is CI-red; vulnerability/license findings remain explicit in the retained report.
+The existing canonical `.github/workflows/ci.yml` is the only changed CI workflow: Plan 1 S5 tests and Ruff checks are included in its scoped qualification stage. The repository CI workflow policy prohibits adding a separate dedicated workflow. Hosted Actions must not be called green until they complete successfully.
 
-The inherited PR #58 primary CI still provides the authoritative locked clean-install, editable/wheel/import/CLI smoke, repository policy, Ruff, focused S0 integration, repo-wide pytest, and stage-candidate validation path.
+Current upstream PyPI and OSV observations are collected explicitly with `tools/collect_dependency_security_evidence.py`; the offline verifier `tools/verify_dependency_security_evidence.py` binds that retained evidence to exact candidate SHA and locked packages. The network collector can report REVIEW_REQUIRED or fail when remote sources are unavailable. Neither a local fixture nor a queued CI job proves current supplier approval. The current main shared CI remains authoritative for clean installs, full lint/tests, and staging gates.
 
 ## D10 / AUDIT-B handoff
 

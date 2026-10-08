@@ -20,4 +20,4 @@ Run: python -m pytest -q tests/test_dependency_security.py tests/test_plan1_sect
 
 Run: python -m ruff check src/twelve_six/integration/dependency_security.py src/twelve_six/integration/release_fixture.py tests/test_dependency_security.py tests/test_plan1_section5_release_fixture.py tests/test_plan1_section5_notices.py
 
-Exact-head Actions and accepted-main readback are mandatory before terminal DONE. A queued or failing check is not PASS.
+Plan 1 S5 scoped checks run in the existing shared CI workflow; new dedicated workflows are prohibited by repository policy. Exact-head qualification and accepted-main readback are required before terminal DONE. A queued or failing check is not PASS.
