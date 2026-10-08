@@ -12,6 +12,7 @@ from twelve_six.accelerated_scaling import (
     ProxyBudget,
     ProxyProtocol,
     ScaleAdmissionError,
+    estimate_proxy_resources,
     fresh_init_scale_up,
     grow_function_preserving,
 )
@@ -78,6 +79,7 @@ def test_exact_functional_parity(
     assert receipt["training_authorized"] is False
     assert receipt["paid_compute_authorized"] is False
     assert receipt["resource_admission"]["parameters"] == target.parameter_count()
+    assert receipt["joint_resource_admission"]["joint_planning_memory_bytes"] <= budget().max_memory_bytes
     assert len(receipt["receipt_sha256"]) == 64
     assert all(p.requires_grad for p in descendant.parameters())
     ids = torch.tensor([[1, 2, 3, 4], [3, 2, 1, 0]])
@@ -252,6 +254,47 @@ def test_explicit_fresh_init_fallback_cannot_claim_preservation() -> None:
     with pytest.raises(GrowthRejected, match="must change"):
         fresh_init_scale_up(parent, parent.spec, fixture(), budget())
 
+
+
+
+@pytest.mark.parametrize("dimension", ["memory", "flops", "tokens"])
+def test_joint_resource_envelope_rejects_before_allocation(
+    dimension: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = parent_model()
+    target = replace(parent.spec, d_ff=48, n_layers=3)
+    old = estimate_proxy_resources(parent.spec, fixture())
+    new = estimate_proxy_resources(target, fixture())
+    field, limit = {
+        "memory": (
+            "max_memory_bytes",
+            old["planning_memory_bytes"] + new["planning_memory_bytes"] - 1,
+        ),
+        "flops": (
+            "max_flops",
+            old["total_proxy_flops"] + new["total_proxy_flops"] - 1,
+        ),
+        "tokens": (
+            "max_tokens",
+            old["total_proxy_tokens"] + new["total_proxy_tokens"] - 1,
+        ),
+    }[dimension]
+    # The individual operation fits. Only the combined envelope is denied.
+    assert limit >= {
+        "memory": new["planning_memory_bytes"],
+        "flops": new["total_proxy_flops"],
+        "tokens": new["total_proxy_tokens"],
+    }[dimension]
+    constrained = replace(budget(), **{field: limit})
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("descendant unexpectedly allocated")
+
+    monkeypatch.setattr(TwelveSixDecoder, "__init__", forbidden)
+    with pytest.raises(ScaleAdmissionError, match="joint parent/descendant"):
+        grow_function_preserving(parent, target, fixture(), constrained)
+    with pytest.raises(ScaleAdmissionError, match="joint parent/descendant"):
+        fresh_init_scale_up(parent, target, fixture(), constrained)
 
 def test_costly_gpu_protocol_rejected_even_for_tiny_models() -> None:
     with pytest.raises(ScaleAdmissionError, match="LOCAL_FREE"):
