@@ -32,9 +32,13 @@ publish, evict, replace; none is exposed over dispatch.
 
 - Failover is not implicit: every request supplies an explicit boolean,
   and trusted host must independently permit failover for that role.
-- Retry only backend failure/rejection/invalid backend/identity drift.
-  Permission, malformed client and capacity errors cannot force rerouting.
-  Results keep the ordered route identity and typed attempt outcomes.
+- Automatic failover retries only a proven pre-dispatch IDENTITY_DRIFT
+  (model epoch/identity validation fails before generation begins).
+  A backend rejection, invalid result or transport failure may occur after
+  execution and is therefore an ambiguous effect: never blindly duplicate
+  that request on another model. Permission, malformed client and capacity
+  errors also cannot force rerouting. Results preserve attempted route
+  identities and typed outcomes; caller must explicitly reconcile failures.
 - Replace validates successor identity and capacity before atomically
   retiring an idle incumbent; failure preserves old published slot.
   Successor must have a new slot ID and new explicitly pinned identity.

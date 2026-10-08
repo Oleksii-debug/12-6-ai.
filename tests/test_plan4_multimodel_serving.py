@@ -115,17 +115,34 @@ def test_no_silent_failover_even_if_second_route_is_healthy():
     assert "generate" not in b.calls
 
 
-def test_authorized_failover_preserves_both_model_attempts():
+def test_ambiguous_backend_rejection_does_not_repeat_generation():
     plane = MultiModelServing(budget_bytes=20, failover_roles=("answer",))
     a, b = FixtureClient("alpha", "a", "NOT_READY"), FixtureClient("beta", "b")
     publish(plane, "a", "alpha", a, priority=9)
     publish(plane, "b", "beta", b, priority=1)
     result = ask(plane, failover=True)
-    assert result["ok"] and result["selected"]["model"] == "beta"
-    assert [t["route"]["model"] for t in result["attempts"]] == ["alpha", "beta"]
+    assert not result["ok"] and len(result["attempts"]) == 1
     assert result["attempts"][0]["error_code"] == "BACKEND_REJECTED"
-    assert result["attempts"][1]["error_code"] is None
     assert result["attempts"][0]["route"]["identity"]["model_weights_sha256"] == "a" * 64
+    assert "generate" not in b.calls
+
+
+def test_transport_failure_after_execution_never_duplicates_on_fallback():
+    class LostReceipt(FixtureClient):
+        def call(self, request):
+            if request["op"] == "generate":
+                self.calls.append("generated_without_receipt")
+                raise RuntimeError("ambiguous result after execution")
+            return super().call(request)
+
+    plane = MultiModelServing(budget_bytes=20, failover_roles=("answer",))
+    a, b = LostReceipt("alpha"), FixtureClient("beta", "b")
+    publish(plane, "a", "alpha", a, priority=9)
+    publish(plane, "b", "beta", b, priority=1)
+    result = ask(plane, failover=True)
+    assert not result["ok"] and result["attempts"][0]["error_code"] == "BACKEND_FAILURE"
+    assert "generated_without_receipt" in a.calls
+    assert "generate" not in b.calls
 
 
 def test_unapproved_failover_fails_closed_without_calling_second_model():

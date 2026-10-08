@@ -15,8 +15,10 @@ from tools.plan4_model_gateway import ModelGateway
 
 SCHEMA = "12-6.plan4-multimodel-serving.v1"
 _NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
-_RETRYABLE = frozenset({"BACKEND_FAILURE", "BACKEND_REJECTED", "INVALID_BACKEND",
-                        "IDENTITY_DRIFT"})
+# Only a proven pre-dispatch identity rejection can safely reroute.
+# An ambiguous backend/transport failure may follow generation execution.
+# Never automatically repeat the same request across providers after that.
+_RETRYABLE = frozenset({"IDENTITY_DRIFT"})
 
 
 class ServingError(ValueError):
