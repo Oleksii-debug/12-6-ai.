@@ -7,6 +7,7 @@ Trusted runners own actual test/security/benchmark/review evidence.
 from __future__ import annotations
 
 import hmac
+import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -51,8 +52,10 @@ class CodeCandidate:
         parts = PurePosixPath(self.path)
         if (
             parts.is_absolute() or len(parts.parts) < 2 or ".." in parts.parts
-            or "\\" in self.path or not all(_SAFE.fullmatch(p) for p in parts.parts)
+            or "\\" in self.path
+            or not all(_SAFE.fullmatch(p) for p in parts.parts[:-1])
             or parts.parts[0] != "proposals" or parts.suffix != ".txt"
+            or not _SAFE.fullmatch(parts.stem)
         ):
             raise ValueError("candidate changes may only use inert proposal paths")
         if (
@@ -84,7 +87,7 @@ class EvolutionPolicy:
 def _sandbox_path(candidate: CodeCandidate, *, sandbox_root: Path,
                   production_root: Path) -> Path:
     candidate.identity()
-    if type(sandbox_root) is not Path or type(production_root) is not Path:
+    if not isinstance(sandbox_root, Path) or not isinstance(production_root, Path):
         raise ValueError("explicit local directories required")
     if sandbox_root.is_symlink() or production_root.is_symlink():
         raise ValueError("untrusted sandbox/repository symlink")
@@ -173,6 +176,8 @@ def evaluate_evolution(
     candidate_sha = candidate.identity()
     if candidate.parent_git_sha != policy.parent_git_sha:
         raise ValueError("wrong version of candidate")
+    if len(candidate.text.encode("utf-8")) > policy.max_candidate_bytes:
+        raise ValueError("candidate exceeds evolution budget")
     if type(gates) is not tuple or len(gates) > len(_GATES):
         raise ValueError("invalid gate bundle")
     if (
@@ -252,3 +257,36 @@ def verify_evolution_restart(
     if path.read_bytes() != candidate.text.encode("utf-8"):
         raise ValueError("candidate artifact drift")
     return True
+
+
+def publish_evolution_evidence(
+    candidate: CodeCandidate, policy: EvolutionPolicy,
+    gates: tuple[GateEvidence, ...], result: EvolutionDecision, *,
+    sandbox_root: Path, production_root: Path,
+    trusted_verifiers: dict[str, str], trusted_keys: dict[str, bytes],
+    trusted_roots: dict[str, frozenset[str]],
+) -> str:
+    """Persist an immutable positive or negative decision in the isolated sandbox."""
+    verified = verify_evolution_restart(
+        candidate, policy, gates, result, sandbox_root=sandbox_root,
+        production_root=production_root, trusted_verifiers=trusted_verifiers,
+        trusted_keys=trusted_keys, trusted_roots=trusted_roots,
+    )
+    if not verified:
+        raise ValueError("unqualified evolution decision")
+    staged = _sandbox_path(candidate, sandbox_root=sandbox_root,
+                           production_root=production_root)
+    receipt = staged.parents[1] / "decision.json"
+    if receipt.is_symlink():
+        raise ValueError("candidate evidence symlink")
+    data = json.dumps(asdict(result), sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":"), allow_nan=False).encode("utf-8")
+    try:
+        with receipt.open("xb") as output:
+            output.write(data)
+    except FileExistsError:
+        if receipt.is_symlink() or receipt.read_bytes() != data:
+            raise ValueError("changed immutable evolution decision") from None
+    if receipt.read_bytes() != data:
+        raise ValueError("evolution evidence readback failed")
+    return result.receipt_sha256
