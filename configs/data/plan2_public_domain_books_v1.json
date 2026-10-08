@@ -9,11 +9,11 @@
   "training_authorized": false,
   "tokenizer_fit_authorized": false,
   "production_release_authorized": false,
-  "notes": "Raw GITenberg header/footer/license stripped by exact markers; text-only physical candidates. Distinct authors and books are independent document families, but formal rights/privacy/eval audits and Plan2 S15 terminal release are NOT yet complete.",
+  "notes": "Three distinct public-domain books are independent document clusters, not independent source-family credit. All GITenberg/Project Gutenberg texts are assigned one canonical public-domain-books source family under NEXT100-107. No production training/tokenizer authority; requires rights/privacy/dedup/evaluation/mixture/split/packing gates.",
   "sources": [
     {
       "source_id": "en.public-domain.pride-and-prejudice",
-      "source_family": "en.book.jane-austen.pride-and-prejudice",
+      "source_family": "en.project-gutenberg.public-domain-books",
       "author": "Jane Austen",
       "author_death_year": 1817,
       "title": "Pride and Prejudice",
@@ -29,11 +29,12 @@
       "normalized_bytes": 691843,
       "normalized_lines": 13031,
       "commit_sha": "b26effe54e89fb09dfda5c8f444ee8bf323c5778",
-      "upstream_source_url": "https://github.com/GITenberg/Pride-and-Prejudice_1342/blob/81db45c9c48c592f0b77f01fc59e677ad0a5634e/1342-0.txt"
+      "upstream_source_url": "https://github.com/GITenberg/Pride-and-Prejudice_1342/blob/81db45c9c48c592f0b77f01fc59e677ad0a5634e/1342-0.txt",
+      "document_family": "en.book.jane-austen.pride-and-prejudice"
     },
     {
       "source_id": "en.public-domain.alice-in-wonderland",
-      "source_family": "en.book.lewis-carroll.alice-in-wonderland",
+      "source_family": "en.project-gutenberg.public-domain-books",
       "author": "Lewis Carroll",
       "author_death_year": 1898,
       "title": "Alice's Adventures in Wonderland",
@@ -49,11 +50,12 @@
       "normalized_bytes": 150365,
       "normalized_lines": 3335,
       "commit_sha": "69dfc8d181e8ca8ce6af13e5abad07f67bac6354",
-      "upstream_source_url": "https://github.com/GITenberg/Alice-s-Adventures-in-Wonderland_11/blob/7f18748e114b994d5d9454d5793581bc0b9cf9d7/11-0.txt"
+      "upstream_source_url": "https://github.com/GITenberg/Alice-s-Adventures-in-Wonderland_11/blob/7f18748e114b994d5d9454d5793581bc0b9cf9d7/11-0.txt",
+      "document_family": "en.book.lewis-carroll.alice-in-wonderland"
     },
     {
       "source_id": "en.public-domain.frankenstein",
-      "source_family": "en.book.mary-shelley.frankenstein",
+      "source_family": "en.project-gutenberg.public-domain-books",
       "author": "Mary Shelley",
       "author_death_year": 1851,
       "title": "Frankenstein",
@@ -69,7 +71,11 @@
       "normalized_bytes": 423273,
       "normalized_lines": 7421,
       "commit_sha": "286d14122dcab0fbc6841aee2d08bee5d3346f91",
-      "upstream_source_url": "https://github.com/GITenberg/Frankenstein_84/blob/c98a483bd1f34e7366126b81bcedd1a6faee636e/84-0.txt"
+      "upstream_source_url": "https://github.com/GITenberg/Frankenstein_84/blob/c98a483bd1f34e7366126b81bcedd1a6faee636e/84-0.txt",
+      "document_family": "en.book.mary-shelley.frankenstein"
     }
-  ]
+  ],
+  "source_family_count": 1,
+  "document_family_count": 3,
+  "incumbent_source_family_authority": "configs/data/next100_107_gutenberg_terminal_seal_v1.json"
 }
