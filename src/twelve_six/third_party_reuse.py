@@ -192,6 +192,14 @@ def _hash_regular_archive(path: str | Path) -> str:
         after = os.fstat(handle)
         if fingerprint(opened) != fingerprint(after):
             raise ValueError("review artifact changed while reading")
+        # A pathname can be swapped while the original descriptor remains stable.
+        # Never attest bytes for a path now naming a different artifact.
+        try:
+            named = source.lstat()
+        except OSError as exc:
+            raise ValueError("review artifact path changed while reading") from exc
+        if not stat.S_ISREG(named.st_mode) or fingerprint(opened) != fingerprint(named):
+            raise ValueError("review artifact path changed while reading")
         return digest.hexdigest()
     finally:
         os.close(handle)
