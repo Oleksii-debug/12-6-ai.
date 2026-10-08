@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -51,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
                                    restore=args.command == "restore")
         print(json.dumps(result, sort_keys=True))
         return 0
-    except (EnvironmentLockError, OSError) as exc:
+    except (EnvironmentLockError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         print(f"DENIED: {exc}", file=sys.stderr)
         return 2
 
