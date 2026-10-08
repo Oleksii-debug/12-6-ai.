@@ -167,6 +167,9 @@ def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_
             self.files = [
                 "safetensors-0.7.0.dist-info/licenses/LICENSE",
                 "safetensors-0.7.0.dist-info/licenses/NOTICE",
+                "safetensors-0.7.0.dist-info/licenses/LICENSE-APACHE",
+                "safetensors-0.7.0.dist-info/licenses/LICENSES_bundled.txt",
+                "safetensors-0.7.0.dist-info/licenses/LICENCE",
                 "safetensors/__init__.py",
                 "../../../bin/safetensors-cli",  # legitimate wheel console wrapper
             ]
@@ -181,7 +184,10 @@ def test_license_notice_path_inventory_and_traversal_rejection(monkeypatch, tmp_
     entry = inspect(manifest)["assets"][0]
     assert entry["license_metadata_sha256_observed_untrusted"] is None
     assert entry["license_notice_paths_observed_untrusted"] == [
+        "safetensors-0.7.0.dist-info/licenses/LICENCE",
         "safetensors-0.7.0.dist-info/licenses/LICENSE",
+        "safetensors-0.7.0.dist-info/licenses/LICENSE-APACHE",
+        "safetensors-0.7.0.dist-info/licenses/LICENSES_bundled.txt",
         "safetensors-0.7.0.dist-info/licenses/NOTICE",
     ]
     assert entry["independently_reviewed_license"] is False
