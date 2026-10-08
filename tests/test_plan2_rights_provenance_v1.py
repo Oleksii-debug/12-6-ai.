@@ -98,3 +98,19 @@ def test_record_bound_to_normalized_snapshot_exact_hash():
     payload = (ROOT / receipt["record"]["member_path"]).read_bytes()
     assert hashlib.sha256(payload).hexdigest() == receipt["record"]["payload_sha256"]
     assert len(payload) == receipt["record"]["payload_bytes"]
+
+def test_added_source_cannot_bypass_rights_review():
+    altered = seed()
+    extra = copy.deepcopy(altered["sources"][0])
+    extra["source_id"] = "fixture.another.source"
+    altered["sources"].append(extra)
+    with pytest.raises(Plan2AdmissibilityError, match="unreviewed"):
+        attest_data324_source(ROOT, altered)
+
+
+def test_forged_promotion_flags_remain_blocked():
+    receipt = attest_data324_source(ROOT, seed())
+    receipt["corpus_training_authorized"] = True
+    receipt["tokenizer_fit_authorized"] = True
+    with pytest.raises(Plan2AdmissibilityError, match="candidate"):
+        require_training_materialization(receipt)
