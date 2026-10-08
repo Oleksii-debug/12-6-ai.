@@ -117,15 +117,14 @@ def test_identity_and_checkpoint_tamper_fails_closed():
 
 def test_topology_rejects_broken_expert_placement_and_stale_recipe():
     t, r, shards, manifest = fixture()
-    for invalid in (
-        replace(t, expert_replicas=t.expert_replicas[:-1]),
-        replace(t, recipe_sha256="f" * 64),
-    ):
-        with pytest.raises(MoEDenied):
-            assess_moe("300B", invalid, r, shards, manifest)
+    with pytest.raises(MoEDenied):
+        replace(t, expert_replicas=t.expert_replicas[:-1])
+    with pytest.raises(MoEDenied):
+        assess_moe("300B", replace(t, recipe_sha256="f" * 64),
+                   r, shards, manifest)
     with pytest.raises(MoEDenied):
         replace(t, expert_replicas=(("node-a", "node-a"),) * len(t.expert_replicas))
-    with pytest.raises(MoEDenied):
+    with pytest.raises(ValueError):
         replace(t, expert_parallel=True)
     with pytest.raises(ValueError):
         replace(t, estimated_cost_usd=float("nan"))
