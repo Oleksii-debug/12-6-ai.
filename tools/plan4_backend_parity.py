@@ -106,6 +106,9 @@ def _candidate_identity(model: TwelveSixDecoder) -> str:
             h.update(_canonical({
                 "scale": weight.q_scale(), "zero_point": weight.q_zero_point(),
             }))
+            bias = module.bias()
+            if bias is not None:
+                h.update(bias.detach().cpu().contiguous().numpy().tobytes())
     return h.hexdigest()
 
 
