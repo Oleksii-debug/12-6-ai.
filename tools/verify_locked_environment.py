@@ -105,10 +105,11 @@ def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str,
 
 
 def _venv_python(directory: Path) -> Path:
-    path = directory / "bin" / "python"
-    if not path.exists():
-        raise RuntimeError(f"virtualenv Python missing: {path}")
-    return path
+    for relative in ("bin/python", "Scripts/python.exe"):
+        candidate = directory / relative
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(f"virtualenv Python missing in {directory}")
 
 
 def _run(command: list[str | Path], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -155,7 +156,7 @@ def _offline_env() -> dict[str, str]:
             "PIP_NO_INDEX": "1",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PYTHONUTF8": "1",
-            "SOURCE_DATE_EPOCH": "0",
+            "SOURCE_DATE_EPOCH": "315532800",
         }
     )
     return env
@@ -174,8 +175,9 @@ def _smoke(python: Path, environment: Path) -> None:
             ),
         ]
     )
-    command = environment / "bin" / "twelve-six-windows"
-    if not command.exists():
+    executable = "twelve-six-windows.exe" if python.name.lower().endswith(".exe") else "twelve-six-windows"
+    command = python.parent / executable
+    if not command.is_file():
         raise RuntimeError("console script twelve-six-windows was not installed")
     completed = subprocess.run(
         [str(command), "--help"],
