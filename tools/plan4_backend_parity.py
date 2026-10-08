@@ -273,5 +273,6 @@ def verify_report(report: Mapping[str, Any]) -> None:
             raise BackendParityError("invalid parity metric")
     if report["max_abs_logit_error"] < 0:
         raise BackendParityError("negative absolute error")
-    if _digest({k: v for k, v in report.items() if k != "report_sha256"}) != report["report_sha256"]:
+    unsigned = {k: v for k, v in report.items() if k != "report_sha256"}
+    if _digest(unsigned) != report["report_sha256"]:
         raise BackendParityError("tampered parity report")
