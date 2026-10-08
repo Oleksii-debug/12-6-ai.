@@ -1,0 +1,48 @@
+name: Plan 1 Section 3 Reuse Qualification
+
+on:
+  push:
+    branches:
+      - 'plan1/**'
+    paths:
+      - 'src/twelve_six/third_party_reuse.py'
+      - 'tests/test_plan1_section3_reuse.py'
+      - 'configs/control/plan1_reuse_assets_v1.json'
+      - 'docs/PLAN1_SECTION3_REUSE_POLICY.md'
+      - '.github/workflows/plan1-section3-qualification.yml'
+  pull_request:
+    paths:
+      - 'src/twelve_six/third_party_reuse.py'
+      - 'tests/test_plan1_section3_reuse.py'
+      - 'configs/control/plan1_reuse_assets_v1.json'
+      - 'docs/PLAN1_SECTION3_REUSE_POLICY.md'
+      - '.github/workflows/plan1-section3-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-plan1-section3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate HEAD
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install project and LOCAL_FREE test tools
+        run: python -m pip install -e '.[dev]'
+      - name: Lint Plan 1 owned reuse boundary
+        run: ruff check src/twelve_six/third_party_reuse.py tests/test_plan1_section3_reuse.py
+      - name: Compile reuse gate
+        run: python -m compileall -q src/twelve_six/third_party_reuse.py
+      - name: Exercise provenance, recovery, restart, and adversarial fixtures
+        run: pytest -q tests/test_plan1_section3_reuse.py
