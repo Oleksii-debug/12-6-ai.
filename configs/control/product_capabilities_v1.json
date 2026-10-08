@@ -828,6 +828,121 @@
       ],
       "integrated_result": null,
       "unavailable_reason": "Section 4 candidate is not integrated; terminal exact-head CI/SIL, independent promotion evidence, accepted-main integration and post-merge readback remain required."
+    },
+    {
+      "capability_id": "post-base-research-verification",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.research_engine.ResearchTrial",
+      "dependencies": [
+        "unified-generation-identity"
+      ],
+      "journey_ids": [
+        "researcher-verify-post-base-trial"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-research-component",
+          "level": "component",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py"
+        },
+        {
+          "vector_id": "plan6-research-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py tests/test_artifact_identity_section1.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-section1-pr",
+          "target": "pull-request:3101"
+        }
+      ],
+      "integrated_result": "Accepted main PR #3101 merge 5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67, exact-Git-blob 16-pass local fixture verification, independent five-stage receipt verifier; GitHub Actions #37728070229 queued, not marked green",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "post-base-instruction-descendant",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.post_base_instruction.InstructionRecipe",
+      "dependencies": [
+        "unified-generation-identity",
+        "post-base-research-verification"
+      ],
+      "journey_ids": [
+        "researcher-train-instruction-descendant-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-s2-canonical-instruction",
+          "level": "component",
+          "command": "pytest -q tests/test_post_base_instruction.py"
+        },
+        {
+          "vector_id": "plan6-s2-canonical-reuse",
+          "level": "integration",
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-s2-canonical-pr",
+          "target": "pull-request:3117"
+        }
+      ],
+      "integrated_result": "Canonical Plan6 Section2 PR #3117 accepted main 5b1085177b4d7bc61298100e44f673f292a82ecb; source blob 428832cba92fe0fd459465d8121acdd00d78a9e2; local 12-pass fixture SFT, independent rights/quality/train-split, Base preserved; hosted CI #37728803008 queued (not green). Duplicate #3119 descendant removed by convergence.",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "post-base-preference-descendant",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.post_base_preference.PreferenceRecipe",
+      "dependencies": [
+        "post-base-instruction-descendant"
+      ],
+      "journey_ids": [
+        "researcher-verify-offline-preference-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-s3-canonical-preference",
+          "level": "component",
+          "command": "pytest -q tests/test_post_base_preference.py"
+        },
+        {
+          "vector_id": "plan6-s3-canonical-reuse",
+          "level": "integration",
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-s3-canonical-pr",
+          "target": "pull-request:3120"
+        }
+      ],
+      "integrated_result": "Canonical Plan6 Section3 PR #3120 accepted main 95876135047749d034f0a2404e46006324eec662; exact source blob 6c48336ce5ff5960ca6eb9b5b692e5998e2c4098; 27 scoped tiny CPU S2+S3 tests. Hosted CI #37729163283 queued (not green), no real policy/champion promotion.",
+      "unavailable_reason": null
     }
   ],
   "journeys": [
@@ -966,6 +1081,27 @@
       "title": "Maintainer converts failure evidence into an isolated repair candidate and independently gated retest decision",
       "capability_ids": [
         "ai-qa-repair-control"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-post-base-trial",
+      "title": "Researcher runs independent replayable post-Base research verification",
+      "capability_ids": [
+        "post-base-research-verification"
+      ]
+    },
+    {
+      "journey_id": "researcher-train-instruction-descendant-fixture",
+      "title": "Researcher verifies provenance-gated instruction descendant against preserved Base CPU fixture",
+      "capability_ids": [
+        "post-base-instruction-descendant"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-offline-preference-fixture",
+      "title": "Researcher verifies independently bounded offline preference descendants",
+      "capability_ids": [
+        "post-base-preference-descendant"
       ]
     }
   ]
