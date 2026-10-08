@@ -14,7 +14,7 @@
   "sources": [
     {
       "source_id": "uk.kubernetes.docs.what-is-kubernetes",
-      "source_family": "uk.kubernetes.docs",
+      "source_family": "kubernetes.website.docs",
       "language": "uk",
       "domain": "technical_documentation",
       "modality": "text",
