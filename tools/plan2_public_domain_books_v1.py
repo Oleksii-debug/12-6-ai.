@@ -15,6 +15,7 @@ from typing import Any
 
 from tools import plan2_source_admissibility_v1 as rights
 from tools import plan2_source_inventory_v1 as inventory
+from twelve_six.data import privacy_execution_authority as g06
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
 SCHEMA = "12-6.plan2.public-domain-physical-audit.v1"
@@ -114,6 +115,8 @@ def inspect(root: Path) -> dict[str, Any]:
     registry_rows: list[dict[str, Any]] = []
     rights_grants: list[dict[str, Any]] = []
     rights_members: list[dict[str, str]] = []
+    privacy_rows: list[dict[str, str]] = []
+    privacy_inventory: list[dict[str, Any]] = []
     total = 0
     for source in sources:
         need(type(source) is dict, "invalid book metadata")
@@ -193,6 +196,19 @@ def inspect(root: Path) -> dict[str, Any]:
             "evidence_sha256": sha(evidence),
             "revoked": False,
         })
+        privacy_rows.append({
+            "id": source_id + ":r00000000",
+            "text": decoded,
+            "mode": "en",
+        })
+        privacy_inventory.append({
+            "record_id": source_id + ":r00000000",
+            "source_id": source_id,
+            "family": family,
+            "modality": "en",
+            "payload_sha256": sha(payload),
+            "payload_bytes": len(payload),
+        })
         rights_members.append({
             "source_id": source_id,
             "record_id": source_id + ":r00000000",
@@ -233,8 +249,34 @@ def inspect(root: Path) -> dict[str, Any]:
          and train_receipt["training_corpus_authorized"] is False
          and release_receipt["training_corpus_authorized"] is False,
          "source-level rights receipt improperly promoted training")
+    # G06 is the already verified privacy detector/execution authority.
+    # A non-ALLOW source stays quarantined, never redacted into training by fiat.
+    expected_root = g06.input_rows_sha256_from_text_free_inventory(privacy_inventory)
+    privacy = g06.build_privacy_execution_authority(
+        privacy_rows, expected_input_rows_sha256=expected_root
+    )
+    g06.verify_privacy_execution_authority(
+        privacy, privacy_rows,
+        expected_input_rows_sha256=expected_root,
+        expected_execution_identity_sha256=privacy["execution_identity_sha256"],
+    )
+    need(privacy["counts"]["records"] == len(records)
+         and privacy["total_input_utf8_bytes"] == total,
+         "G06 physical corpus accounting drift")
+    rejected = sorted(
+        row["record_id"] for row in privacy["records"]
+        if row["action"] != "ALLOW"
+    )
     core = {
         "schema_version": SCHEMA,
+        "g06_input_root_sha256": expected_root,
+        "g06_execution_identity_sha256": privacy["execution_identity_sha256"],
+        "g06_counts": privacy["counts"],
+        "g06_rejected_record_ids": rejected,
+        "g06_privacy_policy_git_blob": (
+            privacy["privacy_binding"]["implementation_git_blob_sha1"]
+        ),
+        "privacy_coverage_limit": "HIGH_CONFIDENCE_PATTERNS_ONLY",
         "rights_boundary": "ORIGINAL_WORK_SOURCE_PERMISSIONS_ONLY_NOT_CORPUS",
         "source_inventory_sha256": inv["inventory_sha256"],
         "source_rights_catalog_sha256": grants["catalog_sha256"],
