@@ -1,0 +1,41 @@
+{
+  "schema_version": "12-6.plan2-near-audit.v1",
+  "pairs": [
+    {
+      "id": "mirror-case-punctuation",
+      "left": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtysix",
+      "right": "ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE TEN ELEVEN TWELVE THIRTEEN FOURTEEN FIFTEEN SIXTEEN SEVENTEEN EIGHTEEN NINETEEN TWENTY TWENTYONE TWENTYTWO TWENTYTHREE TWENTYFOUR TWENTYFIVE TWENTYSIX TWENTYSEVEN TWENTYEIGHT TWENTYNINE THIRTY THIRTYONE THIRTYTWO THIRTYTHREE THIRTYFOUR THIRTYFIVE THIRTYSIX!!!",
+      "related": true
+    },
+    {
+      "id": "near-small-edit",
+      "left": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtysix",
+      "right": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtyseven",
+      "related": true
+    },
+    {
+      "id": "derivative-shorter",
+      "left": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtysix",
+      "right": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive",
+      "related": true
+    },
+    {
+      "id": "unrelated-contents",
+      "left": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtysix",
+      "right": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega",
+      "related": false
+    },
+    {
+      "id": "common-prefix-only",
+      "left": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive thirtysix",
+      "right": "one two three four five six seven eight rose lemon river maple bamboo pollen silver copper cloud ridge cobalt meadow ancient winter apple orange",
+      "related": false
+    },
+    {
+      "id": "short-strings-no-near",
+      "left": "hello there",
+      "right": "hello there!",
+      "related": false
+    }
+  ]
+}
