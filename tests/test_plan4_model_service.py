@@ -292,3 +292,14 @@ def test_closed_completed_generation_has_no_active_sessions(service):
     assert ok(client, "health")["active_sessions"] == 0
     ok(client, "stream.close", session_id=stream["session_id"])
     assert ok(client, "unload")["status"] == "UNLOADED"
+
+
+def test_swap_cannot_hide_a_drifted_model(service):
+    client = LocalClient(service)
+    ok(client, "load", model="alpha")
+    with torch.no_grad():
+        next(service._registered["alpha"].model.parameters()).reshape(-1)[0].add_(0.2)
+    denied(client, "swap", "MODEL_DRIFT", model="beta")
+    health = ok(client, "health")
+    assert health["status"] == "FAULTED"
+    assert health["model"] == "alpha"
