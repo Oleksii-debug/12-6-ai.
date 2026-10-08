@@ -16,12 +16,14 @@ def test_three_independent_real_books_rebuild_and_restart(tmp_path: Path) -> Non
     repeat = books.stage(ROOT, tmp_path / "first")
     clean = books.stage(ROOT, tmp_path / "second")
     assert first == repeat == clean
-    assert first["physical_source_families"] == 3
+    assert first["physical_source_families"] == 1
+    assert first["physical_document_families"] == 3
     assert first["physical_source_bytes"] == 1_265_481
     assert first["training_corpus_authorized"] is False
     assert first["tokenizer_fit_authorized"] is False
     assert first["production_release_authorized"] is False
-    assert len({item["source_family"] for item in first["books"]}) == 3
+    assert len({item["source_family"] for item in first["books"]}) == 1
+    assert len({item["document_family"] for item in first["books"]}) == 3
     assert json.loads((tmp_path / "first" / books.OUTPUT).read_bytes()) == first
     assert first["manifest_sha256"] == books.sha(books.canonical({
         k: v for k, v in first.items() if k != "manifest_sha256"
