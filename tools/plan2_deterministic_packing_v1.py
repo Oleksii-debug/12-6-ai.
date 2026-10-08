@@ -189,6 +189,50 @@ def stage(root: Path, destination: Path) -> dict:
     return manifest
 
 
+
+def read_blocks(root: Path, destination: Path, *, start_block: int = 0) -> list[dict]:
+    """Fail-closed, optimizer-independent deterministic restart from a block cursor.
+
+    Validate the complete immutable publication before returning any block.
+    A saved `next_block` is the only resume cursor; the caller owns optimizer
+    state and must commit that cursor atomically with its own state.
+    """
+    need(type(start_block) is int and start_block >= 0,
+         "invalid restart block cursor")
+    need(not any(path.is_symlink() for path in (destination, *destination.parents)),
+         "symlink output")
+    expected, expected_shards = build(root)
+    manifest_path = destination / "packing-manifest.json"
+    folder = destination / "shards"
+    need(folder.is_dir() and not folder.is_symlink(), "missing/unsafe shard folder")
+    try:
+        raw = _read_destination(manifest_path)
+        manifest = json.loads(raw.decode("utf-8", "strict"))
+        need(type(manifest) is dict and canonical(manifest) == raw,
+             "noncanonical manifest")
+        need(manifest == expected, "manifest authority drift")
+        need(start_block <= manifest["block_count"], "cursor past end")
+        need({item.name for item in folder.iterdir()}
+             == {Path(path).name for path in expected_shards},
+             "missing/unexpected shard")
+        verified: list[dict] = []
+        for ref in manifest["shards"]:
+            path = destination / ref["path"]
+            actual = _read_destination(path)
+            need(actual == expected_shards[ref["path"]]
+                 and digest(actual) == ref["sha256"], "shard bytes/hash drift")
+            data = json.loads(actual.decode("utf-8", "strict"))
+            need(canonical(data) == actual, "noncanonical shard")
+            verified.extend(data["blocks"])
+    except (OSError, ValueError, UnicodeError, TypeError, KeyError) as exc:
+        raise PackingDenied("invalid shard reader authority") from exc
+    need(len(verified) == manifest["block_count"], "block count drift")
+    return [
+        {"block_index": i, "next_block": i + 1, "block": block}
+        for i, block in enumerate(verified)
+        if i >= start_block
+    ]
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("."))
