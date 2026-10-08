@@ -2,7 +2,12 @@ from dataclasses import replace
 
 import pytest
 
-from twelve_six.agent_runtime.context import ContextEntry, ContextError, build_context, canonical_bytes
+from twelve_six.agent_runtime.context import (
+    ContextEntry,
+    ContextError,
+    build_context,
+    canonical_bytes,
+)
 
 
 def e(name, recency, priority=10, kind="retrieval", critical=False, content="hello"):
