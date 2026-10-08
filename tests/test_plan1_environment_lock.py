@@ -251,3 +251,24 @@ def test_cli_never_overwrites_lock_or_accepts_unpinned_environment(tmp_path, cap
     approved = hashlib.sha256(original).hexdigest()
     assert main(["verify", *args, "--expected-lock-sha256", approved]) == 0
     assert "VERIFIED_WHEELHOUSE" in capsys.readouterr().out
+
+
+def test_genuine_directory_entries_are_allowed_but_wheel_symlinks_denied(tmp_path):
+    wheel = make_wheel(tmp_path)
+    with zipfile.ZipFile(wheel) as archive:
+        originals = [(item.filename, archive.read(item)) for item in archive.infolist()]
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for dirname in ("fixture/", "fixture-1.0.dist-info/"):
+            info = zipfile.ZipInfo(dirname)
+            info.external_attr = 0o40755 << 16
+            archive.writestr(info, b"")
+        for name, contents in originals:
+            archive.writestr(name, contents)
+    assert inspect_wheel(wheel) == ("fixture", "1.0")
+
+    with zipfile.ZipFile(wheel, "w") as archive:
+        info = zipfile.ZipInfo("fixture/attacker.py")
+        info.external_attr = 0o120777 << 16
+        archive.writestr(info, b"source")
+    with pytest.raises(EnvironmentLockError, match="symlink or special"):
+        inspect_wheel(wheel)
