@@ -181,9 +181,16 @@ def _atomic_write(directory: Path, target: Path, content: bytes) -> None:
             fp.write(content)
             fp.flush()
             os.fsync(fp.fileno())
-        _need(not target.exists() and not target.is_symlink(), "concurrent overwrite")
-        os.replace(name, target)
-        name = None
+        # A pre-link exists() check followed by os.replace() is a TOCTOU race:
+        # a competing writer can publish target in between and be clobbered.
+        # The temp file and target share a filesystem, so a hardlink provides
+        # atomic create-if-absent publication without overwriting another run.
+        try:
+            os.link(name, target)
+        except FileExistsError as exc:
+            raise Plan2MaterializationError(
+                "concurrent staged-member publication; retry after readback"
+            ) from exc
         _sync_dir(directory)
     finally:
         if name is not None:
