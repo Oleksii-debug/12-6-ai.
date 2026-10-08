@@ -22,3 +22,7 @@ A controlled synthetic fixture has 16 independent document IDs / 32 records; it 
 - Negative cases: one-document fail-closed, forged S9 identity and permissions, missing/extraneous/duplicate rows, source drift, forged policy, modified incumbent, tampered manifest and symlinks.
 
 No paid compute, actual training, tokenizer fit, real final-test access or model promotion. Section completion is only a repository-controllable LOCAL_FREE component closure under Migration Contract Baseline v1.
+
+## Physical integration command
+
+Run python tools/plan2_cluster_split_v1.py --physical-candidate --out-dir <dir> to replay validated S3-S9 and bind the exact S7 survivor bytes before attempting to split. On the current ONE-document candidate, this MUST fail and must not write cluster-split-manifest.json. This expected refusal is explicitly exercised in tests and CI; it is not a production release.
