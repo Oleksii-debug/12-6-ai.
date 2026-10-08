@@ -806,3 +806,34 @@ def test_untrusted_review_and_ancestry_claims_are_bounded_before_digest(monkeypa
             expected_lineage_sha256="0" * 64,
         )
     assert attempted == []
+
+def test_untrusted_archive_hashing_has_bounded_stat_and_stream(monkeypatch, tmp_path):
+    """Oversized stat and a stream that grows beyond its claimed size both fail closed."""
+    import os
+
+    from twelve_six import third_party_reuse as reuse
+
+    path = tmp_path / "untrusted.whl"
+    with monkeypatch.context() as patch:
+        patch.setattr(reuse, "MAX_REVIEW_ARTIFACT_BYTES", 8)
+        path.write_bytes(b"ninebytes")
+        with pytest.raises(ValueError, match="size limit"):
+            reuse._hash_regular_archive(path)
+
+        path.write_bytes(b"ok")
+        original_read = os.read
+        emitted = False
+
+        def oversized_stream(fd, size):
+            nonlocal emitted
+            data = original_read(fd, size)
+            if data and not emitted:
+                emitted = True
+                return b"x" * 9
+            return data
+
+        patch.setattr(os, "read", oversized_stream)
+        with pytest.raises(ValueError, match="size limit"):
+            reuse._hash_regular_archive(path)
+        assert emitted
+
