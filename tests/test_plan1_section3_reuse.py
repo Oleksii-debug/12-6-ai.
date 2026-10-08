@@ -948,7 +948,7 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
 
     upstream = tmp_path / "source.whl"
     notice = tmp_path / "LICENSE"
-    installed_file = tmp_path / "example" / "__init__.py"
+    installed_file = tmp_path / "torch" / "__init__.py"
     installed_file.parent.mkdir()
     upstream.write_bytes(b"independently reviewed upstream bytes")
     notice.write_bytes(b"license fixture reviewed separately")
@@ -958,15 +958,15 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
         hashlib.sha256(installed_file.read_bytes()).digest()
     ).rstrip(b"=").decode("ascii")
     record = (
-        f"example/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\n"
-        "example-1.2.3.dist-info/RECORD,,\n"
+        f"torch/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\n"
+        "torch-1.2.3.dist-info/RECORD,,\n"
     )
 
     class FakeDistribution:
         version = "1.2.3"
 
         def __init__(self):
-            self.metadata = {"Name": "example"}
+            self.metadata = {"Name": "torch"}
 
         def read_text(self, filename):
             assert filename == "RECORD"
@@ -1000,8 +1000,16 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
             "pytorch",
             source_archive=upstream,
             license_file=notice,
-            distribution="example",
+            distribution="torch",
             **dict(pins, **replacements),
+        )
+
+    # The reviewed PyTorch asset may not be paired with an unrelated wheel,
+    # even if an attacker presents otherwise valid digest-shaped pins.
+    with pytest.raises(ValueError, match="upstream-to-wheel distribution binding"):
+        verify_reviewed_installed_backend(
+            approved, "pytorch", source_archive=upstream, license_file=notice,
+            distribution="example", **pins,
         )
 
     result = check()
@@ -1041,7 +1049,7 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     with pytest.raises(ValueError, match="unqualified code asset"):
         verify_reviewed_installed_backend(
             unreviewed, "pytorch", source_archive=upstream, license_file=notice,
-            distribution="example",
+            distribution="torch",
             independently_pinned_catalog_sha256=hashlib.sha256(unreviewed).hexdigest(),
             independently_pinned_record_sha256=pins["independently_pinned_record_sha256"],
         )
