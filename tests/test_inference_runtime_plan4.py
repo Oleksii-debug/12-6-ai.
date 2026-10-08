@@ -191,3 +191,13 @@ def test_prefix_violation_is_rejected(runtime, monkeypatch):
     monkeypatch.setattr(runtime.model, "generate", wrong_prefix)
     with pytest.raises(InferenceError, match="prefix"):
         runtime.generate("a", GenerationConfig(1))
+
+
+def test_midstream_weight_drift_fails_closed(runtime):
+    session = runtime.stream("drift", GenerationConfig(3))
+    events = iter(session)
+    assert next(events).kind == "TOKEN"
+    with torch.no_grad():
+        next(runtime.model.parameters()).reshape(-1)[0].add_(0.25)
+    with pytest.raises(InferenceError, match="drift during streaming"):
+        next(events)
