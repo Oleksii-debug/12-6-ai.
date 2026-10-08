@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from twelve_six.agent_runtime.context import (
+from twelve_six_agent_runtime.context import (
     ContextEntry,
     ContextError,
     build_context,
