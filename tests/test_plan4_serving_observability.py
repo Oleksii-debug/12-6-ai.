@@ -264,3 +264,58 @@ def test_sensitive_request_not_reflected_in_operational_metrics():
     secret = "private-prompt-shall-not-be-logged"
     assert monitor.dispatch(request(prompt=secret))["ok"]
     assert secret not in str(monitor.metrics())
+
+
+def test_canary_denies_server_route_without_explicit_host_permission():
+    plane, fixture = make_plane(transport="server")
+    monitor = ServingObserver(plane)
+    result = monitor.canary(role="answer")
+    assert result["ready"] is False
+    assert result["reason"] == "EXTERNAL_DENIED"
+    assert "generate" not in fixture.calls
+
+
+def test_canary_is_atomic_against_host_replacement():
+    # A catalog precheck alone is vulnerable to a local-to-external swap.
+    # The S8 host lock must span route inspection and the bounded call.
+    plane, local = make_plane()
+    remote = ModelFixture(model="remote")
+    catalog_read = threading.Event()
+    replacement_finished = threading.Event()
+    original_dispatch = plane.dispatch
+
+    def intercepted(request):
+        result = original_dispatch(request)
+        if type(request) is dict and request.get("op") == "catalog":
+            catalog_read.set()
+            replacement_finished.wait(0.1)
+        return result
+
+    plane.dispatch = intercepted
+    errors = []
+
+    def replace_host_route():
+        if not catalog_read.wait(2):
+            errors.append("catalog not read")
+            return
+        try:
+            plane.replace(
+                "one", slot_id="external", role="answer", provider="remote",
+                model="remote", transport="external", client=remote,
+                priority=1, reserved_bytes=5, authorize_external=True,
+            )
+        except Exception as exc:
+            errors.append(str(exc))
+        finally:
+            replacement_finished.set()
+
+    thread = threading.Thread(target=replace_host_route)
+    thread.start()
+    result = ServingObserver(plane).canary(role="answer")
+    thread.join(2)
+    assert not thread.is_alive()
+    assert not errors
+    assert result["ready"] is True
+    assert result["model_identity"]["model"] == "tiny"
+    assert local.calls.count("generate") == 1
+    assert "generate" not in remote.calls
