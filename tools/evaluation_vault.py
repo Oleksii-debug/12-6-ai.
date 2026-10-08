@@ -111,8 +111,6 @@ class EvaluationVault:
                     for line in dataset.splitlines()]
         except EvaluationBoundaryError:
             raise
-        except EvaluationBoundaryError:
-            raise
         except (ValueError, UnicodeDecodeError) as exc:
             raise EvaluationBoundaryError("invalid reserved dataset") from exc
         if (not rows or any(type(row) is not dict or set(row) != {"id", "answer"}
