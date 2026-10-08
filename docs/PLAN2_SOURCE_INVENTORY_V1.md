@@ -1,6 +1,6 @@
 # Plan 2 / Section 1 — Source inventory boundary
 
-The additive Plan-2 adapter `source_inventory_v1.py` indexes already
+The additive Plan-2 adapter `tools/plan2_source_inventory_v1.py` indexes already
 established source authorities. It does not reacquire data, replace the
 NEXT100-063 capacity registry, or grant training, tokenizer fit or corpus credit.
 
