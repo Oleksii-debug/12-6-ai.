@@ -4,8 +4,13 @@ from dataclasses import asdict, replace
 import pytest
 
 from twelve_six.autonomous_curriculum import (
-    CapabilityArea, CurriculumProposal, CurriculumRecipe, _mac,
-    measure_capability_gaps, plan_curriculum, verify_curriculum_restart,
+    CapabilityArea,
+    CurriculumProposal,
+    CurriculumRecipe,
+    _mac,
+    measure_capability_gaps,
+    plan_curriculum,
+    verify_curriculum_restart,
 )
 from twelve_six.continual_learning import CapabilityProbe, FrozenCapabilitySuite
 from twelve_six.post_base_instruction import canonical_digest as digest
@@ -35,9 +40,14 @@ def setup():
     other = replace(proposal, proposal_id="candidate-B", kind="experiment", cost_units=50)
     other = replace(other, signature=_mac(KEY, other.payload()))
     recipe = CurriculumRecipe(snapshot.manifest_sha256, max_targets=2, budget_units=30)
-    kwargs = dict(trusted_verifier_id="trusted-independent", trusted_verifier_version_sha256=H,
-                  trusted_proposal_roots=frozenset({H}), verifier_key=KEY,
-                  champion=policy, trusted_suite_roots=trusted_suites)
+    kwargs = {
+        "trusted_verifier_id": "trusted-independent",
+        "trusted_verifier_version_sha256": H,
+        "trusted_proposal_roots": frozenset({H}),
+        "verifier_key": KEY,
+        "champion": policy,
+        "trusted_suite_roots": trusted_suites,
+    }
     return policy, (area,), trusted_suites, snapshot, (proposal, other), recipe, kwargs
 
 
