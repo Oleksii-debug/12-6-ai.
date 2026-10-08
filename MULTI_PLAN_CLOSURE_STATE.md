@@ -29,7 +29,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | Plan | First unfinished Section at migration | Coordination state |
 | ---: | ---: | --- |
 | 1 | 3 | OPEN |
-| 2 | 1 | OPEN |
+| 2 | 2 | OPEN |
 | 3 | 1 | OPEN |
 | 4 | 1 | OPEN |
 | 5 | 1 | OPEN |
@@ -40,3 +40,9 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 10 | 1 | WAITING_UPSTREAM |
 
 Update this file when a new-plan Section reaches terminal DONE/REOPENED or when the first unfinished front for a plan changes.
+
+## Plan 2 — independent engineering Section closures
+
+| Section | State | Accepted main SHA | Evidence and boundaries |
+| ---: | --- | --- | --- |
+| 1 | DONE | `f9a4a544b8dcc04e2140060644f43543eccd1a54` | PR #3097, qualified candidate `7168efb3a47c2802835baf9c19326b1b935fcdd2`; GitHub Actions run `37725811679`: Ruff and workflow policy PASS; pytest 3752 passed, 8 unrelated Plan-8 failures identical to pre-existing main run `37718796941` (3741 passed / same eight failures). Plan-2 source inventory tests, negative unknown/candidate/rejected/hash-drift/duplicate cases, deterministic replay/revision diff PASS. Post-merge main and source blob readback PASS. This is a component-level source registry, not authorization for corpus training or a green whole-repository CI claim. |
