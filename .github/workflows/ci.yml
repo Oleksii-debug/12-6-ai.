@@ -47,6 +47,11 @@ jobs:
         run: |
           python -m ruff check src/twelve_six/integration/dependency_security.py src/twelve_six/integration/release_fixture.py tests/test_dependency_security.py tests/test_plan1_section5_release_fixture.py tests/test_plan1_section5_notices.py
           python -m pytest -q tests/test_dependency_security.py tests/test_plan1_section5_release_fixture.py tests/test_plan1_section5_notices.py tests/test_dependency_lock.py
+      - name: Plan 1 Section 6 v1 ABI and migration qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3204
+        run: |
+          python -m ruff check src/twelve_six/contracts tests/test_plan1_section6_contract_package.py
+          python -m pytest -q tests/test_plan1_section6_contract_package.py tests/test_artifact_identity_section1.py tests/test_system_architecture_section0.py
       - run: ruff check src tests
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
