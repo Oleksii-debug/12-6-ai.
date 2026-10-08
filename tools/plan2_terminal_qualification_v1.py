@@ -57,6 +57,62 @@ def _inventory(base: Path) -> dict[str, str]:
     return members
 
 
+def _read_gate(path: Path) -> dict[str, Any]:
+    """Verify a staged authority, not just an untrusted 64-character hash."""
+    _require(path.is_file() and not path.is_symlink(), "physical gate member missing")
+    raw = physical._read_destination(path)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise QualificationDenied("invalid physical gate JSON") from exc
+    _require(type(value) is dict and raw == _canonical(value),
+             "noncanonical physical gate JSON")
+    digest = value.get("manifest_sha256")
+    unsigned = {k: v for k, v in value.items() if k != "manifest_sha256"}
+    _require(type(digest) is str and digest == _digest(_canonical(unsigned)),
+             "physical gate manifest hash mismatch")
+    _require(value.get("training_corpus_authorized") is False,
+             "physical gate incorrectly authorizes training")
+    for capability in ("tokenizer_fit_authorized", "evaluation_authorized",
+                       "generated_auto_reentry_authorized"):
+        if capability in value:
+            _require(value[capability] is False,
+                     "physical gate incorrectly authorizes " + capability)
+    return value
+
+
+def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
+    """Bind S5-S8 readbacks into the S9 physical candidate, fail closed."""
+    firewall_dir = candidate / "firewall"
+    near_dir = firewall_dir / "near"
+    exact_dir = near_dir / "exact"
+    privacy_dir = exact_dir / "privacy"
+    stages = {
+        "privacy": _read_gate(privacy_dir / "privacy-manifest.json"),
+        "exact_dedup": _read_gate(exact_dir / "exact-dedup-manifest.json"),
+        "near_dedup": _read_gate(near_dir / "near-dedup-manifest.json"),
+        "reserved_eval": _read_gate(
+            firewall_dir / "reserved-eval-firewall-manifest.json"
+        ),
+    }
+    rights = stages["privacy"]["manifest_sha256"]
+    _require(any(source.get("privacy_manifest_sha256") == rights
+                 for source in stages["exact_dedup"]["sources"]),
+             "S5-S6 privacy provenance disconnected")
+    _require(stages["near_dedup"]["upstream_exact_manifest_sha256"] ==
+             stages["exact_dedup"]["manifest_sha256"],
+             "S6-S7 exact dedup lineage disconnected")
+    _require(stages["reserved_eval"]["physical_s7_manifest_sha256"] ==
+             stages["near_dedup"]["manifest_sha256"],
+             "S7-S8 decontamination lineage disconnected")
+    mixture_doc = _read_gate(candidate / "corpus-mixture-manifest.json")
+    _require(mixture_doc["dataset_candidate_sha256"] == mixture_hash
+             and mixture_doc["physical_s8_manifest_sha256"] ==
+             stages["reserved_eval"]["manifest_sha256"],
+             "S8-S9 mixture lineage disconnected")
+    return {key: value["manifest_sha256"] for key, value in stages.items()}
+
+
 def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     """Reuse all extant component authorities, without creating a second pipeline."""
     cohort = physical.stage_candidate_cohort(root, destination / "source")
@@ -66,6 +122,10 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "source candidate unexpectedly promoted")
     _require(current["training_corpus_authorized"] is False,
              "physical mixture unexpectedly grants training")
+
+    gates = _audit_physical_gates(
+        destination / "physical-candidate", current["dataset_candidate_sha256"]
+    )
 
     # Assert the independent-family count before explaining the split refusal.
     # Never mislabel an unrelated integrity error as a known corpus limitation.
@@ -111,6 +171,7 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     return {
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
+        "physical_gate_manifest_sha256": gates,
         "physical_split": physical_split,
         "physical_source_family_count": len(families),
         "synthetic_tokenizer_manifest_sha256": tokenizer["manifest_sha256"],
