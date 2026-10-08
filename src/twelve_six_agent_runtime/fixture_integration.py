@@ -203,6 +203,9 @@ class FixtureRuntime:
                 step_id="fixture-start",
             )
         if state.revision == 0:
+            if (state.plan_id != "plan5" or state.step_id != "fixture-start"
+                    or state.checkpoint_id != "initial" or state.pending_effects):
+                raise FixtureError("fixture identity or task lineage changed")
             self._context_and_model()
             state = self.tasks.checkpoint(
                 state.task_id, expected_epoch=state.control_epoch,
