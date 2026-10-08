@@ -172,6 +172,13 @@ def inspect_firewall(
     """Fail-closed S7->DATA232->S8 boundary, with generated-data isolation."""
     _fixture, eval_rows, authorities = _reserve(reserved_fixture_bytes)
     near_receipt, training = _retained_rows(cohorts)
+    _need(
+        {r["source_id"] for r in training}.isdisjoint(
+            {r["source_id"] for r in eval_rows})
+        and {r["source_family"] for r in training}.isdisjoint(
+            {r["source_family"] for r in eval_rows}),
+        "training source identity aliases independently reserved evaluation",
+    )
     identity = _sha(_canonical(eval_rows))
     selection = _sha(_canonical([r for r in eval_rows
                                  if r["record_id"].startswith("reserved.selection.")]))
