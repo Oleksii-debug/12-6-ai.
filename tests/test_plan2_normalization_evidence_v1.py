@@ -57,7 +57,7 @@ def test_invalid_binary_encoding_and_controls_rejected(payload):
 
 @pytest.mark.parametrize("payload", [
     b"Only English Latin letters here.\r\n",
-    "Короткий рядок кирилицею".encode("utf-8"),
+    "Короткий рядок кирилицею".encode(),
     b"1234567890",
     b"English words and few text\n1234\n",
 ])
