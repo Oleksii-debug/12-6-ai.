@@ -29,6 +29,15 @@ def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode()
 
 
+def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EvaluationBoundaryError("duplicate JSON field")
+        result[key] = value
+    return result
+
+
 def _sha(value: object) -> bool:
     return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
@@ -96,7 +105,10 @@ class EvaluationVault:
         if type(dataset_version) is not str or not dataset_version.strip():
             raise EvaluationBoundaryError("dataset version required")
         try:
-            rows = [json.loads(line) for line in dataset.splitlines()]
+            rows = [json.loads(line, object_pairs_hook=_strict_object,
+                               parse_constant=lambda _: (_ for _ in ()).throw(
+                                   EvaluationBoundaryError("invalid JSON constant")))
+                    for line in dataset.splitlines()]
         except (ValueError, UnicodeDecodeError) as exc:
             raise EvaluationBoundaryError("invalid reserved dataset") from exc
         if (not rows or any(type(row) is not dict or set(row) != {"id", "answer"}
@@ -148,8 +160,10 @@ class EvaluationVault:
             raise EvaluationBoundaryError("invalid dataset reference")
         if not all(_sha(x) for x in (model_sha256, config_sha256, evaluator_sha256)):
             raise EvaluationBoundaryError("model/config/evaluator identities required")
-        if type(predictions) is not dict or any(type(k) is not str or type(v) is not str
-                                                for k, v in predictions.items()):
+        if (type(predictions) is not dict or len(predictions) > 100_000
+                or any(type(k) is not str or type(v) is not str
+                       or len(k) > 1024 or len(v) > 10_000
+                       for k, v in predictions.items())):
             raise EvaluationBoundaryError("invalid predictions")
         try:
             metadata = _regular_private(
@@ -177,6 +191,7 @@ class EvaluationVault:
                    "correct_count": correct, "accuracy": correct / len(rows)}
         result_path = self.results / (evaluation_id + ".json")
         encoded = _canonical(payload)
+        seal_path = self.results / (evaluation_id + ".sha256")
         try:
             with result_path.open("xb") as f:
                 f.write(encoded)
@@ -186,8 +201,16 @@ class EvaluationVault:
         except FileExistsError:
             if _regular_private(result_path) != encoded:
                 raise EvaluationBoundaryError("immutable result mismatch") from None
-        return {"schema_version": SCHEMA, "evaluation_id": evaluation_id,
-                "result_sha256": _digest(encoded), "state": "SEALED"}
+        try:
+            with seal_path.open("xb") as f:
+                f.write((_digest(encoded) + "\\n").encode())
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(seal_path, 0o600)
+        except FileExistsError:
+            if _regular_private(seal_path) != (_digest(encoded) + "\\n").encode():
+                raise EvaluationBoundaryError("immutable result seal mismatch") from None
+        return {"schema_version": SCHEMA, "evaluation_id": evaluation_id, "state": "SEALED"}
 
     def terminal_report(
         self,
@@ -196,15 +219,18 @@ class EvaluationVault:
         trusted_terminal_ids: frozenset[str],
     ) -> dict[str, Any]:
         """Release only an independently verified exact terminal evaluation identity."""
-        if (type(sealed) is not dict or set(sealed) != {"schema_version", "evaluation_id", "result_sha256", "state"}
+        if (type(sealed) is not dict or set(sealed) != {"schema_version", "evaluation_id", "state"}
                 or sealed.get("schema_version") != SCHEMA or sealed.get("state") != "SEALED"
-                or not _sha(sealed.get("evaluation_id")) or not _sha(sealed.get("result_sha256"))):
+                or not _sha(sealed.get("evaluation_id"))):
             raise EvaluationBoundaryError("invalid sealed receipt")
         if type(trusted_terminal_ids) is not frozenset or sealed["evaluation_id"] not in trusted_terminal_ids:
             raise EvaluationBoundaryError("terminal evaluation authority unverified")
         try:
             raw = _regular_private(self.results / (sealed["evaluation_id"] + ".json"))
-            if _digest(raw) != sealed["result_sha256"]:
+            expected_seal = _regular_private(
+                self.results / (sealed["evaluation_id"] + ".sha256")
+            )
+            if expected_seal != (_digest(raw) + "\\n").encode():
                 raise EvaluationBoundaryError("result digest drift")
             payload = json.loads(raw)
             if payload["evaluation_id"] != sealed["evaluation_id"]:
