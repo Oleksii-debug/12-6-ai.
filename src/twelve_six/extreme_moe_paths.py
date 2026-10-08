@@ -124,9 +124,7 @@ def route_tiny(policy: MoEPolicy, token_ids: tuple[int, ...]) -> dict[str, Any]:
             f"{policy.router_seed_sha256}:{token}".encode("ascii")
         ).digest()
         start = int.from_bytes(digest[:8], "big") % policy.expert_count
-        step = 1 + int.from_bytes(digest[8:16], "big") % (policy.expert_count - 1)
-        # Wraparound step is not necessarily coprime with expert_count.
-        # Sequential collision resolution guarantees distinct destinations.
+        # Adjacent cyclic choices are distinct for top_k < expert_count.
         choices = tuple((start + i) % policy.expert_count for i in range(policy.top_k))
         routes.append(choices)
         for expert in choices:
@@ -160,9 +158,15 @@ def expert_placement(
         or transport.get("physical_shards_hashed") is not True
         or transport.get("remote_transport_executed") is not False
         or transport.get("canonical_checkpoint_published") is not False
+        or transport.get("placement_sha256") != _digest(asdict(placement))
+        or transport.get("lost_nodes") != sorted(lost_nodes)
     ):
         raise ExtremeDenied("untrusted fixture transport receipt")
     _sha("transport", transport.get("transport_sha256"))
+    if transport["transport_sha256"] != _digest(
+        {key: value for key, value in transport.items() if key != "transport_sha256"}
+    ):
+        raise ExtremeDenied("tampered transport receipt")
     if (not isinstance(lost_nodes, tuple) or len(lost_nodes) != len(set(lost_nodes))
             or any(type(n) is not str or n not in placement.node_ids for n in lost_nodes)):
         raise ExtremeDenied("invalid node-loss event")
