@@ -56,3 +56,21 @@ No production attestation exists merely because a fixture has a matching hash.
   registry and this assigned Drive plan.
 
 No terminal DONE is claimed before these requirements are satisfied.
+
+
+## Composite third-party license notation
+A concrete blocker was identified in mandatory dependency metadata:
+NumPy and PyTorch upstream metadata specify multiple SPDX license terms,
+while the former validator only accepted a single identifier. The code-only
+catalog now recognizes a bounded conjunction of separately allowlisted
+permissive SPDX terms, including `Apache-2.0 WITH LLVM-exception`, `0BSD`,
+`BSL-1.0`, `CC0-1.0`, and `Zlib`. Unknown/OR/unreviewed exception
+expressions still fail closed. This merely recognizes syntax; it **does not**
+certify the actual release's full bundled notices, license compatibility
+(including wheel-bundled native runtime libraries), upstream SHA/version,
+vulnerability review, weight/data rights, or any installed package.
+Official upstream metadata references:
+- https://github.com/numpy/numpy/blob/main/pyproject.toml
+- https://github.com/pytorch/pytorch/blob/main/pyproject.toml
+A real pinned package/wheel and complete notices assessment is still required
+before admission. All 13 current catalog entries remain unqualified.

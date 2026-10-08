@@ -514,3 +514,67 @@ def test_pathname_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
         _hash_regular_archive(archive)
     assert swapped
     assert archive.read_bytes() == b"untrusted replacement"
+
+
+# These are upstream *expression-format* fixtures, NOT admitted dependencies.
+# Even valid syntax requires independent source, binary, notices and security review.
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "BSD-3-Clause AND 0BSD AND MIT AND CC0-1.0",
+        (
+            "Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause "
+            "AND BSD-3-Clause AND BSL-1.0 AND ISC AND MIT AND Zlib"
+        ),
+    ],
+)
+def test_composite_permissive_spdx_requires_other_admission_evidence(expression):
+    approved = json.loads(RAW)
+    asset = approved["assets"][0]
+    asset.update(
+        status="REVIEWED_CODE_ONLY",
+        upstream_url="https://example.org/independently-reviewed",
+        version="1.0.0",
+        source_sha256="e" * 64,
+        license_spdx=expression,
+        license_evidence_sha256="f" * 64,
+        security_posture="REVIEWED",
+        data_rights="NOT_APPLICABLE_CODE",
+    )
+    raw = wire(approved)
+    assert validate_reuse_catalog(raw)["assets"][0]["license_spdx"] == expression
+    with pytest.raises(ValueError, match="approved catalog"):
+        require_reviewed_code(
+            raw, "pytorch", "e" * 64,
+            independently_pinned_catalog_sha256="0" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        "BSD-3-Clause OR GPL-3.0-only",
+        "BSD-3-Clause AND GPL-3.0-only",
+        "Apache-2.0 WITH Classpath-exception-2.0",
+        "BSD-3-Clause AND ",
+        " AND MIT",
+        "MIT AND MIT",
+        "MIT  AND BSD-3-Clause",
+        "(BSD-3-Clause)",
+        "MIT AND LicenseRef-Unreviewed",
+    ],
+)
+def test_unknown_or_ambiguous_composite_license_fails_closed(forged):
+    approved = json.loads(RAW)
+    approved["assets"][0].update(
+        status="REVIEWED_CODE_ONLY",
+        upstream_url="https://example.org/independently-reviewed",
+        version="1.0.0",
+        source_sha256="e" * 64,
+        license_spdx=forged,
+        license_evidence_sha256="f" * 64,
+        security_posture="REVIEWED",
+        data_rights="NOT_APPLICABLE_CODE",
+    )
+    with pytest.raises(ValueError, match="unknown/incompatible license"):
+        validate_reuse_catalog(wire(approved))

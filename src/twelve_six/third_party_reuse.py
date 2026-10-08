@@ -26,7 +26,13 @@ ASSET_KEYS = {
     "license_spdx", "license_evidence_sha256", "security_posture",
     "data_rights", "model_weights", "replacement_boundary",
 }
-LICENSES = {"Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC"}
+# Strictly enumerated permissive SPDX *terms*, not an automatic legal approval.
+# Real NumPy and PyTorch metadata use composite expressions with distinct terms.
+# A human/source-byte/license-notice review and independent catalog pin remain mandatory.
+LICENSES = {
+    "0BSD", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause",
+    "BSD-3-Clause", "BSL-1.0", "CC0-1.0", "ISC", "MIT", "Zlib",
+}
 
 
 def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -68,6 +74,23 @@ def _strict(raw: bytes) -> dict[str, Any]:
 
 def _hash(value: object) -> bool:
     return type(value) is str and HEX.fullmatch(value) is not None
+
+
+def _reviewable_spdx_conjunction(value: object) -> bool:
+    """Only recognize bounded all-permissive SPDX AND expressions.
+
+    Parsing an expression does not certify its truth, supplied notice coverage,
+    compatibility of bundled binary components, or a code-review decision.
+    OR/unknown licenses, unapproved exceptions and alternate syntax fail closed.
+    """
+    if type(value) is not str or not value or len(value) > 4096:
+        return False
+    terms = value.split(" AND ")
+    return (
+        1 <= len(terms) <= 32
+        and len(set(terms)) == len(terms)
+        and all(term in LICENSES for term in terms)
+    )
 
 
 def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
@@ -122,7 +145,7 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
             raise ValueError("code permission is not dataset permission")
         if asset["security_posture"] != "REVIEWED":
             raise ValueError("unknown security posture")
-        if type(asset["license_spdx"]) is not str or asset["license_spdx"] not in LICENSES:
+        if not _reviewable_spdx_conjunction(asset["license_spdx"]):
             raise ValueError("unknown/incompatible license")
         if type(asset["upstream_url"]) is not str or not asset["upstream_url"].startswith(
             "https://"
