@@ -162,8 +162,11 @@ def stage(root: Path, destination: Path) -> dict:
     folder = destination / "shards"
     need(not folder.is_symlink(), "symlink shard folder")
     if folder.exists():
-        need(folder.is_dir()
-             and {f"shards/{p.name}" for p in folder.iterdir()} == set(shards),
+        need(folder.is_dir(), "non-directory shard path")
+        present = {f"shards/{p.name}" for p in folder.iterdir()}
+        manifest_exists = (destination / "packing-manifest.json").exists()
+        need(present.issubset(set(shards))
+             and (not manifest_exists or present == set(shards)),
              "unexpected/missing shard")
     else:
         folder.mkdir()
