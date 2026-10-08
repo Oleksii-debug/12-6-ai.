@@ -1256,3 +1256,258 @@ def compare_proxies(left: dict[str, Any], right: dict[str, Any]) -> dict[str, An
         "promotion_authorized": False,
         "interpretation": "synthetic mechanics comparison, not model quality",
     }
+
+
+# Plan 7 / Section 2 -- bounded, audited function-preserving growth.
+# This API does not alter ModelSpec v1, the training/checkpoint runtime or
+# canonical stages.  Only FFN widening and identity residual depth extension
+# have a function-preserving policy; all other changes fail closed.
+
+
+class GrowthRejected(ValueError):
+    """Requested growth lacks a supported semantics-preserving transform."""
+
+
+def _growth_target(parent: ModelSpec, descendant: ModelSpec) -> tuple[int, int]:
+    """Return FFN/depth increments only when all other ModelSpec semantics match."""
+    if not isinstance(parent, ModelSpec) or not isinstance(descendant, ModelSpec):
+        raise TypeError("growth requires ModelSpec parent and descendant")
+    old = parent.to_dict()
+    new = descendant.to_dict()
+    for key in ("d_ff", "n_layers"):
+        old.pop(key)
+        new.pop(key)
+    if old != new:
+        raise GrowthRejected("unsupported geometry or vocabulary changed")
+    if descendant.d_ff < parent.d_ff or descendant.n_layers < parent.n_layers:
+        raise GrowthRejected("function-preserving growth cannot shrink dimensions")
+    if descendant.d_ff == parent.d_ff and descendant.n_layers == parent.n_layers:
+        raise GrowthRejected("descendant must increase FFN width or layer count")
+    return descendant.d_ff - parent.d_ff, descendant.n_layers - parent.n_layers
+
+
+def _growth_seed(seed: int) -> int:
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise GrowthRejected("seed must be a nonnegative integer")
+    return seed
+
+
+def _growth_validate_parent(parent: TwelveSixDecoder) -> None:
+    if not isinstance(parent, TwelveSixDecoder):
+        raise TypeError("parent must be TwelveSixDecoder")
+    if parent.training:
+        raise GrowthRejected("growth parity requires parent.eval()")
+    if any(parameter.device.type != "cpu" for parameter in parent.parameters()):
+        raise ScaleAdmissionError("growth admission only supports local CPU models")
+    if any(
+        not bool(torch.isfinite(tensor).all())
+        for tensor in parent.state_dict().values()
+        if tensor.is_floating_point()
+    ):
+        raise GrowthRejected("nonfinite parent model state")
+
+
+def _growth_state_sha256(model: TwelveSixDecoder) -> str:
+    """Hash concrete tensor values, names, shapes, and dtypes, not only the schema."""
+    digest = hashlib.sha256()
+    for name, tensor in sorted(model.state_dict().items()):
+        raw_name = name.encode("utf-8")
+        descriptor = json.dumps(
+            [list(tensor.shape), str(tensor.dtype)],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        digest.update(len(raw_name).to_bytes(4, "big"))
+        digest.update(raw_name)
+        digest.update(len(descriptor).to_bytes(4, "big"))
+        digest.update(descriptor)
+        contiguous = tensor.detach().cpu().contiguous().numpy().tobytes()
+        digest.update(len(contiguous).to_bytes(8, "big"))
+        digest.update(contiguous)
+    return digest.hexdigest()
+
+
+def _copy_growth_weights(
+    parent: TwelveSixDecoder, descendant: TwelveSixDecoder,
+) -> list[dict[str, Any]]:
+    """Copy all incumbent tensors; zero widened downstream channels and new residuals."""
+    original = parent.state_dict()
+    target = descendant.state_dict()
+    previous_layers = parent.spec.n_layers
+    copied: list[dict[str, Any]] = []
+    with torch.no_grad():
+        for name, dest in target.items():
+            if name not in original:
+                if not name.startswith("blocks."):
+                    raise GrowthRejected(f"unrecognized descendant tensor: {name}")
+                index = int(name.split(".")[1])
+                if index < previous_layers:
+                    raise GrowthRejected(f"missing incumbent tensor: {name}")
+                # A genuinely new block is made an identity residual below.
+                copied.append({"tensor": name, "policy": "NEW_RESIDUAL_LAYER"})
+                continue
+
+            old = original[name]
+            if dest.shape == old.shape:
+                dest.copy_(old)
+                copied.append({"tensor": name, "policy": "EXACT_COPY"})
+                continue
+            allowed_prefix = (
+                ".mlp.gate_proj.weight",
+                ".mlp.up_proj.weight",
+                ".mlp.gate_proj.bias",
+                ".mlp.up_proj.bias",
+            )
+            if name.startswith("blocks.") and name.endswith(allowed_prefix):
+                if dest.ndim != old.ndim or dest.shape[0] < old.shape[0]:
+                    raise GrowthRejected(f"unsupported FFN tensor width: {name}")
+                if dest.shape[1:] != old.shape[1:]:
+                    raise GrowthRejected(f"unsupported FFN tensor input: {name}")
+                dest.zero_()
+                dest[:old.shape[0]].copy_(old)
+                copied.append({
+                    "tensor": name, "policy": "COPY_ROWS_ZERO_APPEND",
+                    "old_shape": list(old.shape), "new_shape": list(dest.shape),
+                })
+            elif name.startswith("blocks.") and name.endswith(".mlp.down_proj.weight"):
+                if dest.ndim != 2 or old.ndim != 2:
+                    raise GrowthRejected("invalid FFN output projection rank")
+                if dest.shape[0] != old.shape[0] or dest.shape[1] < old.shape[1]:
+                    raise GrowthRejected(f"unsupported FFN output tensor: {name}")
+                dest.zero_()
+                dest[:, :old.shape[1]].copy_(old)
+                copied.append({
+                    "tensor": name, "policy": "COPY_COLS_ZERO_APPEND",
+                    "old_shape": list(old.shape), "new_shape": list(dest.shape),
+                })
+            else:
+                raise GrowthRejected(f"unsupported tensor transform: {name}")
+
+        for index in range(previous_layers, descendant.spec.n_layers):
+            block = descendant.blocks[index]
+            block.attn.out_proj.weight.zero_()
+            block.mlp.down_proj.weight.zero_()
+            if block.attn.out_proj.bias is not None:
+                block.attn.out_proj.bias.zero_()
+            if block.mlp.down_proj.bias is not None:
+                block.mlp.down_proj.bias.zero_()
+    return copied
+
+
+def _growth_inputs(spec: ModelSpec, protocol: ProxyProtocol) -> torch.Tensor:
+    generator = torch.Generator(device="cpu").manual_seed(protocol.seed + 1)
+    return torch.randint(
+        0, spec.vocab_size, (protocol.batch, protocol.sequence),
+        generator=generator,
+    )
+
+
+def grow_function_preserving(
+    parent: TwelveSixDecoder,
+    target: ModelSpec,
+    protocol: ProxyProtocol,
+    budget: ProxyBudget,
+    *,
+    seed: int = 0,
+    parity_atol: float = 1e-5,
+) -> tuple[TwelveSixDecoder, dict[str, Any]]:
+    """Produce a certified LOCAL_FREE descendant, or return no descendant.
+
+    No optimizer state or checkpoint lineage is transferred. The caller must
+    start a new run with a new ModelSpec identity and may not promote this result.
+    """
+    _growth_seed(seed)
+    if isinstance(parity_atol, bool) or not isinstance(parity_atol, (float, int)):
+        raise GrowthRejected("parity tolerance must be finite and nonnegative")
+    if not math.isfinite(parity_atol) or parity_atol < 0 or parity_atol > 1e-3:
+        raise GrowthRejected("parity tolerance exceeds the bounded acceptance envelope")
+    _growth_validate_parent(parent)
+    width_added, layers_added = _growth_target(parent.spec, target)
+    resources = admit_proxy(target, protocol, budget)  # Before allocating descendant
+    admit_proxy(parent.spec, protocol, budget)
+    parent_modelspec_sha = parent.spec.identity_sha256()
+    parent_state_sha = _growth_state_sha256(parent)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        descendant = TwelveSixDecoder(target, parent.init_spec).cpu().eval()
+        mapping = _copy_growth_weights(parent, descendant)
+        inputs = _growth_inputs(parent.spec, protocol)
+        with torch.no_grad():
+            before = parent(inputs).logits.float()
+            after = descendant(inputs).logits.float()
+            if not bool(torch.isfinite(before).all() and torch.isfinite(after).all()):
+                raise GrowthRejected("nonfinite parity logits")
+            max_error = float((before - after).abs().max())
+            if max_error > parity_atol:
+                raise GrowthRejected(f"function parity failed: max error={max_error}")
+    if _growth_state_sha256(parent) != parent_state_sha:
+        raise GrowthRejected("parent weights mutated by growth operation")
+    record = {
+        "schema_version": 1,
+        "policy": "COPY_PREFIX_ZERO_NEW_CHANNELS_AND_IDENTITY_RESIDUALS",
+        "mode": "FUNCTION_PRESERVING_GROWTH",
+        "parent_modelspec_sha256": parent_modelspec_sha,
+        "parent_state_sha256": parent_state_sha,
+        "descendant_modelspec_sha256": target.identity_sha256(),
+        "descendant_state_sha256": _growth_state_sha256(descendant),
+        "init_sha256": parent.init_spec.identity_sha256(),
+        "protocol_sha256": protocol.identity(),
+        "seed": seed,
+        "added_ffn_width": width_added,
+        "added_layers": layers_added,
+        "tensor_mapping": mapping,
+        "resource_admission": resources,
+        "parity_max_abs_error": max_error,
+        "parity_atol": parity_atol,
+        "function_preserved_on_fixture": True,
+        "optimizer_state_transferred": False,
+        "checkpoint_resume_authorized": False,
+        "stage_promotion_authorized": False,
+        "training_authorized": False,
+        "paid_compute_authorized": False,
+        "evidence_class": "LOCAL_FREE_SYNTHETIC_GROWTH_PARITY_ONLY",
+    }
+    record["receipt_sha256"] = _digest(record)
+    return descendant, record
+
+
+def fresh_init_scale_up(
+    parent: TwelveSixDecoder,
+    target: ModelSpec,
+    protocol: ProxyProtocol,
+    budget: ProxyBudget,
+    *,
+    seed: int = 0,
+) -> tuple[TwelveSixDecoder, dict[str, Any]]:
+    """Explicitly non-preserving fallback, never described as weight transfer."""
+    _growth_seed(seed)
+    _growth_validate_parent(parent)
+    if target.identity_sha256() == parent.spec.identity_sha256():
+        raise GrowthRejected("fresh-init scale-up must change model identity")
+    resources = admit_proxy(target, protocol, budget)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        descendant = TwelveSixDecoder(target, parent.init_spec).cpu().eval()
+    record = {
+        "schema_version": 1,
+        "mode": "FRESH_INIT_SCALE_UP",
+        "policy": "NO_WEIGHT_TRANSFER",
+        "parent_modelspec_sha256": parent.spec.identity_sha256(),
+        "parent_state_sha256": _growth_state_sha256(parent),
+        "descendant_modelspec_sha256": target.identity_sha256(),
+        "descendant_state_sha256": _growth_state_sha256(descendant),
+        "init_sha256": parent.init_spec.identity_sha256(),
+        "protocol_sha256": protocol.identity(),
+        "seed": seed,
+        "tensor_mapping": [],
+        "resource_admission": resources,
+        "function_preserved_on_fixture": False,
+        "parity_max_abs_error": None,
+        "optimizer_state_transferred": False,
+        "checkpoint_resume_authorized": False,
+        "stage_promotion_authorized": False,
+        "training_authorized": False,
+        "paid_compute_authorized": False,
+        "evidence_class": "LOCAL_FREE_SYNTHETIC_FRESH_INIT_ONLY",
+    }
+    record["receipt_sha256"] = _digest(record)
+    return descendant, record
