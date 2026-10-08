@@ -6,13 +6,13 @@ import pytest
 
 from twelve_six.billion_systems_gate import shard_manifest
 from twelve_six.large_scale_paths import (
-    assess_large,
-    large_recipe,
-    large_spec,
     LargeAdapter,
     LargeCapacity,
     LargeLimits,
     LargePathDenied,
+    assess_large,
+    large_recipe,
+    large_spec,
 )
 
 
