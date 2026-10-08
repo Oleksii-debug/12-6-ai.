@@ -102,3 +102,28 @@ def test_duplicate_json_object_fields_rejected(tmp_path):
     with pytest.raises(EvaluationBoundaryError, match="duplicate JSON field"):
         vault.reserve(dataset=b'{"id":"x","answer":"one","answer":"two"}\n',
                       dataset_version="fixture-v2")
+
+def test_prediction_payload_bound_to_sealed_identity(tmp_path):
+    vault, ref, identity = setup(tmp_path)
+    first = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "no"}, **identity)
+    second = vault.evaluate(dataset_ref=ref, predictions={"a": "no", "b": "yes"}, **identity)
+    assert first["evaluation_id"] != second["evaluation_id"]
+    for receipt in (first, second):
+        result = vault.terminal_report(
+            sealed=receipt, trusted_terminal_ids=frozenset({receipt["evaluation_id"]})
+        )
+        assert result["predictions_sha256"]
+        assert result["evaluation_id"] == receipt["evaluation_id"]
+
+
+def test_prediction_identity_tampering_is_rejected(tmp_path):
+    vault, ref, identity = setup(tmp_path)
+    receipt = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "no"}, **identity)
+    path = vault.results / (receipt["evaluation_id"] + ".json")
+    payload = json.loads(path.read_text())
+    payload["predictions_sha256"] = "0" * 64
+    path.write_text(json.dumps(payload))
+    with pytest.raises(EvaluationBoundaryError, match="verification failed"):
+        vault.terminal_report(
+            sealed=receipt, trusted_terminal_ids=frozenset({receipt["evaluation_id"]})
+        )
