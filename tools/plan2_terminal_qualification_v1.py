@@ -193,6 +193,8 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     return {
         "real_books_manifest_sha256": books_cohort["manifest_sha256"],
         "real_books_distinct_document_families":
+            books_cohort["physical_document_families"],
+        "real_books_canonical_source_families":
             books_cohort["physical_source_families"],
         "real_books_snapshot_bytes": books_cohort["physical_source_bytes"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
