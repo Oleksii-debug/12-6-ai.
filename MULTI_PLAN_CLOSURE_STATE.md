@@ -34,7 +34,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 4 | 2 | OPEN |
 | 5 | 2 | OPEN |
 | 6 | 1 | OPEN |
-| 7 | 1 | QUALIFYING — PR #3102 (`533a853fe6cced0a890e4d6fef9a2dfece9b5e2d`); CI run `37725946383` FAIL (3769 passed, 10 failed: 2 new Plan-7 `scale_experiments.py` inventory omissions and 8 pre-existing Plan-8 capability-bearing surface drift failures). S1 implementation not yet integrated; no terminal DONE |
+| 7 | 1 | QUALIFYING — canonical PR #3102 at `19b03d478b9fc93e8130300f20afce0d2c5260a5`; new CI #37726869436 queued, old CI #37726451164 failed Ruff I001 (repaired), S1 not merged; no terminal DONE |
 | 8 | 3 | QUALIFYING |
 | 9 | 1 | WAITING_UPSTREAM |
 | 10 | 1 | WAITING_UPSTREAM |
@@ -64,5 +64,5 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 
 | Section | State | Candidate / accepted main | Evidence and remaining gate |
 | ---: | --- | --- | --- |
-| 1 | QUALIFYING | PR #3102, head `533a853fe6cced0a890e4d6fef9a2dfece9b5e2d` (not merged) | Ruff PASS; GitHub Actions CI run `37725946383`: 3769 pytest PASS / 10 FAIL, where two failures are unregistered new source `src/twelve_six/scale_experiments.py` in the qualified capability inventory and eight are the existing Plan-8 `ai_qa_control.py` baseline drift. Do not mislabel as DONE or mark complete until Plan-7-owned executable surface is classified under the shared versioned capability mapping, scoped qualification and integration/readback pass. No paid compute authorized or run. |
+| 1 | QUALIFYING | PR #3102 head `19b03d478b9fc93e8130300f20afce0d2c5260a5` (not merged) | Existing accelerated_scaling.py reused and duplicate new module deleted. Exact-head prior CI #37726451164 Ruff I001 fail, proven failure repaired in current head; #37726869436 queued. Previous CI #37725946383: 3769 passed, 10 failed (2 now-avoided new-source map cases, 8 pre-existing Plan-8 registry drift). No exact-head PASS/merge/readback yet. No paid compute. |
 | 2 | OPEN | None | Ordered after Section 1 terminal closure; function-preserving growth not qualified. |
