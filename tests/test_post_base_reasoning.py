@@ -127,3 +127,14 @@ def test_tampered_replay_cannot_self_certify_or_promote():
         verify_reasoning_run(parent, tasks, recipe,
                              replace(result, rollouts=result.rollouts[:-1]),
                              trusted_verifier_roots=roots)
+
+
+def test_last_update_cannot_promote_entropy_collapse():
+    parent, tasks, roots, recipe = fixture(
+        logits=(5.830638927213939, 0.0), steps=1,
+    )
+    result = run_verified_rl(parent, tasks, recipe, trusted_verifier_roots=roots)
+    assert result.candidate is None
+    assert result.receipt.cause == "degenerate_final_policy_entropy"
+    assert result.receipt.status == "ROLLED_BACK"
+    assert parent.identity() == recipe.parent_sha256
