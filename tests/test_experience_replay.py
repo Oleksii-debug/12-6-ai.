@@ -4,8 +4,12 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.experience_replay import (
-    ReplayRecipe, VerifiedExperience, _mac, build_replay_candidates,
-    verify_experience, verify_replay_restart,
+    ReplayRecipe,
+    VerifiedExperience,
+    _mac,
+    build_replay_candidates,
+    verify_experience,
+    verify_replay_restart,
 )
 from twelve_six.post_base_instruction import canonical_digest
 
@@ -32,8 +36,12 @@ def setup():
     ordered = sorted(records, key=lambda r: r.experience_id)
     pool_sha = canonical_digest([r.identity() for r in ordered])
     recipe = ReplayRecipe(H, pool_sha, max_selected=2)
-    kwargs = dict(trusted_verifier_id="trusted-reviewer", trusted_verifier_version_sha256=H,
-                  verifier_key=KEY, trusted_evidence_roots=ROOTS)
+    kwargs = {
+        "trusted_verifier_id": "trusted-reviewer",
+        "trusted_verifier_version_sha256": H,
+        "verifier_key": KEY,
+        "trusted_evidence_roots": ROOTS,
+    }
     return records, recipe, kwargs
 
 
@@ -58,7 +66,7 @@ def test_bounded_selection_uses_novelty_value_forgetting_curriculum_not_recency(
 
 
 def test_tampered_receipt_or_wrong_key_denied():
-    records, recipe, kwargs = setup()
+    records, _, kwargs = setup()
     for changed in (replace(records[0], value=99),
                     replace(records[0], signature=H),
                     replace(records[0], evidence_sha256="f" * 64)):
@@ -69,7 +77,7 @@ def test_tampered_receipt_or_wrong_key_denied():
 
 
 def test_self_approval_and_untrusted_roots_denied():
-    records, recipe, kwargs = setup()
+    records, _, kwargs = setup()
     self_signed = replace(records[0], verifier_id=records[0].producer_id)
     self_signed = replace(self_signed, signature=_mac(KEY, self_signed.payload()))
     with pytest.raises(ValueError):
@@ -88,7 +96,7 @@ def test_duplicate_evidence_or_same_context_outcome_is_rejected():
 
 
 def test_eval_leakage_rights_and_quality_denied():
-    records, recipe, kwargs = setup()
+    records, _, kwargs = setup()
     for edit in ({"split": "eval"}, {"rights": "unknown"},
                  {"quality": float("nan")}, {"quality": 0.1}):
         bad = replace(records[0], **edit)
