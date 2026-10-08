@@ -1,0 +1,38 @@
+{
+  "schema_version": "12-6.plan2-reserved-eval-source.v1",
+  "purpose": "PROJECT_AUTHORED_SYNTHETIC_ONLY; reserved decontamination fixture, no evaluation outcome or model selection",
+  "release_scope": "FIXTURE_ONLY_NOT_FINAL_TEST",
+  "reserved_before_packing": true,
+  "training_prohibited": true,
+  "outcome_fields_included": false,
+  "sets": [
+    {
+      "role": "selection_validation",
+      "authority_id": "plan2-fixture-selection-v1",
+      "source_family": "project-authored-reserved-selection",
+      "members": [
+        {
+          "record_id": "p2eval:selection:00000000",
+          "source_id": "plan2-synthetic-reserved-selection",
+          "source_family": "project-authored-reserved-selection",
+          "modality": "uk",
+          "text": "Резервний текст для перевірки стійкості оцінювання описує незалежний процес валідації даних українською мовою."
+        }
+      ]
+    },
+    {
+      "role": "final_test",
+      "authority_id": "plan2-fixture-final-v1",
+      "source_family": "project-authored-reserved-final",
+      "members": [
+        {
+          "record_id": "p2eval:final:00000000",
+          "source_id": "plan2-synthetic-reserved-final",
+          "source_family": "project-authored-reserved-final",
+          "modality": "uk",
+          "text": "Окремий контрольний корпус містить тестовий опис відтворюваної перевірки системи без розкриття результатів оцінювання."
+        }
+      ]
+    }
+  ]
+}
