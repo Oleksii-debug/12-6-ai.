@@ -21,8 +21,8 @@ from twelve_six.accelerated_scaling import (
 )
 from twelve_six.model import ModelSpec
 
-FAMILY = {"35M": (512, 10, 1536), "50M": (512, 14, 1536),
-          "100M": (768, 14, 2048)}
+FAMILY = {"35M": (512, 10, 1536), "50M": (512, 14, 1728),
+          "100M": (768, 14, 2304)}
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
