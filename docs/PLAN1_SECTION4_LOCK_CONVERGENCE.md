@@ -21,7 +21,7 @@ Live `pyproject.toml` is the sole direct dependency and CLI metadata source:
   `twelve_six.windows_operator_cli:main`.
 
 The frozen dependency profile explicitly supports only CPython 3.11.16
-on Linux x86_64 and Linux aarch64. This is narrower than the published
+on Linux x86_64, Linux aarch64, and Windows x86_64. This is narrower than the published
 package interpreter range, not an assertion that every interpreter above
 3.11 is locked, numerically equivalent or qualified.
 
@@ -38,7 +38,8 @@ is proposal-only until new source-bound clean-environment qualification.
 Profile contract SHA-256:
 - Linux x86_64: `228c56f5bd688785f9e6f7d02180b17423a5d6cfcf4fe12be92e7efdf72de077`;
 - Linux aarch64: `d46ba893429bc6ffbc39bff65b01ec0c82b0fbdf77ba0f67bd0c65b130f0127b`;
-- canonical index: `ab8f32448b06ad65b8e6541c55e9c653659fde5925034a3007a0cf0a787dedc3`.
+- Windows x86_64 (UNQUALIFIED): `4a16d2c8d63321eae1d82f3eb072a39c5ac67c7450c28d55567f6027a11a2539`;
+- canonical three-platform index: `870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a`.
 - bound source `pyproject.toml` SHA-256:
   `580c99035e0e10fce63dbf46413ec5231692afcf0d05c04fd75153cb74d32831`.
 
@@ -47,7 +48,9 @@ Profile contract SHA-256:
 1. New exact-head CI must run focused and negative/recovery checks, plus
    reproducible clean editable and wheel installations on supported Linux
    profiles. A historical checksum is not clean-machine execution proof.
-2. Windows is **NOT QUALIFIED**, and no Windows dependency lock profile exists.
+2. Windows is **NOT QUALIFIED**. The historical Windows hashes have been copied as
+   a new current-source-bound v1 profile (CPython 3.11.16), but a fresh
+   runner wheel/download/install/recovery qualification has not passed.
    The physical repository name has a trailing dot
    (`Oleksii-debug/12-6-ai.`), which caused the historical Windows
    Actions checkout to fail before Python execution (run 32740545812).
