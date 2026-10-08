@@ -688,3 +688,40 @@ def verify_reviewed_installed_backend(
         "data_rights": "NOT_APPLICABLE_CODE",
         "model_weights": "NONE",
     }
+
+
+def load_trusted_base_checkpoint(
+    directory: str | Path,
+    *,
+    lineage_bytes: bytes,
+    trusted_genesis_bytes: bytes,
+    expected_genesis_sha256: str,
+    expected_lineage_sha256: str,
+    model: Any,
+    optimizer: Any | None = None,
+    scheduler: Any | None = None,
+    strict_model: bool = True,
+    restore_rng: bool = True,
+) -> Any:
+    """Canonical Base restore facade: attest before the first target mutation.
+
+    No second checkpoint loader is introduced. The ordinary checkpoint loader
+    remains a generic unqualified checkpoint API, not Base provenance evidence.
+    """
+    verified = prepare_trusted_base_checkpoint(
+        directory,
+        lineage_bytes=lineage_bytes,
+        trusted_genesis_bytes=trusted_genesis_bytes,
+        expected_genesis_sha256=expected_genesis_sha256,
+        expected_lineage_sha256=expected_lineage_sha256,
+    )
+    from .checkpoint import load_verified_checkpoint
+
+    return load_verified_checkpoint(
+        verified,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        strict_model=strict_model,
+        restore_rng=restore_rng,
+    )
