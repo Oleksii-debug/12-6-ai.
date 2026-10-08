@@ -471,3 +471,32 @@ def test_same_size_in_place_mutation_during_archive_digest_is_rejected(monkeypat
     with pytest.raises(ValueError, match="changed while reading"):
         _hash_regular_archive(archive)
     assert replaced
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="open-file rename differs on Windows")
+def test_pathname_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
+    """Descriptor stability must not bless hostile bytes swapped onto the pathname."""
+    import os
+
+    from twelve_six.third_party_reuse import _hash_regular_archive
+
+    archive = tmp_path / "reviewed.whl"
+    replacement = tmp_path / "replacement.whl"
+    archive.write_bytes(b"trusted archive")
+    replacement.write_bytes(b"untrusted replacement")
+    original_read = os.read
+    swapped = False
+
+    def read_then_swap(fd, size):
+        nonlocal swapped
+        chunk = original_read(fd, size)
+        if chunk and not swapped:
+            os.replace(replacement, archive)
+            swapped = True
+        return chunk
+
+    monkeypatch.setattr(os, "read", read_then_swap)
+    with pytest.raises(ValueError, match="path changed while reading"):
+        _hash_regular_archive(archive)
+    assert swapped
+    assert archive.read_bytes() == b"untrusted replacement"
