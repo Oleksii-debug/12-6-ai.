@@ -163,3 +163,27 @@ def test_tampered_reserved_fixture_cannot_qualify_book_corpus(monkeypatch) -> No
     monkeypatch.setattr(books, "read_checked", changed)
     with pytest.raises(ValueError, match="fixture|identity|drift"):
         books.inspect(ROOT)
+
+
+@pytest.mark.parametrize(
+    ("event", "following"),
+    [("push", "pull_request"), ("pull_request", "workflow_dispatch")],
+)
+def test_s15_ci_requalifies_corpus_input_changes(
+    event: str, following: str,
+) -> None:
+    """Rights evidence and physical snapshots must trigger exact-head CI."""
+    workflow = (ROOT / ".github/workflows/plan2-data-component.yml").read_text(
+        encoding="utf-8"
+    )
+    start = "\n  " + event + ":\n"
+    end = "\n  " + following + ":\n"
+    assert workflow.count(start) == 1
+    assert workflow.count(end) == 1
+    block = workflow.split(start, 1)[1].split(end, 1)[0]
+    for trigger in (
+        "configs/data/plan2_public_domain_books_v1.json",
+        "data/external/rights-evidence/plan2-books/**",
+        "data/external/snapshots/plan2-public-domain-books-v1/**",
+    ):
+        assert f"      - '{trigger}'" in block
