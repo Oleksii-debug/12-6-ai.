@@ -3,7 +3,7 @@
   "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
   "observed_main_tree_sha": "6e91af737d92cd17ee34404fd86e8e0074d53171",
   "source_root": "src/twelve_six",
-  "source_surface_count": 121,
+  "source_surface_count": 122,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -411,11 +411,6 @@
       "origin": "accepted_main"
     },
     {
-      "path": "src/twelve_six/instruction_post_training.py",
-      "capability_id": "post-base-instruction-descendant",
-      "origin": "accepted_main"
-    },
-    {
       "path": "src/twelve_six/learned20m_capacity_sufficiency_v1.py",
       "capability_id": "learned20m-control-plane",
       "origin": "accepted_main"
@@ -503,6 +498,16 @@
     {
       "path": "src/twelve_six/portable_run_packet.py",
       "capability_id": "portable-run-authority",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/post_base_instruction.py",
+      "capability_id": "post-base-instruction-descendant",
+      "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/post_base_preference.py",
+      "capability_id": "post-base-preference-descendant",
       "origin": "accepted_main"
     },
     {
@@ -611,6 +616,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 120,
+  "accepted_main_surface_count": 121,
   "candidate_overlay_surface_count": 1
 }
