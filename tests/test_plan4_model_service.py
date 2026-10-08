@@ -69,7 +69,7 @@ def test_health_identity_load_generate_unload_and_reuse_canonical_decoder(servic
     assert identity["model_weights_sha256"] == service._registered["alpha"].model_weights_sha256
     got = ok(client, "generate", prompt="A", config={"max_new_tokens": 2})
     direct = service._registered["alpha"].generate("A", GenerationConfig(2))
-    assert got["generation"]["output_token_ids"] == direct.output_token_ids
+    assert tuple(got["generation"]["output_token_ids"]) == direct.output_token_ids
     assert got["generation"]["request_id"] == direct.request_id
     assert got["generation"]["result_sha256"] == direct.result_sha256
     assert ok(client, "unload")["status"] == "UNLOADED"
@@ -108,7 +108,7 @@ def test_cancel_before_and_after_token_never_forges_completion(service):
     cancelled = ok(client, "stream.next", session_id=sid, cursor=0)
     assert cancelled["terminal"] is True
     assert cancelled["event"]["kind"] == "CANCELLED"
-    assert cancelled["event"]["result"]["output_token_ids"] == ()
+    assert cancelled["event"]["result"]["output_token_ids"] == []
     assert ok(client, "stream.cancel", session_id=sid)["already_terminal"] is True
     ok(client, "stream.close", session_id=sid)
     second = ok(client, "stream.start", prompt="x", config={"max_new_tokens": 3})
