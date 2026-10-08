@@ -154,6 +154,6 @@ def test_reader_denies_corruption_missing_extra_and_symlink(tmp_path):
     with pytest.raises(p.PackingDenied):
         p.read_blocks(ROOT, alias)
     manifest = out / "packing-manifest.json"
-    manifest.write_bytes(b"{\\"manifest_sha256\\":\\"bad\\"}\\n")
+    manifest.write_bytes(b"{}")
     with pytest.raises(p.PackingDenied):
         p.read_blocks(ROOT, out)
