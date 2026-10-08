@@ -212,6 +212,9 @@ def require_reviewed_code(
     supplied untrusted raw value. Callers must hash the actual source artifact
     and independently verify their reviewer's security/license assessment.
     """
+    # Reject oversized attacker inputs before any digest work, not just at JSON parsing.
+    if type(raw) is not bytes or len(raw) > 1048576:
+        raise ValueError("bounded reviewed catalog bytes required")
     if not _hash(independently_pinned_catalog_sha256) or not hmac.compare_digest(
         hashlib.sha256(raw).hexdigest(), independently_pinned_catalog_sha256
     ):
@@ -373,6 +376,11 @@ def prepare_trusted_base_checkpoint(
     The returned VerifiedCheckpoint is consumed by checkpoint.load_verified_checkpoint.
     No claim about provenance is made for callers bypassing this gated API.
     """
+    # Bound both externally supplied Base claims before SHA-256 processing.
+    if type(lineage_bytes) is not bytes or len(lineage_bytes) > 1048576:
+        raise ValueError("bounded Base lineage bytes required")
+    if type(trusted_genesis_bytes) is not bytes or len(trusted_genesis_bytes) > 1048576:
+        raise ValueError("bounded trusted genesis bytes required")
     if not _hash(expected_lineage_sha256):
         raise ValueError("independently pinned lineage SHA-256 required")
     if type(lineage_bytes) is not bytes or not hmac.compare_digest(

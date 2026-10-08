@@ -771,3 +771,38 @@ def test_wheel_record_current_environment_console_scripts(monkeypatch, tmp_path)
     )
     with pytest.raises(ValueError, match="unsafe"):
         check()
+
+
+def test_untrusted_review_and_ancestry_claims_are_bounded_before_digest(monkeypatch):
+    """Oversized attacker input must not be SHA-256 processed before rejection."""
+    from twelve_six.third_party_reuse import prepare_trusted_base_checkpoint
+
+    oversized = b"{" + b"x" * 1048576
+    genuine_hash = hashlib.sha256
+    attempted = []
+
+    def bounded_digest(value=b""):
+        attempted.append(len(value))
+        if len(value) > 1048576:
+            raise AssertionError("unbounded attacker-controlled digest attempted")
+        return genuine_hash(value)
+
+    monkeypatch.setattr("twelve_six.third_party_reuse.hashlib.sha256", bounded_digest)
+    with pytest.raises(ValueError, match="bounded reviewed catalog"):
+        require_reviewed_code(
+            oversized, "pytorch", "0" * 64,
+            independently_pinned_catalog_sha256="0" * 64,
+        )
+    with pytest.raises(ValueError, match="bounded Base lineage"):
+        prepare_trusted_base_checkpoint(
+            "not-a-real-checkpoint", lineage_bytes=oversized,
+            trusted_genesis_bytes=b"{}", expected_genesis_sha256="0" * 64,
+            expected_lineage_sha256="0" * 64,
+        )
+    with pytest.raises(ValueError, match="bounded trusted genesis"):
+        prepare_trusted_base_checkpoint(
+            "not-a-real-checkpoint", lineage_bytes=b"{}",
+            trusted_genesis_bytes=oversized, expected_genesis_sha256="0" * 64,
+            expected_lineage_sha256="0" * 64,
+        )
+    assert attempted == []
