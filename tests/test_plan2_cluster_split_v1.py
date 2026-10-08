@@ -137,3 +137,11 @@ def test_symlink_destination_denied(tmp_path):
     (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
     with pytest.raises(split.Plan2SplitError, match="symlink split"):
         split.stage_fixture(ROOT, tmp_path / "alias" / "output")
+
+
+def test_verified_physical_s9_one_document_candidate_denied(tmp_path):
+    # Must use the actual normalized S3/S7/S8/S9 source bytes, not a fake row set.
+    with pytest.raises(split.Plan2SplitError,
+                       match="S9 physical split admission denied"):
+        split.stage_candidate(ROOT, tmp_path / "actual-s9")
+    assert not (tmp_path / "actual-s9" / "cluster-split-manifest.json").exists()
