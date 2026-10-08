@@ -10,10 +10,16 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from twelve_six.billion_systems_gate import (
-    _digest, _finite, _positive, _sha, inspect_shards,
+    _digest,
+    _finite,
+    _sha,
+    inspect_shards,
 )
 from twelve_six.large_scale_paths import (
-    LargeAdapter, LargeCapacity, LargeLimits, LargePathDenied,
+    LargeAdapter,
+    LargeCapacity,
+    LargeLimits,
+    LargePathDenied,
 )
 from twelve_six.model import ModelSpec
 
