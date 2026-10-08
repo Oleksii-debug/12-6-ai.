@@ -68,6 +68,30 @@ The older physical S3/S9 cohort remains one separately pinned Ukrainian
 Kubernetes source with allowed use `source_candidate` only. No source
 family was invented or silently promoted into that authority.
 
+## Real-book document-cluster split mechanics probe (not release)
+
+`tools/plan2_s15_physical_book_split_probe_v1.py` now consumes the three
+physically pinned public-domain books and their incumbent S1/S2/G06/DATA232
+candidate audit. It reconstructs exactly six non-overlapping physical
+line-span records, two per original book, and verifies full byte reconstruction.
+The **existing** S10 deterministic whole-document cluster split is exercised
+with the existing pinned S10 policy: no record of a source document may cross
+train/validation/test, and receipt partition IDs must exactly match assignments.
+The output is immutable, hash-only and independently replayable; negatives cover
+snapshot drift, a false extra family, forged training permission, mismatched
+partition assignments, tampered output, and symlink destinations.
+
+The S10 interface requires an S9-shaped input. This isolated probe
+deliberately labels that compatibility input `fixture_only=true`; it is **NOT**
+a physically accepted S9 receipt, and the resulting S10 split is a mechanism
+test, not an authorized train/validation/test production partition. Both real
+book snapshots and this probe are now included in the Section-15 two-clean-build
+member SHA-256 inventory. **Three books remain exactly one canonical Gutenberg
+source family**, not three independently credited families. The physical
+Kubernetes S9 candidate remains one separate non-training-authorized family.
+No true multi-family S3→S9 admission, release-grade decontamination, production
+tokenizer, real shards/exposure release, or Plan-9 binding is claimed.
+
 ## Qualification commands
 
 From a complete checkout of the exact PR head with project requirements:
