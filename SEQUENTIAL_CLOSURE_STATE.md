@@ -1,3 +1,18 @@
+# LEGACY MONOLITHIC CLOSURE REGISTRY — SUPERSEDED FOR WORK SELECTION
+
+**Do not use this file to choose the next work front.**
+The former global sequential 96-Section execution model has been superseded by `PROJECT_PLAN_INDEX.md` and `MULTI_PLAN_CLOSURE_STATE.md`.
+The historical entries below are preserved only as audit/evidence for migrated work.
+
+Current migrated mapping:
+- former 0 -> Plan 1 / Section 1 DONE
+- former 1 -> Plan 1 / Section 2 DONE
+- former 2 -> Plan 8 / Section 1 DONE
+- former 3 -> Plan 8 / Section 2 DONE
+- former 4 -> Plan 8 / Section 3 QUALIFYING
+
+---
+
 # Sequential Closure State
 
 This file is the durable GitHub mirror for ordered Section/Subsection closure.
