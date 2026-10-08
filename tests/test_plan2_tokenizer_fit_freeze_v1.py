@@ -106,3 +106,12 @@ def test_symlink_destination_and_tampered_policy_rejected(tmp_path):
     (replacement/fit.POLICY_PATH).write_text('{"purpose":"PRODUCTION"}')
     with pytest.raises(fit.FitDenied):
         fit._policy(replacement)
+
+def test_frozen_special_ids_and_merge_table_reject_in_place_mutation():
+    model = fit.verify_frozen(fit.freeze_fixture(ROOT))
+    with pytest.raises(TypeError):
+        model.special_tokens["pad"] = 999
+    with pytest.raises(TypeError):
+        model.merges[0][0] = 999
+    with pytest.raises(TypeError):
+        model.tokens[0] = b"forged"
