@@ -698,8 +698,8 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     assert inventory.observed_main_sha == "698531883661e57bbca6e005d571a467fad552ea"
     assert inventory.observed_main_tree_sha == "6e91af737d92cd17ee34404fd86e8e0074d53171"
     assert inventory.accepted_main_surface_count == 122
-    assert inventory.candidate_overlay_surface_count == 0
-    assert inventory.source_surface_count == 122
+    assert inventory.candidate_overlay_surface_count == 28
+    assert inventory.source_surface_count == 150
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -741,15 +741,21 @@ def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> N
 
 
 
-def test_closed_sections_through_aiqa_have_zero_candidate_overlay() -> None:
+def test_closed_predecessors_have_only_fail_closed_unqualified_overlays() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
 
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 0
-    assert candidate == []
+    assert inventory.candidate_overlay_surface_count == 28
+    assert len(candidate) == 28
+    assert all(
+        registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
+        for surface in candidate
+    )
+    assert all(surface.origin == "stacked_candidate" for surface in candidate)
+    assert "src/twelve_six/ai_qa_control.py" not in {item.path for item in candidate}
     accepted_instruction = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/post_base_instruction.py"
