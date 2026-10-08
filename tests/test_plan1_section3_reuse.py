@@ -110,7 +110,7 @@ def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value
         "https://-invalid.example/archive",
         "https://invalid-.example/archive",
         "https://example.org./archive",
-        "https://a".concat("a".repeat(63), ".example/archive"),
+        "https://" + "a" * 64 + ".example/archive",
     ],
 )
 def test_reviewed_source_requires_unambiguous_https_origin(untrusted_url):
