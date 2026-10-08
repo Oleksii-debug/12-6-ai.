@@ -107,3 +107,49 @@ def test_wrong_installed_identity_and_oversize_record_fail_closed(monkeypatch, t
     fake.record = "x" * (4 * 1024 * 1024 + 1)
     with pytest.raises(ValueError, match="RECORD size invalid"):
         inspect(path)
+
+
+def test_license_metadata_hash_never_grants_rights(monkeypatch, tmp_path):
+    """Observed SPDX declarations help independent review, but cannot self-authorize."""
+    from importlib import metadata
+
+    class Distribution:
+        version = "2.5.1"
+
+        def __init__(self):
+            self.metadata = {
+                "Name": "torch",
+                "License-Expression": "BSD-3-Clause",
+                "License": "Additional bundled notices for native libraries",
+            }
+
+        def read_text(self, name):
+            assert name == "RECORD"
+            return "torch/__init__.py,sha256=untrusted,10\\n"
+
+    dist = Distribution()
+    monkeypatch.setattr(metadata, "distribution", lambda name: dist)
+    manifest = project(tmp_path, ["torch>=2.5"])
+    observed = inspect(manifest)["assets"][0]
+    assert observed["license_metadata_field_observed_untrusted"] == "License-Expression"
+    assert observed["license_metadata_sha256_observed_untrusted"] == hashlib.sha256(
+        b"BSD-3-Clause"
+    ).hexdigest()
+    assert observed["admission"] == "DENIED_UNQUALIFIED"
+    assert observed["independently_reviewed_license"] is False
+    assert observed["foreign_model_weights_admitted"] is False
+    assert inspect(manifest)["assets"][0] == observed  # readback determinism
+
+    dist.metadata["License-Expression"] = "Apache-2.0"
+    mutated = inspect(manifest)["assets"][0]
+    assert mutated["license_metadata_sha256_observed_untrusted"] != (
+        observed["license_metadata_sha256_observed_untrusted"]
+    )
+    assert mutated["admission"] == "DENIED_UNQUALIFIED"
+
+    dist.metadata["License-Expression"] = ""
+    with pytest.raises(ValueError, match="unbounded installed license"):
+        inspect(manifest)
+    dist.metadata["License-Expression"] = "X" * (4 * 1024 * 1024 + 1)
+    with pytest.raises(ValueError, match="unbounded installed license"):
+        inspect(manifest)
