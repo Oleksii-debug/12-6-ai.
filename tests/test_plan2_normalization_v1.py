@@ -153,7 +153,7 @@ def test_restart_verifier_rejects_valid_json_with_resealed_but_false_records(tmp
     import json
 
     obj = json.loads(manifest_path.read_text())
-    obj["records"][0]["language"] = "en"
+    obj["records"][0]["language"] = "invalid-not-a-language"
     core = copy.deepcopy(obj)
     core.pop("manifest_sha256")
     obj["manifest_sha256"] = hashlib.sha256(_canonical(core)).hexdigest()
