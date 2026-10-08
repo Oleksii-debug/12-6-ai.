@@ -875,3 +875,37 @@ def test_untrusted_archive_hashing_has_bounded_stat_and_stream(monkeypatch, tmp_
             reuse._hash_regular_archive(path)
         assert emitted
 
+
+
+def test_review_archive_denials_do_not_read_untrusted_files(monkeypatch, tmp_path):
+    """No large archive I/O is permitted until the review pin and status pass."""
+    from twelve_six import third_party_reuse as reuse
+
+    reads = []
+
+    def forbidden_hash(path):
+        reads.append(path)
+        raise AssertionError("untrusted artifact was read before admission")
+
+    monkeypatch.setattr(reuse, "_hash_regular_archive", forbidden_hash)
+    kwargs = {
+        "source_archive": tmp_path / "untrusted-source.tar",
+        "license_file": tmp_path / "untrusted-license.txt",
+    }
+    with pytest.raises(ValueError, match="independently approved catalog"):
+        reuse.verify_reviewed_code_archive(
+            RAW, "pytorch", independently_pinned_catalog_sha256="0" * 64, **kwargs
+        )
+    with pytest.raises(ValueError, match="unqualified code asset"):
+        reuse.verify_reviewed_code_archive(
+            RAW, "pytorch",
+            independently_pinned_catalog_sha256=hashlib.sha256(RAW).hexdigest(),
+            **kwargs,
+        )
+    with pytest.raises(ValueError, match="unknown external asset"):
+        reuse.verify_reviewed_code_archive(
+            RAW, "missing-asset",
+            independently_pinned_catalog_sha256=hashlib.sha256(RAW).hexdigest(),
+            **kwargs,
+        )
+    assert reads == []

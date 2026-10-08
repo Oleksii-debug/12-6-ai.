@@ -314,6 +314,25 @@ def verify_reviewed_code_archive(
     This never installs or executes the reviewed asset. It does not perform the
     human/security review: the out-of-band catalog SHA-256 must attest that review.
     """
+    # Authenticate the code review and admission status BEFORE reading any
+    # potentially large, attacker-selected source or license file. A bad pin or
+    # unqualified candidate must never trigger archive I/O.
+    if type(catalog) is not bytes or len(catalog) > 1048576:
+        raise ValueError("bounded reviewed catalog bytes required")
+    if not _hash(independently_pinned_catalog_sha256) or not hmac.compare_digest(
+        hashlib.sha256(catalog).hexdigest(), independently_pinned_catalog_sha256
+    ):
+        raise ValueError("independently approved catalog digest required")
+    vetted_catalog = validate_reuse_catalog(catalog)
+    named = next(
+        (asset for asset in vetted_catalog["assets"] if asset["name"] == name),
+        None,
+    )
+    if named is None:
+        raise ValueError("unknown external asset")
+    if named["status"] != "REVIEWED_CODE_ONLY":
+        raise ValueError("unqualified code asset")
+
     actual_source = _hash_regular_archive(source_archive)
     approved = require_reviewed_code(
         catalog,
