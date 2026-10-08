@@ -620,3 +620,71 @@ def verify_installed_wheel_record(
         "record_sha256": observed_pin,
         "verified_files": verified_files,
     }
+
+
+def verify_reviewed_installed_backend(
+    catalog: bytes,
+    name: str,
+    *,
+    source_archive: str | Path,
+    license_file: str | Path,
+    distribution: str,
+    independently_pinned_catalog_sha256: str,
+    independently_pinned_record_sha256: str,
+) -> dict[str, Any]:
+    """Admit code only after BOTH upstream review and installed wheel checks.
+
+    The approved upstream catalog pin, actual upstream source/license bytes,
+    and installed wheel RECORD pin must be authenticated independently.
+    Merely hashing local metadata or copying a catalog does not supply the
+    independent review. No package is imported, executed or installed here.
+    This function has no authority to admit datasets or model weights.
+    """
+    # Validate the review BEFORE dereferencing any untrusted archive or wheel.
+    if type(distribution) is not str or not re.fullmatch(
+        r"[A-Za-z0-9_.-]{2,100}", distribution
+    ):
+        raise ValueError("invalid external distribution")
+    if not _hash(independently_pinned_record_sha256):
+        raise ValueError("independent installed RECORD pin required")
+    if type(catalog) is not bytes or len(catalog) > 1048576:
+        raise ValueError("bounded reviewed catalog bytes required")
+    if not _hash(independently_pinned_catalog_sha256) or not hmac.compare_digest(
+        hashlib.sha256(catalog).hexdigest(), independently_pinned_catalog_sha256
+    ):
+        raise ValueError("independently approved catalog digest required")
+    approved_catalog = validate_reuse_catalog(catalog)
+    named = next((a for a in approved_catalog["assets"] if a["name"] == name), None)
+    if named is None:
+        raise ValueError("unknown external asset")
+    if named["status"] != "REVIEWED_CODE_ONLY":
+        raise ValueError("unqualified code asset")
+    # A project may be published under a different distribution name (e.g.
+    # 'pytorch' upstream vs 'torch' on PyPI); require an explicit caller identity.
+    # Both upstream and wheel checks must pass before returning any claim.
+    reviewed = verify_reviewed_code_archive(
+        catalog,
+        name,
+        source_archive=source_archive,
+        license_file=license_file,
+        independently_pinned_catalog_sha256=independently_pinned_catalog_sha256,
+    )
+    installed = verify_installed_wheel_record(
+        distribution,
+        expected_version=reviewed["version"],
+        independently_pinned_record_sha256=independently_pinned_record_sha256,
+    )
+    # The return value records checks only. It does not create a second package
+    # registry, nor confer permission to load foreign model/data artifacts.
+    return {
+        "name": name,
+        "status": "REVIEWED_CODE_ONLY",
+        "version": reviewed["version"],
+        "source_sha256": reviewed["source_sha256"],
+        "license_evidence_sha256": reviewed["license_evidence_sha256"],
+        "distribution": installed["distribution"],
+        "record_sha256": installed["record_sha256"],
+        "verified_files": installed["verified_files"],
+        "data_rights": "NOT_APPLICABLE_CODE",
+        "model_weights": "NONE",
+    }
