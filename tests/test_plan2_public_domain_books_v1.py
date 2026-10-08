@@ -19,6 +19,11 @@ def test_three_independent_real_books_rebuild_and_restart(tmp_path: Path) -> Non
     assert first["physical_source_families"] == 1
     assert first["physical_document_families"] == 3
     assert first["physical_source_bytes"] == 1_265_481
+    assert first["g06_counts"]["records"] == 3
+    assert len(first["g06_execution_identity_sha256"]) == 64
+    assert len(first["g06_input_root_sha256"]) == 64
+    assert len(first["g06_privacy_policy_git_blob"]) == 40
+    assert isinstance(first["g06_rejected_record_ids"], list)
     assert first["training_corpus_authorized"] is False
     assert first["rights_boundary"] == (
         "ORIGINAL_WORK_SOURCE_PERMISSIONS_ONLY_NOT_CORPUS"
@@ -129,4 +134,16 @@ def test_training_rights_authority_cannot_promote_corpus(monkeypatch) -> None:
     monkeypatch.setattr(books.rights, "materialization_receipt",
                         invented_authority)
     with pytest.raises(books.BookCohortDenied, match="promoted training"):
+        books.inspect(ROOT)
+
+
+def test_broken_g06_privacy_identity_cannot_be_published(monkeypatch) -> None:
+    original = books.g06.build_privacy_execution_authority
+
+    def corrupted(*args, **kwargs):
+        receipt = original(*args, **kwargs)
+        return {**receipt, "execution_identity_sha256": "0" * 64}
+
+    monkeypatch.setattr(books.g06, "build_privacy_execution_authority", corrupted)
+    with pytest.raises(ValueError, match="identity|hash|drift|mismatch"):
         books.inspect(ROOT)
