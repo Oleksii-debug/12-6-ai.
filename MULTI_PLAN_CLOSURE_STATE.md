@@ -28,7 +28,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 
 | Plan | First unfinished Section at migration | Coordination state |
 | ---: | ---: | --- |
-| 1 | 3 | OPEN |
+| 1 | 3 | QUALIFYING — ACTIONABLE; canonical Plan-1 S3 finisher PR #3103 at `43213e871b659264e5637cc62d7aa1811aea46c2` (DRAFT, unmerged). Exact-head shared CI #37727956676 QUEUED, not PASS; independent mandatory-dependency license/security/version/source admission and enforced real Base checkpoint publication/ingress remain unresolved. Do not mark S3 DONE or start S4 until the applicable checks, integration and readback qualify. |
 | 2 | 3 | OPEN |
 | 3 | 1 | QUALIFYING — ACTIONABLE; canonical Plan-3 S1 finisher PR #3098 (`058d09eaa7549602530f45e4b45910024aa4019e`), exact CI #37726702494 RED: 3793 passed / 11 failed / 1 skipped (Ruff PASS); 2 candidate-specific Plan-8 source-classification failures; no terminal DONE or Section-2 advance |
 | 4 | 4 | QUALIFYING_INTEGRATED — focused CI queued; terminal test evidence missing |
