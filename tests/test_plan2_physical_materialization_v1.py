@@ -142,3 +142,20 @@ def test_restart_result_does_not_depend_on_destination_path(tmp_path):
     b = stage_candidate_cohort(ROOT, tmp_path / "b")
     assert a == b
     assert a["manifest_sha256"] == b["manifest_sha256"]
+
+def test_valid_looking_rights_substitution_is_not_canonical_authority(tmp_path):
+    rights = json.loads((ROOT / "configs/data/plan2_rights_admissibility_v1.json").read_text())
+    changed = copy.deepcopy(rights)
+    changed["grants"][0]["terms_ref"] = "https://creativecommons.org/licenses/by/4.0/alternate"
+    with pytest.raises(Plan2MaterializationError, match="substitution"):
+        stage_candidate_cohort(ROOT, tmp_path / "output", rights_seed=changed)
+    assert not (tmp_path / "output").exists()
+
+
+def test_parent_directory_symlink_is_rejected(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    (tmp_path / "alias").symlink_to(actual, target_is_directory=True)
+    with pytest.raises(Plan2MaterializationError, match="symlink"):
+        stage_candidate_cohort(ROOT, tmp_path / "alias" / "child")
+    assert not (actual / "child").exists()
