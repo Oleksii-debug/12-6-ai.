@@ -94,7 +94,7 @@ def test_forged_plan_metrics_receipts_and_disk_drift(tmp_path):
         verify_receipts(plan, (replace(receipts[0], elapsed_ms=5.0), receipts[1]))
     with pytest.raises(TransportDenied):
         verify_receipts(plan, receipts, recovery_ms=float("nan"))
-    for bad in (0, float("inf"), True):
+    for bad in (0, float("inf"), True, 1e-323):
         with pytest.raises(TransportDenied):
             receive(plan, "w-00", shards[0][1], bad)
     folder = publish_local(tmp_path, plan, shards, receipts)
@@ -132,3 +132,17 @@ def test_same_run_recovery_no_reexposure():
         recover_transport(mesh, replace(mesh, epoch=2), ledger, shards, 20)
     with pytest.raises(TransportDenied):
         recover_transport(mesh, replace(mesh, epoch=1), ledger, shards, -1)
+
+
+def test_typed_receipt_metric_forgery_denied():
+    _, _, _, plan, receipts = fixture()
+    with pytest.raises(TransportDenied):
+        verify_receipts(plan, (replace(receipts[0], elapsed_ms=True), receipts[1]))
+    with pytest.raises(TransportDenied):
+        verify_receipts(plan, (
+            replace(receipts[0], throughput_bytes_per_second=True), receipts[1],
+        ))
+    with pytest.raises(TransportDenied):
+        verify_receipts(plan, (
+            replace(receipts[0], throughput_bytes_per_second=float("inf")), receipts[1],
+        ))
