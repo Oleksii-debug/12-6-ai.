@@ -39,6 +39,30 @@ def sha256_bytes(data: bytes) -> str:
 def sha256_file(path: str | Path) -> str:
     return sha256_bytes(Path(path).read_bytes())
 
+def _verified_repo_file(root: Path, relative: str | Path) -> Path:
+    """Reject untrusted lock paths escaping their root, including symlink traversal."""
+    raw = str(relative)
+    if not raw or chr(92) in raw:
+        raise DependencyLockError("unsafe lock path")
+    candidate = Path(raw)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise DependencyLockError("unsafe lock path")
+    trusted_root = root.resolve(strict=True)
+    target = trusted_root
+    for component in candidate.parts:
+        if component in {"", "."}:
+            raise DependencyLockError("unsafe lock path")
+        target = target / component
+        if target.is_symlink():
+            raise DependencyLockError("symlink lock path refused")
+    if not target.is_file():
+        raise DependencyLockError("lock file is missing or not regular")
+    if not target.resolve(strict=True).is_relative_to(trusted_root):
+        raise DependencyLockError("lock path escapes trusted root")
+    return target
+
+
+
 
 def canonical_distribution_name(name: str) -> str:
     value = _NAME_NORMALIZER.sub("-", name.strip()).lower()
@@ -109,7 +133,7 @@ def build_profile_manifest(
     metadata = _project_metadata(pyproject)
     locks: dict[str, dict[str, Any]] = {}
     for group, relative in sorted(lock_files.items()):
-        path = root_path / relative
+        path = _verified_repo_file(root_path, relative)
         count = int(package_counts[group])
         if count < 0:
             raise DependencyLockError("package count cannot be negative")
@@ -158,7 +182,7 @@ def validate_profile_manifest(
     *, root: str | Path, manifest_path: str | Path, enforce_current_platform: bool = True
 ) -> dict[str, Any]:
     root_path = Path(root)
-    path = root_path / manifest_path
+    path = _verified_repo_file(root_path, manifest_path)
     manifest = _load_json(path)
     claimed = manifest.get("manifest_sha256")
     payload = dict(manifest)
@@ -201,7 +225,7 @@ def validate_profile_manifest(
         relative = record.get("path")
         if not isinstance(relative, str) or not relative:
             raise DependencyLockError(f"missing path for {group} lock")
-        lock_path = root_path / relative
+        lock_path = _verified_repo_file(root_path, relative)
         if sha256_file(lock_path) != digest:
             raise DependencyLockError(f"{group} lock hash mismatch")
         count = record.get("package_count")
@@ -223,7 +247,7 @@ def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -
             raise DependencyLockError("profile index key/id mismatch")
         profiles[profile_id] = {
             "path": Path(relative).as_posix(),
-            "sha256": sha256_file(root_path / relative),
+            "sha256": sha256_file(_verified_repo_file(root_path, relative)),
             "manifest_sha256": manifest["manifest_sha256"],
         }
     payload: dict[str, Any] = {
@@ -238,7 +262,7 @@ def build_lock_index(*, root: str | Path, manifests: Mapping[str, str | Path]) -
 
 def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str, Any]:
     root_path = Path(root)
-    index = _load_json(root_path / index_path)
+    index = _load_json(_verified_repo_file(root_path, index_path))
     claimed = index.get("index_sha256")
     payload = dict(index)
     payload.pop("index_sha256", None)
@@ -261,7 +285,7 @@ def validate_lock_index(*, root: str | Path, index_path: str | Path) -> dict[str
         relative = record.get("path")
         if not isinstance(relative, str):
             raise DependencyLockError("dependency-lock index profile path is invalid")
-        if sha256_file(root_path / relative) != record.get("sha256"):
+        if sha256_file(_verified_repo_file(root_path, relative)) != record.get("sha256"):
             raise DependencyLockError("dependency-lock profile file hash mismatch")
         manifest = validate_profile_manifest(
             root=root_path, manifest_path=relative, enforce_current_platform=False
