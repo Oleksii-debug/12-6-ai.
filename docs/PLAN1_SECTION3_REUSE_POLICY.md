@@ -48,6 +48,31 @@ authenticated separately. The accepted Base path must explicitly use this
 gate or an equivalent provenance-enforcing incumbent integration.
 No production attestation exists merely because a fixture has a matching hash.
 
+## Current read-only admission and ingress interfaces
+
+`verify_reviewed_installed_backend` composes the existing independently
+pinned upstream source/license checker with the existing installed wheel
+RECORD byte verifier. It permits only explicitly mapped mandatory package
+identities (`pytorch` → `torch`, `numpy`, `safetensors`): mixing an approved
+source with an unrelated distribution is rejected. The returned evidence
+includes exact version, source checksum, reviewed SPDX assertion, license
+checksum, security posture, replacement boundary and installed byte count.
+The 13 catalog entries remain **UNQUALIFIED**, and this interface cannot
+authorize imports, external data use or foreign model weights on its own.
+
+`load_trusted_base_checkpoint` is the Plan-1-owned convenience ingress for
+**claimed canonical Base** checkpoints. It requires independently approved
+scratch-genesis and whole-graph hashes before calling the incumbent
+`checkpoint.load_verified_checkpoint` exactly once. Ordinary generic
+checkpoint and training loaders remain distinct, non-Base-certified paths.
+Binding these checks at every real Base publication/ingress path remains the
+owner Plan-3 integration requirement, not a claim that the generic loaders
+are now implicitly Base-trusted.
+
+See `PLAN1_SECTION3_UPSTREAM_RELEASE_RECEIPTS.md` for publisher metadata
+observations; public checksums are not an independent package security or
+complete bundled-license review.
+
 ## Terminal requirements still open
 - Independent exact version/source/license/security and data-rights evidence
   for **actually imported** third-party assets (including the mandatory
