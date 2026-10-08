@@ -89,6 +89,35 @@ def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value
     with pytest.raises(ValueError, match="candidate cannot claim"):
         validate_reuse_catalog(wire(forged))
 
+@pytest.mark.parametrize(
+    "untrusted_url",
+    [
+        "https://",
+        "https:///missing-host",
+        "https://user:secret@example.org/archive",
+        "https://example.org/archive#unbound-fragment",
+        " https://example.org/archive",
+        "https://example.org/\\nambiguous",
+        "https://example.org:invalid/archive",
+        "https://example.org:0/archive",
+    ],
+)
+def test_reviewed_source_requires_unambiguous_https_origin(untrusted_url):
+    catalog = json.loads(RAW)
+    catalog["assets"][0].update(
+        status="REVIEWED_CODE_ONLY",
+        upstream_url=untrusted_url,
+        version="1.0.0",
+        source_sha256="e" * 64,
+        license_spdx="MIT",
+        license_evidence_sha256="f" * 64,
+        security_posture="REVIEWED",
+        data_rights="NOT_APPLICABLE_CODE",
+    )
+    with pytest.raises(ValueError, match="missing HTTPS source"):
+        validate_reuse_catalog(wire(catalog))
+
+
 def test_exact_code_license_security_rights_and_hash_check():
     obj = json.loads(RAW)
     item = obj["assets"][0]
