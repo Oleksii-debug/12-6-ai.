@@ -871,7 +871,7 @@
       "capability_id": "post-base-instruction-descendant",
       "schema_version": 1,
       "status": "AVAILABLE",
-      "component_contract": "twelve_six.instruction_post_training.InstructionRecipe",
+      "component_contract": "twelve_six.post_base_instruction.InstructionRecipe",
       "dependencies": [
         "unified-generation-identity",
         "post-base-research-verification"
@@ -887,23 +887,61 @@
       ],
       "test_vectors": [
         {
-          "vector_id": "plan6-instruction-component",
+          "vector_id": "plan6-s2-canonical-instruction",
           "level": "component",
-          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py"
+          "command": "pytest -q tests/test_post_base_instruction.py"
         },
         {
-          "vector_id": "plan6-instruction-integration",
+          "vector_id": "plan6-s2-canonical-reuse",
           "level": "integration",
-          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py tests/test_trainer_checkpoint_adapter.py"
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
         }
       ],
       "evidence_targets": [
         {
-          "evidence_id": "plan6-section2-scope",
-          "target": "source:src/twelve_six/instruction_post_training.py"
+          "evidence_id": "plan6-s2-canonical-pr",
+          "target": "pull-request:3117"
         }
       ],
-      "integrated_result": "PR #3119 merged on main e3dc8533ebe051feb8ec77bca0564c0db197dd8e; exact source blob c845227868639cd3555202d3130adbcb0b468656 and tests blob 131d234df631e3ce98c88658cb116fe6cd38ff5f; 24/24 local fixture tests with temporary D02 interface shim, Python compile PASS. Hosted CI #37729086102 queued, NOT claimed green. Bounded CPU experiment only; no real model/campaign promotion.",
+      "integrated_result": "Canonical Plan6 Section2 PR #3117 accepted main 5b1085177b4d7bc61298100e44f673f292a82ecb; source blob 428832cba92fe0fd459465d8121acdd00d78a9e2; local 12-pass fixture SFT, independent rights/quality/train-split, Base preserved; hosted CI #37728803008 queued (not green). Duplicate #3119 descendant removed by convergence.",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "post-base-preference-descendant",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.post_base_preference.PreferenceRecipe",
+      "dependencies": [
+        "post-base-instruction-descendant"
+      ],
+      "journey_ids": [
+        "researcher-verify-offline-preference-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-s3-canonical-preference",
+          "level": "component",
+          "command": "pytest -q tests/test_post_base_preference.py"
+        },
+        {
+          "vector_id": "plan6-s3-canonical-reuse",
+          "level": "integration",
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-s3-canonical-pr",
+          "target": "pull-request:3120"
+        }
+      ],
+      "integrated_result": "Canonical Plan6 Section3 PR #3120 accepted main 95876135047749d034f0a2404e46006324eec662; exact source blob 6c48336ce5ff5960ca6eb9b5b692e5998e2c4098; 27 scoped tiny CPU S2+S3 tests. Hosted CI #37729163283 queued (not green), no real policy/champion promotion.",
       "unavailable_reason": null
     }
   ],
@@ -1057,6 +1095,13 @@
       "title": "Researcher verifies provenance-gated instruction descendant against preserved Base CPU fixture",
       "capability_ids": [
         "post-base-instruction-descendant"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-offline-preference-fixture",
+      "title": "Researcher verifies independently bounded offline preference descendants",
+      "capability_ids": [
+        "post-base-preference-descendant"
       ]
     }
   ]
