@@ -32,7 +32,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 2 | 3 | OPEN |
 | 3 | 1 | OPEN |
 | 4 | 3 | OPEN |
-| 5 | 3 | OPEN |
+| 5 | 4 | OPEN — Section 3 terminal DONE, Section 4 next |
 | 6 | 1 | OPEN |
 | 7 | 1 | QUALIFYING — canonical PR #3102 at `19b03d478b9fc93e8130300f20afce0d2c5260a5`; new CI #37726869436 queued, old CI #37726451164 failed Ruff I001 (repaired), S1 not merged; no terminal DONE |
 | 8 | 3 | QUALIFYING |
@@ -61,7 +61,7 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | ---: | --- | --- | --- |
 | 1 | DONE | `4b006a500d45170346d26012fcd5e2b7f91c8d36` | PR #3100 merged into main; independent `twelve_six_agent_runtime` package, source-aware bounded context, protected owner/system invariants, exact byte budget, deterministic priority/recency and omitted digest. Scoped LOCAL_FREE pytest: 6 passed, including long-horizon, duplicate/invalid provenance, model-neutral replay and protected-budget failure; Ruff PASS on reference package candidate (Actions run `37726272556`). Post-merge readback: context blob `d3889f01c2974194c948c9e853546a290ade31f3`, tests blob `8b07138dc9a8dfe530c26b3ecd97a701e6c7d3f2`. Shared repository CI is NOT green due eight independently verified pre-existing Plan-8 source-inventory drift tests (unchanged main failure `37718796941`); no Plan-8 files changed, no cross-plan whole-product claim, no external/paid compute. |
 | 2 | DONE | `279d595cf435b47ff96e3c143758b4b302c83547` | PR #3109 merged; exact frozen head `05d00ecc491655e645b2af6e1e24526e22930412`. Independent local Python 3 scoped qualification of the exact GitHub blobs: **16 passed, 0 failed** (`test_agent_task_state_section2.py` + adversarial tests); compileall PASS; git blob SHA parity confirmed for runtime `382862d5e243c5d728b8d561357acd71dcbae1a8` and tests `0dc9984c005c56fa89e3b0e015e7c96bea01111c`, `643c761d20af53714d174e15cd8fb0434f12e7eb`. Atomic SQLite full-sync versioned snapshots/history, restart leases, stale epoch/revision fencing, effect unknown/receipt reconciliation, corruption/duplicate/concurrency/process-restart negatives. Post-merge main exact blob readback PASS. Scoped GitHub Actions #37727106194 remained QUEUED at closure (not called green); shared baseline Plan-8 CI failures remain external to this plan. No paid compute or whole-product claim. |
-| 3 | OPEN | None | Sequential next front: memory systems (episodic, semantic, procedural/project, provenance/confidence/expiry/correction and live-verification boundary). |
+| 3 | DONE | `d049b23ff1f55c84797d06d31d29128ca103c55b` | PR #3112 squash-merged; exact candidate `38644b37715d494425e4a1480b32162791c37bbe`. Independent LOCAL_FREE Python scoped test: 6 passed, 0 failed; compileall PASS; local git blob hash parity and post-merge main readback PASS: memory `227dd70bc6f485d01a6f2f51cf53205e54e5fd4d`, test `6741da163252d52aec91f67f74775e0e101506b7`. Four categories, provenance/confidence/expiry, append-only correction/retraction, negative malformed/corruption/duplicate/stale-CAS/concurrency/restart evidence. All retrievals memory-only and require independent live external verification. Hosted whole-repo CI not claimed green; no paid compute or cross-plan integration claim. |
 
 ## Plan 7 — scaling/distributed component closure
 
