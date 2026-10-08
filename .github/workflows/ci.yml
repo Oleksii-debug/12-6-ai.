@@ -32,6 +32,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Plan 1 Section 3 exact-head scoped qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3103
+        run: |
+          ruff check src/twelve_six/third_party_reuse.py tests/test_plan1_section3_reuse.py
+          pytest -q tests/test_plan1_section3_reuse.py
       - run: ruff check src tests
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
