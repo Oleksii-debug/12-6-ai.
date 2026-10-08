@@ -10,16 +10,18 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from twelve_six.checkpoint import CheckpointIdentity, save_checkpoint
-from twelve_six.model import ModelSpec, TwelveSixDecoder
-from twelve_six.tokenization.byte import BYTE_TOKENIZER_HASH, BYTE_VOCAB_HASH, ByteTokenizer
 from tools.evaluation_harness import FrozenProtocol, FrozenSuite, evaluate
 from tools.inference_runtime import GenerationConfig, ReferenceInference, _model_weights_sha
 from tools.plan4_backend_parity import DENIAL, qualify_cpu_dynamic_int8, verify_report
-from tools.plan4_model_service import LocalClient, ModelService, SCHEMA as SERVICE_SCHEMA
-from tools.plan4_multimodel_serving import MultiModelServing, SCHEMA as SERVING_SCHEMA
+from tools.plan4_model_service import SCHEMA as SERVICE_SCHEMA
+from tools.plan4_model_service import LocalClient, ModelService
+from tools.plan4_multimodel_serving import SCHEMA as SERVING_SCHEMA
+from tools.plan4_multimodel_serving import MultiModelServing
 from tools.plan4_safe_export import export_safe_bundle, verify_safe_export
 from tools.plan4_serving_observability import ServingObserver
+from twelve_six.checkpoint import CheckpointIdentity, save_checkpoint
+from twelve_six.model import ModelSpec, TwelveSixDecoder
+from twelve_six.tokenization.byte import BYTE_TOKENIZER_HASH, BYTE_VOCAB_HASH, ByteTokenizer
 
 
 def _call(client, op, **args):
