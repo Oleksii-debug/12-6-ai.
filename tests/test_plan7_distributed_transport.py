@@ -7,7 +7,7 @@ import pytest
 
 from twelve_six.distributed_control import (
     DistributedDenied, ParallelMesh, begin_run, begin_step,
-    commit_step,
+    commit_step, DistributedDenied,
 )
 from twelve_six.distributed_transport import (
     TransportDenied, prepare_transfer, receive, verify_receipts,
