@@ -249,3 +249,22 @@ def test_scenario_schema_and_invalid_inputs_fail_closed():
                                           separators=(",", ":")))
     with pytest.raises(FixtureError):
         Scenario.from_json('{"schema":"12-6.plan5-agent-fixture.v1","schema":"duplicate"}')
+
+@pytest.mark.parametrize("plan_id,step_id", [
+    ("other-plan", "fixture-start"),
+    ("plan5", "foreign-start"),
+])
+def test_foreign_existing_task_is_rejected_before_any_mutation_or_model_call(
+    tmp_path, plan_id, step_id,
+):
+    store = TaskStore(tmp_path / "tasks.sqlite")
+    original = store.create(
+        task_id=scenario().scenario_id, plan_id=plan_id, step_id=step_id,
+    )
+    runtime, model, adapter = harness(tmp_path)
+    with pytest.raises(FixtureError, match="identity"):
+        runtime.run()
+    assert store.load(scenario().scenario_id) == original
+    assert model.calls == 0
+    assert adapter.dispatches == 0
+
