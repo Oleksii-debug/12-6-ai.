@@ -421,7 +421,23 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
     package_path.write_bytes(b"abcd")
     assert check() == result  # repaired bytes independently requalify
 
-    unsafe_record = "../escape,sha256=" + digest + ",4\n"
+    # A pinned RECORD for another distribution/version must not attest this one.
+    for forged_self in (
+        "foreign-1.2.3.dist-info/RECORD",
+        "example-9.9.9.dist-info/RECORD",
+    ):
+        foreign_record = (
+            f"example/__init__.py,sha256={digest},4\\n"
+            f"{forged_self},,\\n"
+        )
+        installed.record = foreign_record
+        foreign_pin = hashlib.sha256(foreign_record.encode()).hexdigest()
+        with pytest.raises(ValueError, match="RECORD identity/version drift"):
+            check(record_pin=foreign_pin)
+    installed.record = good_record
+    assert check() == result
+
+    unsafe_record = "../escape,sha256=" + digest + ",4\\n"
     unsafe_record += "example-1.2.3.dist-info/RECORD,,\n"
     installed.record = unsafe_record
     with pytest.raises(ValueError, match="unsafe"):
