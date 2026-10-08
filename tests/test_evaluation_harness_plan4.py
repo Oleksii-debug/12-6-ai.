@@ -14,7 +14,6 @@ from tools.evaluation_harness import (
     freeze_suite,
 )
 
-
 A = "a" * 64
 B = "b" * 64
 EVALUATOR = "e" * 64
