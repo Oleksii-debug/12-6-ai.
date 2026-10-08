@@ -160,3 +160,22 @@ def test_real_s4_proxy_integration_cpu():
                     measured_proxy_receipt_sha256=first["receipt_sha256"]),
                     limits(), first)
         assert checked["training_authorized"] is False
+
+
+
+def test_s4_nested_receipt_binding_rejects_rehashed_wrapper():
+    from twelve_six.optional_risk_probes import digest
+
+    original = fake_proxy("200M")
+    forged_inner = {**original["proxy"], "unverified_worker_receipt": "injected"}
+    forged = {**original, "proxy": forged_inner}
+    # An untrusted caller can rehash the outer wrapper, but that must not
+    # silently replace the previously attested nested S4 receipt.
+    forged["receipt_sha256"] = digest({
+        key: value for key, value in forged.items() if key != "receipt_sha256"
+    })
+    matching = replace(
+        evidence(), measured_proxy_receipt_sha256=forged["receipt_sha256"]
+    )
+    with pytest.raises(ScaleRecipeDenied, match="invalid S4 proxy evidence"):
+        assess_scale("200M", matching, limits(), forged)
