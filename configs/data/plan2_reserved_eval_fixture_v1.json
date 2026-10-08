@@ -1,0 +1,34 @@
+{
+  "schema_version": "12-6.plan2-reserved-eval-fixture.v1",
+  "purpose": "LOCAL_FREE_SYNTHETIC_RESERVED_FIREWALL",
+  "training_allowed": false,
+  "tokenizer_fit_allowed": false,
+  "teacher_auto_reentry_allowed": false,
+  "real_final_test_material_accessed": false,
+  "reserved_sources": [
+    {
+      "role": "selection_validation",
+      "source_id": "plan2.fixture.selection-v1",
+      "source_family": "plan2.fixture.eval.selection-v1",
+      "modality": "uk",
+      "records": [
+        {
+          "record_id": "reserved.selection.001",
+          "text": "Незалежна контрольна добірка містить спеціальну послідовність перевірки відокремлених навчальних матеріалів для захисту оцінювання."
+        }
+      ]
+    },
+    {
+      "role": "final_test",
+      "source_id": "plan2.fixture.final-v1",
+      "source_family": "plan2.fixture.eval.final-v1",
+      "modality": "uk",
+      "records": [
+        {
+          "record_id": "reserved.final.001",
+          "text": "Другий ізольований набір призначений для перевірки відсутності витоку зарезервованих прикладів у відтворюваний навчальний корпус."
+        }
+      ]
+    }
+  ]
+}
