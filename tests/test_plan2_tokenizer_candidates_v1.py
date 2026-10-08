@@ -83,7 +83,7 @@ def test_forged_fixture_or_replayed_reserve_fails_closed(needle):
 def test_strict_json_rejects_duplicates_nonfinite_and_invalid_utf8():
     for bad in (b'{"a":1,"a":2}', b'{"x":NaN}', b"\xff"):
         with pytest.raises(cand.CandidateError):
-            cand._pinned_json(bad, cand.POLICY_BLOB)
+            cand._pinned_json(bad, cand._git_blob(bad))
 
 
 def test_forged_incumbent_byte_source_rejected(monkeypatch, tmp_path):
