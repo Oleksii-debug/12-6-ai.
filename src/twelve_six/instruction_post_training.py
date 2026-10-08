@@ -176,7 +176,9 @@ def admit_instruction_examples(
                     "eval_blocklist": sorted(reserved_eval_content)})
 
 
-def format_instruction(example: InstructionExample, recipe: InstructionRecipe) -> tuple[list[int], list[int]]:
+def format_instruction(
+    example: InstructionExample, recipe: InstructionRecipe
+) -> tuple[list[int], list[int]]:
     recipe.validate()
     example.validate(recipe.vocab_size)
     sequence = [recipe.bos, *example.prompt, recipe.sep, *example.target, recipe.eos]
