@@ -4,7 +4,7 @@
 
 ## Canonical work-selection authority
 
-- Read `PROJECT_PLAN_INDEX.md`, `MULTI_PLAN_CLOSURE_STATE.md`, the numbered Drive plan assigned by the owner, and live GitHub.
+- Read `PROJECT_PLAN_INDEX.md`, `MULTI_PLAN_PARALLELISM_CONTRACT.md`, `MULTI_PLAN_CLOSURE_STATE.md`, the numbered Drive plan assigned by the owner, and live GitHub.
 - The former monolithic 96-Section plan is historical/audit material only and MUST NOT be used to choose the next work front.
 - New plan Sections start at 1; there is no Section 0 in the new execution plans.
 
@@ -12,9 +12,9 @@
 
 - Plans 1–8 are independent engineering plans.
 - There is **no priority order between Plans 1–8**. Plan 7 may finish before Plan 2; Plan 5 may be started before Plan 1 is terminal.
-- When assigned a plan, skip all Sections in that plan already marked DONE and work the numerically first unfinished Section **inside that plan**.
+- When assigned a plan, use `MULTI_PLAN_CLOSURE_STATE.md` as the live status authority, skip terminal DONE Sections, and work the numerically first unfinished Section **inside that plan**. Drive `Статус` lines are migration snapshots and do not override newer GitHub state.
 - Parallel workers may work on different numbered plans simultaneously.
-- A worker assigned to one plan must not silently mutate another plan's scope. Use versioned contracts/fixtures/mocks for missing cross-plan implementations.
+- A worker assigned to one plan must not silently mutate another plan's scope. Obey the ownership/conflict-key rules in `MULTI_PLAN_PARALLELISM_CONTRACT.md`; use Migration Contract Baseline v1 plus versioned contracts/fixtures/mocks for missing peer implementations.
 - A fixture/mock may prove component behavior but never substitutes for final cross-plan integration evidence.
 
 ## Convergence plans
