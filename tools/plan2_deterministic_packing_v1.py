@@ -160,9 +160,22 @@ def stage(root: Path, destination: Path) -> dict:
     verify(root, manifest, shards)
     destination.mkdir(parents=True, exist_ok=True)
     folder = destination / "shards"
+    for member in destination.iterdir():
+        if member.name.startswith(".plan2-partial-"):
+            need(member.is_file() and not member.is_symlink(),
+                 "unsafe interrupted staging member")
+            member.unlink()
+        else:
+            need(member.name in {"shards", "packing-manifest.json"},
+                 "unexpected destination member")
     need(not folder.is_symlink(), "symlink shard folder")
     if folder.exists():
         need(folder.is_dir(), "non-directory shard path")
+        for member in folder.iterdir():
+            if member.name.startswith(".plan2-partial-"):
+                need(member.is_file() and not member.is_symlink(),
+                     "unsafe interrupted shard")
+                member.unlink()
         present = {f"shards/{p.name}" for p in folder.iterdir()}
         manifest_exists = (destination / "packing-manifest.json").exists()
         need(present.issubset(set(shards))
