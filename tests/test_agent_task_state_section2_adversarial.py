@@ -1,7 +1,5 @@
 """Additional Plan 5 / Section 2 adversarial regression at the durable effect boundary."""
 import sqlite3
-from dataclasses import replace
-
 import pytest
 
 from twelve_six_agent_runtime.task_state import (
