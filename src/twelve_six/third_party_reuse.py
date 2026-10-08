@@ -131,7 +131,23 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
     return payload
 
 
-def require_reviewed_code(raw: bytes, name: str, exact_source_sha256: str) -> dict[str, Any]:
+def require_reviewed_code(
+    raw: bytes,
+    name: str,
+    exact_source_sha256: str,
+    *,
+    independently_pinned_catalog_sha256: str,
+) -> dict[str, Any]:
+    """Inspect a reviewed-code claim only against an independent approved catalog pin.
+
+    The pin must be obtained from a trusted review, never recalculated from the
+    supplied untrusted raw value. Callers must hash the actual source artifact
+    and independently verify their reviewer's security/license assessment.
+    """
+    if not _hash(independently_pinned_catalog_sha256) or not hmac.compare_digest(
+        hashlib.sha256(raw).hexdigest(), independently_pinned_catalog_sha256
+    ):
+        raise ValueError("independently approved catalog digest required")
     payload = validate_reuse_catalog(raw)
     for asset in payload["assets"]:
         if asset["name"] == name:
