@@ -238,3 +238,23 @@ def stage_candidate_cohort(root: Path, destination: Path, *,
           "manifest round-trip failed")
     _need(_json(expected_data) == expected, "manifest restart/readback drift")
     return expected
+
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Plan-2 LOCAL_FREE candidate witness")
+    parser.add_argument("--root", type=Path, default=Path("."))
+    parser.add_argument("--out-dir", type=Path, required=True)
+    args = parser.parse_args()
+    receipt = stage_candidate_cohort(args.root, args.out_dir)
+    print(json.dumps({
+        "decision": "PASS_SOURCE_CANDIDATE_ONLY",
+        "manifest_sha256": receipt["manifest_sha256"],
+        "source_member_count": receipt["source_member_count"],
+        "training_corpus_authorized": receipt["training_corpus_authorized"],
+    }, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
