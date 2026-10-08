@@ -735,7 +735,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -745,7 +745,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           python tools/verify_locked_environment.py --validate-only
       - name: Focused contract and negative regressions
         run: |
@@ -755,11 +755,11 @@ jobs:
       - name: Clean locked editable and wheel restore
         run: |
           python tools/verify_locked_environment.py \
-            --source-sha "${ github.event.pull_request.head.sha }}" \
+            --source-sha "${{ github.event.pull_request.head.sha }}" \
             --evidence-out "$RUNNER_TEMP/plan1-s4-linux-lock.json"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: plan1-s4-linux-lock-${ github.event.pull_request.head.sha }}
-          path: ${ runner.temp }}/plan1-s4-linux-lock.json
+          name: plan1-s4-linux-lock-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-linux-lock.json
           if-no-files-found: error
