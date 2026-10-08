@@ -184,9 +184,12 @@ def assess_scale(tier: str, evidence: CapacityEvidence, limits: ScaleLimits,
             or proxy.get("s4_proxy_receipt_sha256") != digest(inner)
             or inner.get("tier") != PROXY_TIERS[tier]
             or inner.get("full_scale_executed") is not False
+            or inner.get("training_authorized") is not False
             or inner.get("paid_compute_authorized") is not False
             or not isinstance(inner.get("proxy_receipt"), dict)
-            or inner["proxy_receipt"].get("promotion_authorized") is not False):
+            or inner["proxy_receipt"].get("promotion_authorized") is not False
+            or inner["proxy_receipt"].get("training_executed") is not False
+            or inner["proxy_receipt"].get("paid_compute_authorized") is not False):
         raise ScaleRecipeDenied("invalid S4 proxy evidence")
     reasons = []
     if evidence.paid_compute_requested:
