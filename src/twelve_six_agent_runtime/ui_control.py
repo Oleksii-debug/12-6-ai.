@@ -12,8 +12,7 @@ from typing import Callable, Literal
 
 from .task_state import TaskSnapshot, _digest, _id, _json, _uint
 from .tools import (
-    DESCRIPTOR_VERSION, ToolBoundaryError, ToolCall, ToolDescriptor,
-    ToolRegistry, ToolResult, make_result,
+    DESCRIPTOR_VERSION, ToolCall, ToolDescriptor, ToolRegistry, make_result,
 )
 
 BACKENDS = ("dom", "ax", "uia")
