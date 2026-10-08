@@ -1,0 +1,70 @@
+{
+  "schema_version": "12-6.static-backend-compatibility.v1",
+  "python_version": "3.11.16",
+  "lock_index_sha256": "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a",
+  "entries": [
+    {
+      "profile": "linux-aarch64",
+      "backend": "cpu",
+      "feature": "fixture_runtime",
+      "status": "experimental",
+      "evidence_ref": null
+    },
+    {
+      "profile": "linux-aarch64",
+      "backend": "cuda",
+      "feature": "training",
+      "status": "unsupported",
+      "evidence_ref": null
+    },
+    {
+      "profile": "linux-aarch64",
+      "backend": "python",
+      "feature": "dependency_environment",
+      "status": "supported",
+      "evidence_ref": null
+    },
+    {
+      "profile": "linux-x86_64",
+      "backend": "cpu",
+      "feature": "fixture_runtime",
+      "status": "experimental",
+      "evidence_ref": null
+    },
+    {
+      "profile": "linux-x86_64",
+      "backend": "cuda",
+      "feature": "training",
+      "status": "unsupported",
+      "evidence_ref": null
+    },
+    {
+      "profile": "linux-x86_64",
+      "backend": "python",
+      "feature": "dependency_environment",
+      "status": "supported",
+      "evidence_ref": null
+    },
+    {
+      "profile": "windows-x86_64",
+      "backend": "cpu",
+      "feature": "fixture_runtime",
+      "status": "experimental",
+      "evidence_ref": null
+    },
+    {
+      "profile": "windows-x86_64",
+      "backend": "cuda",
+      "feature": "training",
+      "status": "unsupported",
+      "evidence_ref": null
+    },
+    {
+      "profile": "windows-x86_64",
+      "backend": "python",
+      "feature": "dependency_environment",
+      "status": "supported",
+      "evidence_ref": null
+    }
+  ]
+}
