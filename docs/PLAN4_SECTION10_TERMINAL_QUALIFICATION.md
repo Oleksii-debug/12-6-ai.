@@ -7,12 +7,20 @@ Sections 1–9 are already accepted component-DONE and are not reopened here.
 No new model, tokenizer, exporter, quantizer, evaluator, loader, gateway,
 scheduler, provider authority, or permission grant is implemented.
 
-The one canonical finisher is the exact candidate containing:
+The accepted Section-10 implementation consists of:
 - `tests/test_plan4_terminal_qualification.py` — real one-optimizer-step
   CPU-trained tiny model crossing existing Plan-4 boundaries;
-- `.github/workflows/plan4-terminal-qualification.yml` — the unified
-  S1–S9 contract-suite plus S10 integration gate;
 - this scoped qualification contract.
+
+Post-merge exact-candidate GitHub Actions established two previously unobserved
+closure-evidence failures on PR #3156 at `10e0b3428d8579c21aa05cee8664a95c0f9c3882`:
+focused run `37738695731` failed Ruff I001 import ordering in the test,
+and shared CI run `37738695767` rejected the added dedicated workflow under
+the repository's existing CI workflow-budget policy. Neither failed run is
+claimed PASS. This post-closure repair changes only test import ordering,
+removes the policy-prohibited dedicated workflow, and relies on the canonical
+shared `.github/workflows/ci.yml` with the focused local command below.
+It neither reimplements accepted S1–S9 authorities nor grants training permission.
 
 ## Positive evidence required
 
@@ -67,9 +75,12 @@ python -m pytest -q \
   tests/test_plan4_terminal_qualification.py
 ```
 
-GitHub workflow runs exactly this bounded CPU set on the candidate and on
-accepted-main changes. A queued, cancelled or missing hosted run is NOT PASS.
-An unknown test result is NOT failure, but cannot be represented as proof.
+The canonical shared `.github/workflows/ci.yml` is the only permanent CI
+workflow authority. The focused bounded CPU command above is the explicit
+Plan-4 S1–S10 test contract; shared CI's normal `pytest -q` encompasses
+the same committed tests. A queued, cancelled, failed or missing hosted run is
+NOT PASS. Unrelated shared-CI failures must be attributed precisely rather
+than mislabeled as focused Plan-4 test failures. An unknown result is not proof.
 
 ## Terminal gate, evidence and boundaries
 
@@ -78,8 +89,11 @@ unavailable infrastructure under AGENTS.md v3, never a known failure),
 canonical PR integration, exact accepted-main file/tree readback, and a durable
 GitHub closure registry update plus the Drive Section-10 status update.
 
-Until those actions are verified, this document is a **candidate contract**,
-not a completion certificate.
+The original Plan-4 S10 terminal record documents accepted-main integration
+and earlier locally executed focused CPU checks, not passing hosted CI. This
+post-closure CI-evidence repair needs its own exact-head qualification,
+integration and readback before the failure can be marked resolved; existing
+terminal DONE must not be used to misrepresent those failed CI runs as PASS.
 
 No material cloud/GPU costs, internet provider calls or training campaign;
 the one real optimizer step is a local tiny CPU fixture. Plan 9 champion
