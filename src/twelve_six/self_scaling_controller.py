@@ -177,7 +177,10 @@ def choose_scaling_action(
                 reason = "paid_or_nonlocal_compute_denied"
             elif p.observations < envelope.min_observations:
                 reason = "insufficient_measurements"
-            elif p.healthy_workers < p.workers_required or p.workers_required > envelope.max_workers:
+            elif (
+                p.healthy_workers < p.workers_required
+                or p.workers_required > envelope.max_workers
+            ):
                 reason = "worker_capacity_or_failure"
             elif (
                 p.projected_peak_memory_bytes > envelope.max_peak_memory_bytes
