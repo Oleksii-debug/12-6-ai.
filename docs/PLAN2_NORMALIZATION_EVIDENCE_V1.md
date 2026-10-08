@@ -1,0 +1,9 @@
+# Plan 2 / Section 4 — deterministic normalization evidence
+
+This is the **sole Plan-2 evidence adapter** over incumbent DATA324 `normalize_markdown_uk`; it does not fork acquisition/normalization/rights or authorize training. The input comes only from the Plan-2 Section-3 exact SHA-verified candidate cohort. Existing raw and normalized snapshots are reused without modifying them or touching any other numbered plan.
+
+The policy is `configs/data/plan2_normalization_policy_v1.json`: strict UTF-8, NFKC, LF, incumbent Markdown structure, deterministic nonempty normalized-line records, incumbent evidence-threshold Ukrainian classification, unknown (`und`) for unsupported/ambiguous fixtures. Modality is text only for verified readable content. Language confidence is explicitly a bounded heuristic, **not calibrated probability**. A candidate unable to pass incumbent UA gate is denied canonical Plan-2 production-candidate receipt rather than silently relabeled.
+
+Use `PYTHONPATH=.:src python tools/plan2_normalization_evidence_v1.py --root . --out-dir /tmp/plan2-s4`. This stages the existing S3 `cohort/` snapshot and atomically publishes **only metadata**, `normalization-manifest.json`, with raw SHA, derivative SHA, policy digest/version, byte-offset record boundaries, individual record hashes and source/candidate authorization flags. Second invocation is deterministic and read-only. Corrupt/stale/improperly changed outputs fail closed without overwrite.
+
+Every consumer must bind `policy_sha256`, `raw_sha256`, `normalized_sha256` and `manifest_sha256` through `assert_downstream_binding`. Any changed policy or input creates a distinct immutable identity and requires regeneration in a new artifact location; the old downstream binding is invalidated. No tokenizer, packed shard, privacy filtering, training corpus or final product status is asserted at this stage.
