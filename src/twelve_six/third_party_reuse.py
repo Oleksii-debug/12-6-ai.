@@ -647,6 +647,16 @@ def verify_reviewed_installed_backend(
         raise ValueError("invalid external distribution")
     if not _hash(independently_pinned_record_sha256):
         raise ValueError("independent installed RECORD pin required")
+    # Reviewed source and installed wheel must denote the SAME published code.
+    # Other optional asset-to-wheel aliases require their own versioned,
+    # reviewed mapping; never guess a distribution from untrusted input.
+    approved_distribution_names = {
+        "pytorch": "torch",
+        "numpy": "numpy",
+        "safetensors": "safetensors",
+    }
+    if type(name) is not str or distribution != approved_distribution_names.get(name):
+        raise ValueError("unreviewed upstream-to-wheel distribution binding")
     if type(catalog) is not bytes or len(catalog) > 1048576:
         raise ValueError("bounded reviewed catalog bytes required")
     if not _hash(independently_pinned_catalog_sha256) or not hmac.compare_digest(
