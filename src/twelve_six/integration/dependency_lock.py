@@ -19,7 +19,7 @@ PYTHON_IMPLEMENTATION = "cpython"
 SUPPORTED_REQUIRES_PYTHON = ">=3.11"
 PROJECT_DISTRIBUTION = "twelve-six-ai"
 CONSOLE_SCRIPTS = {"twelve-six-windows": "twelve_six.windows_operator_cli:main"}
-SUPPORTED_PROFILES = {"linux-x86_64", "linux-aarch64"}
+SUPPORTED_PROFILES = {"linux-x86_64", "linux-aarch64", "windows-x86_64"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _NAME_NORMALIZER = re.compile(r"[-_.]+")
 
