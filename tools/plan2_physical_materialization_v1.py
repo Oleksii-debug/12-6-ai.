@@ -86,8 +86,14 @@ def _preflight(root: Path, inventory_seed: Mapping[str, Any] | None,
         raise Plan2MaterializationError("incumbent DATA324 snapshot failed verification") from exc
     _need(old.get("decision") == "PASS_SOURCE_LEVEL_CURRENT_MAIN_PORT",
           "DATA324 did not pass physical qualification")
-    inventory_seed = inventory_seed if inventory_seed is not None else _json(_read_source(root, SEED))
-    rights_seed = rights_seed if rights_seed is not None else _json(_read_source(root, RIGHTS))
+    canonical_inventory = _json(_read_source(root, SEED))
+    canonical_rights = _json(_read_source(root, RIGHTS))
+    if inventory_seed is not None:
+        _need(inventory_seed == canonical_inventory, "source registry substitution")
+    if rights_seed is not None:
+        _need(rights_seed == canonical_rights, "rights authority substitution")
+    inventory_seed = canonical_inventory
+    rights_seed = canonical_rights
     _need(isinstance(inventory_seed, Mapping) and
           set(inventory_seed) == {"schema_version", "revision", "sources"} and
           inventory_seed["schema_version"] == "12-6.plan2-source-registry-seed.v1",
@@ -196,7 +202,8 @@ def stage_candidate_cohort(root: Path, destination: Path, *,
     """
     _need(purpose == "evidence_only", "no training/release materialization authority")
     root = root.resolve()
-    _need(not destination.is_symlink(), "destination symlink")
+    for component in (destination, *destination.parents):
+        _need(not component.is_symlink(), "destination symlink component")
     expected, raw, normalized = _preflight(root, inventory_seed, rights_seed)
     if destination.exists():
         _need(destination.is_dir(), "destination must be a directory")
