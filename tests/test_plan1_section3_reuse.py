@@ -937,3 +937,111 @@ def test_review_archive_denials_do_not_read_untrusted_files(monkeypatch, tmp_pat
             **kwargs,
         )
     assert reads == []
+
+
+def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch, tmp_path):
+    """End-to-end code-only admission; never confer Base/data/weight authority."""
+    import base64
+    from importlib import metadata
+
+    from twelve_six.third_party_reuse import verify_reviewed_installed_backend
+
+    upstream = tmp_path / "source.whl"
+    notice = tmp_path / "LICENSE"
+    installed_file = tmp_path / "example" / "__init__.py"
+    installed_file.parent.mkdir()
+    upstream.write_bytes(b"independently reviewed upstream bytes")
+    notice.write_bytes(b"license fixture reviewed separately")
+    installed_file.write_bytes(b"installed backend file")
+
+    file_digest = base64.urlsafe_b64encode(
+        hashlib.sha256(installed_file.read_bytes()).digest()
+    ).rstrip(b"=").decode("ascii")
+    record = (
+        f"example/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\\n"
+        "example-1.2.3.dist-info/RECORD,,\\n"
+    )
+
+    class FakeDistribution:
+        version = "1.2.3"
+
+        def __init__(self):
+            self.metadata = {"Name": "example"}
+
+        def read_text(self, filename):
+            assert filename == "RECORD"
+            return record
+
+        def locate_file(self, name):
+            return tmp_path / name
+
+    monkeypatch.setattr(metadata, "distribution", lambda name: FakeDistribution())
+
+    catalog = json.loads(RAW)
+    catalog["assets"][0].update(
+        status="REVIEWED_CODE_ONLY",
+        version="1.2.3",
+        upstream_url="https://example.org/audited/source",
+        source_sha256=hashlib.sha256(upstream.read_bytes()).hexdigest(),
+        license_spdx="MIT",
+        license_evidence_sha256=hashlib.sha256(notice.read_bytes()).hexdigest(),
+        security_posture="REVIEWED",
+        data_rights="NOT_APPLICABLE_CODE",
+    )
+    approved = wire(catalog)
+    pins = {
+        "independently_pinned_catalog_sha256": hashlib.sha256(approved).hexdigest(),
+        "independently_pinned_record_sha256": hashlib.sha256(record.encode()).hexdigest(),
+    }
+
+    def check(**replacements):
+        return verify_reviewed_installed_backend(
+            approved,
+            "pytorch",
+            source_archive=upstream,
+            license_file=notice,
+            distribution="example",
+            **dict(pins, **replacements),
+        )
+
+    result = check()
+    assert result["status"] == "REVIEWED_CODE_ONLY"
+    assert result["version"] == "1.2.3"
+    assert result["verified_files"] == 1
+    assert result["data_rights"] == "NOT_APPLICABLE_CODE"
+    assert result["model_weights"] == "NONE"
+    assert check() == result
+
+    with pytest.raises(ValueError, match="independent installed RECORD"):
+        check(independently_pinned_record_sha256="")
+    with pytest.raises(ValueError, match="approved catalog"):
+        check(independently_pinned_catalog_sha256="0" * 64)
+    installed_file.write_bytes(b"modified installed wheel bytes")
+    with pytest.raises(ValueError, match="contents drift"):
+        check()
+    installed_file.write_bytes(b"installed backend file")
+    upstream.write_bytes(b"mutated upstream source")
+    with pytest.raises(ValueError, match="source hash drift"):
+        check()
+    upstream.write_bytes(b"independently reviewed upstream bytes")
+    notice.write_bytes(b"drifted notice")
+    with pytest.raises(ValueError, match="license bytes drifted"):
+        check()
+    notice.write_bytes(b"license fixture reviewed separately")
+    assert check() == result
+
+    catalog["assets"][0]["status"] = "CANDIDATE_UNQUALIFIED"
+    # Properly encoded unqualified row must not self-admit even with real files.
+    catalog["assets"][0].update(
+        upstream_url=None, version=None, source_sha256=None,
+        license_spdx=None, license_evidence_sha256=None,
+        security_posture="UNKNOWN", data_rights="NOT_ASSESSED",
+    )
+    unreviewed = wire(catalog)
+    with pytest.raises(ValueError, match="unqualified code asset"):
+        verify_reviewed_installed_backend(
+            unreviewed, "pytorch", source_archive=upstream, license_file=notice,
+            distribution="example",
+            independently_pinned_catalog_sha256=hashlib.sha256(unreviewed).hexdigest(),
+            independently_pinned_record_sha256=pins["independently_pinned_record_sha256"],
+        )
