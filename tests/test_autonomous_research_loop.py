@@ -257,3 +257,31 @@ def test_deterministic_ranking_cost_gain_and_ties():
                                       make_forecast(a, 75)), **trust(state),
     )
     assert tie.experiment_id == "a"
+
+
+def test_round_limit_stops_even_with_positive_forecast():
+    state = ResearchMap()
+    p, f, decision = choose(state)
+    full = commit(state, p, f, decision)
+    limit = replace(POLICY, max_rounds=1)
+    proposal = make_proposal(full, name="second")
+    forecast = make_forecast(proposal)
+    result = select_experiment(
+        full, limit, (proposal,), (forecast,), **trust(full),
+    )
+    assert result.state == "STOP_ROUND_LIMIT"
+    assert result.experiment_id is None
+
+
+def test_spent_budget_stop_and_overspend_fail_closed():
+    state = ResearchMap()
+    p, f, decision = choose(state)
+    full = commit(state, p, f, decision)
+    bounded = replace(POLICY, budget_units=2)
+    proposal = make_proposal(full, name="second", cost=1)
+    forecast = make_forecast(proposal)
+    result = select_experiment(
+        full, bounded, (proposal,), (forecast,), **trust(full),
+    )
+    assert result.state == "STOP_BUDGET"
+    assert result.experiment_id is None
