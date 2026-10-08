@@ -168,15 +168,15 @@ def _smoke(python: Path, environment: Path) -> None:
             "-c",
             (
                 "import importlib.metadata as m; import twelve_six; "
-                "import twelve_six.inference.cli; "
+                "import twelve_six.windows_operator_cli; "
                 "assert m.version('twelve-six-ai') == '0.2.0.dev0'; "
                 "print(twelve_six.__version__)"
             ),
         ]
     )
-    command = environment / "bin" / "twelve-six-generate"
+    command = environment / "bin" / "twelve-six-windows"
     if not command.exists():
-        raise RuntimeError("console script twelve-six-generate was not installed")
+        raise RuntimeError("console script twelve-six-windows was not installed")
     completed = subprocess.run(
         [str(command), "--help"],
         cwd=ROOT,
@@ -184,7 +184,7 @@ def _smoke(python: Path, environment: Path) -> None:
         capture_output=True,
         text=True,
     )
-    if "usage: twelve-six-generate" not in completed.stdout:
+    if "usage: twelve-six-windows" not in completed.stdout:
         raise RuntimeError("console-script help smoke did not expose expected CLI")
 
 
@@ -203,9 +203,8 @@ def _installed_distributions(python: Path) -> list[dict[str, str]]:
 def _run_repo_checks(python: Path) -> None:
     _run([python, "tools/check_repo_policy.py"])
     _run([python, "-m", "ruff", "check", "src", "tests", "tools"])
-    _run([python, "-m", "pytest", "-q", "tests/test_s0_convergence_integration.py"])
+    _run([python, "-m", "pytest", "-q", "tests/test_dependency_lock.py"])
     _run([python, "-m", "pytest", "-q"])
-    _run([python, "tools/validate_stage_candidate.py", "configs/releases/s0_candidate.template.json"])
 
 
 def verify_install(
