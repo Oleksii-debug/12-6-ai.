@@ -5,9 +5,11 @@ No downloader, model loader, scheduler, registry, or evaluator is created here.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import re
+from pathlib import Path
 from typing import Any
 
 HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -163,7 +165,7 @@ def validate_base_lineage(payload: dict[str, Any], trusted_genesis: dict[str, An
         if not _hash(payload[key]) or payload[key] != trusted_genesis[key]:
             raise ValueError("foreign lineage/model identity drift")
     checkpoints = payload["checkpoints"]
-    if type(checkpoints) is not list or not checkpoints:
+    if type(checkpoints) is not list or not checkpoints or len(checkpoints) > 2048:
         raise ValueError("complete checkpoint graph required")
     parents: dict[str, list[str]] = {}
     for item in checkpoints:
@@ -185,14 +187,63 @@ def validate_base_lineage(payload: dict[str, Any], trusted_genesis: dict[str, An
             raise ValueError("unexpected second Base root")
         if any(p not in parents for p in refs):
             raise ValueError("foreign checkpoint parent")
+    completed: set[str] = {root}
     for node in parents:
         cursor = node
         seen: set[str] = set()
-        while cursor != root:
+        while cursor not in completed:
             if cursor in seen:
                 raise ValueError("ancestry cycle")
             seen.add(cursor)
             cursor = parents[cursor][0]
+        completed.update(seen)
     return hashlib.sha256(json.dumps(
         payload, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")).hexdigest()
+
+
+def prepare_trusted_base_checkpoint(
+    directory: str | Path,
+    *,
+    lineage_bytes: bytes,
+    trusted_genesis_bytes: bytes,
+    expected_genesis_sha256: str,
+) -> Any:
+    """Admit canonical checkpoint bytes only after independently pinned Base ancestry.
+
+    This is an opt-in gate in front of the incumbent checkpoint snapshot/loader,
+    not a second checkpoint authority. The expected genesis hash MUST come from
+    an independently authenticated trust root, not from lineage_bytes.
+    The returned VerifiedCheckpoint is consumed by checkpoint.load_verified_checkpoint.
+    No claim about provenance is made for callers bypassing this gated API.
+    """
+    if not _hash(expected_genesis_sha256):
+        raise ValueError("independently pinned genesis SHA-256 required")
+    if type(trusted_genesis_bytes) is not bytes:
+        raise ValueError("trusted genesis must be bytes")
+    digest = hashlib.sha256(trusted_genesis_bytes).hexdigest()
+    if not hmac.compare_digest(digest, expected_genesis_sha256):
+        raise ValueError("trusted genesis digest mismatch")
+
+    genesis = _strict(trusted_genesis_bytes)
+    lineage = _strict(lineage_bytes)
+    validate_base_lineage(lineage, genesis)
+
+    # Canonical checkpoint authority authenticates the actual immutable payload
+    # and its manifest BEFORE any model, optimizer or RNG mutation.
+    from .checkpoint import prepare_checkpoint_load
+
+    verified = prepare_checkpoint_load(directory)
+    manifest = verified.manifest
+    identity = manifest["identity"]
+    if manifest["checkpoint_id"] != lineage["head_id"]:
+        raise ValueError("checkpoint head is not the admitted Base lineage")
+    if identity["model_spec_hash"] != lineage["model_spec_sha256"]:
+        raise ValueError("Base ModelSpec does not match checkpoint")
+    training_config = identity.get("training_config")
+    if (
+        type(training_config) is not dict
+        or training_config.get("init_spec_sha256") != lineage["init_spec_sha256"]
+    ):
+        raise ValueError("Base InitSpec is not bound to checkpoint")
+    return verified
