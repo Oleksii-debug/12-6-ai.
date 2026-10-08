@@ -302,7 +302,7 @@ class TaskStore:
             incoming = {effect.effect_id: effect for effect in pending_effects
                         if isinstance(effect, PendingEffect)}
             if len(incoming) != len(pending_effects):
-                raise StateError("invalid or duplicate pending effects")
+                raise StateError("duplicate effect_id or invalid pending effect")
             if any(incoming.get(key) != effect for key, effect in existing.items()):
                 raise StateError("checkpoint cannot erase or rewrite a reserved effect")
             if any(effect.status != "pending" for effect_id, effect in incoming.items()
