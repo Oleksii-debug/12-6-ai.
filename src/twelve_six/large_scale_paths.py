@@ -13,9 +13,9 @@ from twelve_six.billion_systems_gate import (
     BillionGateDenied,
     _digest,
     _finite,
-    inspect_shards,
     _positive,
     _sha,
+    inspect_shards,
 )
 from twelve_six.model import ModelSpec
 
