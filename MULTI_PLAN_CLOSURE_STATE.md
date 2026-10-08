@@ -33,7 +33,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 3 | 1 | OPEN |
 | 4 | 4 | OPEN |
 | 5 | 5 | OPEN — Sections 3–4 terminal DONE; Section 5 next |
-| 6 | 2 | OPEN |
+| 6 | 3 | OPEN |
 | 7 | 1 | QUALIFYING — canonical PR #3102 at `19b03d478b9fc93e8130300f20afce0d2c5260a5`; new CI #37726869436 queued, old CI #37726451164 failed Ruff I001 (repaired), S1 not merged; no terminal DONE |
 | 8 | 3 | QUALIFYING |
 | 9 | 1 | WAITING_UPSTREAM |
@@ -72,7 +72,7 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | Section | State | Accepted main SHA | Evidence and qualification boundaries |
 | ---: | --- | --- | --- |
 | 1 | DONE | `5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67` | PR #3101 merged; exact main research source blob `4d0a3424e033f1be591b5ee99f23a7f38b891ff4` and tests blob `b3199533f797d97cf7dce7f5a45a914b31669838` read back; 16/16 independent LOCAL_FREE scoped tests and compileall PASS; SHA-bound immutable trial, deterministic/holdout/independent/regression/replay, forged/self-issued/foreign/missing/unstable evidence rejection and restart replay. Full hosted CI #37728070229 queued (not green); existing unrelated Plan-8 source inventory failures not claimed fixed. No paid training or Base change. |
-| 2 | OPEN | None | Next ACTIONABLE: instruction descendant post-training engine with provenance/rights/split masking and tiny fixture. |
+| 2 | DONE | `5b1085177b4d7bc61298100e44f673f292a82ecb` | PR #3117 squash merged from frozen `95560b69f06fd3ab8e4efa109e9d5b11d93be856`. Reused Plan-3 causal loss; independent rights/provenance/quality/train-split masking, deterministic bounded CPU SFT descendant, Base SHA immutability. Local mirrored pytest **12 passed**, compileall PASS including invalid-rights/eval-leakage/duplicate/identity/overlong/restart; post-merge exact main source blob `428832cba92fe0fd459465d8121acdd00d78a9e2`, tests blob `c9ad2279455f2df436d6d37931de45e689e80dbe` readback. Hosted CI `37728803008` QUEUED (not called green); no paid compute or production-model claim. |
 
 ## Plan 7 — scaling/distributed component closure
 
