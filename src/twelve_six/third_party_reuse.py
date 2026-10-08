@@ -95,12 +95,10 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
             "code_adapter", "dataset", "model_weights"
         }:
             raise ValueError("invalid role")
-        boundary = asset["replacement_boundary"]
-        if type(boundary) is not str or not boundary.startswith("adapter:"):
-            raise ValueError("replaceable adapter boundary required")
-        if any(token in boundary.lower().split(":")[1].split(".")
-               for token in ("model", "checkpoint", "scheduler", "evaluation", "registry")):
-            raise ValueError("adapter cannot replace canonical authority")
+        # A catalog must not disguise model/registry/checkpoint authority inside
+        # a nested adapter path (such as "adapter:vendor.model_registry").
+        if asset["replacement_boundary"] != f"adapter:{name}":
+            raise ValueError("adapter boundary must equal the asset identifier")
         status = asset["status"]
         if type(status) is not str or status not in {
             "CANDIDATE_UNQUALIFIED", "REVIEWED_CODE_ONLY"
