@@ -271,3 +271,230 @@ def inspect_wheel(path: Path) -> tuple[str, str]:
         raise EnvironmentLockError("invalid wheel archive") from exc
     return _normalized(project), version
 
+
+def _digest_file(path: Path) -> tuple[str, int]:
+    before = path.stat()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    after = path.stat()
+    if (
+        before.st_dev, before.st_ino, before.st_size,
+        before.st_mtime_ns, before.st_ctime_ns
+    ) != (
+        after.st_dev, after.st_ino, after.st_size,
+        after.st_mtime_ns, after.st_ctime_ns
+    ):
+        raise EnvironmentLockError("wheel changed while hashing")
+    return digest.hexdigest(), after.st_size
+
+
+def validate_wheelhouse(lock: dict[str, Any], wheelhouse: Path) -> None:
+    if not wheelhouse.is_dir() or wheelhouse.is_symlink():
+        raise EnvironmentLockError("wheelhouse must be a local real directory")
+    supplied = {p.name for p in wheelhouse.iterdir()}
+    expected = {record["filename"] for record in lock["wheels"]}
+    if supplied != expected:
+        raise EnvironmentLockError("wheelhouse contains missing or untracked artifacts")
+    for item in lock["wheels"]:
+        path = wheelhouse / item["filename"]
+        _trusted_regular(path)
+        digest, size = _digest_file(path)
+        if size != item["size"] or digest != item["sha256"]:
+            raise EnvironmentLockError("wheel file hash/size mismatch")
+        name, version = inspect_wheel(path)
+        if name != _normalized(item["name"]) or version != item["version"]:
+            raise EnvironmentLockError("wheel embedded identity mismatch")
+
+
+def _project_dependencies(pyproject: bytes) -> dict[str, tuple[int, ...]]:
+    parsed = tomllib.loads(pyproject.decode("utf-8"))
+    entries = parsed["project"]["dependencies"]
+    direct: dict[str, tuple[int, ...]] = {}
+    for requirement in entries:
+        match = re.fullmatch(
+            r"([A-Za-z0-9_][A-Za-z0-9_.-]*)\s*>=\s*([0-9][A-Za-z0-9.+]*)",
+            requirement,
+        )
+        if match is None:
+            raise EnvironmentLockError("unsupported project direct requirement syntax")
+        if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,3}", match.group(2)):
+            raise EnvironmentLockError("non-numeric minimum requires qualified resolver")
+        direct[_normalized(match.group(1))] = tuple(map(int, match.group(2).split(".")))
+    return direct
+
+
+def _ensure_runtime_dependencies(lock: dict[str, Any], pyproject: bytes) -> None:
+    direct = _project_dependencies(pyproject)
+    pinned = {entry["name"]: entry["version"] for entry in lock["wheels"]}
+    missing = set(direct) - set(pinned)
+    if missing:
+        raise EnvironmentLockError(f"missing mandatory wheel projects: {sorted(missing)}")
+    for name, minimum in direct.items():
+        version = pinned[name].split("+", 1)[0]
+        if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,3}", version):
+            raise EnvironmentLockError("unqualified pinned dependency version")
+        actual = tuple(map(int, version.split(".")))
+        count = max(len(minimum), len(actual))
+        if (
+            actual + (0,) * (count - len(actual))
+            < minimum + (0,) * (count - len(minimum))
+        ):
+            raise EnvironmentLockError(f"pinned {name} version violates project minimum")
+
+
+def build_lock(
+    wheelhouse: Path, *, platform: str, python: str,
+    pyproject: bytes, strict_project: bool = True,
+) -> bytes:
+    """Generate immutable exact artifact lock only from an existing wheelhouse."""
+    if platform not in PLATFORMS or not re.fullmatch(r"3\.(?:11|12|13)", python):
+        raise EnvironmentLockError("unsupported lock target")
+    if not wheelhouse.is_dir() or wheelhouse.is_symlink():
+        raise EnvironmentLockError("wheelhouse must exist and be a real directory")
+    rows: list[dict[str, Any]] = []
+    for path in sorted(wheelhouse.iterdir()):
+        if not _compatible(path.name, platform, python):
+            raise EnvironmentLockError("wheel cannot target requested platform/Python")
+        name, version = inspect_wheel(path)
+        sha, size = _digest_file(path)
+        rows.append(dict(name=name, version=version, filename=path.name,
+                         sha256=sha, size=size))
+    raw = _canonical(dict(
+        schema_version=1, platform=platform, python=python,
+        project_sha256=hashlib.sha256(pyproject).hexdigest(), wheels=rows,
+    ))
+    parsed = validate_lock(
+        raw, platform=platform, python=python,
+        expected_project_sha256=hashlib.sha256(pyproject).hexdigest(),
+    )
+    if strict_project:
+        _ensure_runtime_dependencies(parsed, pyproject)
+    validate_wheelhouse(parsed, wheelhouse)
+    return raw
+
+
+def verify_or_restore(
+    lock_bytes: bytes, *, pyproject: bytes, wheelhouse: Path,
+    platform: str, python: str, target: Path, restore: bool = False,
+) -> dict[str, Any]:
+    """Verify or offline restore, denying overwrite and cross-platform execution."""
+    doc = validate_lock(
+        lock_bytes, platform=platform, python=python,
+        expected_project_sha256=hashlib.sha256(pyproject).hexdigest(),
+    )
+    _ensure_runtime_dependencies(doc, pyproject)
+    validate_wheelhouse(doc, wheelhouse)
+    if not restore:
+        return {"status": "VERIFIED_WHEELHOUSE", "wheels": len(doc["wheels"])}
+    host = "win_amd64" if os.name == "nt" else "linux_x86_64"
+    local_python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if platform != host or python != local_python:
+        raise EnvironmentLockError("cannot execute restore for a different host ABI")
+    if target.exists() or target.is_symlink():
+        raise EnvironmentLockError("restore destination must not exist")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Do not rename a prepared venv: console entry-point shebangs embed paths.
+    target.mkdir(mode=0o700, exist_ok=False)
+    try:
+        subprocess.run([sys.executable, "-m", "venv", str(target)],
+                       check=True, timeout=120)
+        executable = target / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        requirements = target / "plan1-install-requirements.txt"
+        requirements.write_text(
+            "\n".join(
+                f'{(wheelhouse / x["filename"]).resolve().as_uri()} '
+                f'--hash=sha256:{x["sha256"]}'
+                for x in doc["wheels"]
+            ) + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [str(executable), "-m", "pip", "install", "--no-index", "--no-deps",
+             "--require-hashes", "--disable-pip-version-check", "-r", str(requirements)],
+            check=True, timeout=900, capture_output=True, text=True,
+        )
+        subprocess.run(
+            [str(executable), "-m", "pip", "check", "--disable-pip-version-check"],
+            check=True, timeout=120, capture_output=True, text=True,
+        )
+        receipt = {
+            "schema_version": 1, "platform": platform, "python": python,
+            "lock_sha256": hashlib.sha256(lock_bytes).hexdigest(),
+            "project_sha256": doc["project_sha256"], "wheels": len(doc["wheels"]),
+        }
+        (target / "plan1-environment-receipt.json").write_bytes(_canonical(receipt))
+        return {"status": "RESTORED_OFFLINE", "receipt": receipt}
+    except BaseException:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
+
+
+def validate_semantic_transition(
+    before: bytes, after: bytes, *, expected_old_sha256: str,
+    expected_new_sha256: str, review: bytes | None,
+    independently_pinned_review_sha256: str | None,
+) -> dict[str, Any]:
+    """Reject a dependency update without independently pinned versioned impacts."""
+    if (
+        not _sha(expected_old_sha256) or not _sha(expected_new_sha256)
+        or hashlib.sha256(before).hexdigest() != expected_old_sha256
+        or hashlib.sha256(after).hexdigest() != expected_new_sha256
+    ):
+        raise EnvironmentLockError("independently expected lock identities required")
+    if before == after:
+        return {"status": "UNCHANGED", "sha256": expected_old_sha256}
+    if (
+        review is None or independently_pinned_review_sha256 is None
+        or not _sha(independently_pinned_review_sha256)
+        or hashlib.sha256(review).hexdigest() != independently_pinned_review_sha256
+    ):
+        raise EnvironmentLockError("dependency change needs independent reviewed evidence")
+    approval = _strict(review)
+    if set(approval) != {
+        "schema_version", "old_lock_sha256", "new_lock_sha256",
+        "contract_version", "decision", "impact", "evidence_refs"
+    }:
+        raise EnvironmentLockError("dependency transition evidence schema drift")
+    if (
+        type(approval["schema_version"]) is not int or approval["schema_version"] != 1
+        or approval["old_lock_sha256"] != expected_old_sha256
+        or approval["new_lock_sha256"] != expected_new_sha256
+        or approval["decision"] != "REVIEWED_APPROVED"
+    ):
+        raise EnvironmentLockError("dependency transition approval mismatch")
+    if (
+        type(approval["contract_version"]) is not str
+        or re.fullmatch(r"[A-Z][A-Z0-9_-]{4,80}", approval["contract_version"]) is None
+    ):
+        raise EnvironmentLockError("explicit versioned contract revision required")
+    impact = approval["impact"]
+    required = {"numerical", "tokenizer", "data", "checkpoint", "inference"}
+    if type(impact) is not dict or set(impact) != required:
+        raise EnvironmentLockError("incomplete change semantic impact assessment")
+    for name, evidence in impact.items():
+        if type(evidence) is not dict or set(evidence) != {
+            "status", "evidence_sha256"
+        }:
+            raise EnvironmentLockError(f"invalid {name} semantic evidence")
+        if evidence["status"] not in ("UNCHANGED_VERIFIED", "CHANGED_REQUALIFIED"):
+            raise EnvironmentLockError(f"unqualified {name} dependency semantics")
+        if not _sha(evidence["evidence_sha256"]):
+            raise EnvironmentLockError(f"missing {name} semantic evidence digest")
+    refs = approval["evidence_refs"]
+    if type(refs) is not list or not refs or len(refs) > 100:
+        raise EnvironmentLockError("change evidence references missing")
+    if any(
+        type(value) is not str
+        or not re.fullmatch(r"[A-Za-z0-9_./:#-]{8,200}", value)
+        for value in refs
+    ):
+        raise EnvironmentLockError("invalid change evidence reference")
+    if _canonical(approval) != review:
+        raise EnvironmentLockError("noncanonical dependency evidence")
+    return {
+        "status": "REQUALIFIED_CHANGE",
+        "contract_version": approval["contract_version"],
+        "evidence_sha256": independently_pinned_review_sha256,
+    }
