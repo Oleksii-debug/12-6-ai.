@@ -159,3 +159,30 @@ def test_parent_directory_symlink_is_rejected(tmp_path):
     with pytest.raises(Plan2MaterializationError, match="symlink"):
         stage_candidate_cohort(ROOT, tmp_path / "alias" / "child")
     assert not (actual / "child").exists()
+
+def test_concurrent_writer_cannot_clobber_existing_member(tmp_path, monkeypatch):
+    """A competing publication in the rename window must be rejected, not erased."""
+    from tools import plan2_physical_materialization_v1 as materializer
+
+    destination = tmp_path / "cohort"
+    original_link = materializer.os.link
+    racer_bytes = b"competing writer bytes"
+
+    def link_with_race(source, target):
+        if Path(target).name == "raw.snapshot":
+            Path(target).write_bytes(racer_bytes)
+        return original_link(source, target)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(materializer.os, "link", link_with_race)
+        with pytest.raises(Plan2MaterializationError, match="concurrent"):
+            stage_candidate_cohort(ROOT, destination)
+
+    assert (destination / "raw.snapshot").read_bytes() == racer_bytes
+    assert not (destination / "manifest.json").exists()
+    assert not any(p.name.startswith(".plan2-partial-") for p in destination.iterdir())
+
+    # Even after the racing process exits, the corrupted partial is never
+    # silently overwritten during restart.
+    with pytest.raises(Plan2MaterializationError, match="mismatch"):
+        stage_candidate_cohort(ROOT, destination)
