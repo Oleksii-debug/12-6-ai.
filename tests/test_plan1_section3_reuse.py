@@ -1,10 +1,9 @@
 import copy
 import hashlib
-
-import numpy as np
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from twelve_six.third_party_reuse import (
@@ -344,9 +343,10 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
     )
 
     class FakeDistribution:
-        metadata = {"Name": "example"}
-        version = "1.2.3"
-        record = good_record
+        def __init__(self):
+            self.metadata = {"Name": "example"}
+            self.version = "1.2.3"
+            self.record = good_record
 
         def read_text(self, filename):
             assert filename == "RECORD"
