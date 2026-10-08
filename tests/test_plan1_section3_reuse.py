@@ -1083,3 +1083,28 @@ def test_canonical_base_facade_rejects_unpinned_source_before_mutation(tmp_path)
     assert result.manifest["checkpoint_id"] == graph["head_id"]
     assert target.mutations == 1
     np.testing.assert_array_equal(target.weights, [1.0, 2.0])
+
+
+@pytest.mark.parametrize("kind", ["arrays", "objects"])
+def test_reviewer_and_base_json_structure_is_platform_bounded(kind):
+    """JSON from untrusted release/lineage bytes has a stable nesting ceiling."""
+    from twelve_six.third_party_reuse import _strict
+
+    value = 0
+    for _ in range(80):
+        value = [value] if kind == "arrays" else {"n": value}
+    with pytest.raises(ValueError, match="nesting/node budget"):
+        _strict(wire({"untrusted": value}))
+
+    # The limit applies identically to catalog and canonical Base ingress.
+    deep_catalog = {"schema_version": 1, "canonical_authorities": value, "assets": []}
+    with pytest.raises(ValueError, match="nesting/node budget"):
+        validate_reuse_catalog(wire(deep_catalog))
+
+
+def test_reviewer_json_node_budget_prevents_large_nested_admission():
+    from twelve_six.third_party_reuse import _strict
+
+    # Fits the 1 MiB byte cap but not the bounded object graph budget.
+    with pytest.raises(ValueError, match="nesting/node budget"):
+        _strict(wire({"nodes": [0] * 33000}))
