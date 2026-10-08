@@ -15,7 +15,9 @@ from typing import Any
 
 from tools import plan2_source_admissibility_v1 as rights
 from tools import plan2_source_inventory_v1 as inventory
+from tools import plan2_reserved_eval_firewall_v1 as firewall
 from twelve_six.data import privacy_execution_authority as g06
+from twelve_six.data import decontamination_authority_v2 as decontam
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
 SCHEMA = "12-6.plan2.public-domain-physical-audit.v1"
@@ -112,6 +114,7 @@ def inspect(root: Path) -> dict[str, Any]:
     document_families: set[str] = set()
     upstreams: set[tuple[str, str]] = set()
     records: list[dict[str, Any]] = []
+    source_texts: dict[str, str] = {}
     registry_rows: list[dict[str, Any]] = []
     rights_grants: list[dict[str, Any]] = []
     rights_members: list[dict[str, str]] = []
@@ -168,6 +171,7 @@ def inspect(root: Path) -> dict[str, Any]:
              "\ufeff" not in decoded and "\x00" not in decoded and
              "project gutenberg" not in decoded.lower(),
              "not normalized or Project Gutenberg markup retained")
+        source_texts[source_id] = decoded
         total += len(payload)
         registry_rows.append({
             "source_id": source_id,
@@ -267,8 +271,57 @@ def inspect(root: Path) -> dict[str, Any]:
         row["record_id"] for row in privacy["records"]
         if row["action"] != "ALLOW"
     )
+    # Existing DATA-232 exact/near/fragment lineage matcher is the only
+    # decontamination authority. The reserved source is a pinned S8 fixture:
+    # never impersonate real selection/final-test custody.
+    reserved = read_checked(root, firewall.RESERVE_PATH)
+    _fixture, eval_rows, authorities = firewall._reserve(reserved)
+    selected = {row["record_id"] for row in privacy["records"]
+                if row["action"] == "ALLOW"}
+    clean_training = [
+        {
+            "record_id": row["record_id"],
+            "source_id": row["record_id"].split(":r", 1)[0],
+            "source_family": GUTENBERG_FAMILY,
+            "lineage_family": next(
+                entry["document_family"] for entry in records
+                if entry["source_id"] == row["record_id"].split(":r", 1)[0]
+            ),
+            "modality": "en",
+            "text": source_texts[row["record_id"].split(":r", 1)[0]],
+        }
+        for row in privacy["records"] if row["record_id"] in selected
+    ]
+    # An empty clean cohort is NOT an admitted training dataset.
+    need(clean_training, "no privacy-allow book remains for DATA-232 audit")
+    reserve_selection = sha(canonical([
+        row for row in eval_rows if row["record_id"].startswith("reserved.selection.")
+    ]))
+    reserve_final = sha(canonical([
+        row for row in eval_rows if row["record_id"].startswith("reserved.final.")
+    ]))
+    need(reserve_selection != reserve_final,
+         "independent reserved fixture roles collapsed")
+    report = decontam.build_report(
+        clean_training, eval_rows,
+        training_corpus_identity=sha(canonical(records)),
+        selection_validation_identity=reserve_selection,
+        final_test_identity=reserve_final,
+        authorities=authorities,
+        quarantine_cross_source_families=True,
+    )
+    decontam.verify_report(report)
+    need(report["counts"]["training_records"] == len(clean_training)
+         and report["final_test_outcomes_read"] is False,
+         "DATA-232 audit accounting or reserved confidentiality drift")
     core = {
         "schema_version": SCHEMA,
+        "data232_report_sha256": report["report_sha256"],
+        "data232_status": report["status"],
+        "data232_fixture_eval_only": True,
+        "data232_excluded_record_count": report["counts"]["excluded_training_records"],
+        "data232_quarantined_source_family_count":
+            report["counts"]["quarantined_source_families"],
         "g06_input_root_sha256": expected_root,
         "g06_execution_identity_sha256": privacy["execution_identity_sha256"],
         "g06_counts": privacy["counts"],
