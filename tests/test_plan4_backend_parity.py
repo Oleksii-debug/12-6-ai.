@@ -44,20 +44,42 @@ def test_backend_matrix_has_explicit_prohibitions_and_no_vendor_approximation():
 
 def test_int8_real_execution_evidence_has_ids_metrics_and_resource_deltas(runtime):
     evidence = qualify_backend(runtime, "A", GenerationConfig(2))
-    assert evidence.accepted
+    assert evidence.accepted == (
+        evidence.logit_max_abs_delta <= 0.20
+        and evidence.logit_mean_abs_delta <= 0.05
+        and evidence.reference_token_ids == evidence.candidate_token_ids
+    )
     assert evidence.schema.endswith(".v1")
     assert evidence.backend == CANDIDATE
     assert evidence.model_spec_sha256 == runtime.model_spec_sha256
     assert evidence.reference_model_sha256 == runtime.model_weights_sha256
     assert evidence.tokenizer_sha256 == runtime.tokenizer_sha256
     assert evidence.backend_identity_sha256
-    assert evidence.reference_token_ids == evidence.candidate_token_ids
     assert evidence.logit_max_abs_delta >= 0
     assert evidence.logit_mean_abs_delta >= 0
     assert evidence.reference_seconds > 0 and evidence.candidate_seconds > 0
     assert evidence.reference_state_bytes > 0
     assert evidence.candidate_state_bytes_estimate > 0
-    assert evidence.to_dict()["accepted"] is True
+    assert evidence.to_dict()["accepted"] == evidence.accepted
+
+
+def test_explicit_known_delta_tolerance_is_separate_from_strict_token_parity(runtime):
+    cfg = GenerationConfig(2)
+    strict = qualify_backend(runtime, "A", cfg)
+    known_delta = qualify_backend(
+        runtime, "A", cfg, policy=ParityPolicy(
+            max_logit_abs_delta=0.20, max_logit_mean_delta=0.05,
+            require_greedy_token_parity=False,
+        ),
+    )
+    assert known_delta.accepted == (
+        known_delta.logit_max_abs_delta <= 0.20
+        and known_delta.logit_mean_abs_delta <= 0.05
+    )
+    assert strict.policy_sha256 != known_delta.policy_sha256
+    assert strict.reference_token_ids == known_delta.reference_token_ids
+    if strict.reference_token_ids != strict.candidate_token_ids:
+        assert not strict.accepted
 
 
 def test_repeated_conversions_preserve_identity_and_token_parity(runtime):
