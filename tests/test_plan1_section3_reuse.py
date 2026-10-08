@@ -495,6 +495,20 @@ def test_pathname_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
             swapped = True
         return chunk
 
+    # Some filesystems update the old descriptor's ctime on rename, so the
+    # existing fd check may catch the swap first. Force descriptor metadata
+    # to remain stable to exercise the independent named-path invariant.
+    original_fstat = os.fstat
+    first_stat = None
+
+    def stable_descriptor_stat(fd):
+        nonlocal first_stat
+        latest = original_fstat(fd)
+        if first_stat is None:
+            first_stat = latest
+        return first_stat
+
+    monkeypatch.setattr(os, "fstat", stable_descriptor_stat)
     monkeypatch.setattr(os, "read", read_then_swap)
     with pytest.raises(ValueError, match="path changed while reading"):
         _hash_regular_archive(archive)
