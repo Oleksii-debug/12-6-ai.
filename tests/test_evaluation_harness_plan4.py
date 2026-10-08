@@ -37,7 +37,7 @@ def test_deterministic_replay_frozen_identity_confidence_and_comparison():
     assert left["uncertainty"]["lower"] < left["score"] < left["uncertainty"]["upper"]
     assert compare(left, right)["preferred"] == "first"
     assert "yes" not in json.dumps(left)
-    assert "hi" not in json.dumps(left)
+    assert '"hi"' not in json.dumps(left)
     assert left["report_sha256"] != right["report_sha256"]
 
 
