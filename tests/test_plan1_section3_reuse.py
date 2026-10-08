@@ -72,6 +72,23 @@ def test_no_second_authority_and_no_untrusted_catalog():
         validate_reuse_catalog(b'{"schema_version":NaN}')
 
 
+
+@pytest.mark.parametrize(
+    ("field", "forged_value"),
+    [
+        ("data_rights", "ALLOWED"),
+        ("model_weights", "PRETRAINED"),
+        ("license_spdx", "MIT"),
+        ("upstream_url", "https://example.org/forged"),
+    ],
+)
+def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value):
+    """An unqualified catalog row may not disguise unreviewed rights as facts."""
+    forged = json.loads(RAW)
+    forged["assets"][0][field] = forged_value
+    with pytest.raises(ValueError, match="candidate cannot claim"):
+        validate_reuse_catalog(wire(forged))
+
 def test_exact_code_license_security_rights_and_hash_check():
     obj = json.loads(RAW)
     item = obj["assets"][0]
