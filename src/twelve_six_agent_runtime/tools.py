@@ -278,7 +278,8 @@ class ToolRegistry:
         if not any(e.effect_id == effect_id and e.status == "pending"
                    for e in state.pending_effects):
             raise ToolBoundaryError("unreserved, issued or unknown task effect")
-        if not callable(authorize) or authorize(descriptor, state, request, grant_evidence_id) is not True:
+        if (not callable(authorize) or
+                authorize(descriptor, state, request, grant_evidence_id) is not True):
             raise ToolBoundaryError("host refused tool grant")
         body = {
             "task_id": task_id, "effect_id": effect_id, "tool_id": tool_id,
