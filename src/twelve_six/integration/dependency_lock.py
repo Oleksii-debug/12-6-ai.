@@ -16,9 +16,9 @@ SCHEMA_VERSION = "12-6.dependency-lock-profile.v1"
 INDEX_SCHEMA_VERSION = "12-6.dependency-lock-index.v1"
 EXACT_PYTHON_VERSION = "3.11.16"
 PYTHON_IMPLEMENTATION = "cpython"
-SUPPORTED_REQUIRES_PYTHON = ">=3.11,<3.12"
+SUPPORTED_REQUIRES_PYTHON = ">=3.11"
 PROJECT_DISTRIBUTION = "twelve-six-ai"
-CONSOLE_SCRIPTS = {"twelve-six-generate": "twelve_six.inference.cli:main"}
+CONSOLE_SCRIPTS = {"twelve-six-windows": "twelve_six.windows_operator_cli:main"}
 SUPPORTED_PROFILES = {"linux-x86_64", "linux-aarch64"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _NAME_NORMALIZER = re.compile(r"[-_.]+")
