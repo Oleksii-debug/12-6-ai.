@@ -201,16 +201,23 @@ def inspect_wheel(path: Path) -> tuple[str, str]:
             members: dict[str, zipfile.ZipInfo] = {}
             for member in entries:
                 name = member.filename
+                segments = name[:-1].split("/") if member.is_dir() else name.split("/")
                 if (
                     name.startswith("/") or "\\" in name or ":" in name
-                    or any(seg in ("", ".", "..") for seg in name.split("/"))
-                    or name in seen or member.is_dir() or member.file_size > MAX_MEMBER_SIZE
+                    or any(seg in ("", ".", "..") for seg in segments)
+                    or name in seen or member.file_size > MAX_MEMBER_SIZE
                 ):
                     raise EnvironmentLockError("unsafe or duplicate wheel archive path")
                 mode = (member.external_attr >> 16) & 0o170000
-                if mode not in (0, stat.S_IFREG):
+                if mode not in (0, stat.S_IFDIR) if member.is_dir() else mode not in (
+                    0, stat.S_IFREG
+                ):
                     raise EnvironmentLockError("wheel symlink or special archive member")
                 seen.add(name)
+                if member.is_dir():
+                    if not name.endswith("/") or member.file_size:
+                        raise EnvironmentLockError("nonempty or malformed wheel directory")
+                    continue
                 members[name] = member
             prefix = f"{project}-{version}.dist-info/"
             metadata_name, record_name, wheel_name = (
