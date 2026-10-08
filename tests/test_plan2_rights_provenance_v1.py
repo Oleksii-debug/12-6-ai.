@@ -9,8 +9,10 @@ from pathlib import Path
 import pytest
 
 from tools.plan2_rights_provenance_v1 import (
-    Plan2AdmissibilityError, attest_data324_source,
-    require_training_materialization, verify_receipt,
+    Plan2AdmissibilityError,
+    attest_data324_source,
+    require_training_materialization,
+    verify_receipt,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
