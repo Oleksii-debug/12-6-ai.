@@ -108,3 +108,52 @@ def test_duplicate_record_rejected_and_no_eval_test_rows():
     assert {r["record_id"] for r in rows}.isdisjoint(selected["validation_record_ids"])
     with pytest.raises(p.PackingDenied):
         p.pack(tokenizer, rows + [rows[0]])
+
+
+def test_resumable_reader_restart_boundary_and_empty_end(tmp_path):
+    out = tmp_path / "candidate"
+    manifest = p.stage(ROOT, out)
+    all_blocks = p.read_blocks(ROOT, out)
+    assert len(all_blocks) == manifest["block_count"]
+    assert [item["block_index"] for item in all_blocks] == list(range(len(all_blocks)))
+    assert all(item["next_block"] == item["block_index"] + 1 for item in all_blocks)
+    for cursor in (0, 1, p.PER_SHARD, len(all_blocks) // 2, len(all_blocks)):
+        assert all_blocks[:cursor] + p.read_blocks(ROOT, out, start_block=cursor) == all_blocks
+    assert p.read_blocks(ROOT, out, start_block=len(all_blocks)) == []
+
+
+@pytest.mark.parametrize("cursor", [-1, True, None, 1.0, "1", 100000])
+def test_reader_rejects_invalid_cursor(tmp_path, cursor):
+    out = tmp_path / "candidate"
+    p.stage(ROOT, out)
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out, start_block=cursor)
+
+
+def test_reader_denies_corruption_missing_extra_and_symlink(tmp_path):
+    out = tmp_path / "candidate"
+    m = p.stage(ROOT, out)
+    assert p.read_blocks(ROOT, out)
+    shard = out / m["shards"][0]["path"]
+    original = shard.read_bytes()
+    shard.write_bytes(b"{}\\n")
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out)
+    shard.write_bytes(original)
+    shard.unlink()
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out)
+    shard.write_bytes(original)
+    extra = out / "shards" / "undeclared.json"
+    extra.write_bytes(b"{}")
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out)
+    extra.unlink()
+    alias = tmp_path / "alias"
+    alias.symlink_to(out, target_is_directory=True)
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, alias)
+    manifest = out / "packing-manifest.json"
+    manifest.write_bytes(b"{\\"manifest_sha256\\":\\"bad\\"}\\n")
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out)
