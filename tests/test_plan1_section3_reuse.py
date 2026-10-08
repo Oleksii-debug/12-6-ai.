@@ -679,3 +679,88 @@ def test_reviewed_archive_parent_symlink_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="parent directory"):
         _hash_regular_archive(alias / "source.tar")
 
+
+
+def test_wheel_record_current_environment_console_scripts(monkeypatch, tmp_path):
+    """Accept only bound bin/Scripts wrappers; never admit arbitrary RECORD traversal."""
+    import base64
+    import sysconfig
+    from importlib import metadata
+
+    from twelve_six.third_party_reuse import verify_installed_wheel_record
+
+    site = tmp_path / "env" / "lib" / "python3.11" / "site-packages"
+    scripts = tmp_path / "env" / "bin"
+    site.mkdir(parents=True)
+    scripts.mkdir(parents=True)
+    module = site / "example.py"
+    wrapper = scripts / "wheel-tool"
+    module.write_bytes(b"module")
+    wrapper.write_bytes(b"script")
+
+    def row(path, data):
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        return f"{path},sha256={digest},{len(data)}\n"
+
+    module_row = row("example.py", b"module")
+    self_row = "example-1.2.3.dist-info/RECORD,,\n"
+
+    class Installed:
+        metadata = {"Name": "example"}
+        version = "1.2.3"
+
+        def __init__(self):
+            self.record = module_row + row("../../../bin/wheel-tool", b"script") + self_row
+
+        def read_text(self, name):
+            assert name == "RECORD"
+            return self.record
+
+        def locate_file(self, name):
+            return site / name
+
+    installed = Installed()
+    monkeypatch.setattr(metadata, "distribution", lambda name: installed)
+    original_get_path = sysconfig.get_path
+    monkeypatch.setattr(
+        sysconfig, "get_path",
+        lambda key: str(scripts) if key == "scripts" else original_get_path(key),
+    )
+
+    def check():
+        return verify_installed_wheel_record(
+            "example", expected_version="1.2.3",
+            independently_pinned_record_sha256=hashlib.sha256(
+                installed.record.encode("utf-8")
+            ).hexdigest(),
+        )
+
+    assert check()["verified_files"] == 2
+    assert check()["verified_files"] == 2  # repeatable restoration/recheck
+
+    wrapper.write_bytes(b"tamper")
+    with pytest.raises(ValueError, match="contents drift"):
+        check()
+    wrapper.write_bytes(b"script")
+    assert check()["verified_files"] == 2
+
+    valid_record = installed.record
+    for hostile in (
+        "../../../../bin/wheel-tool",
+        "../../../bin/nested/wheel-tool",
+        "../../../bin/../bin/wheel-tool",
+        "../../../bin/.",
+        "../../../bin/..",
+    ):
+        installed.record = module_row + row(hostile, b"script") + self_row
+        with pytest.raises(ValueError, match="unsafe"):
+            check()
+    installed.record = valid_record
+
+    monkeypatch.setattr(
+        sysconfig, "get_path",
+        lambda key: str(tmp_path / "other" / "bin") if key == "scripts" else
+        original_get_path(key),
+    )
+    with pytest.raises(ValueError, match="unsafe"):
+        check()
