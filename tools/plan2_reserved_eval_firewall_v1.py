@@ -52,7 +52,7 @@ def _canonical(value: Any) -> bytes:
 
 
 def _git_blob(raw: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + bytes([0]) + raw).hexdigest()
 
 
 def _reserve(raw: bytes) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, Any]]:
