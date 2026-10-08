@@ -18,7 +18,7 @@
     {
       "path": "src/twelve_six/ai_qa_control.py",
       "capability_id": "ai-qa-repair-control",
-      "origin": "stacked_candidate"
+      "origin": "accepted_main"
     },
     {
       "path": "src/twelve_six/artifact_identity.py",
@@ -616,6 +616,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 121,
-  "candidate_overlay_surface_count": 1
+  "accepted_main_surface_count": 122,
+  "candidate_overlay_surface_count": 0
 }
