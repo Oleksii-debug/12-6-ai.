@@ -323,15 +323,22 @@ def prepare_trusted_base_checkpoint(
     lineage_bytes: bytes,
     trusted_genesis_bytes: bytes,
     expected_genesis_sha256: str,
+    expected_lineage_sha256: str,
 ) -> Any:
     """Admit canonical checkpoint bytes only after independently pinned Base ancestry.
 
     This is an opt-in gate in front of the incumbent checkpoint snapshot/loader,
-    not a second checkpoint authority. The expected genesis hash MUST come from
-    an independently authenticated trust root, not from lineage_bytes.
+    not a second checkpoint authority. Both the genesis AND complete lineage hashes MUST come from independently
+    authenticated trust roots, never recalculated from caller-supplied bytes.
     The returned VerifiedCheckpoint is consumed by checkpoint.load_verified_checkpoint.
     No claim about provenance is made for callers bypassing this gated API.
     """
+    if not _hash(expected_lineage_sha256):
+        raise ValueError("independently pinned lineage SHA-256 required")
+    if type(lineage_bytes) is not bytes or not hmac.compare_digest(
+        hashlib.sha256(lineage_bytes).hexdigest(), expected_lineage_sha256
+    ):
+        raise ValueError("independently pinned Base lineage digest mismatch")
     if not _hash(expected_genesis_sha256):
         raise ValueError("independently pinned genesis SHA-256 required")
     if type(trusted_genesis_bytes) is not bytes:
