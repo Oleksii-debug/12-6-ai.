@@ -180,3 +180,11 @@ def test_undeclared_destination_member_denied(tmp_path):
     (out / "unrecognized-record.json").write_text("{}", encoding="utf-8")
     with pytest.raises(p.PackingDenied):
         p.stage(ROOT, out)
+
+
+def test_reader_rejects_undeclared_root_member(tmp_path):
+    out = tmp_path / "candidate"
+    p.stage(ROOT, out)
+    (out / "not-authorized.bin").write_bytes(b"unexpected")
+    with pytest.raises(p.PackingDenied):
+        p.read_blocks(ROOT, out)
