@@ -14,10 +14,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from twelve_six.data import privacy_execution_authority as g06
-from twelve_six.data.privacy_filter_v3 import assert_hash_safe_evidence
 from tools import plan2_normalization_evidence_v1 as norm
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
+from twelve_six.data import privacy_execution_authority as g06
+from twelve_six.data.privacy_filter_v3 import assert_hash_safe_evidence
 
 SCHEMA = "12-6.plan2-privacy-candidate.v1"
 POLICY_PATH = "configs/data/plan2_privacy_policy_v1.json"
