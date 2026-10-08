@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import time
 import urllib.error
@@ -16,6 +17,7 @@ from typing import Any
 from _dependency_contract_loader import load_dependency_contracts
 
 LOCK, SECURITY = load_dependency_contracts()
+RELEASE = importlib.import_module("twelve_six.integration.release_fixture")
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 PYPI_BASE_URL = "https://pypi.org/pypi"
 USER_AGENT = "12-6-ai-dependency-evidence/1"
@@ -134,6 +136,7 @@ def main() -> int:
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--sbom-out", type=Path, required=True)
     parser.add_argument("--evidence-out", type=Path, required=True)
+    parser.add_argument("--notices-out", type=Path, default=Path("third-party-notices.json"))
     parser.add_argument("--fail-on-review-required", action="store_true")
     args = parser.parse_args()
 
@@ -164,9 +167,12 @@ def main() -> int:
     )
     SECURITY.write_json(args.sbom_out, sbom)
     SECURITY.write_json(args.evidence_out, evidence)
+    notices = RELEASE.build_notice_inventory(sbom, pypi_records)
+    SECURITY.write_json(args.notices_out, notices)
     print(f"sbom_sha256={sbom['sbom_sha256']}")
     print(f"evidence_sha256={evidence['evidence_sha256']}")
     print(f"status={evidence['status']}")
+    print(f"notices_sha256={notices['notices_sha256']}")
     if args.fail_on_review_required and evidence["status"] != "EVIDENCE_COMPLETE_NO_REVIEW_FINDINGS":
         return 2
     return 0

@@ -30,11 +30,13 @@ jobs:
           --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           --sbom-out dependency-sbom.json
           --evidence-out dependency-security-evidence.json
+          --notices-out third-party-notices.json
       - name: Verify retained evidence offline
         run: >-
           python tools/verify_dependency_security_evidence.py
           --source-sha "${{ github.event.pull_request.head.sha || github.sha }}"
           --evidence dependency-security-evidence.json
+          --notices third-party-notices.json
           --max-age-hours 24
       - name: Upload dependency security evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -43,5 +45,6 @@ jobs:
           path: |
             dependency-sbom.json
             dependency-security-evidence.json
+            third-party-notices.json
           if-no-files-found: error
           retention-days: 30
