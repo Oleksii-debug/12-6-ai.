@@ -22,6 +22,11 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["real_books_distinct_document_families"] == 3
     assert report["evidence"]["real_books_snapshot_bytes"] == 1_265_481
     assert len(report["evidence"]["real_books_manifest_sha256"]) == 64
+    assert len(report["evidence"]["real_books_s10_mechanics_probe_sha256"]) == 64
+    assert report["evidence"]["real_books_s10_probe_decision"] == (
+        "S10_MECHANICS_ONLY_NOT_PHYSICAL_S9_ADMISSION"
+    )
+    assert report["evidence"]["real_books_s10_probe_document_clusters"] == 3
     assert report["evidence"]["physical_split"] == "DENIED_SINGLE_SOURCE_FAMILY"
     assert report["evidence"]["physical_source_family_count"] == 1
     assert report["evidence"]["synthetic_target_count"] > 0
