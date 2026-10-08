@@ -119,10 +119,13 @@ def inspect(pyproject: Path) -> dict[str, Any]:
                 # integrity to the incumbent pinned wheel verifier.
                 # Recognize a notice even if an attacker supplies Windows separators.
                 basename = path.replace(chr(92), "/").split("/")[-1].lower()
-                if basename not in {
-                    "license", "license.txt", "license.md", "notice",
-                    "notice.txt", "notice.md", "copying", "copying.txt",
-                }:
+                # Bundled notice names include LICENSES_bundled.txt,
+                # LICENSE-APACHE and LICENCE, not just a bare LICENSE.
+                if not re.fullmatch(
+                    r"(?:licen[cs]e|licenses|notices?|copying|copyright)"
+                    r"(?:[._-][a-z0-9._+-]{1,100})?",
+                    basename,
+                ):
                     continue
                 if (
                     not path or len(path) > 1024 or "\\" in path
