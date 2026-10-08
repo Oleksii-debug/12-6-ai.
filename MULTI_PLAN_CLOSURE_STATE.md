@@ -32,7 +32,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 2 | 2 | OPEN |
 | 3 | 1 | OPEN |
 | 4 | 2 | OPEN |
-| 5 | 1 | OPEN |
+| 5 | 2 | OPEN |
 | 6 | 1 | OPEN |
 | 7 | 1 | QUALIFYING — PR #3102 (`533a853fe6cced0a890e4d6fef9a2dfece9b5e2d`); CI run `37725946383` FAIL (3769 passed, 10 failed: 2 new Plan-7 `scale_experiments.py` inventory omissions and 8 pre-existing Plan-8 capability-bearing surface drift failures). S1 implementation not yet integrated; no terminal DONE |
 | 8 | 3 | QUALIFYING |
@@ -52,6 +52,13 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | Section | State | Accepted main SHA | Evidence and boundaries |
 | ---: | --- | --- | --- |
 | 1 | DONE | `d1afe07134f386f1c69d05564034387440c8d968` | PR #3099; exact qualified head `0a7a1d32e0b0dad5f5be1aa1d83b15186e02c432`; Plan-4 evaluation CI `37726266831` Ruff PASS, 12 tests PASS (isolation, immutable identity/version, sealed score, corruption, negative cases, restart); post-merge main readback of vault/tests/workflow blobs PASS; post-merge run `37726469856` PASS. Full shared CI retains eight pre-existing Plan-8 source-map failures (baseline run `37718796941`); this is not a whole-repository green claim. Evaluator is a LOCAL_FREE, separately deployed evaluator-only component, not an OS process sandbox or permission to train, access final test, or use paid compute. |
+
+## Plan 5 — agent-facing reference runtime Section closures
+
+| Section | State | Accepted main SHA | Evidence and boundaries |
+| ---: | --- | --- | --- |
+| 1 | DONE | `4b006a500d45170346d26012fcd5e2b7f91c8d36` | PR #3100 merged into main; independent `twelve_six_agent_runtime` package, source-aware bounded context, protected owner/system invariants, exact byte budget, deterministic priority/recency and omitted digest. Scoped LOCAL_FREE pytest: 6 passed, including long-horizon, duplicate/invalid provenance, model-neutral replay and protected-budget failure; Ruff PASS on reference package candidate (Actions run `37726272556`). Post-merge readback: context blob `d3889f01c2974194c948c9e853546a290ade31f3`, tests blob `8b07138dc9a8dfe530c26b3ecd97a701e6c7d3f2`. Shared repository CI is NOT green due eight independently verified pre-existing Plan-8 source-inventory drift tests (unchanged main failure `37718796941`); no Plan-8 files changed, no cross-plan whole-product claim, no external/paid compute. |
+| 2 | OPEN | None | Sequential next front: persistent task state, control-epoch fencing and exact restart recovery. |
 
 ## Plan 7 — scaling/distributed component closure
 
