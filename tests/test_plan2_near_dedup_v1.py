@@ -99,6 +99,24 @@ def test_matcher_policy_and_short_text_fail_closed(left, right, expected):
     assert near.match_kind(left, right) == expected
 
 
+def test_numeric_template_relation_requires_changed_digits():
+    base = (
+        "Публічний архів надає офіційний опис версії 2026 "
+        "програмного компонента з відкритою документацією."
+    )
+    # A punctuation-only mirror must never be labeled as a changed-number template.
+    punctuation = base.replace("документацією.", "документацією .")
+    assert near.match_kind(base, punctuation) != "TEMPLATE_NUMERIC_VARIANT"
+    assert near.match_kind(base, base.replace("2026", "2027")) == (
+        "TEMPLATE_NUMERIC_VARIANT"
+    )
+    without_digits = base.replace("версії 2026", "версії системи")
+    no_digit_mirror = without_digits.replace("документацією.", "документацією .")
+    assert near.match_kind(without_digits, no_digit_mirror) != (
+        "TEMPLATE_NUMERIC_VARIANT"
+    )
+
+
 def test_negative_forged_s6_privacy_payload_or_promotion_is_denied():
     manifest, payload, receipt = _fixture("a", BASE)
     for mutation in ("payload", "receipt", "promote"):
