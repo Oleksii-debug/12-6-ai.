@@ -101,7 +101,7 @@ class ArchitectureHypothesis:
         if self.variant not in ALLOWED_VARIANTS:
             raise ValueError("unsupported experimental variant")
         field_by_variant = {
-            "baseline": None,
+            "baseline": "",
             "mlp_width": "d_ff",
             "depth": "n_layers",
             "gqa": "n_kv_heads",
