@@ -235,12 +235,13 @@ def generate_verified_pool(
         if type(correct) is not bool:
             raise ValueError("untyped verifier outcome")
         approved = correct and not produced.external_side_effect
-        payload = dict(
-            candidate_sha256=produced.identity(), goal_sha256=goal_sha,
-            verifier_id=verifier.verifier_id,
-            verifier_version_sha256=verifier.verifier_version_sha256,
-            accepted=approved,
-        )
+        payload = {
+            "candidate_sha256": produced.identity(),
+            "goal_sha256": goal_sha,
+            "verifier_id": verifier.verifier_id,
+            "verifier_version_sha256": verifier.verifier_version_sha256,
+            "accepted": approved,
+        }
         receipt = FactoryReceipt(**payload, signature=_seal(payload, verifier_key))
         verify_factory_receipt(
             produced, goal, receipt, verifier_id=verifier.verifier_id,

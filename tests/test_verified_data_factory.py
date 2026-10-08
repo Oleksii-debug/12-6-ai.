@@ -4,8 +4,11 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.verified_data_factory import (
-    CurriculumGoal, DataCandidate, generate_verified_pool,
-    content_fingerprint, verify_factory_receipt,
+    CurriculumGoal,
+    DataCandidate,
+    content_fingerprint,
+    generate_verified_pool,
+    verify_factory_receipt,
 )
 
 H = "a" * 64
