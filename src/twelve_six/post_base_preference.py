@@ -152,6 +152,21 @@ def train_preference_descendant(
             if (winner, loser) in directed or (loser, winner) in directed:
                 raise ValueError("duplicate or contradictory preference comparison")
             directed.add((winner, loser))
+    # Disallow non-local ranking cycles across independently supplied records.
+    for directed in graph.values():
+        edges = {}
+        for winner, loser in directed:
+            edges.setdefault(winner, set()).add(loser)
+        for root in edges:
+            visited = set()
+            pending = list(edges[root])
+            while pending:
+                node = pending.pop()
+                if node == root:
+                    raise ValueError("cyclic preference ranking")
+                if node not in visited:
+                    visited.add(node)
+                    pending.extend(edges.get(node, ()))
     order = sorted(records, key=lambda x: x.sample_id)
     data_sha = canonical_digest([x.identity() for x in order])
     candidate = copy.deepcopy(policy).cpu().train()
