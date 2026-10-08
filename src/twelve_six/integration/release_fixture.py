@@ -130,6 +130,8 @@ def pack_fixture(root: str | Path, relative_paths: list[str]) -> bytes:
 
 
 def inspect_fixture(archive_bytes: bytes, expected_hash: str) -> dict[str, str]:
+    if len(archive_bytes) > 64 * 1024 * 1024:
+        raise FixtureIntegrityError("oversized fixture archive")
     if not isinstance(expected_hash, str) or not _SHA.fullmatch(expected_hash):
         raise FixtureIntegrityError("invalid expected artifact hash")
     if not hmac.compare_digest(_digest(archive_bytes), expected_hash):
@@ -196,7 +198,8 @@ def verify_fixture(*, key: bytes, receipt: Mapping[str, Any],
 
 
 def admit_update(*, current: Mapping[str, Any], proposed: Mapping[str, Any],
-                 key: bytes, proposed_bytes: bytes) -> None:
+                 key: bytes, current_bytes: bytes, proposed_bytes: bytes) -> None:
+    verify_fixture(key=key, receipt=current, archive_bytes=current_bytes)
     verify_fixture(key=key, receipt=proposed, archive_bytes=proposed_bytes)
     if (current.get("schema_version") != _SCHEMA
             or proposed["release_id"] != current.get("release_id")
@@ -207,7 +210,8 @@ def admit_update(*, current: Mapping[str, Any], proposed: Mapping[str, Any],
 
 
 def admit_rollback(*, current: Mapping[str, Any], previous: Mapping[str, Any],
-                   key: bytes, previous_bytes: bytes) -> None:
+                   key: bytes, current_bytes: bytes, previous_bytes: bytes) -> None:
+    verify_fixture(key=key, receipt=current, archive_bytes=current_bytes)
     verify_fixture(key=key, receipt=previous, archive_bytes=previous_bytes)
     if (current.get("schema_version") != _SCHEMA
             or current.get("release_id") != previous["release_id"]

@@ -60,12 +60,12 @@ def test_fixture_sign_verify_update_rollback_recovery(tmp_path: Path) -> None:
     new = sign_fixture(key=_KEY, archive_sha256=_sha(new_bytes), release_id="unit.test",
                        generation=2, previous_sha256=_sha(old_bytes))
     verify_fixture(key=_KEY, receipt=old, archive_bytes=old_bytes)
-    admit_update(current=old, proposed=new, key=_KEY, proposed_bytes=new_bytes)
-    admit_rollback(current=new, previous=old, key=_KEY, previous_bytes=old_bytes)
+    admit_update(current=old, proposed=new, key=_KEY, current_bytes=old_bytes, proposed_bytes=new_bytes)
+    admit_rollback(current=new, previous=old, key=_KEY, current_bytes=new_bytes, previous_bytes=old_bytes)
     with pytest.raises(FixtureIntegrityError):
-        admit_update(current=new, proposed=old, key=_KEY, proposed_bytes=old_bytes)
+        admit_update(current=new, proposed=old, key=_KEY, current_bytes=new_bytes, proposed_bytes=old_bytes)
     with pytest.raises(FixtureIntegrityError):
-        admit_rollback(current=old, previous=new, key=_KEY, previous_bytes=new_bytes)
+        admit_rollback(current=old, previous=new, key=_KEY, current_bytes=old_bytes, previous_bytes=new_bytes)
 
 
 def test_corruption_key_rotation_and_receipt_forgery_fail_closed(tmp_path: Path) -> None:
@@ -101,3 +101,18 @@ def test_reject_invalid_signature_inputs(tmp_path: Path) -> None:
     with pytest.raises(FixtureIntegrityError):
         sign_fixture(key=b"weak", archive_sha256=_sha(payload), release_id="unit.test",
                      generation=1, previous_sha256=None)
+
+
+def test_forged_current_receipt_blocks_update_and_rollback(tmp_path: Path) -> None:
+    old_bytes = _fixture(tmp_path, "a", "old")
+    new_bytes = _fixture(tmp_path, "b", "new")
+    old = sign_fixture(key=_KEY, archive_sha256=_sha(old_bytes), release_id="fixture",
+                       generation=1, previous_sha256=None)
+    new = sign_fixture(key=_KEY, archive_sha256=_sha(new_bytes), release_id="fixture",
+                       generation=2, previous_sha256=_sha(old_bytes))
+    with pytest.raises(FixtureIntegrityError, match="signature"):
+        admit_update(current=dict(old, generation=99), proposed=new, key=_KEY,
+                     current_bytes=old_bytes, proposed_bytes=new_bytes)
+    with pytest.raises(FixtureIntegrityError, match="signature"):
+        admit_rollback(current=dict(new, generation=99), previous=old, key=_KEY,
+                       current_bytes=new_bytes, previous_bytes=old_bytes)
