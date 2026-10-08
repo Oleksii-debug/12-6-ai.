@@ -112,6 +112,10 @@ def _valid_https_source(value: object) -> bool:
             # bounded, well-formed ASCII DNS hostname.
             and len(parsed.hostname) <= 253
             and "." in parsed.hostname
+            # A dotted numeric host can be interpreted as a local/private
+            # IP address (including abbreviated IPv4 forms) rather than a
+            # reviewable DNS origin. Never accept it as upstream code source.
+            and re.search(r"[a-z]", parsed.hostname.rsplit(".", 1)[-1]) is not None
             and all(
                 re.fullmatch(
                     r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",
