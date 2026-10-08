@@ -228,3 +228,26 @@ def test_dependency_change_requires_five_versioned_independent_evidence_classes(
             review=broken,
             independently_pinned_review_sha256=hashlib.sha256(broken).hexdigest(),
         )
+
+
+def test_cli_never_overwrites_lock_or_accepts_unpinned_environment(tmp_path, capsys):
+    from tools.plan1_environment import main
+
+    archive = make_wheel(tmp_path)
+    project = tmp_path / "pyproject.toml"
+    project.write_bytes(PROJECT)
+    lock_file = tmp_path / "candidate.lock.json"
+    args = [
+        "--platform", "linux_x86_64", "--python", "3.13",
+        "--project", str(project), "--wheelhouse", str(archive.parent),
+        "--lock", str(lock_file),
+    ]
+    assert main(["generate", *args]) == 0
+    original = lock_file.read_bytes()
+    assert main(["generate", *args]) == 2
+    assert lock_file.read_bytes() == original
+    assert main(["verify", *args, "--expected-lock-sha256", "0" * 64]) == 2
+    assert main(["verify", *args]) == 2
+    approved = hashlib.sha256(original).hexdigest()
+    assert main(["verify", *args, "--expected-lock-sha256", approved]) == 0
+    assert "VERIFIED_WHEELHOUSE" in capsys.readouterr().out
