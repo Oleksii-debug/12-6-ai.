@@ -114,7 +114,7 @@ def inspect(pyproject: Path) -> dict[str, Any]:
                 path = str(item)
                 parts = path.split("/")
                 if (
-                    not path or len(path) > 1024 or "\\\\" in path
+                    not path or len(path) > 1024 or "\\" in path
                     or ":" in path or PurePosixPath(path).is_absolute()
                     or any(part in ("", ".", "..") for part in parts)
                 ):
