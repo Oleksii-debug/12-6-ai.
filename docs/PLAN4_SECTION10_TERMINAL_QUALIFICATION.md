@@ -7,12 +7,17 @@ Sections 1–9 are already accepted component-DONE and are not reopened here.
 No new model, tokenizer, exporter, quantizer, evaluator, loader, gateway,
 scheduler, provider authority, or permission grant is implemented.
 
-The one canonical finisher is the exact candidate containing:
-- `tests/test_plan4_terminal_qualification.py` — real one-optimizer-step
+The Plan-4 S10 candidate reuses the already accepted Sections 1–9 and contains:
+- `tests/test_plan4_terminal_qualification.py` — a real one-optimizer-step
   CPU-trained tiny model crossing existing Plan-4 boundaries;
-- `.github/workflows/plan4-terminal-qualification.yml` — the unified
-  S1–S9 contract-suite plus S10 integration gate;
 - this scoped qualification contract.
+
+The previous S10 candidate's hosted checks subsequently exposed two gating
+failures: focused CI #37738695731 reported Ruff I001 import ordering, and
+shared CI #37738695767 rejected the extra dedicated workflow under the
+repository's workflow-budget policy. Neither run was green. Canonical repair
+PR #3169 fixes import ordering and deletes that prohibited workflow; the
+Plan-4 S10 gate now uses shared `.github/workflows/ci.yml`.
 
 ## Positive evidence required
 
@@ -67,9 +72,11 @@ python -m pytest -q \
   tests/test_plan4_terminal_qualification.py
 ```
 
-GitHub workflow runs exactly this bounded CPU set on the candidate and on
-accepted-main changes. A queued, cancelled or missing hosted run is NOT PASS.
-An unknown test result is NOT failure, but cannot be represented as proof.
+The focused LOCAL_FREE command above defines the Plan-4 S1–S10 suite.
+Shared `.github/workflows/ci.yml` runs Ruff and the repository pytest suite,
+which includes the committed Plan-4 tests. A queued, cancelled, failed or
+missing hosted run is NOT PASS; unrelated failures require separate attribution.
+An unknown result is not failure but cannot be represented as proof.
 
 ## Terminal gate, evidence and boundaries
 
