@@ -760,19 +760,28 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
         if surface.path == "src/twelve_six/post_base_instruction.py"
     )
     assert accepted_instruction.origin == "stacked_candidate"
-    assert registry.capability(accepted_instruction.capability_id).status is CapabilityStatus.UNAVAILABLE
+    assert (
+        registry.capability(accepted_instruction.capability_id).status
+        is CapabilityStatus.UNAVAILABLE
+    )
     accepted_preference = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/post_base_preference.py"
     )
     assert accepted_preference.origin == "stacked_candidate"
-    assert registry.capability(accepted_preference.capability_id).status is CapabilityStatus.UNAVAILABLE
+    assert (
+        registry.capability(accepted_preference.capability_id).status
+        is CapabilityStatus.UNAVAILABLE
+    )
     accepted_research = next(
         surface for surface in inventory.surfaces
         if surface.path == "src/twelve_six/research_engine.py"
     )
     assert accepted_research.origin == "stacked_candidate"
-    assert registry.capability(accepted_research.capability_id).status is CapabilityStatus.UNAVAILABLE
+    assert (
+        registry.capability(accepted_research.capability_id).status
+        is CapabilityStatus.UNAVAILABLE
+    )
 
     capability = registry.capability("executable-capability-map")
     assert capability.status is CapabilityStatus.AVAILABLE
