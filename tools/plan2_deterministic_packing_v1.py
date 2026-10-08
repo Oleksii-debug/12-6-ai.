@@ -224,6 +224,9 @@ def read_blocks(root: Path, destination: Path, *, start_block: int = 0) -> list[
         need(type(manifest) is dict and canonical(manifest) == raw,
              "noncanonical manifest")
         need(manifest == expected, "manifest authority drift")
+        need({p.name for p in destination.iterdir()}
+             == {"packing-manifest.json", "shards"},
+             "unexpected publication member")
         need(start_block <= manifest["block_count"], "cursor past end")
         need({item.name for item in folder.iterdir()}
              == {Path(path).name for path in expected_shards},
