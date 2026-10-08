@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from twelve_six.third_party_reuse import (
+    _hash_regular_archive,
     prepare_trusted_base_checkpoint,
     require_reviewed_code,
     validate_base_lineage,
@@ -660,3 +661,18 @@ def test_reviewed_code_requires_literal_exact_version(unresolved_version):
     item["version"] = unresolved_version
     with pytest.raises(ValueError, match="exact version required"):
         validate_reuse_catalog(wire(catalog))
+
+def test_reviewed_archive_parent_symlink_is_rejected(tmp_path):
+    """The leaf must not be certified through a redirected parent directory."""
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "source.tar").write_bytes(b"known source bytes")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks unavailable on this platform")
+
+    with pytest.raises(ValueError, match="parent directory"):
+        _hash_regular_archive(alias / "source.tar")
+
