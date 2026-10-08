@@ -1045,3 +1045,33 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
             independently_pinned_catalog_sha256=hashlib.sha256(unreviewed).hexdigest(),
             independently_pinned_record_sha256=pins["independently_pinned_record_sha256"],
         )
+
+
+def test_canonical_base_facade_rejects_unpinned_source_before_mutation(tmp_path):
+    """The primary Base ingress facade never mutates from a foreign graph."""
+    from twelve_six.third_party_reuse import load_trusted_base_checkpoint
+
+    checkpoint, graph, genesis, genesis_pin = real_checkpoint_case(tmp_path)
+    lineage_bytes = wire(graph)
+    graph_pin = hashlib.sha256(lineage_bytes).hexdigest()
+    kwargs = dict(
+        lineage_bytes=lineage_bytes,
+        trusted_genesis_bytes=genesis,
+        expected_genesis_sha256=genesis_pin,
+        expected_lineage_sha256=graph_pin,
+    )
+    target = TinyModel(77.0)
+    with pytest.raises(ValueError, match="lineage digest mismatch"):
+        load_trusted_base_checkpoint(
+            checkpoint, model=target, restore_rng=False,
+            **dict(kwargs, expected_lineage_sha256="f" * 64),
+        )
+    assert target.mutations == 0
+    np.testing.assert_array_equal(target.weights, [77.0, 78.0])
+
+    result = load_trusted_base_checkpoint(
+        checkpoint, model=target, restore_rng=False, **kwargs
+    )
+    assert result.manifest["checkpoint_id"] == graph["head_id"]
+    assert target.mutations == 1
+    np.testing.assert_array_equal(target.weights, [1.0, 2.0])
