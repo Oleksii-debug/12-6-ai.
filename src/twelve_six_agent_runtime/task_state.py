@@ -158,7 +158,8 @@ class TaskStore:
         with closing(sqlite3.connect(self.path, timeout=10, isolation_level=None)) as db:
             db.execute("PRAGMA busy_timeout=10000")
             db.execute("PRAGMA synchronous=FULL")
-            db.execute("PRAGMA journal_mode=DELETE")
+            if initialize:
+                db.execute("PRAGMA journal_mode=DELETE")
             db.execute("BEGIN IMMEDIATE")
             try:
                 version = db.execute("PRAGMA user_version").fetchone()[0]
