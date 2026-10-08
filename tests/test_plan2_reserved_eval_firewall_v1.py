@@ -204,7 +204,8 @@ def test_current_physical_cohort_restart_rebuild_and_no_clobber(tmp_path):
     assert path.read_bytes() == (
         tmp_path / "fresh" / "reserved-eval-firewall-manifest.json").read_bytes()
     path.write_text('{"forged": true}', encoding="utf-8")
-    with pytest.raises(firewall.Plan2EvalFirewallError, match="staging denied"):
+    with pytest.raises(firewall.Plan2EvalFirewallError,
+                       match="immutable S8 firewall manifest drift"):
         firewall.stage_firewall(ROOT, tmp_path / "first")
 
 
