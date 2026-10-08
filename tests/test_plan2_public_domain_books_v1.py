@@ -20,6 +20,15 @@ def test_three_independent_real_books_rebuild_and_restart(tmp_path: Path) -> Non
     assert first["physical_document_families"] == 3
     assert first["physical_source_bytes"] == 1_265_481
     assert first["training_corpus_authorized"] is False
+    assert first["rights_boundary"] == (
+        "ORIGINAL_WORK_SOURCE_PERMISSIONS_ONLY_NOT_CORPUS"
+    )
+    for field in (
+        "source_inventory_sha256", "source_rights_catalog_sha256",
+        "source_training_rights_receipt_sha256",
+        "source_release_rights_receipt_sha256",
+    ):
+        assert len(first[field]) == 64
     assert first["tokenizer_fit_authorized"] is False
     assert first["production_release_authorized"] is False
     assert len({item["source_family"] for item in first["books"]}) == 1
@@ -96,3 +105,28 @@ def test_traversal_and_symlinked_source_fail_closed(tmp_path: Path) -> None:
     link.symlink_to(ROOT / books.CATALOG)
     with pytest.raises(books.BookCohortDenied, match="symlink"):
         books.read_checked(tmp_path, "linked")
+
+
+def test_missing_or_modified_source_rights_evidence_is_denied(monkeypatch) -> None:
+    original = books.read_checked
+
+    def changed_rights(root: Path, name: str) -> bytes:
+        raw = original(root, name)
+        return raw + b"tampered" if name == books.RIGHTS_EVIDENCE else raw
+
+    monkeypatch.setattr(books, "read_checked", changed_rights)
+    with pytest.raises(books.BookCohortDenied, match="rights evidence changed"):
+        books.inspect(ROOT)
+
+
+def test_training_rights_authority_cannot_promote_corpus(monkeypatch) -> None:
+    real_receipt = books.rights.materialization_receipt
+
+    def invented_authority(*args, **kwargs):
+        result = real_receipt(*args, **kwargs)
+        return {**result, "training_corpus_authorized": True}
+
+    monkeypatch.setattr(books.rights, "materialization_receipt",
+                        invented_authority)
+    with pytest.raises(books.BookCohortDenied, match="promoted training"):
+        books.inspect(ROOT)
