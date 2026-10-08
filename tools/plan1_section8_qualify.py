@@ -54,6 +54,9 @@ def git_state() -> str:
     sha = run("git", "rev-parse", "HEAD").strip()
     if len(sha) != 40 or any(ch not in "0123456789abcdef" for ch in sha):
         raise RuntimeError("requires exact full SHA-1 Git checkout")
+    expected = os.environ.get("PLAN1_S8_EXPECTED_SHA")
+    if not expected or len(expected) != 40 or sha != expected:
+        raise RuntimeError("qualification requires exact declared PR HEAD SHA")
     run("git", "diff", "--exit-code", "HEAD", "--")
     run("git", "diff", "--cached", "--exit-code", "HEAD", "--")
     return sha
