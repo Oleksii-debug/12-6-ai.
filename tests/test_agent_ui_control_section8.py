@@ -144,6 +144,17 @@ def test_coordinate_and_vision_fallback_requires_explicit_host_proof(tmp_path):
     assert tasks.load("task-a").pending_effects[0].status == "pending"
 
 
+def test_fallback_evidence_cannot_be_substituted_after_grant(tmp_path):
+    tasks, _, ui = harness(tmp_path)
+    reserve(tasks)
+    intent = prepare(ui, method="vision", fallback_evidence_id="verified-fallback",
+                     verify_fallback=lambda *_: True)
+    with pytest.raises(UIControlError, match="binding"):
+        issue(ui, replace(intent, fallback_evidence_id="forged-fallback"))
+    assert tasks.load("task-a").pending_effects[0].status == "pending"
+    assert issue(ui, intent).pending_effects[0].status == "unknown"
+
+
 def test_unverified_observation_grant_and_actions_fail_closed(tmp_path):
     tasks, _, ui = harness(tmp_path)
     reserve(tasks)
