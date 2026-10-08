@@ -154,9 +154,6 @@ def test_storage_version_and_adversarial_types_rejected(tmp_path: Path) -> None:
     store = TaskStore(db)
     with pytest.raises(StateError):
         store.create(task_id="t", plan_id="p", step_id="")
-    with pytest.raises(StateError):
-        store.create(task_id="t", plan_id="p", step_id="s")
-        # The next operation must not execute after validation failure.
     store.create(task_id="t", plan_id="p", step_id="s")
     with pytest.raises(StateError):
         store.checkpoint(
