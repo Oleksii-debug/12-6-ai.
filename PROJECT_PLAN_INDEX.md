@@ -15,34 +15,34 @@ Plan 10 is the final whole-product integration/release plan.
 
 ## Plans
 
-1. Архітектура, контракти та supply chain
+1. Перший план — Архітектура, контракти та supply chain
 https://docs.google.com/document/d/1yrxH1SpC7ch6Q0hI5LhXC_01kpxOV9MqHwDSCaO0Cf0/edit
 
-2. Дані та токенізація
+2. Другий план — Дані та токенізація
 https://docs.google.com/document/d/1Ii2jGRHCcn6y_VhzbjrbwVr-Cymai20buKNuxsCJYlI/edit
 
-3. Ядро моделі та навчальний runtime
+3. Третій план — Ядро моделі та навчальний runtime
 https://docs.google.com/document/d/1PizqJqX8q6xTJyF2DutYeXRelgPf8qQl-yioK9_EXjA/edit
 
-4. Оцінювання, inference та serving
+4. Четвертий план — Оцінювання, inference та serving
 https://docs.google.com/document/d/1A4_vrQSSiNQRLH4jVC5ySXxEPOt7PtWoaisvoAf328E/edit
 
-5. Agent Runtime, пам’ять та інструменти
+5. П’ятий план — Agent Runtime, пам’ять та інструменти
 https://docs.google.com/document/d/1LuE1aMPdRMgIJTSg-7eXXq1iGnYRXG6LWSVOPRmeuy0/edit
 
-6. Самонавчання, research та Evolution Engine
+6. Шостий план — Самонавчання, research та Evolution Engine
 https://docs.google.com/document/d/1LzVPyRV8lA1kCkVN1RRiEgIzQTINvQvGH2YN-jacXxk/edit
 
-7. Масштабування та distributed infrastructure
+7. Сьомий план — Масштабування та distributed infrastructure
 https://docs.google.com/document/d/1sWkveDm1OBkYh_pK0UMRSVFrjHJWHRGwMzLyH_6sZXc/edit
 
-8. Qualification, evidence та autonomous repair fabric
+8. Восьмий план — Qualification, evidence та autonomous repair fabric
 https://docs.google.com/document/d/10rhE3yzfgMaaapxwfpoMv1smWeXLzrBZnq22yEa87lY/edit
 
-9. Реальні навчальні кампанії та champion lifecycle
+9. Дев’ятий план — Реальні навчальні кампанії та champion lifecycle
 https://docs.google.com/document/d/1OL7-hhg-5jC70mWOLbN-X_flGZ2A8GL9HEp24ZJClns/edit
 
-10. Product integration, Nika, Windows, cloud та release
+10. Десятий план — Product integration, Nika, Windows, cloud та release
 https://docs.google.com/document/d/1vDUREMQTmhdyQDzgThphHw9jysLdgiPO52rt_JATUFE/edit
 
 ## Worker selection rule
