@@ -101,6 +101,12 @@ def test_invalid_evidence_never_admitted(change):
         evidence(**change)
 
 
+@pytest.mark.parametrize("schema_version", (True, 1.0, "1", 2))
+def test_schema_version_requires_exact_positive_integer_one(schema_version):
+    with pytest.raises(RiskProbeDenied):
+        evidence(schema_version=schema_version)
+
+
 def test_forged_frozen_dataclass_denied_at_trust_boundary():
     record = evidence()
     object.__setattr__(record, "paid_compute_requested", "yes")
