@@ -151,8 +151,12 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
             "https://"
         ):
             raise ValueError("missing HTTPS source")
-        if type(asset["version"]) is not str or not asset["version"].strip():
-            raise ValueError("exact version required")
+        if (
+            type(asset["version"]) is not str
+            or re.fullmatch(r"(?:[0-9]|v[0-9])[A-Za-z0-9._+!-]{0,127}", asset["version"])
+            is None
+        ):
+            raise ValueError("exact version required; ranges/aliases forbidden")
         if not _hash(asset["source_sha256"]) or not _hash(
             asset["license_evidence_sha256"]
         ):

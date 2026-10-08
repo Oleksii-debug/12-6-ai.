@@ -578,3 +578,24 @@ def test_unknown_or_ambiguous_composite_license_fails_closed(forged):
     )
     with pytest.raises(ValueError, match="unknown/incompatible license"):
         validate_reuse_catalog(wire(approved))
+
+
+@pytest.mark.parametrize(
+    "unresolved_version",
+    [">=2.5", "2.5.*", "latest", "*", "~=2.5", "2.5; python_version > '3.11'",
+     "https://example.org/package.whl", "2.5 || latest"],
+)
+def test_reviewed_code_requires_literal_exact_version(unresolved_version):
+    """A review cannot pin a range, resolver instruction, or moving alias."""
+    catalog = json.loads(RAW)
+    item = catalog["assets"][0]
+    item.update(
+        status="REVIEWED_CODE_ONLY", upstream_url="https://example.org/reviewed",
+        version="2.5.1+local", source_sha256="e" * 64,
+        license_spdx="MIT", license_evidence_sha256="f" * 64,
+        security_posture="REVIEWED", data_rights="NOT_APPLICABLE_CODE",
+    )
+    assert validate_reuse_catalog(wire(catalog))["assets"][0]["version"] == "2.5.1+local"
+    item["version"] = unresolved_version
+    with pytest.raises(ValueError, match="exact version required"):
+        validate_reuse_catalog(wire(catalog))
