@@ -1,12 +1,17 @@
 """Plan 6 Section 12 LOCAL_FREE isolated code-evolution contract tests."""
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
 from twelve_six.evolutionary_code import (
-    CodeCandidate, EvolutionPolicy, GateEvidence, _GATES, evaluate_evolution,
-    publish_evolution_evidence, stage_candidate, verify_evolution_restart,
+    CodeCandidate,
+    EvolutionPolicy,
+    GateEvidence,
+    _GATES,
+    evaluate_evolution,
+    publish_evolution_evidence,
+    stage_candidate,
+    verify_evolution_restart,
 )
 from twelve_six.experience_replay import _mac
 
@@ -31,9 +36,11 @@ def case(tmp_path):
         item = GateEvidence(candidate.identity(), gate, verifiers[gate],
                             H, next(iter(roots[gate])), True, H)
         gate_records.append(replace(item, signature=_mac(keys[gate], item.payload())))
-    return candidate, policy, sandbox, production, tuple(gate_records), (
-        dict(trusted_verifiers=verifiers, trusted_keys=keys, trusted_roots=roots)
-    )
+    return candidate, policy, sandbox, production, tuple(gate_records), {
+        "trusted_verifiers": verifiers,
+        "trusted_keys": keys,
+        "trusted_roots": roots,
+    }
 
 
 def stage(s):
@@ -50,6 +57,15 @@ def restart(s, decision):
         production_root=s[3], **s[5],
     )
 
+
+
+def test_invalid_directory_types_denied_before_staging(tmp_path):
+    s = case(tmp_path)
+    with pytest.raises(TypeError, match="explicit local directories required"):
+        stage_candidate(s[0], s[1], sandbox_root=str(s[2]), production_root=s[3])
+    with pytest.raises(TypeError, match="explicit local directories required"):
+        stage_candidate(s[0], s[1], sandbox_root=s[2], production_root=str(s[3]))
+    assert not s[2].exists()
 
 def test_isolated_success_and_exact_restart(tmp_path):
     s = case(tmp_path)
