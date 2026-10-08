@@ -12,6 +12,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from tools import plan2_tokenizer_candidates_v1 as architecture
@@ -21,7 +22,7 @@ from twelve_six.tokenization.base import TokenizerIdentity
 SCHEMA = "12-6.plan2-frozen-tokenizer-fixture.v1"
 POLICY_PATH = "configs/data/plan2_tokenizer_fit_policy_v1.json"
 POLICY_BLOB = "db6e26ef1f34cb60efb23b106e54020cab2fe3fe"
-SPECIAL = {"pad": 256, "bos": 257, "eos": 258, "unk": 259}
+SPECIAL = MappingProxyType({"pad": 256, "bos": 257, "eos": 258, "unk": 259})
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -100,9 +101,11 @@ class FrozenBPE:
             self.merges.append([a, b])
             self.tokens.append(token)
         self.vocab_size = len(self.tokens)
+        self.tokens = tuple(self.tokens)
+        self.merges = tuple(tuple(pair) for pair in self.merges)
         self._config = {
             "version": self.version, "normalization": self.normalization,
-            "encoding": self.encoding, "special_tokens": SPECIAL,
+            "encoding": self.encoding, "special_tokens": dict(SPECIAL),
             "merges": self.merges, "byte_fallback": True,
         }
 
