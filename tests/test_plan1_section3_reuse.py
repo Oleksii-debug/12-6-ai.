@@ -237,6 +237,7 @@ def test_real_checkpoint_ingress_and_canonical_restore(tmp_path):
         lineage_bytes=wire(chain),
         trusted_genesis_bytes=genesis_bytes,
         expected_genesis_sha256=pin,
+        expected_lineage_sha256=hashlib.sha256(wire(chain)).hexdigest(),
     )
     target = TinyModel(99.0)
     result = load_verified_checkpoint(verified, model=target, restore_rng=False)
@@ -267,6 +268,7 @@ def test_unpinned_foreign_or_drifted_base_is_rejected_pre_mutation(tmp_path):
                 lineage_bytes=wire(lineage_value),
                 trusted_genesis_bytes=trusted_bytes,
                 expected_genesis_sha256=expected,
+                expected_lineage_sha256=hashlib.sha256(wire(lineage_value)).hexdigest(),
             )
     assert target.mutations == 0
 
@@ -284,6 +286,7 @@ def test_actual_checkpoint_tamper_and_init_drift_fail_closed(tmp_path):
             lineage_bytes=wire(init_drift),
             trusted_genesis_bytes=changed_genesis,
             expected_genesis_sha256=hashlib.sha256(changed_genesis).hexdigest(),
+            expected_lineage_sha256=hashlib.sha256(wire(init_drift)).hexdigest(),
         )
     with (root / "weights.safetensors").open("ab") as stream:
         stream.write(b"foreign checkpoint bytes")
@@ -293,6 +296,35 @@ def test_actual_checkpoint_tamper_and_init_drift_fail_closed(tmp_path):
             lineage_bytes=wire(chain),
             trusted_genesis_bytes=genesis_bytes,
             expected_genesis_sha256=pin,
+            expected_lineage_sha256=hashlib.sha256(wire(chain)).hexdigest(),
+        )
+
+
+def test_checkpoint_lineage_graph_graft_requires_separate_trust_pin(tmp_path):
+    """A genuine genesis pin alone cannot authorize a modified ancestry graph."""
+    root, chain, genesis_bytes, genesis_pin = real_checkpoint_case(tmp_path)
+    approved_graph_pin = hashlib.sha256(wire(chain)).hexdigest()
+    forged_graph = copy.deepcopy(chain)
+    forged_graph["checkpoints"].append(
+        {"id": "f" * 64, "parents": [chain["genesis_id"]], "origin": "canonical_base"}
+    )
+    # The structural validator alone allows a separately attached plausible child.
+    assert validate_base_lineage(forged_graph, json.loads(genesis_bytes))
+    with pytest.raises(ValueError, match="lineage digest mismatch"):
+        prepare_trusted_base_checkpoint(
+            root,
+            lineage_bytes=wire(forged_graph),
+            trusted_genesis_bytes=genesis_bytes,
+            expected_genesis_sha256=genesis_pin,
+            expected_lineage_sha256=approved_graph_pin,
+        )
+    with pytest.raises(ValueError, match="lineage SHA-256 required"):
+        prepare_trusted_base_checkpoint(
+            root,
+            lineage_bytes=wire(chain),
+            trusted_genesis_bytes=genesis_bytes,
+            expected_genesis_sha256=genesis_pin,
+            expected_lineage_sha256="",
         )
 
 
