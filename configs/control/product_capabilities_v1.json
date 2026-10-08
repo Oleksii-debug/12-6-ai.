@@ -828,6 +828,44 @@
       ],
       "integrated_result": null,
       "unavailable_reason": "Section 4 candidate is not integrated; terminal exact-head CI/SIL, independent promotion evidence, accepted-main integration and post-merge readback remain required."
+    },
+    {
+      "capability_id": "post-base-research-verification",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.research_engine.ResearchTrial",
+      "dependencies": [
+        "unified-generation-identity"
+      ],
+      "journey_ids": [
+        "researcher-verify-post-base-trial"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-research-component",
+          "level": "component",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py"
+        },
+        {
+          "vector_id": "plan6-research-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py tests/test_artifact_identity_section1.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-section1-pr",
+          "target": "pull-request:3101"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Plan 6 Section 1 candidate #3101 awaits exact-head CI, integration and post-merge readback; no Base mutation or model promotion is authorized."
     }
   ],
   "journeys": [
@@ -966,6 +1004,13 @@
       "title": "Maintainer converts failure evidence into an isolated repair candidate and independently gated retest decision",
       "capability_ids": [
         "ai-qa-repair-control"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-post-base-trial",
+      "title": "Researcher runs independent replayable post-Base research verification",
+      "capability_ids": [
+        "post-base-research-verification"
       ]
     }
   ]
