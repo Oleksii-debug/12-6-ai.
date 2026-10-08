@@ -104,7 +104,10 @@ class ModelGateway:
 
     @staticmethod
     def _service(client: ServiceClient, op: str, args: dict[str, Any]) -> Any:
-        response = client.call({"schema": SERVICE_SCHEMA, "op": op, "args": args})
+        try:
+            response = client.call({"schema": SERVICE_SCHEMA, "op": op, "args": args})
+        except Exception:
+            raise GatewayError("BACKEND_FAILURE", "service transport failed") from None
         if type(response) is not dict or response.get("schema") != SERVICE_SCHEMA:
             raise GatewayError("INVALID_BACKEND", "wrong service contract")
         if response.get("ok") is False:
