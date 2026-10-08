@@ -162,3 +162,22 @@ def test_concurrent_publication_refuses_overwrite(tmp_path, monkeypatch):
     assert (destination / "normalization-manifest.json").read_bytes() == racing
     with pytest.raises(norm.NormalizationEvidenceError, match="drift"):
         norm.stage_normalization(ROOT, destination)
+
+
+@pytest.mark.parametrize("field,replacement", [
+    ("unicode", "NFC"),
+    ("encoding", "UTF-8 replace"),
+    ("policy_id", "unversioned"),
+    ("language", "unknown-is-English"),
+    ("record_boundary", "arbitrary"),
+])
+def test_policy_semantics_cannot_drift_without_versioned_code_change(
+    tmp_path, field, replacement,
+):
+    seed = json.loads((ROOT / norm.POLICY_FILE).read_text(encoding="utf-8"))
+    seed[field] = replacement
+    fixture = tmp_path / norm.POLICY_FILE
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text(json.dumps(seed), encoding="utf-8")
+    with pytest.raises(norm.NormalizationEvidenceError, match="unsupported"):
+        norm._policy(tmp_path)
