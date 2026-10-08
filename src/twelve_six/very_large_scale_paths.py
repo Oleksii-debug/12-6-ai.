@@ -107,6 +107,9 @@ class MultiNodeEvidence:
             raise LargePathDenied("workers missing/unknown nodes")
         if tuple(self.worker_nodes) != tuple(sorted(self.worker_nodes)):
             raise LargePathDenied("unstable rank-to-node ordering")
+        identity = {"node_ids": self.node_ids, "worker_nodes": self.worker_nodes}
+        if self.topology_sha256 != _digest(identity):
+            raise LargePathDenied("topology placement digest mismatch")
         for name in ("dollars_per_node_hour", "max_estimated_dollars"):
             _finite(name, getattr(self, name), allow_zero=True)
         for name in ("transport_roundtrip_tested", "resume_same_run_tested",
@@ -120,6 +123,7 @@ def assess_very_large(
     adapter: LargeAdapter, topology: MultiNodeEvidence,
     shards: tuple[tuple[str, bytes, str], ...], manifest_sha256: str,
     *, recovered_run_sha256: str | None = None,
+    recovered_data_order_sha256: str | None = None,
     failed_node: str | None = None,
 ) -> dict[str, Any]:
     """Simulated admission with topology/failure, transport and cost fencing."""
@@ -137,6 +141,10 @@ def assess_very_large(
         _sha("recovered_run", recovered_run_sha256)
         if recovered_run_sha256 != capacity.run_sha256:
             raise LargePathDenied("scientific run identity changed")
+    if recovered_data_order_sha256 is not None:
+        _sha("recovered_data_order_sha256", recovered_data_order_sha256)
+        if recovered_data_order_sha256 != topology.data_order_sha256:
+            raise LargePathDenied("data order changed on resume")
     if failed_node is not None and failed_node not in topology.node_ids:
         raise LargePathDenied("unknown lost node")
     recipe = very_large_recipe(tier, mode)
