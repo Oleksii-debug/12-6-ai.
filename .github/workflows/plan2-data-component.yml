@@ -11,6 +11,7 @@ on:
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
+      - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
+      - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
@@ -139,6 +141,20 @@ jobs:
           cmp "$RUNNER_TEMP/plan2-s11-first.json" "$RUNNER_TEMP/plan2-s11-restart.json"
           cmp "$RUNNER_TEMP/plan2-s11-first.json" "$RUNNER_TEMP/plan2-s11-clean.json"
           cmp "$RUNNER_TEMP/plan2-s11/tokenizer-candidate-manifest.json" "$RUNNER_TEMP/plan2-s11-clean/tokenizer-candidate-manifest.json"
+      - name: Lint Plan 2 Section 12 tokenizer fit and freeze
+        run: ruff check tools/plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_tokenizer_fit_freeze_v1.py
+      - name: Qualify Plan 2 Section 12 immutable tokenizer and compatibility
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_tokenizer_fit_freeze_v1.py tests/test_plan2_tokenizer_candidates_v1.py tests/test_tokenization.py tests/test_tokenizer_migration_compatibility.py tests/test_plan2_cluster_split_v1.py
+      - name: Verify S12 frozen fixture restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12" > "$RUNNER_TEMP/plan2-s12-first.json"
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12" > "$RUNNER_TEMP/plan2-s12-restart.json"
+          python tools/plan2_tokenizer_fit_freeze_v1.py --out-dir "$RUNNER_TEMP/plan2-s12-clean" > "$RUNNER_TEMP/plan2-s12-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s12-first.json" "$RUNNER_TEMP/plan2-s12-restart.json"
+          cmp "$RUNNER_TEMP/plan2-s12-first.json" "$RUNNER_TEMP/plan2-s12-clean.json"
+          cmp "$RUNNER_TEMP/plan2-s12/frozen-tokenizer-fixture.json" "$RUNNER_TEMP/plan2-s12-clean/frozen-tokenizer-fixture.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
