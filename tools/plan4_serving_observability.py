@@ -213,32 +213,35 @@ class ServingObserver:
             raise ObservabilityError("invalid canary role")
         if type(allow_external) is not bool:
             raise ObservabilityError("explicit external policy must be boolean")
-        catalog = self._serving.dispatch({
-            "schema": SERVING_SCHEMA, "op": "catalog", "args": {},
-        })
-        slots = catalog.get("result", {}).get("slots", []) if catalog.get("ok") else []
-        ordered = sorted((s for s in slots if s["role"] == role),
-                         key=lambda s: (-s["priority"], s["slot_id"]))
-        with self._condition:
-            self._canary_count += 1
-        if not ordered:
-            return {"schema": SCHEMA, "ready": False, "reason": "NO_ROLE",
-                    "evaluation": False}
-        if ordered[0]["transport"] == "external" and not allow_external:
-            return {"schema": SCHEMA, "ready": False, "reason": "EXTERNAL_DENIED",
-                    "evaluation": False}
-        check = self.dispatch({
-            "schema": SERVING_SCHEMA, "op": "generate",
-            "args": {"request_id": "canary", "role": role, "prompt": "ready",
-                     "config": {"max_new_tokens": 1, "strategy": "greedy"},
-                     "failover": False},
-        })
-        ready = check.get("ok") is True
-        with self._condition:
-            self._canary_ready += int(ready)
-        return {
-            "schema": SCHEMA, "ready": ready, "evaluation": False,
-            "model_identity": (check["selected"]["identity"] if ready else None),
-            "reason": None if ready else self._safe_error(
-                check.get("error", {}).get("code")),
-        }
+        # Hold the canonical S8 lock through admission and invocation, so a
+        # host replacement cannot silently turn a local canary into billable I/O.
+        with self._serving._lock:
+            catalog = self._serving.dispatch({
+                "schema": SERVING_SCHEMA, "op": "catalog", "args": {},
+            })
+            slots = catalog.get("result", {}).get("slots", []) if catalog.get("ok") else []
+            ordered = sorted((s for s in slots if s["role"] == role),
+                             key=lambda s: (-s["priority"], s["slot_id"]))
+            with self._condition:
+                self._canary_count += 1
+            if not ordered:
+                return {"schema": SCHEMA, "ready": False, "reason": "NO_ROLE",
+                        "evaluation": False}
+            if ordered[0]["transport"] != "local" and not allow_external:
+                return {"schema": SCHEMA, "ready": False, "reason": "EXTERNAL_DENIED",
+                        "evaluation": False}
+            check = self.dispatch({
+                "schema": SERVING_SCHEMA, "op": "generate",
+                "args": {"request_id": "canary", "role": role, "prompt": "ready",
+                         "config": {"max_new_tokens": 1, "strategy": "greedy"},
+                         "failover": False},
+            })
+            ready = check.get("ok") is True
+            with self._condition:
+                self._canary_ready += int(ready)
+            return {
+                "schema": SCHEMA, "ready": ready, "evaluation": False,
+                "model_identity": (check["selected"]["identity"] if ready else None),
+                "reason": None if ready else self._safe_error(
+                    check.get("error", {}).get("code")),
+            }
