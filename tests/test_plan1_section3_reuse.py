@@ -588,6 +588,34 @@ def test_pathname_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
     assert archive.read_bytes() == b"untrusted replacement"
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="directory swap differs on Windows")
+def test_parent_directory_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
+    """Keep the same source inode but redirect its ancestor during a digest read."""
+    import os
+
+    parent = tmp_path / "review"
+    parent.mkdir()
+    archive = parent / "source.whl"
+    archive.write_bytes(b"approved source")
+    original_read = os.read
+    swapped = False
+
+    def swap_parent_after_read(fd, size):
+        nonlocal swapped
+        chunk = original_read(fd, size)
+        if chunk and not swapped:
+            moved = tmp_path / "original-review"
+            parent.rename(moved)
+            parent.symlink_to(moved, target_is_directory=True)
+            swapped = True
+        return chunk
+
+    monkeypatch.setattr(os, "read", swap_parent_after_read)
+    with pytest.raises(ValueError, match="parent directory"):
+        _hash_regular_archive(archive)
+    assert swapped and parent.is_symlink()
+
+
 # These are upstream *expression-format* fixtures, NOT admitted dependencies.
 # Even valid syntax requires independent source, binary, notices and security review.
 @pytest.mark.parametrize(

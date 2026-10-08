@@ -238,9 +238,20 @@ def _hash_regular_archive(path: str | Path) -> str:
     # Normalize the lexical path without resolving redirects, so inherited
     # symlinks/junctions cannot redirect a reviewed artifact outside its tree.
     source = Path(os.path.abspath(os.fspath(path)))
-    for ancestor in source.parents:
-        if ancestor.is_symlink() or getattr(ancestor, "is_junction", lambda: False)():
-            raise ValueError("review artifact parent directory is a symlink/junction")
+    def ancestor_identities() -> tuple[tuple[int, int, int], ...]:
+        identities = []
+        for ancestor in source.parents:
+            info = ancestor.lstat()
+            if (
+                not stat.S_ISDIR(info.st_mode)
+                or ancestor.is_symlink()
+                or getattr(ancestor, "is_junction", lambda: False)()
+            ):
+                raise ValueError("review artifact parent directory is a symlink/junction")
+            identities.append((info.st_dev, info.st_ino, info.st_mode))
+        return tuple(identities)
+
+    parents_before = ancestor_identities()
 
     def fingerprint(info: os.stat_result) -> tuple[int, int, int, int, int]:
         # Catch in-place, same-size replacement during archive verification.
@@ -278,6 +289,10 @@ def _hash_regular_archive(path: str | Path) -> str:
             raise ValueError("review artifact path changed while reading") from exc
         if not stat.S_ISREG(named.st_mode) or fingerprint(opened) != fingerprint(named):
             raise ValueError("review artifact path changed while reading")
+        # Revalidate each ancestor after hashing, not just the opened leaf:
+        # a directory can be renamed and replaced with a symlink mid-read.
+        if ancestor_identities() != parents_before:
+            raise ValueError("review artifact parent directory changed while reading")
         return digest.hexdigest()
     finally:
         os.close(handle)
