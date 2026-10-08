@@ -98,7 +98,7 @@ def _valid_https_source(value: object) -> bool:
     """Reject ambiguous or unauthenticatable external code-source URLs."""
     if type(value) is not str or not value or len(value) > 2048:
         return False
-    if any(char.isspace() or ord(char) < 33 or ord(char) == 127 for char in value):
+    if any(char.isspace() or ord(char) < 33 or ord(char) == 127 or char == "\\" for char in value):
         return False
     try:
         parsed = urlsplit(value)
