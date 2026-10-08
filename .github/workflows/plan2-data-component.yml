@@ -12,6 +12,9 @@ on:
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
       - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
+      - 'configs/data/plan2_public_domain_books_v1.json'
+      - 'data/external/rights-evidence/plan2-books/**'
+      - 'data/external/snapshots/plan2-public-domain-books-v1/**'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
@@ -22,6 +25,9 @@ on:
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
       - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
+      - 'configs/data/plan2_public_domain_books_v1.json'
+      - 'data/external/rights-evidence/plan2-books/**'
+      - 'data/external/snapshots/plan2-public-domain-books-v1/**'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
