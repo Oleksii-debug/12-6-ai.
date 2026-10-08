@@ -257,10 +257,8 @@ def test_broken_adapter_and_malformed_response_fail_closed(bound):
         prompt="x", config={"max_new_tokens": 1},
     ))
     assert result["ok"] is True
-    with pytest.raises(GatewayError, match="service"):
-        gateway.register("raising", "base", "local", Raises()) if False else (
-            gateway.register("raising", "base", "local", Broken())
-        )
+    with pytest.raises(GatewayError, match="service transport failed"):
+        gateway.register("raising", "base", "local", Raises())
 
 
 def test_session_limit_and_registered_alias_validation(bound):
