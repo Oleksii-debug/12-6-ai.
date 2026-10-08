@@ -107,9 +107,15 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
         }:
             raise ValueError("invalid admission status")
         if status == "CANDIDATE_UNQUALIFIED":
-            if any(asset[field] is not None for field in (
-                "version", "source_sha256", "license_evidence_sha256"
-            )) or asset["security_posture"] != "UNKNOWN":
+            if (
+                any(asset[field] is not None for field in (
+                    "version", "source_sha256", "license_evidence_sha256",
+                    "upstream_url", "license_spdx",
+                ))
+                or asset["security_posture"] != "UNKNOWN"
+                or asset["data_rights"] != "NOT_ASSESSED"
+                or asset["model_weights"] != "NONE"
+            ):
                 raise ValueError("candidate cannot claim partial admission")
             continue
         if asset["role"] != "code_adapter" or asset["model_weights"] != "NONE":
