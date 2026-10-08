@@ -42,7 +42,7 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["current_repository_main_tree_sha"] == result["observed_main_tree_sha"]
     assert result["qualified_current_equivalent_surface_count"] == 239
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 56
+    assert result["candidate_overlay_surface_count"] == 57
     assert result["checkout_surface_count"] == 175
 
 
@@ -70,7 +70,7 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     capabilities = _load_strict_json(_CAPABILITIES)
 
     overrides = payload["candidate_overrides"]
-    assert len(overrides) == 56
+    assert len(overrides) == 57
     assert len({entry["path"] for entry in overrides}) == 56
     assert {
         "path": ".github/workflows/ci.yml",
@@ -126,7 +126,7 @@ def test_repository_surface_coverage_rejects_candidate_override_capability_remap
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["candidate_overrides"].append(
         {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "path": "tools/validate_d04_learned20m_tokenizer_decision.py",
             "capability_id": "learned-20m-base",
         }
     )
@@ -151,9 +151,8 @@ def test_repository_surface_coverage_rejects_missing_candidate_override(
         blobs = original_surface_blob_map(root, treeish)
         if treeish == "HEAD":
             blobs = dict(blobs)
-            path = "tools/validate_section2_repository_surface_coverage.py"
-            mode, _blob_sha = blobs[path].split(":", 1)
-            blobs[path] = f"{mode}:{'f' * 40}"
+            path = "tools/new_unmapped_qualification_candidate.py"
+            blobs[path] = f"100644:{'f' * 40}"
         return blobs
 
     monkeypatch.setattr(
