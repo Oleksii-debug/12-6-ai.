@@ -68,7 +68,9 @@ def match_kind(left: str, right: str) -> str | None:
         return None
     if a == b:
         return "MIRROR_CASEFOLD"
-    if (len(ta) == len(tb) and len(set(ta) & set(tb)) >= 5 and
+    if (len(ta) == len(tb) and ta != tb and
+            any(re.search(r"\d", t) for t in ta) and
+            len(set(ta) & set(tb)) >= 5 and
             [re.sub(r"\d+", "<NUM>", t) for t in ta] ==
             [re.sub(r"\d+", "<NUM>", t) for t in tb]):
         return "TEMPLATE_NUMERIC_VARIANT"
