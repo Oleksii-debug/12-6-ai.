@@ -114,7 +114,10 @@ class ModelGateway:
             error = response.get("error")
             if type(error) is not dict or type(error.get("code")) is not str:
                 raise GatewayError("INVALID_BACKEND", "malformed backend error")
-            raise GatewayError("BACKEND_REJECTED", "service rejected: " + error["code"])
+            code = error["code"]
+            if re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", code) is None:
+                raise GatewayError("INVALID_BACKEND", "malformed backend error code")
+            raise GatewayError("BACKEND_REJECTED", "service rejected: " + code)
         if response.get("ok") is not True or type(response.get("result")) is not dict:
             raise GatewayError("INVALID_BACKEND", "malformed backend result")
         return response["result"]
