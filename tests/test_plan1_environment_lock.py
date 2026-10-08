@@ -267,6 +267,8 @@ def test_genuine_directory_entries_are_allowed_but_wheel_symlinks_denied(tmp_pat
     assert inspect_wheel(wheel) == ("fixture", "1.0")
 
     with zipfile.ZipFile(wheel, "w") as archive:
+        for name, contents in originals:
+            archive.writestr(name, contents)
         info = zipfile.ZipInfo("fixture/attacker.py")
         info.external_attr = 0o120777 << 16
         archive.writestr(info, b"source")
