@@ -16,8 +16,12 @@ from twelve_six.third_party_reuse import (
 
 RAW = (Path(__file__).resolve().parents[1] /
        "configs/control/plan1_reuse_assets_v1.json").read_bytes()
-GENESIS = dict(genesis_id="a"*64, model_spec_sha256="b"*64,
-               init_spec_sha256="c"*64, origin="local_random_init")
+GENESIS = {
+    "genesis_id": "a" * 64,
+    "model_spec_sha256": "b" * 64,
+    "init_spec_sha256": "c" * 64,
+    "origin": "local_random_init",
+}
 
 
 def wire(obj):
@@ -25,11 +29,17 @@ def wire(obj):
 
 
 def lineage():
-    return dict(schema_version=1, genesis_id="a"*64, model_spec_sha256="b"*64,
-                init_spec_sha256="c"*64, head_id="d"*64, checkpoints=[
-                    dict(id="a"*64, parents=[], origin="canonical_base"),
-                    dict(id="d"*64, parents=["a"*64], origin="canonical_base"),
-                ])
+    return {
+        "schema_version": 1,
+        "genesis_id": "a" * 64,
+        "model_spec_sha256": "b" * 64,
+        "init_spec_sha256": "c" * 64,
+        "head_id": "d" * 64,
+        "checkpoints": [
+            {"id": "a" * 64, "parents": [], "origin": "canonical_base"},
+            {"id": "d" * 64, "parents": ["a" * 64], "origin": "canonical_base"},
+        ],
+    }
 
 
 def test_reuse_catalog_is_quarantined_and_restart_stable():
@@ -146,27 +156,27 @@ def real_checkpoint_case(tmp_path):
     )
     root = tmp_path / "scratch"
     manifest = save_checkpoint(root, model=TinyModel(), identity=identity)
-    genesis = dict(
-        genesis_id="a" * 64,
-        model_spec_sha256=manifest["identity"]["model_spec_hash"],
-        init_spec_sha256=init_spec_hash,
-        origin="local_random_init",
-    )
-    chain = dict(
-        schema_version=1,
-        genesis_id=genesis["genesis_id"],
-        model_spec_sha256=genesis["model_spec_sha256"],
-        init_spec_sha256=genesis["init_spec_sha256"],
-        head_id=manifest["checkpoint_id"],
-        checkpoints=[
-            dict(id=genesis["genesis_id"], parents=[], origin="canonical_base"),
-            dict(
-                id=manifest["checkpoint_id"],
-                parents=[genesis["genesis_id"]],
-                origin="canonical_base",
-            ),
+    genesis = {
+        "genesis_id": "a" * 64,
+        "model_spec_sha256": manifest["identity"]["model_spec_hash"],
+        "init_spec_sha256": init_spec_hash,
+        "origin": "local_random_init",
+    }
+    chain = {
+        "schema_version": 1,
+        "genesis_id": genesis["genesis_id"],
+        "model_spec_sha256": genesis["model_spec_sha256"],
+        "init_spec_sha256": genesis["init_spec_sha256"],
+        "head_id": manifest["checkpoint_id"],
+        "checkpoints": [
+            {"id": genesis["genesis_id"], "parents": [], "origin": "canonical_base"},
+            {
+                "id": manifest["checkpoint_id"],
+                "parents": [genesis["genesis_id"]],
+                "origin": "canonical_base",
+            },
         ],
-    )
+    }
     genesis_bytes = wire(genesis)
     return root, chain, genesis_bytes, hashlib.sha256(genesis_bytes).hexdigest()
 
