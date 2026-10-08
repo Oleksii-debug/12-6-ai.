@@ -113,20 +113,25 @@ def inspect(pyproject: Path) -> dict[str, Any]:
                     raise ValueError(f"installed file inventory too large: {name}")
                 path = str(item)
                 parts = path.split("/")
+                # Wheels legitimately list console scripts outside site-packages.
+                # This is a license-lead scan, not a whole-RECORD validator;
+                # validate only notice candidates and leave general RECORD
+                # integrity to the incumbent pinned wheel verifier.
+                basename = parts[-1].lower()
+                if basename not in {
+                    "license", "license.txt", "license.md", "notice",
+                    "notice.txt", "notice.md", "copying", "copying.txt",
+                }:
+                    continue
                 if (
                     not path or len(path) > 1024 or "\\" in path
                     or ":" in path or PurePosixPath(path).is_absolute()
                     or any(part in ("", ".", "..") for part in parts)
                 ):
                     raise ValueError(f"unsafe installed file inventory path: {name}")
-                basename = parts[-1].lower()
-                if basename in {
-                    "license", "license.txt", "license.md", "notice",
-                    "notice.txt", "notice.md", "copying", "copying.txt",
-                }:
-                    paths.append(path)
-                    if len(paths) > 256:
-                        raise ValueError(f"license notice inventory too large: {name}")
+                paths.append(path)
+                if len(paths) > 256:
+                    raise ValueError(f"license notice inventory too large: {name}")
             entry["license_notice_paths_observed_untrusted"] = sorted(set(paths))
         record = dist.read_text("RECORD")
         if record is None:
