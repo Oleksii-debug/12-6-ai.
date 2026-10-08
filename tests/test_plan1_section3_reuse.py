@@ -555,6 +555,28 @@ def test_same_size_in_place_mutation_during_archive_digest_is_rejected(monkeypat
     assert replaced
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="POSIX FIFO race")
+def test_fifo_swap_during_archive_open_rejected_without_block(monkeypatch, tmp_path):
+    """Never block on a FIFO substituted after the regular-file lstat."""
+    import os
+    import stat
+
+    archive = tmp_path / "source.whl"
+    archive.write_bytes(b"approved source")
+    original_open = os.open
+
+    def substitute_fifo(path, flags, *args, **kwargs):
+        assert flags & os.O_NONBLOCK, "opening substituted FIFO may hang"
+        archive.unlink()
+        os.mkfifo(archive)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", substitute_fifo)
+    with pytest.raises(ValueError, match="changed while opening"):
+        _hash_regular_archive(archive)
+    assert stat.S_ISFIFO(archive.lstat().st_mode)
+
+
 @pytest.mark.skipif(__import__("os").name == "nt", reason="open-file rename differs on Windows")
 def test_pathname_swap_during_archive_digest_is_rejected(monkeypatch, tmp_path):
     """Descriptor stability must not bless hostile bytes swapped onto the pathname."""

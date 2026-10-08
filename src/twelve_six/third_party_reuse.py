@@ -263,7 +263,13 @@ def _hash_regular_archive(path: str | Path) -> str:
     before = source.lstat()
     if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
         raise ValueError("review artifact must be a regular non-symlink file")
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    # A regular file can be swapped for a FIFO after lstat: avoid a blocking open.
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
         handle = os.open(source, flags)
     except OSError as exc:
