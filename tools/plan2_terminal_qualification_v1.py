@@ -67,11 +67,24 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     _require(current["training_corpus_authorized"] is False,
              "physical mixture unexpectedly grants training")
 
-    # The sole accepted current corpus consists of ONE source/document family.
-    # Family-safe train/validation/test cannot honestly be produced from it.
+    # Assert the independent-family count before explaining the split refusal.
+    # Never mislabel an unrelated integrity error as a known corpus limitation.
+    families = current["contributions"]["family"]
+    _require(type(families) is dict and len(families) == 1,
+             "physical source-family count changed; release requires requalification")
     try:
         split.stage_candidate(root, destination / "physical-split")
-    except split.Plan2SplitError:
+    except split.Plan2SplitError as exc:
+        causes: list[str] = []
+        reason: BaseException | None = exc
+        while reason is not None:
+            causes.append(str(reason))
+            reason = reason.__cause__
+        _require(
+            "insufficient independent document families" in causes
+            or "three-way cluster-safe split has empty partition" in causes,
+            "unexpected physical split failure; not a family-count refusal",
+        )
         physical_split = "DENIED_SINGLE_SOURCE_FAMILY"
     else:
         raise QualificationDenied(
@@ -99,6 +112,7 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_split": physical_split,
+        "physical_source_family_count": len(families),
         "synthetic_tokenizer_manifest_sha256": tokenizer["manifest_sha256"],
         "synthetic_packing_manifest_sha256": packed["manifest_sha256"],
         "synthetic_exposure_manifest_sha256": ledger["manifest_sha256"],
