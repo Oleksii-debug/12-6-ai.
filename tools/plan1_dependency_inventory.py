@@ -12,7 +12,7 @@ import json
 import re
 import tomllib
 from importlib import metadata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 MAX_PROJECT_BYTES = 1024 * 1024
@@ -59,6 +59,7 @@ def inspect(pyproject: Path) -> dict[str, Any]:
             # Observational signals only; even an SPDX field is NOT legal review.
             "license_metadata_sha256_observed_untrusted": None,
             "license_metadata_field_observed_untrusted": None,
+            "license_notice_paths_observed_untrusted": [],
             "availability": "NOT_INSTALLED",
             "admission": "DENIED_UNQUALIFIED",
             "external_source_sha256": None,
@@ -101,6 +102,32 @@ def inspect(pyproject: Path) -> dict[str, Any]:
             ).hexdigest()
             if field == "License-Expression":
                 break
+        # A wheel may put its license in dist-info even when the PEP 639
+        # expression is absent (notably safetensors). Expose a bounded path
+        # inventory as untrusted reviewer leads, never as byte/legal proof.
+        declared_files = getattr(dist, "files", None)
+        if declared_files is not None:
+            paths: list[str] = []
+            for index, item in enumerate(declared_files):
+                if index >= 100000:
+                    raise ValueError(f"installed file inventory too large: {name}")
+                path = str(item)
+                parts = path.split("/")
+                if (
+                    not path or len(path) > 1024 or "\\\\" in path
+                    or ":" in path or PurePosixPath(path).is_absolute()
+                    or any(part in ("", ".", "..") for part in parts)
+                ):
+                    raise ValueError(f"unsafe installed file inventory path: {name}")
+                basename = parts[-1].lower()
+                if basename in {
+                    "license", "license.txt", "license.md", "notice",
+                    "notice.txt", "notice.md", "copying", "copying.txt",
+                }:
+                    paths.append(path)
+                    if len(paths) > 256:
+                        raise ValueError(f"license notice inventory too large: {name}")
+            entry["license_notice_paths_observed_untrusted"] = sorted(set(paths))
         record = dist.read_text("RECORD")
         if record is None:
             entry["availability"] = "INSTALLED_RECORD_ABSENT"
