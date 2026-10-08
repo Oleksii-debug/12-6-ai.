@@ -109,6 +109,8 @@ class EvaluationVault:
                                parse_constant=lambda _: (_ for _ in ()).throw(
                                    EvaluationBoundaryError("invalid JSON constant")))
                     for line in dataset.splitlines()]
+        except EvaluationBoundaryError:
+            raise
         except (ValueError, UnicodeDecodeError) as exc:
             raise EvaluationBoundaryError("invalid reserved dataset") from exc
         if (not rows or any(type(row) is not dict or set(row) != {"id", "answer"}
@@ -185,7 +187,8 @@ class EvaluationVault:
         identity = {"schema_version": SCHEMA, "dataset_sha256": dataset_ref["dataset_sha256"],
                     "dataset_version": dataset_ref["dataset_version"],
                     "model_sha256": model_sha256, "config_sha256": config_sha256,
-                    "evaluator_sha256": evaluator_sha256}
+                    "evaluator_sha256": evaluator_sha256,
+                    "predictions_sha256": _digest(_canonical(predictions))}
         evaluation_id = _digest(_canonical(identity))
         payload = {**identity, "evaluation_id": evaluation_id, "sample_count": len(rows),
                    "correct_count": correct, "accuracy": correct / len(rows)}
@@ -237,7 +240,7 @@ class EvaluationVault:
                 raise EvaluationBoundaryError("result identity drift")
             identity = {k: payload[k] for k in (
                 "schema_version", "dataset_sha256", "dataset_version", "model_sha256",
-                "config_sha256", "evaluator_sha256"
+                "config_sha256", "evaluator_sha256", "predictions_sha256"
             )}
             if _digest(_canonical(identity)) != sealed["evaluation_id"]:
                 raise EvaluationBoundaryError("result binding drift")
