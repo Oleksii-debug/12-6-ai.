@@ -34,7 +34,9 @@ class CapabilityArea:
         if (benchmark_sha == generalization_sha
                 or self.benchmark.suite_id == self.generalization.suite_id
                 or {p.probe_id for p in self.benchmark.probes}.intersection(
-                    p.probe_id for p in self.generalization.probes)):
+                    p.probe_id for p in self.generalization.probes)
+                or {p.context_id for p in self.benchmark.probes}.intersection(
+                    p.context_id for p in self.generalization.probes)):
             raise ValueError("benchmark and independent generalization must be disjoint")
         if (type(self.target_accuracy) not in (int, float)
                 or not math.isfinite(self.target_accuracy)
