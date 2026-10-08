@@ -20,6 +20,8 @@ from tools.plan2_physical_materialization_v1 import _atomic_write, _json, _read_
 SCHEMA = "12-6.plan2-near-dedup-candidate.v1"
 POLICY = "NFKC_CASEFOLD_TOKEN_TEMPLATE_CHAR5_COMPLETE_LINK_V1"
 AUDIT = "configs/data/plan2_near_dedup_audit_v1.json"
+# Git blob identity pins the reviewed eight-case bounded FP/FN sample corpus.
+AUDIT_GIT_BLOB = "26fd4d6bd1f7b61c2e937612bed7e11e9107e29c"
 
 
 class NearDedupError(ValueError):
@@ -167,6 +169,8 @@ def audit_samples(root: Path) -> dict[str, Any]:
         data = _json(raw)
     except (ValueError, UnicodeError) as exc:
         raise NearDedupError("S7 audit fixture invalid") from exc
+    blob = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw)
+    _need(blob.hexdigest() == AUDIT_GIT_BLOB, "S7 audit fixture identity drift")
     _need(isinstance(data, dict) and set(data) == {"schema", "samples"} and
           data["schema"] == "12-6.plan2-near-audit.v1" and
           type(data["samples"]) is list and len(data["samples"]) >= 6,
