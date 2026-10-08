@@ -124,3 +124,17 @@ def test_reject_mismatched_reference_and_unbounded_recipe():
             policy, reference, (example(),),
             replace(recipe, beta=float("nan")), vocab=12,
         )
+
+
+def test_reject_long_preference_cycles():
+    policy, reference, recipe = fixture()
+    a, b, c = (3, 4), (4, 3), (5, 3)
+    records = (
+        replace(example("a"), ranked_targets=(a, b)),
+        replace(example("b"), ranked_targets=(b, c)),
+        replace(example("c"), ranked_targets=(c, a)),
+    )
+    with pytest.raises(ValueError, match="cyclic"):
+        train_preference_descendant(
+            policy, reference, records, recipe, vocab=12,
+        )
