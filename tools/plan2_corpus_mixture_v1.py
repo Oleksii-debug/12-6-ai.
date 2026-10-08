@@ -25,7 +25,7 @@ from tools.plan2_physical_materialization_v1 import (
 SCHEMA = "12-6.plan2-corpus-mixture-candidate.v1"
 POLICY_SCHEMA = "12-6.plan2-corpus-mixture-policy.v1"
 POLICY_PATH = "configs/data/plan2_corpus_mixture_policy_v1.json"
-POLICY_GIT_BLOB = "f3891697e88ab4f13b81a74e200d6282fb74f85e"
+POLICY_GIT_BLOB = "5edb3c7c49669b8b627f83261ca9446ff3e0c47d"
 BUCKETS = ("source", "family", "language", "domain", "modality")
 
 
