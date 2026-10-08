@@ -7,11 +7,13 @@ on:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/plan2_near_dedup_audit_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/plan2_near_dedup_audit_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
