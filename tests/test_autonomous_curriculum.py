@@ -69,6 +69,13 @@ def test_holdout_probe_and_untrusted_suite_rejected():
         probes=(CapabilityProbe("bench_probe", "unknown", digest({"action": "B"})),)))
     with pytest.raises(ValueError):
         measure_capability_gaps(a[0], (duplicated,), trusted_suite_roots=a[2])
+    same_context = replace(a[1][0], generalization=replace(
+        a[1][0].generalization,
+        probes=(CapabilityProbe("new_probe_id", "known", digest({"action": "B"})),)))
+    roots = frozenset({same_context.benchmark.identity(),
+                       same_context.generalization.identity()})
+    with pytest.raises(ValueError, match="must be disjoint"):
+        measure_capability_gaps(a[0], (same_context,), trusted_suite_roots=roots)
 
 
 def test_no_eval_train_task_leakage():
