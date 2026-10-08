@@ -131,9 +131,10 @@ def test_weighted_rank_and_policy_version_change_new_dataset_identity():
 
 def test_s8_eval_overlap_cannot_reenter_mixture_even_with_policy_source():
     _manifest, holdout, _authorities = firewall._reserve(RESERVED)
-    cohorts = (_fixture(SOURCE, BASE, holdout[0]["text"]),)
+    cohorts = (_fixture(SOURCE, BASE),
+               _fixture("foreign.contaminated", holdout[0]["text"]))
     result = mixture.inspect_mixture(cohorts, RESERVED, POLICY_RAW)
-    assert result["selected_record_count"] < 2
+    assert result["selected_record_count"] == 1
     assert len(result["selected_record_ids"]) + len(result["excluded"]) == 2
     assert result["excluded_reason_counts"]["S8_DECONTAMINATED"] >= 1
 
