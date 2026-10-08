@@ -59,7 +59,10 @@ class MediaTransform:
         _name(self.evidence_id, "transform evidence")
         _sha(self.input_sha256)
         _sha(self.output_sha256)
-        _uint(self.timestamp_ms, "transform time")
+        try:
+            _uint(self.timestamp_ms, "transform time")
+        except ValueError as exc:
+            raise MediaBoundaryError("invalid transform time") from exc
 
 
 @dataclass(frozen=True)
@@ -92,8 +95,11 @@ class MediaArtifact:
             raise MediaBoundaryError("invalid source locality")
         for key in ("artifact_id", "source_id", "evidence_id"):
             _name(getattr(self, key), key)
-        _uint(self.byte_size, "byte size")
-        _uint(self.timestamp_ms, "source time")
+        try:
+            _uint(self.byte_size, "byte size")
+            _uint(self.timestamp_ms, "source time")
+        except ValueError as exc:
+            raise MediaBoundaryError("invalid size/source time") from exc
         if self.byte_size == 0 or self.byte_size > 64 * 1024 * 1024:
             raise MediaBoundaryError("empty or unbounded payload")
         _sha(self.source_sha256)
@@ -135,7 +141,10 @@ class MediaPolicy:
                     or values != tuple(sorted(set(values)))
                     or any(item not in choices for item in values)):
                 raise MediaBoundaryError("invalid or unbounded media policy")
-        _uint(self.max_bytes, "policy byte ceiling")
+        try:
+            _uint(self.max_bytes, "policy byte ceiling")
+        except ValueError as exc:
+            raise MediaBoundaryError("invalid policy ceiling") from exc
         if self.max_bytes == 0 or self.max_bytes > 64 * 1024 * 1024:
             raise MediaBoundaryError("invalid byte ceiling")
         if type(self.allow_remote) is not bool:
