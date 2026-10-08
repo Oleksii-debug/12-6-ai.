@@ -100,7 +100,7 @@ def test_bad_schema_lock_binding_and_missing_profiles_fail_closed(
 
 def test_duplicate_json_keys_nonfinite_and_invalid_utf8_rejected() -> None:
     with pytest.raises(CompatibilityError):
-        parse(RAW[:-2] + b',"schema_version":"oops"}')
+        parse(b'{"x":1,"x":2}')
     with pytest.raises(CompatibilityError):
         parse(b'{"x":NaN}')
     with pytest.raises(CompatibilityError):
@@ -148,3 +148,39 @@ def test_parser_denies_oversize_raw_and_bool_schema() -> None:
     obj["schema_version"] = True
     with pytest.raises(CompatibilityError):
         parse(json.dumps(obj).encode())
+
+
+def test_matrix_path_traversal_and_symlink_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import twelve_six.backend_compatibility as compatibility
+
+    monkeypatch.setattr(
+        compatibility, "validate_lock_index",
+        lambda **_: {"index_sha256": LOCK_SHA},
+    )
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(RAW)
+    inner = tmp_path / "configs/compatibility"
+    inner.mkdir(parents=True)
+    (inner / "plan1_backend_matrix_v1.json").symlink_to(outside)
+    with pytest.raises(CompatibilityError):
+        load_static_backend_matrix(root=tmp_path)
+    with pytest.raises(CompatibilityError):
+        load_static_backend_matrix(root=tmp_path, matrix_path="../outside.json")
+
+
+def test_wrong_lock_index_runtime_readback_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import twelve_six.backend_compatibility as compatibility
+
+    monkeypatch.setattr(
+        compatibility, "validate_lock_index",
+        lambda **_: {"index_sha256": "0" * 64},
+    )
+    inside = tmp_path / "configs/compatibility"
+    inside.mkdir(parents=True)
+    (inside / "plan1_backend_matrix_v1.json").write_bytes(RAW)
+    with pytest.raises(CompatibilityError, match="dependency lock binding"):
+        load_static_backend_matrix(root=tmp_path)
