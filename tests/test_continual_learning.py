@@ -4,13 +4,21 @@ from dataclasses import replace
 import pytest
 
 from twelve_six import continual_learning as cl
+from twelve_six.continual_learning import (
+    CapabilityProbe,
+    ContinualRecipe,
+    FrozenCapabilitySuite,
+    run_continual_update,
+    score_suite,
+    verify_continual_replay,
+)
 from twelve_six.post_base_instruction import canonical_digest as digest
 from twelve_six.post_base_reasoning import (
-    ReasoningRecipe, TinyPolicy, VerifiedTask, ReasoningRun, ReasoningReceipt,
-)
-from twelve_six.continual_learning import (
-    CapabilityProbe, ContinualRecipe, FrozenCapabilitySuite,
-    run_continual_update, score_suite, verify_continual_replay,
+    ReasoningReceipt,
+    ReasoningRecipe,
+    ReasoningRun,
+    TinyPolicy,
+    VerifiedTask,
 )
 
 H = "a" * 64
