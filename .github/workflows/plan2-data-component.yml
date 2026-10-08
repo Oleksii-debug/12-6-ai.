@@ -9,6 +9,7 @@ on:
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
+      - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
@@ -16,6 +17,7 @@ on:
       - 'tests/test_plan2_*.py'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
+      - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
@@ -84,6 +86,20 @@ jobs:
           cmp "${RUNNER_TEMP}/plan2-s8-first.json" "${RUNNER_TEMP}/plan2-s8-restart.json"
           cmp "${RUNNER_TEMP}/plan2-s8-first.json" "${RUNNER_TEMP}/plan2-s8-clean.json"
           cmp "${RUNNER_TEMP}/plan2-s8/reserved-eval-firewall-manifest.json" "${RUNNER_TEMP}/plan2-s8-fresh/reserved-eval-firewall-manifest.json"
+      - name: Lint Plan 2 Section 9 corpus mixture and tests
+        run: ruff check tools/plan2_corpus_mixture_v1.py tests/test_plan2_corpus_mixture_v1.py
+      - name: Qualify S9 weights caps versioning decontamination recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_corpus_mixture_v1.py tests/test_plan2_reserved_eval_firewall_v1.py tests/test_data232_decontamination_authority_v2.py
+      - name: Verify S9 exact restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9" > "${RUNNER_TEMP}/plan2-s9-first.json"
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9" > "${RUNNER_TEMP}/plan2-s9-restart.json"
+          python tools/plan2_corpus_mixture_v1.py --out-dir "${RUNNER_TEMP}/plan2-s9-fresh" > "${RUNNER_TEMP}/plan2-s9-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-restart.json"
+          cmp "${RUNNER_TEMP}/plan2-s9-first.json" "${RUNNER_TEMP}/plan2-s9-clean.json"
+          cmp "${RUNNER_TEMP}/plan2-s9/corpus-mixture-manifest.json" "${RUNNER_TEMP}/plan2-s9-fresh/corpus-mixture-manifest.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
