@@ -156,3 +156,32 @@ def test_interrupted_atomic_publication_leaves_no_output_or_staging(
         export_safe_bundle(checkpoint, tmp_path / "portable")
     assert not (tmp_path / "portable").exists()
     assert not list(tmp_path.glob(".portable.plan4-stage-*"))
+
+
+def test_fresh_process_restart_validates_export_identity(tmp_path: Path):
+    """A fresh interpreter can re-verify bundle provenance without live source state."""
+    import subprocess
+    import sys
+
+    out, source = _bundle(tmp_path)
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import sys; "
+            "from tools.plan4_safe_export import verify_safe_export; "
+            "r = verify_safe_export(sys.argv[1], expected_checkpoint_id=sys.argv[2]); "
+            "print(r['manifest_sha256'])"
+        ),
+        str(out),
+        source["checkpoint_id"],
+    ]
+    completed = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+        timeout=15,
+    )
+    assert completed.stdout.strip() == verify_safe_export(out)["manifest_sha256"]
