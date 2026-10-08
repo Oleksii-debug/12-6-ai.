@@ -125,6 +125,7 @@ class CurriculumProposal:
     expected_gain: int
     evidence_quality: int
     cost_units: int
+    train_context_ids: tuple[str, ...]
     split: str = "train"
     schema_version: int = 1
 
@@ -145,7 +146,11 @@ class CurriculumProposal:
         if (type(self.train_task_ids) is not tuple or not 1 <= len(self.train_task_ids) <= 64
                 or len(set(self.train_task_ids)) != len(self.train_task_ids)):
             raise ValueError("invalid curriculum training tasks")
-        for task_id in self.train_task_ids:
+        if (type(self.train_context_ids) is not tuple
+                or len(self.train_context_ids) != len(self.train_task_ids)
+                or len(set(self.train_context_ids)) != len(self.train_context_ids)):
+            raise ValueError("unbound training contexts")
+        for task_id in self.train_task_ids + self.train_context_ids:
             bounded_id(task_id)
         for value, minimum, maximum in ((self.expected_gain, 1, 100),
                                         (self.evidence_quality, 1, 100),
@@ -188,8 +193,13 @@ def plan_curriculum(
     proposals: tuple[CurriculumProposal, ...], recipe: CurriculumRecipe, *,
     trusted_verifier_id: str, trusted_verifier_version_sha256: str,
     trusted_proposal_roots: frozenset[str], verifier_key: bytes,
+    champion: TinyPolicy, trusted_suite_roots: frozenset[str],
 ) -> CurriculumPlan:
     recipe.validate()
+    independently_measured = measure_capability_gaps(
+        champion, areas, trusted_suite_roots=trusted_suite_roots)
+    if snapshot != independently_measured:
+        raise ValueError("forged/stale capability measurement")
     if (type(snapshot) is not CapabilitySnapshot
             or snapshot.manifest_sha256 != recipe.snapshot_sha256):
         raise ValueError("stale capability snapshot")
@@ -207,6 +217,9 @@ def plan_curriculum(
     all_probes = {p.probe_id for area in areas
                   for suite in (area.benchmark, area.generalization)
                   for p in suite.probes}
+    heldout_contexts = {p.context_id for area in areas
+                        for suite in (area.benchmark, area.generalization)
+                        for p in suite.probes}
     gaps = {g.capability_id: g for g in snapshot.gaps}
     if len(gaps) != len(areas) or set(gaps) != {area.capability_id for area in areas}:
         raise ValueError("forged capability map")
@@ -220,7 +233,8 @@ def plan_curriculum(
                 or proposal.verifier_id != trusted_verifier_id
                 or proposal.verifier_version_sha256 != trusted_verifier_version_sha256
                 or proposal.evidence_sha256 not in trusted_proposal_roots
-                or all_probes.intersection(proposal.train_task_ids)):
+                or all_probes.intersection(proposal.train_task_ids)
+                or heldout_contexts.intersection(proposal.train_context_ids)):
             raise ValueError("untrusted, duplicate or holdout-leaking proposal")
         if proposal.signature != _mac(verifier_key, proposal.payload()):
             raise ValueError("forged proposal evidence")
@@ -253,7 +267,8 @@ def verify_curriculum_restart(
     proposals: tuple[CurriculumProposal, ...], recipe: CurriculumRecipe,
     result: CurriculumPlan, *, trusted_verifier_id: str,
     trusted_verifier_version_sha256: str, trusted_proposal_roots: frozenset[str],
-    verifier_key: bytes,
+    verifier_key: bytes, champion: TinyPolicy,
+    trusted_suite_roots: frozenset[str],
 ) -> bool:
     if (type(result) is not CurriculumPlan or result.promotion_authorized
             or result.authorized_paid_compute or result.authorized_training):
@@ -262,7 +277,8 @@ def verify_curriculum_restart(
                              trusted_verifier_id=trusted_verifier_id,
                              trusted_verifier_version_sha256=trusted_verifier_version_sha256,
                              trusted_proposal_roots=trusted_proposal_roots,
-                             verifier_key=verifier_key)
+                             verifier_key=verifier_key, champion=champion,
+                             trusted_suite_roots=trusted_suite_roots)
     if actual != result:
         raise ValueError("curriculum restart mismatch")
     return True
