@@ -85,3 +85,95 @@ def test_changed_physical_family_count_refuses_stale_audit(monkeypatch) -> None:
     monkeypatch.setattr(terminal.mixture, "stage_mixture", multiple_families)
     with pytest.raises(terminal.QualificationDenied, match="source-family count changed"):
         terminal.audit(ROOT)
+
+
+def _signed_gate(path: Path, **fields):
+    core = {"training_corpus_authorized": False, **fields}
+    result = {**core, "manifest_sha256": terminal._digest(terminal._canonical(core))}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(terminal._canonical(result))
+    return result
+
+
+def test_physical_gate_self_hash_and_authority_fail_closed(tmp_path: Path) -> None:
+    path = tmp_path / "privacy-manifest.json"
+    proof = _signed_gate(path, candidate_record_count=2)
+    assert terminal._read_gate(path) == proof
+    forged = {**proof, "training_corpus_authorized": True}
+    core = {k: v for k, v in forged.items() if k != "manifest_sha256"}
+    forged["manifest_sha256"] = terminal._digest(terminal._canonical(core))
+    path.write_bytes(terminal._canonical(forged))
+    with pytest.raises(terminal.QualificationDenied, match="authorizes training"):
+        terminal._read_gate(path)
+    forged["training_corpus_authorized"] = False
+    path.write_bytes(terminal._canonical(forged))
+    with pytest.raises(terminal.QualificationDenied, match="hash mismatch"):
+        terminal._read_gate(path)
+
+
+def test_physical_chain_rejects_disconnected_signed_receipts(tmp_path: Path) -> None:
+    candidate = tmp_path / "physical-candidate"
+    fw = candidate / "firewall"
+    near = fw / "near"
+    exact = near / "exact"
+    privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
+    exact_receipt = _signed_gate(
+        exact / "exact-dedup-manifest.json",
+        sources=[{"privacy_manifest_sha256": privacy["manifest_sha256"]}],
+    )
+    near_receipt = _signed_gate(
+        near / "near-dedup-manifest.json",
+        upstream_exact_manifest_sha256=exact_receipt["manifest_sha256"],
+    )
+    reserved = _signed_gate(
+        fw / "reserved-eval-firewall-manifest.json",
+        physical_s7_manifest_sha256=near_receipt["manifest_sha256"],
+        real_final_test_material_accessed=False,
+    )
+    mixture_core = {
+        "training_corpus_authorized": False,
+        "physical_s8_manifest_sha256": reserved["manifest_sha256"],
+    }
+    mixture_hash = terminal._digest(terminal._canonical(mixture_core))
+    mixture = {**mixture_core, "dataset_candidate_sha256": mixture_hash}
+    (candidate / "corpus-mixture-manifest.json").write_bytes(
+        terminal._canonical(mixture)
+    )
+    observed = terminal._audit_physical_gates(candidate, mixture_hash)
+    assert observed["reserved_eval"] == reserved["manifest_sha256"]
+    _signed_gate(
+        near / "near-dedup-manifest.json",
+        upstream_exact_manifest_sha256="0" * 64,
+    )
+    with pytest.raises(terminal.QualificationDenied, match="lineage disconnected"):
+        terminal._audit_physical_gates(candidate, mixture_hash)
+
+
+def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
+    candidate = tmp_path / "physical-candidate"
+    fw = candidate / "firewall"
+    near = fw / "near"
+    exact = near / "exact"
+    privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
+    exact_receipt = _signed_gate(
+        exact / "exact-dedup-manifest.json",
+        sources=[{"privacy_manifest_sha256": privacy["manifest_sha256"]}],
+    )
+    near_receipt = _signed_gate(
+        near / "near-dedup-manifest.json",
+        upstream_exact_manifest_sha256=exact_receipt["manifest_sha256"],
+    )
+    reserved = _signed_gate(
+        fw / "reserved-eval-firewall-manifest.json",
+        physical_s7_manifest_sha256=near_receipt["manifest_sha256"],
+    )
+    altered = {
+        "training_corpus_authorized": True,
+        "physical_s8_manifest_sha256": reserved["manifest_sha256"],
+    }
+    forged_hash = terminal._digest(terminal._canonical(altered))
+    (candidate / "corpus-mixture-manifest.json").write_bytes(
+        terminal._canonical({**altered, "dataset_candidate_sha256": forged_hash})
+    )
+    with pytest.raises(terminal.QualificationDenied, match="lineage disconnected"):
+        terminal._audit_physical_gates(candidate, forged_hash)
