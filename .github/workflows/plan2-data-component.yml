@@ -44,6 +44,19 @@ jobs:
           python tools/plan2_privacy_gate_v1.py --out-dir "${RUNNER_TEMP}/plan2-privacy-candidate" > "${RUNNER_TEMP}/plan2-privacy-first.json"
           python tools/plan2_privacy_gate_v1.py --out-dir "${RUNNER_TEMP}/plan2-privacy-candidate" > "${RUNNER_TEMP}/plan2-privacy-restart.json"
           cmp "${RUNNER_TEMP}/plan2-privacy-first.json" "${RUNNER_TEMP}/plan2-privacy-restart.json"
+      - name: Lint Plan 2 Section 6 exact cohort adapter and tests
+        run: ruff check tools/plan2_exact_dedup_v1.py tests/test_plan2_exact_dedup_v1.py
+      - name: Qualify Plan 2 Section 6 exact global families, tamper and restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_exact_dedup_v1.py
+      - name: Replay exact dedup CLI and clean restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_exact_dedup_v1.py --out-dir "$RUNNER_TEMP/plan2-exact-candidate" > "$RUNNER_TEMP/plan2-exact-first.json"
+          python tools/plan2_exact_dedup_v1.py --out-dir "$RUNNER_TEMP/plan2-exact-candidate" > "$RUNNER_TEMP/plan2-exact-restart.json"
+          python tools/plan2_exact_dedup_v1.py --out-dir "$RUNNER_TEMP/plan2-exact-clean" > "$RUNNER_TEMP/plan2-exact-clean.json"
+          cmp "$RUNNER_TEMP/plan2-exact-first.json" "$RUNNER_TEMP/plan2-exact-restart.json"
+          cmp "$RUNNER_TEMP/plan2-exact-first.json" "$RUNNER_TEMP/plan2-exact-clean.json"
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
