@@ -169,6 +169,11 @@ def require_reviewed_code(
 def _hash_regular_archive(path: str | Path) -> str:
     """Digest an actual regular review artifact without trusting path/symlink aliases."""
     source = Path(path)
+
+    def fingerprint(info: os.stat_result) -> tuple[int, int, int, int, int]:
+        # Catch in-place, same-size replacement during archive verification.
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
     before = source.lstat()
     if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
         raise ValueError("review artifact must be a regular non-symlink file")
@@ -179,17 +184,13 @@ def _hash_regular_archive(path: str | Path) -> str:
         raise ValueError("review artifact cannot be opened safely") from exc
     try:
         opened = os.fstat(handle)
-        if not stat.S_ISREG(opened.st_mode) or (
-            before.st_dev, before.st_ino, before.st_size
-        ) != (opened.st_dev, opened.st_ino, opened.st_size):
+        if not stat.S_ISREG(opened.st_mode) or fingerprint(before) != fingerprint(opened):
             raise ValueError("review artifact changed while opening")
         digest = hashlib.sha256()
         while chunk := os.read(handle, 1024 * 1024):
             digest.update(chunk)
         after = os.fstat(handle)
-        if (opened.st_dev, opened.st_ino, opened.st_size) != (
-            after.st_dev, after.st_ino, after.st_size
-        ):
+        if fingerprint(opened) != fingerprint(after):
             raise ValueError("review artifact changed while reading")
         return digest.hexdigest()
     finally:

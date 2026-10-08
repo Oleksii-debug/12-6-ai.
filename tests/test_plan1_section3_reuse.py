@@ -447,3 +447,27 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
     installed.record = unpinned_record
     with pytest.raises(ValueError, match="unhashed"):
         check(record_pin=hashlib.sha256(unpinned_record.encode()).hexdigest())
+
+def test_same_size_in_place_mutation_during_archive_digest_is_rejected(monkeypatch, tmp_path):
+    """A trusted digest must not attest to an already rewritten source archive."""
+    import os
+
+    from twelve_six.third_party_reuse import _hash_regular_archive
+
+    archive = tmp_path / "reviewed.whl"
+    archive.write_bytes(b"A" * 4096)
+    original_read = os.read
+    replaced = False
+
+    def read_then_replace(fd, size):
+        nonlocal replaced
+        chunk = original_read(fd, size)
+        if chunk and not replaced:
+            archive.write_bytes(b"B" * 4096)
+            replaced = True
+        return chunk
+
+    monkeypatch.setattr(os, "read", read_then_replace)
+    with pytest.raises(ValueError, match="changed while reading"):
+        _hash_regular_archive(archive)
+    assert replaced
