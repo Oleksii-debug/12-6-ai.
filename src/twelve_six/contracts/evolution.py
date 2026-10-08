@@ -112,6 +112,9 @@ def validate_version_change(value: Mapping[str, Any]) -> dict[str, Any]:
             or value.get("auto_migrate_existing_artifacts") is not False
             or value.get("reopen_terminal_plans") is not False):
         raise ContractEvolutionError("declaration cannot assert approval or mutation")
+    plans = value["affected_plans"]
+    if type(plans) is not list:
+        raise ContractEvolutionError("affected plans must be a JSON list")
     rebuilt = propose_version_change(
         contract_kind=value["contract_kind"],
         previous_version=value["previous_version"],
@@ -120,7 +123,7 @@ def validate_version_change(value: Mapping[str, Any]) -> dict[str, Any]:
         next_fields=value["next_fields"],
         migration_fixture_sha256=value["migration_fixture_sha256"],
         deprecation_notice=value["deprecation_notice"],
-        affected_plans=tuple(value["affected_plans"]),
+        affected_plans=tuple(plans),
         compatibility_test_sha256=value["compatibility_test_sha256"],
     )
     if rebuilt != value:
