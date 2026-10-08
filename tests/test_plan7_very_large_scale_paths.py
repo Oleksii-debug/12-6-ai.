@@ -4,7 +4,7 @@ from dataclasses import asdict, replace
 
 import pytest
 
-from twelve_six.billion_systems_gate import shard_manifest
+from twelve_six.billion_systems_gate import _digest, shard_manifest
 from twelve_six.large_scale_paths import LargeAdapter, LargeCapacity, LargeLimits, LargePathDenied
 from twelve_six.very_large_scale_paths import (
     MultiNodeEvidence, assess_very_large, very_large_recipe, very_large_spec,
@@ -23,7 +23,8 @@ def fixtures(tier="30B", mode="DENSE"):
                            "e" * 64, True, True, True, True, True)
     nodes = tuple(f"node-{i:02d}" for i in range(8))
     placement = tuple(n for n in nodes for _ in range(8))
-    topology = MultiNodeEvidence(1, nodes, placement, "f" * 64,
+    placement_hash = _digest({"node_ids": nodes, "worker_nodes": placement})
+    topology = MultiNodeEvidence(1, nodes, placement, placement_hash,
                                  r["recipe_sha256"], "1" * 64,
                                  2.0, 500.0, True, True, True)
     pieces = (b"node-checkpoint-0", b"node-checkpoint-1")
@@ -66,6 +67,9 @@ def test_topology_node_loss_reduces_admission_and_preserves_run():
     assert "memory_denied" in lost["reasons"]
     with pytest.raises(LargePathDenied, match="scientific run identity"):
         assess_very_large("100B", "DENSE", *args, recovered_run_sha256="2" * 64)
+    with pytest.raises(LargePathDenied, match="data order changed"):
+        assess_very_large("100B", "DENSE", *args,
+                          recovered_data_order_sha256="0" * 64)
     with pytest.raises(LargePathDenied, match="unknown lost node"):
         assess_very_large("100B", "DENSE", *args, failed_node="not-a-node")
 
@@ -109,6 +113,7 @@ def test_topology_identity_checkpoint_transport_and_adversarial():
                           replace(t, scientific_recipe_sha256="0" * 64),
                           shards, manifest)
     for change in ({"dollars_per_node_hour": float("nan")},
+                   {"topology_sha256": "f" * 64},
                    {"worker_nodes": t.worker_nodes[::-1]},
                    {"transport_roundtrip_tested": "true"}):
         with pytest.raises(ValueError):
