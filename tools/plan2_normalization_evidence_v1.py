@@ -23,9 +23,17 @@ from tools.plan2_physical_materialization_v1 import (
 POLICY_FILE = "configs/data/plan2_normalization_policy_v1.json"
 POLICY_SCHEMA = "12-6.plan2-normalization-policy.v1"
 MANIFEST_SCHEMA = "12-6.plan2-normalization-manifest.v1"
-POLICY_KEYS = {
-    "schema_version", "policy_id", "implementation", "encoding", "unicode",
-    "line_endings", "record_boundary", "language", "modality", "downstream_binding",
+SUPPORTED_POLICY = {
+    "schema_version": POLICY_SCHEMA,
+    "policy_id": "data324-uk-markdown-nfkc-lf.v1",
+    "implementation": "tools/materialize_data324_kubernetes_ua.py:normalize_markdown_uk",
+    "encoding": "UTF-8 strict",
+    "unicode": "NFKC",
+    "line_endings": "LF",
+    "record_boundary": "nonempty-normalized-line",
+    "language": "incumbent-UA-threshold-else-und",
+    "modality": "verified-strict-readable-text-only",
+    "downstream_binding": "policy_sha256+raw_sha256+normalized_sha256",
 }
 
 
@@ -50,11 +58,7 @@ def _policy(root: Path) -> tuple[dict[str, str], str]:
         policy = json.loads(source.read_text(encoding="utf-8"))
     except (ValueError, UnicodeError) as exc:
         raise NormalizationEvidenceError("invalid normalization policy") from exc
-    if (not isinstance(policy, dict) or set(policy) != POLICY_KEYS or
-            not all(isinstance(v, str) and v for v in policy.values()) or
-            policy["schema_version"] != POLICY_SCHEMA or
-            policy["implementation"] !=
-            "tools/materialize_data324_kubernetes_ua.py:normalize_markdown_uk"):
+    if not isinstance(policy, dict) or policy != SUPPORTED_POLICY:
         raise NormalizationEvidenceError("unsupported normalization policy")
     return policy, _sha(_canonical(policy))
 
