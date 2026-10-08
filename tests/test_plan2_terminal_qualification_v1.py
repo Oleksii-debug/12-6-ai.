@@ -114,6 +114,40 @@ def test_physical_gate_self_hash_and_authority_fail_closed(tmp_path: Path) -> No
         terminal._read_gate(path)
 
 
+def test_partial_s5_s6_source_privacy_coverage_is_refused(tmp_path: Path) -> None:
+    """One good S5 receipt must not cover a forged second S6 source."""
+    candidate = tmp_path / "physical-candidate"
+    firewall = candidate / "firewall"
+    near = firewall / "near"
+    exact = near / "exact"
+    privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
+    dedup = _signed_gate(
+        exact / "exact-dedup-manifest.json",
+        sources=[
+            {"privacy_manifest_sha256": privacy["manifest_sha256"]},
+            {"privacy_manifest_sha256": "0" * 64},
+        ],
+    )
+    near_receipt = _signed_gate(
+        near / "near-dedup-manifest.json",
+        upstream_exact_manifest_sha256=dedup["manifest_sha256"],
+    )
+    reserved = _signed_gate(
+        firewall / "reserved-eval-firewall-manifest.json",
+        physical_s7_manifest_sha256=near_receipt["manifest_sha256"],
+    )
+    core = {
+        "training_corpus_authorized": False,
+        "physical_s8_manifest_sha256": reserved["manifest_sha256"],
+    }
+    mixture_hash = terminal._digest(terminal._canonical(core))
+    (candidate / "corpus-mixture-manifest.json").write_bytes(
+        terminal._canonical({**core, "dataset_candidate_sha256": mixture_hash})
+    )
+    with pytest.raises(terminal.QualificationDenied, match="S5-S6 privacy"):
+        terminal._audit_physical_gates(candidate, mixture_hash)
+
+
 def test_physical_chain_rejects_disconnected_signed_receipts(tmp_path: Path) -> None:
     candidate = tmp_path / "physical-candidate"
     fw = candidate / "firewall"
