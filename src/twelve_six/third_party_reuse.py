@@ -322,3 +322,119 @@ def prepare_trusted_base_checkpoint(
     ):
         raise ValueError("Base InitSpec is not bound to checkpoint")
     return verified
+
+
+def verify_installed_wheel_record(
+    package: str,
+    *,
+    expected_version: str,
+    independently_pinned_record_sha256: str,
+) -> dict[str, str | int]:
+    """Verify actual installed wheel bytes against an independently trusted RECORD pin.
+
+    The RECORD itself is self-declared and NOT evidence unless its SHA-256 was
+    independently authenticated outside this installation. This is a bounded
+    installed-byte integrity check, not a source-license/security review or
+    an authorization to use a dataset, model, or unreviewed wheel.
+    """
+    import base64
+    import csv
+    import io
+    from importlib import metadata
+    from pathlib import PurePosixPath
+
+    if type(package) is not str or not re.fullmatch(r"[A-Za-z0-9_.-]{2,100}", package):
+        raise ValueError("invalid distribution name")
+    if type(expected_version) is not str or not expected_version.strip():
+        raise ValueError("exact installed version required")
+    if not _hash(independently_pinned_record_sha256):
+        raise ValueError("independent installed RECORD pin required")
+
+    normalize = lambda value: re.sub(r"[-_.]+", "-", value).lower()
+    dist = metadata.distribution(package)
+    actual_name = dist.metadata.get("Name")
+    if (
+        type(actual_name) is not str
+        or normalize(actual_name) != normalize(package)
+        or dist.version != expected_version
+    ):
+        raise ValueError("installed distribution identity/version drift")
+    record = dist.read_text("RECORD")
+    if type(record) is not str:
+        raise ValueError("installed wheel RECORD missing")
+    raw_record = record.encode("utf-8")
+    if not raw_record or len(raw_record) > 4 * 1024 * 1024:
+        raise ValueError("installed RECORD out of bounds")
+    observed_pin = hashlib.sha256(raw_record).hexdigest()
+    if not hmac.compare_digest(observed_pin, independently_pinned_record_sha256):
+        raise ValueError("installed RECORD pin drift")
+
+    try:
+        rows = list(csv.reader(io.StringIO(record), strict=True))
+    except csv.Error as exc:
+        raise ValueError("invalid wheel RECORD CSV") from exc
+    if not rows or len(rows) > 50000:
+        raise ValueError("invalid installed file inventory size")
+
+    observed_paths: set[str] = set()
+    self_records = 0
+    verified_files = 0
+    for row in rows:
+        if len(row) != 3:
+            raise ValueError("invalid wheel RECORD row")
+        name, digest_field, size_field = row
+        relative = PurePosixPath(name)
+        if (
+            not name
+            or name.startswith(("/", "\\"))
+            or "\\" in name
+            or ":" in name
+            or relative.is_absolute()
+            or any(part in ("", ".", "..") for part in name.split("/"))
+            or name in observed_paths
+        ):
+            raise ValueError("unsafe or duplicate installed file path")
+        observed_paths.add(name)
+        if not digest_field:
+            if (
+                not name.endswith(".dist-info/RECORD")
+                or size_field
+                or self_records
+            ):
+                raise ValueError("unhashed installed file")
+            self_records += 1
+            continue
+        if not digest_field.startswith("sha256=") or not size_field.isdecimal():
+            raise ValueError("unsupported installed file hash/size")
+        try:
+            encoded = digest_field.removeprefix("sha256=")
+            decoded = base64.b64decode(
+                encoded + "=" * ((-len(encoded)) % 4),
+                altchars=b"-_", validate=True,
+            )
+        except (ValueError, base64.binascii.Error) as exc:
+            raise ValueError("invalid wheel RECORD digest") from exc
+        if len(decoded) != 32:
+            raise ValueError("invalid installed digest length")
+        location = dist.locate_file(name)
+        if str(location) == name:
+            raise ValueError("unresolved installed file location")
+        path = Path(location)
+        try:
+            size = path.lstat().st_size
+            actual_hash = _hash_regular_archive(path)
+        except (OSError, ValueError) as exc:
+            raise ValueError("installed file unavailable or unsafe") from exc
+        if size != int(size_field) or not hmac.compare_digest(
+            bytes.fromhex(actual_hash), decoded
+        ):
+            raise ValueError("installed file contents drift")
+        verified_files += 1
+    if self_records != 1 or not verified_files:
+        raise ValueError("incomplete installed RECORD")
+    return {
+        "distribution": normalize(actual_name),
+        "version": dist.version,
+        "record_sha256": observed_pin,
+        "verified_files": verified_files,
+    }
