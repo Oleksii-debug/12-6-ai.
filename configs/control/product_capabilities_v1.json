@@ -794,7 +794,7 @@
     {
       "capability_id": "ai-qa-repair-control",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.ai_qa_control",
       "dependencies": [
         "github-sil-qualification"
@@ -805,7 +805,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -824,10 +824,18 @@
         {
           "evidence_id": "section4-pr",
           "target": "pull-request:3080"
+        },
+        {
+          "evidence_id": "section4-qualification-ci",
+          "target": "github-actions:37659977022"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37633474478"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 4 candidate is not integrated; terminal exact-head CI/SIL, independent promotion evidence, accepted-main integration and post-merge readback remain required."
+      "integrated_result": "PR #3080 integrated into main; exact-head Ruff/pytest/SIL verification succeeded at github-actions:37659977022; independent evidence artifact 11501485066; no physical, training or release authority.",
+      "unavailable_reason": null
     },
     {
       "capability_id": "post-base-research-verification",
