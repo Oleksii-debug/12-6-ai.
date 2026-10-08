@@ -176,3 +176,34 @@ def test_adversarial_types_and_untrusted_verifiers(tmp_path):
     with pytest.raises(SchedulerError, match="epoch"):
         tasks.resume("a")
         sched.complete(lease, outcome="done", evidence_id="receipt", verify_evidence=trust)
+
+
+def test_crash_resume_epoch_requires_attested_reconciliation(tmp_path):
+    tasks, sched, policy = make(tmp_path)
+    add(tasks, sched)
+    lease = sched.offer(now=100, reading=reading(), verify_reading=trust)
+    tasks.resume("a")
+    recovered = SchedulerStore(sched.path, TaskStore(tasks.path), policy)
+    assert recovered.offer(now=100, reading=reading(), verify_reading=trust) is None
+    with pytest.raises(SchedulerError, match="verified"):
+        recovered.reconcile_interrupted(lease, checkpoint_id="stop-proof",
+                                        verifier=lambda *_: False)
+    recovered.reconcile_interrupted(lease, checkpoint_id="stop-proof", verifier=trust)
+    recovered.retry_checkpoint("a", evidence_id="stop-proof", verifier=trust)
+    next_lease = recovered.offer(now=100, reading=reading(), verify_reading=trust)
+    assert next_lease.control_epoch == 1 and next_lease.attempt == 2
+
+
+def test_unresolved_effect_refuses_stranded_lease_reconciliation(tmp_path):
+    tasks, sched, _ = make(tmp_path)
+    add(tasks, sched)
+    lease = sched.offer(now=100, reading=reading(), verify_reading=trust)
+    snap = tasks.checkpoint(
+        "a", expected_epoch=0, expected_revision=0, step_id="s1",
+        checkpoint_id="c1", pending_effects=(PendingEffect("e1", "unsafe"),),
+    )
+    tasks.issue_effect("a", "e1", expected_epoch=0, expected_revision=snap.revision)
+    tasks.resume("a")
+    with pytest.raises(SchedulerError, match="incomplete"):
+        sched.reconcile_interrupted(lease, checkpoint_id="receipt", verifier=trust)
+    assert sched.snapshot()[0]["state"] == "running"
