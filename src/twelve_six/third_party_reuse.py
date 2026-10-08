@@ -72,6 +72,20 @@ def _strict(raw: bytes) -> dict[str, Any]:
         raise ValueError("invalid strict JSON") from exc
     if type(value) is not dict:
         raise ValueError("object root required")
+    # Python's C JSON encoder/decoder may accept nesting far deeper than the
+    # interpreter recursion limit. Put a deterministic platform-independent
+    # structural bound on all catalog, genesis, and Base lineage claims.
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    observed_nodes = 0
+    while pending:
+        item, depth = pending.pop()
+        observed_nodes += 1
+        if depth > 64 or observed_nodes > 32768:
+            raise ValueError("strict JSON nesting/node budget exceeded")
+        if type(item) is dict:
+            pending.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            pending.extend((child, depth + 1) for child in item)
     return value
 
 
