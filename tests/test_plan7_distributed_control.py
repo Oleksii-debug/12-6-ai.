@@ -5,15 +5,15 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.distributed_control import (
+    DistributedDenied,
+    ParallelMesh,
+    ResourceAdmission,
     adapter_packet,
     admit_distributed,
     begin_run,
     begin_step,
     bind_expert_groups,
     commit_step,
-    DistributedDenied,
-    ParallelMesh,
-    ResourceAdmission,
     resume_after_loss,
 )
 from twelve_six.extreme_moe_paths import MoEPolicy
