@@ -45,10 +45,13 @@ integration at tiny CPU scale:
    memory/checkpoint/throughput; unbound/forged proxy and 300M bridge reuse
    do not receive authorization.
 
-The dedicated workflow `plan7-terminal-qualification.yml` also runs the
-incumbent S2/S5/S6/S10/S11 tests (plus Ruff and compileall) on the same PR
-candidate. A green or queued workflow on a different SHA does not qualify
-a moved candidate. Exact-head readback and accepted-main readback are required.
+The canonical shared `.github/workflows/ci.yml` runs Ruff and repository
+pytest on the exact candidate SHA. The former dedicated Plan-7 S12 workflow
+was removed because `ci_workflow_policy.py` prohibits additional workflows.
+The scoped S2/S5/S6/S10/S11 plus S12 suite must be qualified independently
+when the shared runner is unavailable; static review alone is not pytest PASS.
+A green or queued workflow on a different SHA does not qualify a moved candidate.
+Exact-head readback and accepted-main readback are required.
 
 ## Truth and resource boundary
 
