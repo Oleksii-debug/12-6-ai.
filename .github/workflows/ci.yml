@@ -32,6 +32,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Plan 7 S12 LOCAL_FREE exact-head component qualification
+        if: github.event_name == 'pull_request' && github.head_ref == 'plan7/s12-terminal-scaling-qualification-20261008'
+        run: |
+          python -m ruff check tests/test_plan7_terminal_scaling_qualification.py
+          python -m pytest -q tests/test_plan7_*.py
       - run: ruff check src tests
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
