@@ -832,7 +832,7 @@
     {
       "capability_id": "post-base-research-verification",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.research_engine.ResearchTrial",
       "dependencies": [
         "unified-generation-identity"
@@ -843,7 +843,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -864,8 +864,47 @@
           "target": "pull-request:3101"
         }
       ],
+      "integrated_result": "Accepted main PR #3101 merge 5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67, exact-Git-blob 16-pass local fixture verification, independent five-stage receipt verifier; GitHub Actions #37728070229 queued, not marked green",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "post-base-instruction-descendant",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.instruction_post_training.InstructionRecipe",
+      "dependencies": [
+        "unified-generation-identity",
+        "post-base-research-verification"
+      ],
+      "journey_ids": [
+        "researcher-train-instruction-descendant-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-instruction-component",
+          "level": "component",
+          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py"
+        },
+        {
+          "vector_id": "plan6-instruction-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_instruction_post_training_plan6_section2.py tests/test_trainer_checkpoint_adapter.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-section2-scope",
+          "target": "source:src/twelve_six/instruction_post_training.py"
+        }
+      ],
       "integrated_result": null,
-      "unavailable_reason": "Plan 6 Section 1 candidate #3101 awaits exact-head CI, integration and post-merge readback; no Base mutation or model promotion is authorized."
+      "unavailable_reason": "Plan 6 Section 2 candidate awaiting exact-head component/adversarial qualification, integration and accepted-main readback. CPU fixture is not training authorization."
     }
   ],
   "journeys": [
@@ -1011,6 +1050,13 @@
       "title": "Researcher runs independent replayable post-Base research verification",
       "capability_ids": [
         "post-base-research-verification"
+      ]
+    },
+    {
+      "journey_id": "researcher-train-instruction-descendant-fixture",
+      "title": "Researcher verifies provenance-gated instruction descendant against preserved Base CPU fixture",
+      "capability_ids": [
+        "post-base-instruction-descendant"
       ]
     }
   ]
