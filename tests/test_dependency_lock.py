@@ -40,7 +40,7 @@ def test_committed_index_binds_complete_profile_set() -> None:
     assert set(index["profiles"]) == SUPPORTED_PROFILES
     assert index["python_version"] == EXACT_PYTHON_VERSION
     assert index["index_sha256"] == (
-        "ab8f32448b06ad65b8e6541c55e9c653659fde5925034a3007a0cf0a787dedc3"
+        "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
     )
 
 
