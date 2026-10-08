@@ -68,6 +68,10 @@ jobs:
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-first.json"
           python tools/plan2_near_dedup_v1.py --out-dir "${RUNNER_TEMP}/plan2-near" > "${RUNNER_TEMP}/plan2-near-restart.json"
           cmp "${RUNNER_TEMP}/plan2-near-first.json" "${RUNNER_TEMP}/plan2-near-restart.json"
+      - name: Lint Plan 2 Section 8 reserved evaluation firewall
+        run: ruff check tools/plan2_reserved_firewall_v1.py tests/test_plan2_reserved_firewall_v1.py
+      - name: Verify S8 independent reservation, DATA-232, teacher block and restart
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_reserved_firewall_v1.py
       - name: Materialize source-level candidate and replay exact restart
         shell: bash
         run: |
