@@ -1,7 +1,6 @@
 """Plan 4 S6: exact local/HTTP service semantics, recovery and adversarial tests."""
 from __future__ import annotations
 
-import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError
