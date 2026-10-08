@@ -17,12 +17,13 @@ from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destina
 
 SCHEMA = "12-6.plan2.public-domain-physical-audit.v1"
 CATALOG = "configs/data/plan2_public_domain_books_v1.json"
-CATALOG_BLOB = "3336231ed17550c9aa1fe27b3bc27295970b79d9"
+CATALOG_BLOB = "f7328b939e6e5a44c18d50c2ab0c10c84b3f5d13"
 OUTPUT = "public-domain-physical-manifest.json"
 PREFIX = "data/external/snapshots/plan2-public-domain-books-v1/"
 HEX40 = re.compile(r"[a-f0-9]{40}\Z")
 HEX64 = re.compile(r"[a-f0-9]{64}\Z")
 LICENSE_BLOB = "8d062dda262bcdc42d45b861bd796117feb6d0fe"
+GUTENBERG_FAMILY = "en.project-gutenberg.public-domain-books"
 
 
 class BookCohortDenied(ValueError):
@@ -86,6 +87,10 @@ def inspect(root: Path) -> dict[str, Any]:
          "12-6.plan2.public-domain-book-cohort.v1" and
          catalog.get("release_status") == "PHYSICAL_SNAPSHOT_ONLY_NOT_TRAINING_READY" and
          catalog.get("book_count") == 3 and
+         catalog.get("source_family_count") == 1 and
+         catalog.get("document_family_count") == 3 and
+         catalog.get("incumbent_source_family_authority") ==
+         "configs/data/next100_107_gutenberg_terminal_seal_v1.json" and
          catalog.get("training_authorized") is False and
          catalog.get("tokenizer_fit_authorized") is False and
          catalog.get("production_release_authorized") is False and
@@ -96,12 +101,14 @@ def inspect(root: Path) -> dict[str, Any]:
          "physical book sources are incomplete")
     book_ids: set[str] = set()
     families: set[str] = set()
+    document_families: set[str] = set()
     upstreams: set[tuple[str, str]] = set()
     records: list[dict[str, Any]] = []
     total = 0
     for source in sources:
         need(type(source) is dict, "invalid book metadata")
         source_id, family = source.get("source_id"), source.get("source_family")
+        document_family = source.get("document_family")
         author, title = source.get("author"), source.get("title")
         revision = source.get("source_revision")
         path = source.get("snapshot_path")
@@ -110,12 +117,16 @@ def inspect(root: Path) -> dict[str, Any]:
         need(all(type(v) is str and v for v in (
             source_id, family, author, title, revision, path, origin, source_file
         )), "book provenance incomplete")
-        need(source_id not in book_ids and family not in families,
-             "duplicate book identity or falsely independent family")
+        need(type(document_family) is str and bool(document_family) and
+             source_id not in book_ids and
+             document_family not in document_families and
+             family == GUTENBERG_FAMILY,
+             "duplicate book or false source-family identity")
         need((origin, source_file) not in upstreams,
              "duplicate upstream source presented as independent")
         book_ids.add(source_id)
         families.add(family)
+        document_families.add(document_family)
         upstreams.add((origin, source_file))
         need(HEX40.fullmatch(revision) is not None and
              HEX40.fullmatch(source.get("source_git_blob_sha1", "")) is not None and
@@ -148,6 +159,7 @@ def inspect(root: Path) -> dict[str, Any]:
         records.append({
             "source_id": source_id,
             "source_family": family,
+            "document_family": document_family,
             "author": author,
             "title": title,
             "snapshot_path": path,
@@ -157,12 +169,14 @@ def inspect(root: Path) -> dict[str, Any]:
             "source_revision": revision,
         })
     need(total >= 1_000_000, "incomplete bounded real-text cohort")
-    need(len(book_ids) == len(families) == len(upstreams) == 3,
-         "independent source lineages missing")
+    need(len(book_ids) == len(document_families) == len(upstreams) == 3
+         and families == {GUTENBERG_FAMILY},
+         "independent documents or canonical family identity missing")
     core = {
         "schema_version": SCHEMA,
         "source_catalog_git_blob": CATALOG_BLOB,
         "physical_source_families": len(families),
+        "physical_document_families": len(document_families),
         "physical_source_bytes": total,
         "books": sorted(records, key=lambda item: item["source_id"]),
         "decision": "REAL_BOOK_SNAPSHOTS_VERIFIED_CANDIDATE_ONLY",
