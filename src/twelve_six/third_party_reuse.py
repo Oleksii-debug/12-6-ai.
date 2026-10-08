@@ -13,6 +13,7 @@ import re
 import stat
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 HEX = re.compile(r"^[0-9a-f]{64}$")
 AUTHORITIES = {
@@ -93,6 +94,26 @@ def _reviewable_spdx_conjunction(value: object) -> bool:
     )
 
 
+def _valid_https_source(value: object) -> bool:
+    """Reject ambiguous or unauthenticatable external code-source URLs."""
+    if type(value) is not str or not value or len(value) > 2048:
+        return False
+    if any(char.isspace() or ord(char) < 33 or ord(char) == 127 for char in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        return (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.fragment == ""
+            and (parsed.port is None or parsed.port > 0)
+        )
+    except ValueError:
+        return False
+
+
 def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
     payload = _strict(raw)
     if set(payload) != {"schema_version", "canonical_authorities", "assets"}:
@@ -147,9 +168,7 @@ def validate_reuse_catalog(raw: bytes) -> dict[str, Any]:
             raise ValueError("unknown security posture")
         if not _reviewable_spdx_conjunction(asset["license_spdx"]):
             raise ValueError("unknown/incompatible license")
-        if type(asset["upstream_url"]) is not str or not asset["upstream_url"].startswith(
-            "https://"
-        ):
+        if not _valid_https_source(asset["upstream_url"]):
             raise ValueError("missing HTTPS source")
         if (
             type(asset["version"]) is not str
