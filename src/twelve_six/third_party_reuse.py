@@ -105,6 +105,18 @@ def _valid_https_source(value: object) -> bool:
         return (
             parsed.scheme == "https"
             and bool(parsed.hostname)
+            # URL parsers permit non-DNS hosts like "." and "example..org".
+            # An independently reviewable HTTPS code origin must have a
+            # bounded, well-formed ASCII DNS hostname.
+            and len(parsed.hostname) <= 253
+            and "." in parsed.hostname
+            and all(
+                re.fullmatch(
+                    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",
+                    label,
+                )
+                for label in parsed.hostname.split(".")
+            )
             # Unicode confusables and encoded authority delimiters cannot be
             # independently reviewed as an unambiguous source origin.
             and parsed.netloc.isascii()
