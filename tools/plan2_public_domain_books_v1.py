@@ -20,8 +20,8 @@ CATALOG = "configs/data/plan2_public_domain_books_v1.json"
 CATALOG_BLOB = "3336231ed17550c9aa1fe27b3bc27295970b79d9"
 OUTPUT = "public-domain-physical-manifest.json"
 PREFIX = "data/external/snapshots/plan2-public-domain-books-v1/"
-HEX40 = re.compile(r"[a-f0-9]{40}\\Z")
-HEX64 = re.compile(r"[a-f0-9]{64}\\Z")
+HEX40 = re.compile(r"[a-f0-9]{40}\Z")
+HEX64 = re.compile(r"[a-f0-9]{64}\Z")
 LICENSE_BLOB = "8d062dda262bcdc42d45b861bd796117feb6d0fe"
 
 
@@ -44,12 +44,12 @@ def sha(raw: bytes) -> str:
 
 
 def git_blob(raw: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
 
 
 def read_checked(root: Path, name: str) -> bytes:
     """Never follow a source symlink, absolute path or dot-dot component."""
-    need(type(name) is str and bool(name) and "\\\\" not in name,
+    need(type(name) is str and bool(name) and "\\" not in name,
          "invalid source pathname")
     relative = Path(name)
     need(not relative.is_absolute() and all(p not in {".", "..", ""}
@@ -127,7 +127,7 @@ def inspect(root: Path) -> dict[str, Any]:
         need(type(death) is int and death <= 1900,
              "author-date public-domain basis not established")
         need(path.startswith(PREFIX) and
-             re.fullmatch(r"[a-z0-9-]+\\.en\\.txt", path[len(PREFIX):])
+             re.fullmatch(r"[a-z0-9-]+\.en\.txt", path[len(PREFIX):])
              is not None, "book snapshot path not versioned")
         payload = read_checked(root, path)
         need(type(source.get("normalized_bytes")) is int and
