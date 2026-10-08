@@ -159,6 +159,8 @@ class ModelService:
             raise ServiceError("NOT_READY", "restart or unload faulted service first")
         if swap and self._status != "READY":
             raise ServiceError("NOT_READY", "swap needs a ready current model")
+        if swap:
+            self._get_runtime()  # A drifted incumbent cannot be silently swapped away.
         if not swap and self._status != "UNLOADED":
             raise ServiceError("CONFLICT", "load requires unloaded service")
         if self._active():
