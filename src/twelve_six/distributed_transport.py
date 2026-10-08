@@ -120,8 +120,11 @@ def receive(plan: TransportPlan, owner: str, data: bytes,
     _, digest, size = matched[0]
     if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
         raise TransportDenied("transfer truncated or corrupted")
+    rate = size * 1000.0 / elapsed_ms
+    if not math.isfinite(rate):
+        raise TransportDenied("nonfinite transfer throughput")
     return TransferReceipt(plan.plan_sha256, owner, digest, size,
-                           float(elapsed_ms), size * 1000.0 / elapsed_ms)
+                           float(elapsed_ms), rate)
 
 
 def verify_receipts(plan: TransportPlan,
@@ -137,7 +140,9 @@ def verify_receipts(plan: TransportPlan,
     for expected, r in zip(plan.shards, receipts):
         if (r.plan_sha256 != plan.plan_sha256
                 or (r.owner, r.shard_sha256, r.byte_count) != expected
+                or type(r.elapsed_ms) not in (int, float)
                 or not math.isfinite(r.elapsed_ms) or r.elapsed_ms <= 0
+                or type(r.throughput_bytes_per_second) not in (int, float)
                 or not math.isfinite(r.throughput_bytes_per_second)
                 or abs(r.throughput_bytes_per_second
                        - r.byte_count * 1000.0 / r.elapsed_ms) > 1e-6):
