@@ -415,6 +415,7 @@ def verify_installed_wheel_record(
     import base64
     import csv
     import io
+    import sysconfig
     from importlib import metadata
     from pathlib import PurePosixPath
 
@@ -460,13 +461,30 @@ def verify_installed_wheel_record(
             raise ValueError("invalid wheel RECORD row")
         name, digest_field, size_field = row
         relative = PurePosixPath(name)
+        segments = name.split("/")
+        ordinary_entry = all(part not in ("", ".", "..") for part in segments)
+        # PEP 427 RECORD legitimately contains generated console scripts outside
+        # site-packages (e.g. NumPy f2py and PyTorch torchrun). Only the exact
+        # current environment's bin/Scripts directory is eligible; arbitrary
+        # "../" traversal and subdirectories remain forbidden.
+        scripts_entry = False
+        if (
+            len(segments) == 5
+            and segments[:3] == ["..", "..", ".."]
+            and segments[3] in ("bin", "Scripts")
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}", segments[4])
+        ):
+            scripts_dir = sysconfig.get_path("scripts")
+            if scripts_dir:
+                location = Path(os.path.abspath(os.fspath(dist.locate_file(name))))
+                scripts_entry = location.parent == Path(os.path.abspath(scripts_dir))
         if (
             not name
             or name.startswith(("/", "\\"))
             or "\\" in name
             or ":" in name
             or relative.is_absolute()
-            or any(part in ("", ".", "..") for part in name.split("/"))
+            or not (ordinary_entry or scripts_entry)
             or name in observed_paths
         ):
             raise ValueError("unsafe or duplicate installed file path")
