@@ -4,8 +4,13 @@ import pytest
 
 from twelve_six.post_base_instruction import canonical_digest
 from twelve_six.teacher_council import (
-    TeacherModel, TeacherPrompt, GatewayReply, gather_teacher_candidates,
-    attest_teacher_candidate, decide_teacher_council, attest_council_judge,
+    GatewayReply,
+    TeacherModel,
+    TeacherPrompt,
+    attest_council_judge,
+    attest_teacher_candidate,
+    decide_teacher_council,
+    gather_teacher_candidates,
 )
 
 H = "a" * 64
@@ -83,7 +88,7 @@ def test_conflicting_teachers_force_disagreement_until_independent_judge():
 
 
 def test_candidate_not_truth_without_verifier():
-    _, _, _, batch, proofs = fixture()
+    _, _, _, batch, _ = fixture()
     with pytest.raises(ValueError, match="missing"):
         decide(batch, ())
     rejected = tuple(
