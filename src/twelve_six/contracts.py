@@ -22,12 +22,18 @@ from twelve_six.artifact_identity import (
     verify_parent_bindings,
 )
 from twelve_six.system_architecture import (
+    CognitiveCoreBinding,
+    CognitiveCoreIdentity,
+    CoreReplacementReceipt,
     InterfaceContract,
+    ProductAssembly,
+    RuntimeShellContract,
     SystemArchitectureManifest,
     SystemPlane,
     TypedBoundary,
     canonical_runtime_shell_v1,
     canonical_system_architecture_v1,
+    replace_cognitive_core,
 )
 
 BASELINE_SCHEMA_VERSION = 1
@@ -177,6 +183,9 @@ class ContractEvolutionReceipt:
 __all__ = (
     "BASELINE_SCHEMA_VERSION",
     "CANONICAL_ARTIFACT_KINDS",
+    "CognitiveCoreBinding",
+    "CognitiveCoreIdentity",
+    "CoreReplacementReceipt",
     "ArtifactKind",
     "ArtifactManifest",
     "ArtifactRef",
@@ -187,6 +196,8 @@ __all__ = (
     "GenerationIdentityManifest",
     "InterfaceContract",
     "ParentBinding",
+    "ProductAssembly",
+    "RuntimeShellContract",
     "SystemArchitectureManifest",
     "SystemPlane",
     "TypedBoundary",
@@ -196,4 +207,5 @@ __all__ = (
     "canonical_system_architecture_v1",
     "parse_generation_identity_manifest",
     "verify_parent_bindings",
+    "replace_cognitive_core",
 )

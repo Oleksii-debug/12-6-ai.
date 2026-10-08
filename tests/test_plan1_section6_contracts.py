@@ -45,6 +45,16 @@ def receipt(**overrides: object) -> ContractEvolutionReceipt:
 def test_facade_reuses_existing_v1_authority_without_identity_fork() -> None:
     assert BASELINE_SCHEMA_VERSION == 1
     assert ArtifactRef is old_ids.ArtifactRef
+    from twelve_six.contracts import (
+        CognitiveCoreBinding, CognitiveCoreIdentity, CoreReplacementReceipt,
+        ProductAssembly, RuntimeShellContract, replace_cognitive_core,
+    )
+    assert CognitiveCoreBinding is old_arch.CognitiveCoreBinding
+    assert CognitiveCoreIdentity is old_arch.CognitiveCoreIdentity
+    assert CoreReplacementReceipt is old_arch.CoreReplacementReceipt
+    assert ProductAssembly is old_arch.ProductAssembly
+    assert RuntimeShellContract is old_arch.RuntimeShellContract
+    assert replace_cognitive_core is old_arch.replace_cognitive_core
     assert canonical_system_architecture_v1 is old_arch.canonical_system_architecture_v1
     assert canonical_system_architecture_v1().identity_sha256() == (
         old_arch.canonical_system_architecture_v1().identity_sha256()
