@@ -135,7 +135,10 @@ class ModelGateway:
                 raise GatewayError("PERMISSION_DENIED", "external adapter not authorized")
             if type(capabilities) is not tuple or not capabilities:
                 raise GatewayError("INVALID_REQUEST", "capabilities must be explicit")
-            if len(set(capabilities)) != len(capabilities) or not set(capabilities) <= _CAPABILITIES:
+            known = type(capabilities) is tuple and all(type(c) is str for c in capabilities)
+            if not known or len(set(capabilities)) != len(capabilities):
+                raise GatewayError("INVALID_REQUEST", "invalid capabilities")
+            if not set(capabilities) <= _CAPABILITIES:
                 raise GatewayError("INVALID_REQUEST", "unsupported capabilities")
             key = (provider, model)
             if key in self._routes:
