@@ -428,7 +428,8 @@ def prepare_trusted_base_checkpoint(
     """Admit canonical checkpoint bytes only after independently pinned Base ancestry.
 
     This is an opt-in gate in front of the incumbent checkpoint snapshot/loader,
-    not a second checkpoint authority. Both the genesis AND complete lineage hashes MUST come from independently
+    not a second checkpoint authority. Both independently pinned genesis and
+    complete lineage hashes must come from authenticated trust roots,
     authenticated trust roots, never recalculated from caller-supplied bytes.
     The returned VerifiedCheckpoint is consumed by checkpoint.load_verified_checkpoint.
     No claim about provenance is made for callers bypassing this gated API.
