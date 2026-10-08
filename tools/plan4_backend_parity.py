@@ -120,6 +120,30 @@ def _candidate_bytes(candidate: nn.Module) -> int:
     return total
 
 
+def _candidate_packed_digest(candidate: nn.Module) -> str:
+    """Hash actual quantized CPU weight bytes, not merely the conversion recipe."""
+    digest = hashlib.sha256()
+    count = 0
+    for name, layer in candidate.named_modules():
+        if not isinstance(layer, torch.ao.nn.quantized.dynamic.Linear):
+            continue
+        weight = layer.weight()
+        if weight.device.type != "cpu" or not weight.is_quantized:
+            raise BackendQualificationError("unverified dynamic-int8 packed weight")
+        raw = weight.int_repr().contiguous().numpy().tobytes()
+        binding = {
+            "name": name, "shape": list(weight.shape), "dtype": str(weight.dtype),
+            "qscheme": str(weight.qscheme()), "scale": float(weight.q_scale()),
+            "zero_point": int(weight.q_zero_point()), "bytes": len(raw),
+        }
+        digest.update(_digest(binding).encode("ascii"))
+        digest.update(raw)
+        count += 1
+    if not count:
+        raise BackendQualificationError("no actual quantized packed weights")
+    return digest.hexdigest()
+
+
 def _derive_candidate(runtime: ReferenceInference) -> nn.Module:
     model = runtime.model
     if (model.training or next(model.parameters()).device.type != "cpu"
@@ -194,6 +218,7 @@ def qualify_backend(
         "schema": SCHEMA, "backend": CANDIDATE, "torch": torch.__version__,
         "reference": reference_before, "spec": runtime.model_spec_sha256,
         "conversion": "torch.ao.quantization.quantize_dynamic.Linear.qint8.cpu",
+        "candidate_packed_sha256": _candidate_packed_digest(candidate),
     })
     return BackendEvidence(
         schema=SCHEMA, backend=CANDIDATE, reference_model_sha256=reference_before,
