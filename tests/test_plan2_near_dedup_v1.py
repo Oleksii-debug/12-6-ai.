@@ -118,7 +118,7 @@ def test_forged_upstream_authority_fails_closed(change):
     elif change == "promotion":
         receipt = receipt | {"evaluation_authorized": True}
     else:
-        with pytest.raises(near.NearDedupError, match="duplicate"):
+        with pytest.raises(exact.ExactDedupError, match="duplicate"):
             near.inspect_near((a, a), audit=AUDIT)
         return
     with pytest.raises((exact.ExactDedupError, near.NearDedupError)):
