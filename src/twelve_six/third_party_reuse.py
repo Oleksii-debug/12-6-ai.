@@ -407,6 +407,17 @@ def verify_installed_wheel_record(
                 or self_records
             ):
                 raise ValueError("unhashed installed file")
+            # The sole unhashed RECORD must belong to this exact distribution.
+            # A separately pinned foreign RECORD is not proof of this wheel.
+            stem = name.removesuffix(".dist-info/RECORD")
+            if "-" not in stem:
+                raise ValueError("installed RECORD identity/version drift")
+            record_name, record_version = stem.rsplit("-", 1)
+            if (
+                normalize(record_name) != normalize(actual_name)
+                or record_version != dist.version
+            ):
+                raise ValueError("installed RECORD identity/version drift")
             self_records += 1
             continue
         if not digest_field.startswith("sha256=") or not size_field.isdecimal():
