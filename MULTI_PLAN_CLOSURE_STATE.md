@@ -33,7 +33,7 @@ This file is the durable GitHub coordination mirror for the new independent-plan
 | 3 | 1 | QUALIFYING — ACTIONABLE; canonical Plan-3 S1 finisher PR #3098 (`058d09eaa7549602530f45e4b45910024aa4019e`), exact CI #37726702494 RED: 3793 passed / 11 failed / 1 skipped (Ruff PASS); 2 candidate-specific Plan-8 source-classification failures; no terminal DONE or Section-2 advance |
 | 4 | 4 | QUALIFYING_INTEGRATED — focused CI queued; terminal test evidence missing |
 | 5 | 5 | OPEN — Sections 3–4 terminal DONE; Section 5 next |
-| 6 | 3 | OPEN |
+| 6 | 4 | OPEN |
 | 7 | 1 | QUALIFYING — canonical PR #3102 at `19b03d478b9fc93e8130300f20afce0d2c5260a5`; new CI #37726869436 queued, old CI #37726451164 failed Ruff I001 (repaired), S1 not merged; no terminal DONE |
 | 8 | 3 | QUALIFYING |
 | 9 | 1 | WAITING_UPSTREAM |
@@ -74,6 +74,8 @@ Update this file when a new-plan Section reaches terminal DONE/REOPENED or when 
 | ---: | --- | --- | --- |
 | 1 | DONE | `5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67` | PR #3101 merged; exact main research source blob `4d0a3424e033f1be591b5ee99f23a7f38b891ff4` and tests blob `b3199533f797d97cf7dce7f5a45a914b31669838` read back; 16/16 independent LOCAL_FREE scoped tests and compileall PASS; SHA-bound immutable trial, deterministic/holdout/independent/regression/replay, forged/self-issued/foreign/missing/unstable evidence rejection and restart replay. Full hosted CI #37728070229 queued (not green); existing unrelated Plan-8 source inventory failures not claimed fixed. No paid training or Base change. |
 | 2 | DONE | `5b1085177b4d7bc61298100e44f673f292a82ecb` | PR #3117 squash merged from frozen `95560b69f06fd3ab8e4efa109e9d5b11d93be856`. Reused Plan-3 causal loss; independent rights/provenance/quality/train-split masking, deterministic bounded CPU SFT descendant, Base SHA immutability. Local mirrored pytest **12 passed**, compileall PASS including invalid-rights/eval-leakage/duplicate/identity/overlong/restart; post-merge exact main source blob `428832cba92fe0fd459465d8121acdd00d78a9e2`, tests blob `c9ad2279455f2df436d6d37931de45e689e80dbe` readback. Hosted CI `37728803008` QUEUED (not called green); no paid compute or production-model claim. |
+
+| 3 | DONE | `95876135047749d034f0a2404e46006324eec662` | PR #3120 squash merged from exact head `774954e2eec683631d9df6b00f512956320e99df`; offline DPO with versioned pairs/rankings, immutable policy/reference and detached descendant, explicit provenance/rights/quality/train-split admission, model/tokenizer/recipe/dataset identity, bounded update. Reused Plan-6 S2 admission/identity functions. Independent LOCAL_FREE mirrored CPU qualification across S2+S3: **27 passed**, compileall PASS; bad provenance, eval leakage, invalid rights/quality, duplicate/reversed/cyclic rankings, wrong reference, bounds/nonfinite beta and Torch weights-only restart replay. Exact main source blob `6c48336ce5ff5960ca6eb9b5b692e5998e2c4098`, tests `fabb0b3565ee119400b4e3b000a22069d00c7c3e` readback. Hosted CI `37729163283` QUEUED (not called green); no online selection/champion promotion, production training or paid compute. |
 
 ## Plan 7 — scaling/distributed component closure
 
