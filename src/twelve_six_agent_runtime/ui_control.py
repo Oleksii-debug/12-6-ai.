@@ -46,7 +46,9 @@ def _hex(value: object, label: str) -> str:
     return value
 
 
-def _closed(\n    properties: dict[str, dict[str, object]], required: tuple[str, ...],\n) -> dict[str, object]:
+def _closed(
+    properties: dict[str, dict[str, object]], required: tuple[str, ...],
+) -> dict[str, object]:
     return {"type": "object", "properties": properties,
             "required": list(required), "additionalProperties": False}
 
@@ -65,7 +67,8 @@ def ui_tool_descriptor() -> ToolDescriptor:
             "snapshot_digest": _string(64), "target_digest": _string(64),
             "action": _string(32), "expected_state": _string(256),
             "method": _string(16), "fallback_evidence_id": _string(256),
-        }, ("snapshot_digest", "target_digest", "action", "expected_state",\n            "method", "fallback_evidence_id")),
+        }, ("snapshot_digest", "target_digest", "action", "expected_state",
+            "method", "fallback_evidence_id")),
         output_schema=_closed({
             "target_digest": _string(64), "state": _string(256),
             "ok": {"type": "boolean"},
@@ -200,6 +203,7 @@ class SemanticUIControl:
             "action": intent.action,
             "expected_state": intent.expected_state,
             "method": intent.method,
+            "fallback_evidence_id": intent.fallback_evidence_id or "",
         }
         if intent.call.tool_id != ACTION_TOOL or intent.call.request_json != _json(expected):
             raise UIControlError("UI intent/call binding mismatch")
@@ -233,6 +237,7 @@ class SemanticUIControl:
         request = {
             "snapshot_digest": snapshot.digest, "target_digest": target.digest,
             "action": action, "expected_state": expected_state, "method": method,
+            "fallback_evidence_id": fallback_evidence_id or "",
         }
         call = self.registry.prepare(
             task_id=task_id, effect_id=effect_id, tool_id=ACTION_TOOL,
@@ -305,7 +310,9 @@ class SemanticUIControl:
                    for effect in state.pending_effects):
             raise UIControlError("unknown effect missing or already reconciled")
         if (not callable(verify_recovery) or
-                verify_recovery(intent, state, receipt_id, evidence_id, observed_state) is not True):
+                verify_recovery(
+                    intent, state, receipt_id, evidence_id, observed_state,
+                ) is not True):
             raise UIControlError("trusted recovery evidence missing")
         return self.registry.tasks.resolve_effect(
             intent.call.task_id, intent.call.effect_id, receipt_id,
