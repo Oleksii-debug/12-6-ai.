@@ -104,6 +104,13 @@ def test_quarantined_candidate_cannot_claim_rights_or_review(field, forged_value
         "https://github.com\u200b.evil.example/archive",
         "https://github.com\u202eevil.example/archive",
         "https://github.com%2Eevil.example/archive",
+        "https://./archive",
+        "https://../archive",
+        "https://example..org/archive",
+        "https://-invalid.example/archive",
+        "https://invalid-.example/archive",
+        "https://example.org./archive",
+        "https://a".concat("a".repeat(63), ".example/archive"),
     ],
 )
 def test_reviewed_source_requires_unambiguous_https_origin(untrusted_url):
