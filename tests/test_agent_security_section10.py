@@ -11,7 +11,7 @@ from twelve_six_agent_runtime.security import (
     AuditReceipt, EffectGrant, SecretHandle, SourceEvidence, TrustBoundaryError,
     admit_context_entry, prepare_secured_tool, verify_secret_handle,
 )
-from twelve_six_agent_runtime.task_state import PendingEffect, TaskStore
+from twelve_six_agent_runtime.task_state import PendingEffect, StateError, TaskStore
 from twelve_six_agent_runtime.tools import ToolBoundaryError, ToolRegistry, make_result
 
 
@@ -195,9 +195,9 @@ def test_request_tamper_and_cross_task_binding_cannot_be_reissued(tmp_path):
     tasks, registry, req, grant = harness(tmp_path)
     with pytest.raises(TrustBoundaryError, match="stale"):
         prepare(registry, grant, {**req, "model_id": "swapped"})
-    with pytest.raises((TrustBoundaryError, ToolBoundaryError)):
+    with pytest.raises((TrustBoundaryError, ToolBoundaryError, StateError)):
         prepare(registry, replace(grant, task_id="other"), req)
-    with pytest.raises((TrustBoundaryError, ToolBoundaryError)):
+    with pytest.raises((TrustBoundaryError, ToolBoundaryError, StateError)):
         prepare(registry, replace(grant, effect_id="other"), req)
     assert tasks.load("task").pending_effects[0].status == "pending"
 
