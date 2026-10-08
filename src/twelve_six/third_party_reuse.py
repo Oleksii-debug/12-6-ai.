@@ -51,7 +51,11 @@ def _strict(raw: bytes) -> dict[str, Any]:
     try:
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique,
                            parse_constant=_bad_constant, parse_float=_finite_float)
-    except (UnicodeError, ValueError, RecursionError) as exc:
+    except ValueError as exc:
+        if str(exc) == "duplicate JSON key":
+            raise
+        raise ValueError("invalid strict JSON") from exc
+    except (UnicodeError, RecursionError) as exc:
         raise ValueError("invalid strict JSON") from exc
     if type(value) is not dict:
         raise ValueError("object root required")
