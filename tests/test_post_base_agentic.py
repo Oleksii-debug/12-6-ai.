@@ -3,8 +3,13 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.post_base_agentic import (
-    ToolStep, ToolTrajectory, AgenticRecipe, attest_tool_trajectory,
-    verify_tool_trajectory, train_agentic_descendant, verify_agentic_run,
+    AgenticRecipe,
+    ToolStep,
+    ToolTrajectory,
+    attest_tool_trajectory,
+    train_agentic_descendant,
+    verify_agentic_run,
+    verify_tool_trajectory,
 )
 from twelve_six.post_base_reasoning import TinyPolicy
 
