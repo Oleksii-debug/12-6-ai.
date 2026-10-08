@@ -325,3 +325,78 @@ def test_source_archive_symlink_is_not_admitted(tmp_path):
 
     with pytest.raises(ValueError, match="non-symlink"):
         _hash_regular_archive(link)
+
+
+def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp_path):
+    """Independent pin + real installed bytes, including tamper and restart cases."""
+    import base64
+    from importlib import metadata
+
+    from twelve_six.third_party_reuse import verify_installed_wheel_record
+
+    package_path = tmp_path / "example" / "__init__.py"
+    package_path.parent.mkdir()
+    package_path.write_bytes(b"abcd")
+    digest = base64.urlsafe_b64encode(hashlib.sha256(b"abcd").digest()).rstrip(b"=").decode()
+    good_record = (
+        f"example/__init__.py,sha256={digest},4\n"
+        "example-1.2.3.dist-info/RECORD,,\n"
+    )
+
+    class FakeDistribution:
+        metadata = {"Name": "example"}
+        version = "1.2.3"
+        record = good_record
+
+        def read_text(self, filename):
+            assert filename == "RECORD"
+            return self.record
+
+        def locate_file(self, name):
+            return tmp_path / name
+
+    installed = FakeDistribution()
+    monkeypatch.setattr(metadata, "distribution", lambda name: installed)
+    pin = hashlib.sha256(good_record.encode()).hexdigest()
+
+    def check(*, record_pin=pin):
+        return verify_installed_wheel_record(
+            "example", expected_version="1.2.3",
+            independently_pinned_record_sha256=record_pin,
+        )
+
+    result = check()
+    assert result == {
+        "distribution": "example",
+        "version": "1.2.3",
+        "record_sha256": pin,
+        "verified_files": 1,
+    }
+    assert check() == result  # independently restart/recheck actual bytes
+
+    with pytest.raises(ValueError, match="independent"):
+        check(record_pin="")
+    with pytest.raises(ValueError, match="RECORD pin drift"):
+        check(record_pin="0" * 64)
+
+    installed.version = "1.2.4"
+    with pytest.raises(ValueError, match="version drift"):
+        check()
+    installed.version = "1.2.3"
+
+    package_path.write_bytes(b"wxyz")  # same size; RECORD remains unchanged
+    with pytest.raises(ValueError, match="contents drift"):
+        check()
+    package_path.write_bytes(b"abcd")
+    assert check() == result  # repaired bytes independently requalify
+
+    unsafe_record = "../escape,sha256=" + digest + ",4\n"
+    unsafe_record += "example-1.2.3.dist-info/RECORD,,\n"
+    installed.record = unsafe_record
+    with pytest.raises(ValueError, match="unsafe"):
+        check(record_pin=hashlib.sha256(unsafe_record.encode()).hexdigest())
+
+    unpinned_record = "example/__init__.py,,\nexample-1.2.3.dist-info/RECORD,,\n"
+    installed.record = unpinned_record
+    with pytest.raises(ValueError, match="unhashed"):
+        check(record_pin=hashlib.sha256(unpinned_record.encode()).hexdigest())
