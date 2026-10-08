@@ -98,8 +98,14 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
         ),
     }
     rights = stages["privacy"]["manifest_sha256"]
-    _require(any(source.get("privacy_manifest_sha256") == rights
-                 for source in stages["exact_dedup"]["sources"]),
+    # A single matching S5 receipt cannot certify other S6 sources.
+    # Until individually staged S5 proofs exist for every source, refuse
+    # multi-source evidence rather than silently accepting partial coverage.
+    exact_sources = stages["exact_dedup"].get("sources")
+    _require(type(exact_sources) is list and bool(exact_sources)
+             and all(type(source) is dict
+                     and source.get("privacy_manifest_sha256") == rights
+                     for source in exact_sources),
              "S5-S6 privacy provenance disconnected")
     _require(stages["near_dedup"]["upstream_exact_manifest_sha256"] ==
              stages["exact_dedup"]["manifest_sha256"],
