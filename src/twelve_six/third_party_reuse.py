@@ -126,6 +126,9 @@ def _valid_https_source(value: object) -> bool:
             and parsed.username is None
             and parsed.password is None
             and parsed.fragment == ""
+            # urlsplit() treats an explicit but empty port as None.
+            # Reject that ambiguous origin instead of silently accepting it.
+            and not parsed.netloc.endswith(":")
             and (parsed.port is None or parsed.port > 0)
         )
     except ValueError:
