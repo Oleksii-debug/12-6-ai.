@@ -150,6 +150,21 @@ def test_versioned_false_positive_false_negative_audit():
     assert audit["true_negative"] >= 2
 
 
+def test_versioned_audit_duplicate_json_key_is_denied(tmp_path):
+    fixture = tmp_path / near.AUDIT
+    fixture.parent.mkdir(parents=True)
+    original = (ROOT / near.AUDIT).read_text(encoding="utf-8")
+    changed = original.replace(
+        '"schema": "12-6.plan2-near-audit.v1"',
+        '"schema": "forged", "schema": "12-6.plan2-near-audit.v1"',
+        1,
+    )
+    assert original != changed
+    fixture.write_text(changed, encoding="utf-8")
+    with pytest.raises(near.NearDedupError, match="audit fixture invalid"):
+        near.audit_samples(tmp_path)
+
+
 def test_candidate_physical_restart_and_clean_rebuild(tmp_path):
     first = near.stage_near(ROOT, tmp_path / "one")
     again = near.stage_near(ROOT, tmp_path / "one")
