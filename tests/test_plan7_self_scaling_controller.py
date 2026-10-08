@@ -87,7 +87,8 @@ def test_worker_loss_falls_back_to_healthy_path_and_restart_is_exact():
     assert verify_scaling_decision(envelope(), opts, decision)
     assert not verify_scaling_decision(envelope(epoch=3), opts, decision)
     assert not verify_scaling_decision(envelope(protocol_sha256="d"*64), opts, decision)
-    assert not verify_scaling_decision(envelope(), (replace(fallback, evidence_sha256="e"*64), failed), decision)
+    changed = (replace(fallback, evidence_sha256="e"*64), failed)
+    assert not verify_scaling_decision(envelope(), changed, decision)
     assert not verify_scaling_decision(envelope(), opts, replace(decision, action="LARGER_MODEL"))
     assert not verify_scaling_decision(envelope(), opts, replace(decision, compute_authorized=True))
     assert not verify_scaling_decision(envelope(), opts, replace(decision, receipt_sha256="f"*64))
@@ -95,7 +96,8 @@ def test_worker_loss_falls_back_to_healthy_path_and_restart_is_exact():
 
 def test_explicit_halt_and_exhausted_budget():
     assert choose_scaling_action(envelope(halted=True), (proposal(),)).reason == "halted"
-    assert choose_scaling_action(envelope(remaining_cost_units=0.0), (proposal(),)).reason == "budget_exhausted"
+    exhausted = choose_scaling_action(envelope(remaining_cost_units=0.0), (proposal(),))
+    assert exhausted.reason == "budget_exhausted"
     assert choose_scaling_action(envelope(min_value_per_cost=10.0), (proposal(),)).action == "STOP"
     assert choose_scaling_action(envelope(), ()).action == "STOP"
 
