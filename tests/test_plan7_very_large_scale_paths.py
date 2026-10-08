@@ -36,7 +36,9 @@ def fixtures(tier="30B", mode="DENSE"):
 def test_arithmetic_dense_and_sparse_alternatives(tier):
     r = very_large_recipe(tier)
     assert r["dense_baseline_parameters"] == very_large_spec(tier).parameter_count()
-    assert abs(r["dense_baseline_parameters"] - r["target_parameters"]) <= r["target_parameters"] // 10
+    assert abs(r["dense_baseline_parameters"] - r["target_parameters"]) <= (
+        r["target_parameters"] // 10
+    )
     assert r["dense_train_state_floor_bytes"] == 24 * r["dense_baseline_parameters"]
     assert not r["launch_authorized"]
     sparse = very_large_recipe(tier, "SPARSE_CONTRACT_ONLY")
