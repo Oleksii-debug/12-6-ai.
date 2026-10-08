@@ -96,7 +96,7 @@ def test_sampling_cannot_be_approximated_as_greedy(runtime):
 
 def test_training_mode_and_reference_weights_drift_refused(runtime):
     runtime.model.train()
-    with pytest.raises(BackendQualificationError, match="eval-mode"):
+    with pytest.raises(ValueError, match="eval mode"):
         qualify_backend(runtime, "A", GenerationConfig(1))
     runtime.model.eval()
     with torch.no_grad():
