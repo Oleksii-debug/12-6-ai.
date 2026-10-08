@@ -31,12 +31,14 @@ Primary surfaces:
 - core architecture and artifact identity contracts;
 - dependency/environment locks and reusable release infrastructure;
 - SBOM/license/supply-chain policy;
-- shared contract packaging and capability/support schemas.
+- shared contract packaging and static backend/environment compatibility schemas only; executable acceptance/readiness maps remain Plan 8.
 
 Existing examples:
 - `src/twelve_six/system_architecture.py`
 - `src/twelve_six/artifact_identity.py`
 - dependency/build metadata when the change is Plan-1-owned.
+
+Plan 1 MUST NOT take ownership of `src/twelve_six/capability_map.py`; that executable acceptance/evidence map belongs to Plan 8.
 
 Conflict key: `core-contracts`.
 
@@ -100,6 +102,7 @@ Conflict keys: `scaling`, `distributed-runtime`.
 Primary surfaces:
 - `src/twelve_six/ai_qa_control.py`
 - `src/twelve_six/sil_qualification.py`
+- `src/twelve_six/capability_map.py`
 - Windows qualification/operator tooling such as `windows_operator_*.py`;
 - evidence, scenario, fault-injection, physical-agent and qualification infrastructure.
 
