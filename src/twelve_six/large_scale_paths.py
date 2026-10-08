@@ -9,8 +9,13 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from twelve_six.billion_systems_gate import (
-    ADAPTERS, BillionGateDenied, _digest, _finite, _positive, _sha,
+    ADAPTERS,
+    BillionGateDenied,
+    _digest,
+    _finite,
     inspect_shards,
+    _positive,
+    _sha,
 )
 from twelve_six.model import ModelSpec
 

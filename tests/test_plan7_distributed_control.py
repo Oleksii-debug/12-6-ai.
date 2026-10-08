@@ -5,8 +5,15 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.distributed_control import (
-    DistributedDenied, ParallelMesh, ResourceAdmission, adapter_packet,
-    admit_distributed, begin_run, begin_step, bind_expert_groups, commit_step,
+    adapter_packet,
+    admit_distributed,
+    begin_run,
+    begin_step,
+    bind_expert_groups,
+    commit_step,
+    DistributedDenied,
+    ParallelMesh,
+    ResourceAdmission,
     resume_after_loss,
 )
 from twelve_six.extreme_moe_paths import MoEPolicy
@@ -26,13 +33,18 @@ def shards(mesh_obj, suffix=b"step"):
 
 
 def budget(**updates):
-    record = dict(schema_version=1, free_bytes_per_worker=4096,
-                  required_bytes_per_worker=2048,
-                  checkpoint_free_bytes=2048, checkpoint_required_bytes=1024,
-                  interconnect_bytes_per_second=400.0,
-                  minimum_interconnect_bytes_per_second=100.0,
-                  estimated_dollars=0.0, max_dollars=0.0,
-                  paid_compute_requested=False)
+    record = {
+        "schema_version": 1,
+        "free_bytes_per_worker": 4096,
+        "required_bytes_per_worker": 2048,
+        "checkpoint_free_bytes": 2048,
+        "checkpoint_required_bytes": 1024,
+        "interconnect_bytes_per_second": 400.0,
+        "minimum_interconnect_bytes_per_second": 100.0,
+        "estimated_dollars": 0.0,
+        "max_dollars": 0.0,
+        "paid_compute_requested": False,
+    }
     record.update(updates)
     return ResourceAdmission(**record)
 

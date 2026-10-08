@@ -16,8 +16,12 @@ from pathlib import Path
 
 from twelve_six.billion_systems_gate import _digest, _sha
 from twelve_six.distributed_control import (
-    ParallelMesh, RunLedger, _verify_ledger, _verify_worker_shards,
-    adapter_packet, resume_after_loss,
+    adapter_packet,
+    ParallelMesh,
+    resume_after_loss,
+    RunLedger,
+    _verify_ledger,
+    _verify_worker_shards,
 )
 
 
@@ -82,16 +86,20 @@ def prepare_transfer(mesh: ParallelMesh, ledger: RunLedger,
     if checkpoint != ledger.checkpoint_sha256:
         raise TransportDenied("shard root differs from committed ledger")
     packet = adapter_packet(mesh)
-    fields = dict(schema_version=1, artifact_id=artifact_id,
-                  run_sha256=mesh.run_sha256, recipe_sha256=mesh.recipe_sha256,
-                  data_order_sha256=mesh.data_order_sha256,
-                  mesh_sha256=packet["packet_sha256"],
-                  ledger_sha256=ledger.ledger_sha256, checkpoint_sha256=checkpoint,
-                  epoch=mesh.epoch,
-                  shards=tuple((owner, digest, len(data)) for owner, data, digest
-                               in shards),
-                  storage_budget_bytes=storage_budget_bytes,
-                  network_budget_bytes=network_budget_bytes)
+    fields = {
+        "schema_version": 1,
+        "artifact_id": artifact_id,
+        "run_sha256": mesh.run_sha256,
+        "recipe_sha256": mesh.recipe_sha256,
+        "data_order_sha256": mesh.data_order_sha256,
+        "mesh_sha256": packet["packet_sha256"],
+        "ledger_sha256": ledger.ledger_sha256,
+        "checkpoint_sha256": checkpoint,
+        "epoch": mesh.epoch,
+        "shards": tuple((owner, digest, len(data)) for owner, data, digest in shards),
+        "storage_budget_bytes": storage_budget_bytes,
+        "network_budget_bytes": network_budget_bytes,
+    }
     plan = TransportPlan(**fields, plan_sha256=_digest(fields))
     _validate(plan)
     return plan

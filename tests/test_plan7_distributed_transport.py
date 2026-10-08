@@ -6,11 +6,20 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.distributed_control import (
-    DistributedDenied, ParallelMesh, begin_run, begin_step, commit_step,
+    begin_run,
+    begin_step,
+    commit_step,
+    DistributedDenied,
+    ParallelMesh,
 )
 from twelve_six.distributed_transport import (
-    TransportDenied, prepare_transfer, receive, verify_receipts,
-    publish_local, readback_local, recover_transport,
+    prepare_transfer,
+    publish_local,
+    readback_local,
+    receive,
+    recover_transport,
+    TransportDenied,
+    verify_receipts,
 )
 
 
@@ -80,7 +89,7 @@ def test_invalid_source_topology_resource_or_uncommitted_denied():
     with pytest.raises(TransportDenied):
         prepare_transfer(m, ledger, shards, "okay",
                          storage_budget_bytes=1000, network_budget_bytes=1)
-    with pytest.raises(Exception):
+    with pytest.raises(DistributedDenied):
         prepare_transfer(replace(m, epoch=2), ledger, shards, "okay",
                          storage_budget_bytes=1000, network_budget_bytes=1000)
 
@@ -127,7 +136,7 @@ def test_same_run_recovery_no_reexposure():
     assert recovered["next_exposure"] == ledger.next_exposure
     assert recovered["new_epoch"] == 1
     assert recovered["recovery_time_ms"] == 20.0
-    with pytest.raises(Exception):
+    with pytest.raises(DistributedDenied):
         recover_transport(mesh, replace(mesh, epoch=2), ledger, shards, 20)
     with pytest.raises(TransportDenied):
         recover_transport(mesh, replace(mesh, epoch=1), ledger, shards, -1)
