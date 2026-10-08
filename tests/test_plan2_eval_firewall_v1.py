@@ -102,8 +102,9 @@ def test_order_independent_cross_source_contamination():
 def test_generated_teacher_self_generated_quarantined_before_matching():
     keep = _cohort("a", INDEPENDENT)
     generated = _cohort(
-        "b", "Новий генерований документ описує спеціальні технічні "
-        "правила обробки незалежних наборів українських даних."
+        "b",
+        ("Новий генерований документ описує спеціальні технічні "
+         "правила обробки незалежних наборів українських даних."),
     )
     for origin in ("teacher", "self_generated"):
         result = firewall.inspect(
