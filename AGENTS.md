@@ -1,3 +1,39 @@
+# Multi-Plan Parallel Closure Protocol v4 — owner directive
+
+**This v4 directive overrides every older conflicting global-sequential / one-mutation-front / earliest-monolithic-Section rule in this repository.**
+
+## Canonical work-selection authority
+
+- Read `PROJECT_PLAN_INDEX.md`, `MULTI_PLAN_CLOSURE_STATE.md`, the numbered Drive plan assigned by the owner, and live GitHub.
+- The former monolithic 96-Section plan is historical/audit material only and MUST NOT be used to choose the next work front.
+- New plan Sections start at 1; there is no Section 0 in the new execution plans.
+
+## Independent plan law
+
+- Plans 1–8 are independent engineering plans.
+- There is **no priority order between Plans 1–8**. Plan 7 may finish before Plan 2; Plan 5 may be started before Plan 1 is terminal.
+- When assigned a plan, skip all Sections in that plan already marked DONE and work the numerically first unfinished Section **inside that plan**.
+- Parallel workers may work on different numbered plans simultaneously.
+- A worker assigned to one plan must not silently mutate another plan's scope. Use versioned contracts/fixtures/mocks for missing cross-plan implementations.
+- A fixture/mock may prove component behavior but never substitutes for final cross-plan integration evidence.
+
+## Convergence plans
+
+- Plan 9 is a real training/champion convergence plan. It consumes required terminal artifacts from the engineering plans and may wait only on the specific inputs its current Section actually requires.
+- Plan 10 is final whole-product integration/release and owns Nika integration, whole-product scenarios, physical Windows/NVDA/HIL, server/cloud parity, packaging/release and final qualification.
+
+## Migrated terminal work
+
+- Plan 1 / Section 1 is DONE from former Section 0.
+- Plan 1 / Section 2 is DONE from former Section 1.
+- Plan 8 / Section 1 is DONE from former Section 2.
+- Plan 8 / Section 2 is DONE from former Section 3.
+- Plan 8 / Section 3 inherits former Section 4 and is QUALIFYING, not DONE unless live evidence later closes it.
+
+## Closure semantics
+
+The Simplified Section Closure Protocol v3 DONE rule remains binding **within each new plan**: finish all repository-controllable work, run available relevant checks, record terminal DONE durably, then advance to the next unfinished Section of that same plan. Human/NVDA acceptance remains final-product work unless the assigned final plan explicitly reaches that gate.
+
 # AGENTS.md
 
 ## Simplified Section Closure Protocol v3 — owner directive 2026-10-07
