@@ -25,9 +25,14 @@ are installed or downloaded by this adapter.
 1. Strict-JSON complete parent graph rooted in local scratch initialization.
 2. Independent genesis JSON bytes and its SHA-256, authenticated out-of-band
    rather than obtained from the untrusted checkpoint or ancestry graph.
-3. A real checkpoint directory in the existing v1 checkpoint format.
+3. Independently approved SHA-256 of the **entire exact lineage JSON bytes**.
+   A valid scratch genesis pin alone is not sufficient: an attacker could
+   graft plausible canonical_base descendants under that root without a
+   separately authenticated complete-graph pin. Reject mismatch before parse.
+4. A real checkpoint directory in the existing v1 checkpoint format.
 
-The gate rejects foreign/pretrained/second-root/cyclic/unknown-parent ancestry;
+The gate rejects unpinned or forged lineage graph bytes and
+foreign/pretrained/second-root/cyclic/unknown-parent ancestry;
 binds the graph head to the *actually verified checkpoint_id*; matches the
 checkpoint's ModelSpec hash and training-config InitSpec hash to the pinned
 genesis; and returns the incumbent immutable `VerifiedCheckpoint`.
@@ -74,3 +79,16 @@ Official upstream metadata references:
 - https://github.com/pytorch/pytorch/blob/main/pyproject.toml
 A real pinned package/wheel and complete notices assessment is still required
 before admission. All 13 current catalog entries remain unqualified.
+
+## 2026-10-08 exact complete-graph pin hardening
+
+The Plan-1 S3 canonical finisher now requires `expected_lineage_sha256` as
+an additional independently sourced input to `prepare_trusted_base_checkpoint`.
+This is an intentionally fail-closed change to the still-unmerged Plan-1 S3
+candidate API; accepted Plan-1 Sections 1–2 remain unchanged. The new
+negative regression adds a structurally plausible extra Base checkpoint
+under a genuine pinned scratch genesis, then confirms the independently
+pinned complete graph rejects it before checkpoint loading. The trust pin
+must never be generated from the untrusted lineage bytes by the caller.
+Source/tests and their post-write blob hashes must be read back; CI and
+full terminal Section-3 qualification are separate outstanding gates.
