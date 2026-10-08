@@ -97,17 +97,18 @@ def test_exact_eval_overlap_is_excluded_without_exposing_answers():
     assert leaked_text not in json.dumps(result, ensure_ascii=False)
 
 
-def test_eval_contamination_transitively_excludes_related_training_family():
+def test_eval_contamination_quarantines_same_training_source_family():
     _config, eval_rows, _authority = firewall._reserve(RESERVED)
     base = eval_rows[0]["text"]
     altered = base.replace("ізольований", "захищений")
     assert altered != base
+    # The clean peer shares the contaminated source family, not a foreign source.
     result = firewall.inspect_firewall((
-        _fixture("source.a", altered), _fixture("source.b", BASE)
+        _fixture("source.a", altered, BASE),
     ), RESERVED)
-    assert result["input_training_candidate_count"] in {1, 2}
+    assert result["input_training_candidate_count"] == 2
     assert result["decontaminated_record_count"] == 0
-    assert len(result["excluded_record_ids"]) == result["input_training_candidate_count"]
+    assert len(result["excluded_record_ids"]) == 2
 
 
 def test_training_reserved_source_identity_alias_is_denied():
