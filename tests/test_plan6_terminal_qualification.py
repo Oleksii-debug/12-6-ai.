@@ -124,7 +124,7 @@ def test_source_manifest_pins_all_fourteen_exact_engine_blobs():
     for relative, expected in blobs.items():
         content = (root / relative).read_bytes()
         observed = hashlib.sha1(
-            f"blob {len(content)}\\0".encode("ascii") + content,
+            ("blob " + str(len(content))).encode("ascii") + bytes([0]) + content,
         ).hexdigest()
         assert observed == expected, relative
 
