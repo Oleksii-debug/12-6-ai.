@@ -490,6 +490,8 @@ def test_installed_wheel_record_integrity_and_negative_recovery(monkeypatch, tmp
         "version": "1.2.3",
         "record_sha256": pin,
         "verified_files": 1,
+        "license_notice_count": 0,
+        "license_notice_inventory_sha256": hashlib.sha256(b"[]").hexdigest(),
     }
     assert check() == result  # independently restart/recheck actual bytes
 
@@ -953,14 +955,24 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     upstream.write_bytes(b"independently reviewed upstream bytes")
     notice.write_bytes(b"license fixture reviewed separately")
     installed_file.write_bytes(b"installed backend file")
+    bundle_notice = tmp_path / "torch-1.2.3.dist-info" / "licenses" / "LICENSE"
+    bundle_notice.parent.mkdir(parents=True)
+    bundle_notice.write_bytes(b"reviewed wheel LICENSE evidence")
 
     file_digest = base64.urlsafe_b64encode(
         hashlib.sha256(installed_file.read_bytes()).digest()
     ).rstrip(b"=").decode("ascii")
+    notice_digest = hashlib.sha256(bundle_notice.read_bytes()).digest()
+    notice_encoded = base64.urlsafe_b64encode(notice_digest).rstrip(b"=").decode("ascii")
+    notice_path = "torch-1.2.3.dist-info/licenses/LICENSE"
     record = (
         f"torch/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\n"
+        f"{notice_path},sha256={notice_encoded},{bundle_notice.stat().st_size}\n"
         "torch-1.2.3.dist-info/RECORD,,\n"
     )
+    notices_pin = hashlib.sha256(json.dumps(
+        [[notice_path, notice_digest.hex()]], separators=(",", ":")
+    ).encode()).hexdigest()
 
     class FakeDistribution:
         version = "1.2.3"
@@ -992,6 +1004,7 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     pins = {
         "independently_pinned_catalog_sha256": hashlib.sha256(approved).hexdigest(),
         "independently_pinned_record_sha256": hashlib.sha256(record.encode()).hexdigest(),
+        "independently_pinned_notice_inventory_sha256": notices_pin,
     }
 
     def check(**replacements):
@@ -1015,11 +1028,21 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     result = check()
     assert result["status"] == "REVIEWED_CODE_ONLY"
     assert result["version"] == "1.2.3"
-    assert result["verified_files"] == 1
+    assert result["verified_files"] == 2
+    assert result["license_notice_count"] == 1
+    assert result["license_notice_inventory_sha256"] == notices_pin
     assert result["data_rights"] == "NOT_APPLICABLE_CODE"
     assert result["model_weights"] == "NONE"
     assert check() == result
 
+    with pytest.raises(ValueError, match="independent full-license-notice"):
+        check(independently_pinned_notice_inventory_sha256="")
+    with pytest.raises(ValueError, match="wheel license inventory digest drift"):
+        check(independently_pinned_notice_inventory_sha256="0" * 64)
+    bundle_notice.write_bytes(b"tampered wheel LICENSE evidence")
+    with pytest.raises(ValueError, match="contents drift"):
+        check()
+    bundle_notice.write_bytes(b"reviewed wheel LICENSE evidence")
     with pytest.raises(ValueError, match="independent installed RECORD"):
         check(independently_pinned_record_sha256="")
     with pytest.raises(ValueError, match="approved catalog"):
@@ -1038,6 +1061,22 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
     notice.write_bytes(b"license fixture reviewed separately")
     assert check() == result
 
+    # A wheel with NO license/notice is never admitted, even when both
+    # other approved pins correspond to its exact checked bytes.
+    record_without_notice = (
+        f"torch/__init__.py,sha256={file_digest},{installed_file.stat().st_size}\n"
+        "torch-1.2.3.dist-info/RECORD,,\n"
+    )
+    original_record = record
+    record = record_without_notice
+    with pytest.raises(ValueError, match="no reviewable LICENSE/NOTICE"):
+        check(
+            independently_pinned_record_sha256=hashlib.sha256(record.encode()).hexdigest(),
+            independently_pinned_notice_inventory_sha256=hashlib.sha256(b"[]").hexdigest(),
+        )
+    record = original_record
+    assert check() == result
+
     catalog["assets"][0]["status"] = "CANDIDATE_UNQUALIFIED"
     # Properly encoded unqualified row must not self-admit even with real files.
     catalog["assets"][0].update(
@@ -1052,6 +1091,7 @@ def test_reviewed_backend_requires_both_upstream_and_installed_pins(monkeypatch,
             distribution="torch",
             independently_pinned_catalog_sha256=hashlib.sha256(unreviewed).hexdigest(),
             independently_pinned_record_sha256=pins["independently_pinned_record_sha256"],
+            independently_pinned_notice_inventory_sha256=notices_pin,
         )
 
 
