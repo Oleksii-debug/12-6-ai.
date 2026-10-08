@@ -65,7 +65,9 @@ def _bundle_claim(root: Path) -> dict[str, Any]:
         raise CheckpointIntegrityError("export source identity missing")
     if (identity.get("tokenizer_hash") != BYTE_TOKENIZER_HASH
             or identity.get("tokenizer_vocab_hash") != BYTE_VOCAB_HASH):
-        raise CheckpointIntegrityError("checkpoint tokenizer does not match canonical S0 byte tokenizer")
+        raise CheckpointIntegrityError(
+            "checkpoint tokenizer does not match canonical S0 byte tokenizer"
+        )
     spec = identity.get("model_spec")
     if not isinstance(spec, dict):
         raise CheckpointIntegrityError("checkpoint model specification missing")
