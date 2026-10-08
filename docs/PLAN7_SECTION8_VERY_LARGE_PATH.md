@@ -1,40 +1,20 @@
-# Plan 7 / Section 8 — 30B, 70B, 100B very-large path
+# Plan 7 / Section 8 — 30B, 70B, 100B multi-node engineering path
 
-## Component acceptance
-- `very_large_paths.py` reuses accepted Plan 7 S6 physical shard verifier,
-  S7 typed capacity/limits/adapter evidence and canonical ModelSpec. There is no
-  parallel checkpoint authority, no model construction and no training dispatch.
-- Exact ModelSpec parameter arithmetic: 30B / 70B / 100B dense GQA/RoPE/SwiGLU
-  reference paths. Dense and conditional sparse alternatives have versioned
-  independent receipts. Sparse remains NO_GO until Section 9 expert contracts;
-  it does not receive speculative memory discounts.
-- Conservative 24x parameter training-state and 4x dual-checkpoint byte floors,
-  constrained worker/node placement, storage, throughput, interconnect,
-  checkpoint transfer time, recovery SLO and wallclock.
-- Typed dollar/hour and total budget evidence is checked conservatively.
-  No receipt grants paid compute, training, launch or canonical publication.
-- Multi-node deterministic primary/replica transport *simulation*: bound exact
-  scientific run, ordered physical tiny-shard hashes and manifest, worker losses
-  and survivor placement. Missing/corrupted/duplicate/reordered fragments or
-  both owners lost never count as a canonical checkpoint.
-- Producer boundaries: Plan 2 data, Plan 4 evaluation, Plan 9 campaigns and
-  Plan 10 real distributed/serving integration are separate authorities.
+## Plan acceptance 8.1 — scale, economics, admission
+- Canonical Plan-7-owned `very_large_scale_paths.py` uses real accepted ModelSpec arithmetic and S7 typed capacity/backend evidence; no duplicate training/checkpoint/runtime authority.
+- Versioned dense 30B/70B/100B architecture with 10% parameter tolerance and 24x-parameter training-state, 4x-parameter checkpoint dual-copy, BF16 weights planning *floors*. They are arithmetic projections, not peak RAM or physical benchmark.
+- Sparse mode is `SPARSE_CONTRACT_ONLY`, explicitly blocked for expert parallelism until Plan7 Section9 produces and verifies the genuine MoE contract; it is not a sparse implementation.
+- Multi-node worker/rank placements, exact SHA-256 placement map, distinct node/worker counts, throughput/network/checkpoint/recovery/wallclock and USD forecast all bounded by explicit limits. Economic budget failure returns NO_GO.
 
-## Bounded qualification command
-`python -m pytest -q tests/test_plan7_billion_systems_gate.py
-tests/test_plan7_large_scale_paths.py tests/test_plan7_very_large_paths.py`
+## Plan acceptance 8.2 — failure/recovery, artifact transport
+- Reuses existing S6 ordered, physically hashed tiny checkpoint shard manifest verifier. A corrupt/missing/reordered/duplicate shard set fails before any acceptance. Shards are LOCAL_FREE fixtures, not published real 30B–100B checkpoints.
+- Same run SHA on simulated node-loss/restart, exact recipe and data-order SHA on resumed run. Stale run, changed recipe, changed data order, forged placement SHA or unknown node fail closed.
+- Explicit artifact ownership, atomic publisher, real sharded distributed optimizer recovery and physical multi-node transport remain externally produced contracts; no fabricated receipt or promotion.
+- Backend matrix consumes S7 versioned LargeAdapter evidence; none of these receipts grants launch or paid/training authorization.
 
-The Section 8 standalone, no-paid-compute fixture suite has 16 parametrized
-cases including deterministic 30B/70B/100B recipe identity, loss/restart, SHA
-fencing, missing/corrupt/reordered/duplicate shard, admission insufficiency,
-invalid/forged types, cost ceiling, spare capacity and sparse fail-closed
-checks. Verify exact candidate HEAD and the CI result separately; queued CI is
-not green.
-
-## Evidence boundaries
-Arithmetic parameter/state/transport estimates are NOT measured peak memory,
-real cluster throughput or hardware cost. `inspect_transport` verifies bounded
-bytes locally and simulates remote placement; it does not move bytes among
-machines or issue a production sharded checkpoint. No 30B/70B/100B weights,
-multi-node training, production resume, serving, actual compute authorization,
-GPU charges, Plan 9 campaign or Plan 10 release has been executed.
+## Qualification and truth boundary
+- Candidate branch: `plan7/section8-multinode-20261008`.
+- Exact source Git blob SHA1 `4b6d16931512a240d4e3ddc4287eb2a02fd7d155`; test blob `849f5f732b229f33afa690cde75802c3621fed1e`.
+- Independent LOCAL_FREE execution on exact S7+S8 code/test Git blobs with *narrow public-contract mirrors* of accepted S6 shard verifier and canonical ModelSpec: **34 pytest passed, 0 failed**, including 17 dedicated S8 scenarios, compileall PASS and source/test static width/whitespace PASS.
+- These are component fixture tests, not a real multi-node test or production serving/evaluation/accelerator qualification. Hosted workflow is an independent check and must not be called PASS if queued/unavailable.
+- No paid compute/training/GPU/cloud calls; no weights, real production optimizer/recovery, Plan9 campaign or Plan10 full-product release evidence.
