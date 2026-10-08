@@ -5,7 +5,10 @@ import pytest
 
 from twelve_six.post_base_instruction import canonical_digest
 from twelve_six.self_play_engine import (
-    PlayRecipe, PlayTask, run_self_play, verify_self_play_replay,
+    PlayRecipe,
+    PlayTask,
+    run_self_play,
+    verify_self_play_replay,
 )
 
 H = "a" * 64
