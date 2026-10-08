@@ -102,7 +102,7 @@ def test_duplicate_task_identity_fails_closed(tmp_path):
 
 def test_issued_effect_receipt_binds_only_exact_current_revision(tmp_path):
     store, first = _store(tmp_path)
-    issued = _unresolved(store, first)
+    _unresolved(store, first)
     restarted = TaskStore(store.path).resume(first.task_id)
     resolved = store.resolve_effect(
         first.task_id, "effect:01", "receipt:verified",
