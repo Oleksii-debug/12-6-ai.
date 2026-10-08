@@ -229,32 +229,20 @@ def verify_install(
         editable_python = _venv_python(editable_env)
         _install_locked(editable_python, profile, ("toolchain", "runtime", "dev"))
         offline = _offline_env()
-        _run(
-            [
-                editable_python,
-                "-m",
-                "pip",
-                "install",
-                "--no-deps",
-                "--no-build-isolation",
-                "-e",
-                ROOT,
-            ],
-            env=offline,
-        )
-        _smoke(editable_python, editable_env)
+        is_windows = profile["profile_id"] == "windows-x86_64"
+        if not is_windows:
+            _run(
+                [
+                    editable_python, "-m", "pip", "install", "--no-deps",
+                    "--no-build-isolation", "-e", ROOT,
+                ],
+                env=offline,
+            )
         wheel_dir.mkdir()
         _run(
             [
-                editable_python,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "--no-build-isolation",
-                "--wheel-dir",
-                wheel_dir,
-                ROOT,
+                editable_python, "-m", "pip", "wheel", "--no-deps",
+                "--no-build-isolation", "--wheel-dir", wheel_dir, ROOT,
             ],
             env=offline,
         )
@@ -262,6 +250,17 @@ def verify_install(
         if len(wheels) != 1:
             raise RuntimeError(f"expected exactly one project wheel, found {len(wheels)}")
         wheel = wheels[0]
+        if is_windows:
+            # Editable .pth files can fail under CP1252 in Ukrainian paths.
+            # Reuse the D08 verified source-wheel installation boundary.
+            _run(
+                [
+                    editable_python, "-m", "pip", "install", "--no-deps",
+                    "--no-build-isolation", wheel,
+                ],
+                env=offline,
+            )
+        _smoke(editable_python, editable_env)
         if run_repo_checks:
             _run_repo_checks(editable_python)
 
@@ -305,7 +304,8 @@ def verify_install(
             "installed_distributions_sha256": hashlib.sha256(_canonical_bytes(installed)).hexdigest(),
             "verification": {
                 "committed_lock_validation": "PASS",
-                "editable_install_import_cli": "PASS",
+                "editable_install_import_cli": "NOT_APPLICABLE" if is_windows else "PASS",
+                "source_wheel_build_install_import_cli": "PASS" if is_windows else "NOT_APPLICABLE",
                 "wheel_install_import_cli": "PASS",
                 "repo_checks": "PASS" if run_repo_checks else "NOT_RUN",
             },
