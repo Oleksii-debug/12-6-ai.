@@ -20,7 +20,7 @@ def setup(tmp_path: Path):
 def test_sealed_scoring_with_terminal_release_and_restart(tmp_path):
     vault, ref, identity = setup(tmp_path)
     receipt = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "wrong"}, **identity)
-    assert set(receipt) == {"schema_version", "evaluation_id", "state"}
+    assert set(receipt) == {"schema_version", "evaluation_id", "result_sha256", "state"}
     assert "yes" not in json.dumps(receipt) and "accuracy" not in receipt
     with pytest.raises(EvaluationBoundaryError, match="unverified"):
         vault.terminal_report(sealed=receipt, trusted_terminal_ids=frozenset())
@@ -79,3 +79,20 @@ def test_reserved_dataset_tamper_and_duplicate_ids_fail_closed(tmp_path):
     with pytest.raises(EvaluationBoundaryError, match="duplicate"):
         vault.reserve(dataset=b'{"id":"a","answer":"1"}\n{"id":"a","answer":"2"}\n',
                       dataset_version="test")
+
+def test_version_and_result_digest_bindings_fail_closed(tmp_path):
+    vault, ref, identity = setup(tmp_path)
+    with pytest.raises(EvaluationBoundaryError, match="dataset version binding"):
+        vault.evaluate(dataset_ref={**ref, "dataset_version": "forged"},
+                       predictions={"a": "yes", "b": "no"}, **identity)
+    with pytest.raises(EvaluationBoundaryError, match="immutable dataset version"):
+        vault.reserve(dataset=b'{"id":"a","answer":"yes"}\\n{"id":"b","answer":"no"}\\n',
+                      dataset_version="changed")
+    sealed = vault.evaluate(dataset_ref=ref, predictions={"a": "yes", "b": "no"}, **identity)
+    result = vault.results / (sealed["evaluation_id"] + ".json")
+    payload = json.loads(result.read_text())
+    payload["accuracy"] = 0.0
+    result.write_text(json.dumps(payload))
+    with pytest.raises(EvaluationBoundaryError, match="verification failed"):
+        vault.terminal_report(sealed=sealed,
+                              trusted_terminal_ids=frozenset({sealed["evaluation_id"]}))
