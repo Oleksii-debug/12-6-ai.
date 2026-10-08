@@ -10,7 +10,9 @@ from torch import nn
 
 from twelve_six.post_base_instruction import state_sha256
 from twelve_six.post_base_preference import (
-    PreferenceRecipe, PreferenceRecord, train_preference_descendant,
+    PreferenceRecipe,
+    PreferenceRecord,
+    train_preference_descendant,
 )
 
 H = "a" * 64
