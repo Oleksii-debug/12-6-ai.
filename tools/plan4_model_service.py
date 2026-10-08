@@ -6,7 +6,6 @@ HTTP and in-process clients use precisely the same dispatch state machine.
 """
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import re
@@ -296,11 +295,15 @@ class ModelService:
                 if type(args) is not dict:
                     raise ServiceError("INVALID_REQUEST", "operation arguments must be object")
                 result = self._operate(req["op"], args)
-                return {"schema": SCHEMA, "ok": True, "result": result}
+                # Normalize tuples before either transport sees the response.
+                # Local and HTTP clients must observe identical JSON value types.
+                transport_result = json.loads(json.dumps(result, ensure_ascii=False,
+                                                        allow_nan=False))
+                return {"schema": SCHEMA, "ok": True, "result": transport_result}
             except ServiceError as exc:
                 return {"schema": SCHEMA, "ok": False,
                         "error": {"code": exc.code, "message": str(exc)}}
-            except (InferenceError, ValueError, TypeError) as exc:
+            except (InferenceError, ValueError, TypeError):
                 return {"schema": SCHEMA, "ok": False,
                         "error": {"code": "INFERENCE_REJECTED",
                                   "message": "canonical inference admission rejected"}}
