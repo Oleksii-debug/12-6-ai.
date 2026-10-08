@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tools import plan2_source_admissibility_v1 as rights
+from tools import plan2_source_inventory_v1 as inventory
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
 SCHEMA = "12-6.plan2.public-domain-physical-audit.v1"
@@ -24,6 +26,8 @@ HEX40 = re.compile(r"[a-f0-9]{40}\Z")
 HEX64 = re.compile(r"[a-f0-9]{64}\Z")
 LICENSE_BLOB = "8d062dda262bcdc42d45b861bd796117feb6d0fe"
 GUTENBERG_FAMILY = "en.project-gutenberg.public-domain-books"
+RIGHTS_EVIDENCE = "data/external/rights-evidence/plan2-books/public-domain-original-works-v1.txt"
+RIGHTS_EVIDENCE_BLOB = "f71d79a7d8e347825d84234db7acd46f079e12fb"
 
 
 class BookCohortDenied(ValueError):
@@ -96,6 +100,9 @@ def inspect(root: Path) -> dict[str, Any]:
          catalog.get("production_release_authorized") is False and
          catalog.get("project_gutenberg_markup_removed") is True,
          "source catalog authority was elevated or changed")
+    evidence = read_checked(root, RIGHTS_EVIDENCE)
+    need(git_blob(evidence) == RIGHTS_EVIDENCE_BLOB,
+         "pinned public-domain source-rights evidence changed")
     sources = catalog.get("sources")
     need(type(sources) is list and len(sources) == 3,
          "physical book sources are incomplete")
@@ -104,6 +111,9 @@ def inspect(root: Path) -> dict[str, Any]:
     document_families: set[str] = set()
     upstreams: set[tuple[str, str]] = set()
     records: list[dict[str, Any]] = []
+    registry_rows: list[dict[str, Any]] = []
+    rights_grants: list[dict[str, Any]] = []
+    rights_members: list[dict[str, str]] = []
     total = 0
     for source in sources:
         need(type(source) is dict, "invalid book metadata")
@@ -156,6 +166,41 @@ def inspect(root: Path) -> dict[str, Any]:
              "project gutenberg" not in decoded.lower(),
              "not normalized or Project Gutenberg markup retained")
         total += len(payload)
+        registry_rows.append({
+            "source_id": source_id,
+            "source_family": family,
+            "location": "repo://" + path,
+            "acquisition_method": "immutable_snapshot",
+            "language": "en",
+            "modality": "text",
+            "update_cadence": "pinned",
+            "status": "accepted",
+            "provenance": {
+                "authority_path": CATALOG,
+                "upstream_revision": revision,
+                "content_sha256": sha(payload),
+            },
+        })
+        rights_grants.append({
+            "source_id": source_id,
+            "rights_class": "public_licensed",
+            "license_id": "PUBLIC-DOMAIN",
+            "terms_ref": "https://www.gutenberg.org/policy/license",
+            "permission_ref": "repo://" + CATALOG,
+            "legal_basis": "public_domain",
+            "allowed_uses": ["source_candidate", "training", "release"],
+            "evidence_path": RIGHTS_EVIDENCE,
+            "evidence_sha256": sha(evidence),
+            "revoked": False,
+        })
+        rights_members.append({
+            "source_id": source_id,
+            "record_id": source_id + ":r00000000",
+            "member_id": source_id + ":body",
+            "origin_member_ref": "gitenberg:" + source_file,
+            "source_snapshot_sha256": sha(payload),
+            "text": decoded,
+        })
         records.append({
             "source_id": source_id,
             "source_family": family,
@@ -172,8 +217,30 @@ def inspect(root: Path) -> dict[str, Any]:
     need(len(book_ids) == len(document_families) == len(upstreams) == 3
          and families == {GUTENBERG_FAMILY},
          "independent documents or canonical family identity missing")
+    # Reuse canonical Plan-2 S1/S2 rights validators, never a second grant engine.
+    inv = inventory.build_inventory("plan2-public-domain-books-v1", registry_rows)
+    rights_bytes = {RIGHTS_EVIDENCE: evidence}
+    grants = rights.build_catalog(inv, rights_grants, rights_bytes)
+    rights.verify_catalog(inv, grants, rights_bytes)
+    train_receipt = rights.materialization_receipt(
+        inv, grants, rights_bytes, rights_members, "training"
+    )
+    release_receipt = rights.materialization_receipt(
+        inv, grants, rights_bytes, rights_members, "release"
+    )
+    need(train_receipt["record_count"] == 3
+         and release_receipt["record_count"] == 3
+         and train_receipt["training_corpus_authorized"] is False
+         and release_receipt["training_corpus_authorized"] is False,
+         "source-level rights receipt improperly promoted training")
     core = {
         "schema_version": SCHEMA,
+        "rights_boundary": "ORIGINAL_WORK_SOURCE_PERMISSIONS_ONLY_NOT_CORPUS",
+        "source_inventory_sha256": inv["inventory_sha256"],
+        "source_rights_catalog_sha256": grants["catalog_sha256"],
+        "source_training_rights_receipt_sha256": train_receipt["receipt_sha256"],
+        "source_release_rights_receipt_sha256": release_receipt["receipt_sha256"],
+        "rights_evidence_git_blob": RIGHTS_EVIDENCE_BLOB,
         "source_catalog_git_blob": CATALOG_BLOB,
         "physical_source_families": len(families),
         "physical_document_families": len(document_families),
