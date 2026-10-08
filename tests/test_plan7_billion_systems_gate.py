@@ -5,9 +5,16 @@ from dataclasses import replace
 import pytest
 
 from twelve_six.billion_systems_gate import (
-    ADAPTERS, AdapterEvidence, AdmissionLimits, BillionGateDenied,
-    CapacityEvidence, assess_1b, billion_recipe, billion_spec,
-    inspect_shards, shard_manifest,
+    ADAPTERS,
+    AdapterEvidence,
+    AdmissionLimits,
+    BillionGateDenied,
+    CapacityEvidence,
+    assess_1b,
+    billion_recipe,
+    billion_spec,
+    inspect_shards,
+    shard_manifest,
 )
 
 

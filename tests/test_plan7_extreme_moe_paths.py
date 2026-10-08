@@ -1,13 +1,18 @@
 """Plan 7 Section 9: 300B/1T dense, MoE, admission, failure and recovery."""
 import hashlib
-from dataclasses import asdict, replace
+from dataclasses import replace
 
 import pytest
 
 from twelve_six.billion_systems_gate import shard_manifest
 from twelve_six.extreme_moe_paths import (
-    ExtremeDenied, MoEPolicy, assess_extreme, expert_placement,
-    extreme_recipe, extreme_spec, route_tiny,
+    ExtremeDenied,
+    MoEPolicy,
+    assess_extreme,
+    expert_placement,
+    extreme_recipe,
+    extreme_spec,
+    route_tiny,
 )
 from twelve_six.large_scale_paths import LargeAdapter, LargeCapacity, LargeLimits
 from twelve_six.very_large_paths import NodePlacement, inspect_transport

@@ -68,7 +68,10 @@ def extreme_recipe(tier: str, policy: MoEPolicy | None = None) -> dict[str, Any]
     if policy is not None:
         if not isinstance(policy, MoEPolicy):
             raise ExtremeDenied("typed MoE policy required")
-        MoEPolicy(**asdict(policy))
+        try:
+            MoEPolicy(**asdict(policy))
+        except ValueError as exc:
+            raise ExtremeDenied("invalid MoE policy") from exc
     # Each expert uses half the dense FFN width; top-2 is comparable to
     # the dense MLP active-parameter count, but all experts need storage.
     shared = dense_total - baseline["mlp_per_layer"] * spec.n_layers
