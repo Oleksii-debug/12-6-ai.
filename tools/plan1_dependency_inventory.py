@@ -117,7 +117,8 @@ def inspect(pyproject: Path) -> dict[str, Any]:
                 # This is a license-lead scan, not a whole-RECORD validator;
                 # validate only notice candidates and leave general RECORD
                 # integrity to the incumbent pinned wheel verifier.
-                basename = parts[-1].lower()
+                # Recognize a notice even if an attacker supplies Windows separators.
+                basename = path.replace(chr(92), "/").split("/")[-1].lower()
                 if basename not in {
                     "license", "license.txt", "license.md", "notice",
                     "notice.txt", "notice.md", "copying", "copying.txt",
