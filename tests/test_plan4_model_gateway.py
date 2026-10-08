@@ -267,3 +267,31 @@ def test_session_limit_and_registered_alias_validation(bound):
         ModelGateway(max_sessions=True)
     with pytest.raises(GatewayError, match="invalid provider"):
         ModelGateway().register("../other", "base", "local", client)
+
+
+@pytest.mark.parametrize(
+    "hostile_code",
+    ("credential: secret-token-do-not-leak", "SECRET\nTOKEN", "X" * 1000, ""),
+)
+def test_malformed_backend_error_code_is_not_exposed(bound, hostile_code):
+    gateway, _, incumbent_client = bound
+
+    class HostileErrorClient:
+        def call(self, request):
+            if request["op"] == "identity":
+                return incumbent_client.call(request)
+            return {
+                "schema": SERVICE_SCHEMA, "ok": False,
+                "error": {"code": hostile_code},
+            }
+
+    gateway.register("hostile", "base", "external", HostileErrorClient(),
+                     authorize_external=True)
+    response = gateway.dispatch(packet(
+        "generate", provider="hostile", model="base",
+        prompt="test", config={"max_new_tokens": 1},
+    ))
+    assert response["ok"] is False
+    assert response["error"]["code"] == "INVALID_BACKEND"
+    assert "secret-token-do-not-leak" not in str(response)
+    assert hostile_code not in str(response) if hostile_code else True
