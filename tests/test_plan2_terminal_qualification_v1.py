@@ -27,6 +27,10 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
         "S10_MECHANICS_ONLY_NOT_PHYSICAL_S9_ADMISSION"
     )
     assert report["evidence"]["real_books_s10_probe_document_clusters"] == 3
+    assert report["evidence"]["real_three_family_document_count"] == 15
+    assert report["evidence"]["real_three_family_total_bytes"] == 1_314_156
+    assert len(report["evidence"]["real_three_family_candidate_sha256"]) == 64
+    assert type(report["evidence"]["real_three_family_fixture_eval_clean"]) is bool
     assert report["evidence"]["d03_real_ua_source_candidate_families"] == 2
     assert report["evidence"]["d03_real_ua_source_candidate_members"] == 12
     assert report["evidence"]["d03_real_ua_source_candidate_bytes"] == 48675
