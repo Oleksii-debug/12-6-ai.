@@ -188,13 +188,18 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     real_shards = real_packing.stage(root, destination / "physical-shards-candidate")
     _require(real_shards["terminal_done"] is False
              and real_shards["production_release_authorized"] is False
-             and real_shards["physical_s9_admitted"] is False,
-             "physical shard candidate incorrectly grants release")
+             and real_shards["physical_s9_admitted"] is False
+             and real_shards["tokenizer_manifest_sha256"] == real_fit["manifest_sha256"]
+             and real_shards["cluster_split_sha256"] ==
+             real_fit["physical_split_manifest_sha256"],
+             "physical shard/tokenizer/S10 split identity mismatch")
     real_targets = real_exposure.stage(root, destination / "physical-exposures-candidate")
     _require(real_targets["terminal_done"] is False
              and real_targets["production_release_authorized"] is False
              and real_targets["training_corpus_authorized"] is False
              and real_targets["packing_manifest_sha256"] == real_shards["manifest_sha256"]
+             and real_targets["cluster_split_sha256"] == real_shards["cluster_split_sha256"]
+             and real_targets["tokenizer_manifest_sha256"] == real_fit["manifest_sha256"]
              and real_targets["target_count"] == real_shards["target_count"],
              "real physical packing-to-exposure identity mismatch")
     cohort = physical.stage_candidate_cohort(root, destination / "source")
