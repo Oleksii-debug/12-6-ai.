@@ -21,6 +21,7 @@ from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_physical_materialization_v1 as physical
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_physical_book_split_probe_v1 as book_split_probe
+from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -171,6 +172,11 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and probe["canonical_source_families"] == 1
              and probe["physical_document_clusters"] == 3,
              "physical-book mechanics probe incorrectly promoted corpus")
+    heldout = physical_heldout.stage(root, destination / "physical-heldout")
+    _require(heldout["terminal_done"] is False
+             and heldout["physical_s9_admitted"] is False
+             and heldout["production_release_authorized"] is False,
+             "physical heldout audit cannot promote unreleased data")
     cohort = physical.stage_candidate_cohort(root, destination / "source")
     current = mixture.stage_mixture(root, destination / "physical-candidate")
     _require(cohort["source_level_candidate_only"] is True
@@ -235,6 +241,9 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
         "real_books_s10_probe_decision": probe["decision"],
         "real_books_s10_probe_document_clusters":
             probe["physical_document_clusters"],
+        "real_books_physical_heldout_manifest_sha256": heldout["manifest_sha256"],
+        "real_books_physical_heldout_clean":
+            heldout["physical_heldout_decontamination_clean"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_gate_manifest_sha256": gates,
