@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -799,3 +801,241 @@ def qualify_repaired_candidate(
         physical_gate_id=requirement.physical_gate_id,
         _verification_token=_VERIFIED_REQUALIFICATION_RECEIPT,
     )
+
+
+# Plan 8 / Section 5: immutable, replay-resistant host/GitHub handoff.
+# This file transport is deliberately not a remote shell or automatic retry worker.
+# Files in outbound/ are uploadable as GitHub Actions artifacts; they are not
+# automatically promoted to a real physical PASS.
+
+_BRIDGE_MAX_PACKET_BYTES = 4 * 1024 * 1024
+_BRIDGE_MAX_RECEIPT_BYTES = 4 * 1024 * 1024
+_BRIDGE_MAX_LOG_BYTES = 32 * 1024 * 1024
+
+
+def _bridge_regular_bytes(path: Path, max_bytes: int) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("bridge input must be a regular non-symlink file")
+    with path.open("rb") as stream:
+        payload = stream.read(max_bytes + 1)
+    if len(payload) > max_bytes:
+        raise ValueError("bridge input exceeds its bounded size")
+    return payload
+
+
+def _bridge_write_once(path: Path, payload: bytes) -> bool:
+    """Atomic exclusive claim/publication; replay is safe only for identical bytes."""
+    if type(payload) is not bytes or not payload:
+        raise ValueError("bridge publication must contain bytes")
+    if path.parent.is_symlink() or path.is_symlink():
+        raise ValueError("bridge publication refuses symlink paths")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink():
+        raise ValueError("bridge publication parent is a symlink")
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        if _bridge_regular_bytes(path, max(len(payload), _BRIDGE_MAX_PACKET_BYTES)) != payload:
+            raise ValueError("bridge idempotency key already has different bytes")
+        return False
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return True
+
+
+def _bridge_spool(root: str | Path) -> Path:
+    path = Path(root)
+    if path.is_symlink():
+        raise ValueError("bridge spool cannot be a symlink")
+    path.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or not path.is_dir():
+        raise ValueError("bridge spool is not a directory")
+    return path
+
+
+def stage_bridge_dispatch(
+    spool_root: str | Path,
+    *,
+    dispatch: HostDispatch,
+    verified_packet: VerifiedSignedPacket,
+    signed_packet_bytes: bytes,
+) -> dict[str, Any]:
+    """Transfer a preverified bounded signed packet with exact host dispatch.
+
+    Retry publishes byte-identical envelopes. A changed packet never replaces
+    the already staged dispatch, even after a crash or a reconnect.
+    """
+    if type(dispatch) is not HostDispatch or type(verified_packet) is not VerifiedSignedPacket:
+        raise ValueError("bridge staging requires exact verified dispatch and packet")
+    HostDispatch.__post_init__(dispatch)
+    VerifiedSignedPacket.__post_init__(verified_packet)
+    if verified_packet.packet.execution_mode is not ExecutionMode.REAL_HOST:
+        raise ValueError("bridge staging requires REAL_HOST")
+    if verified_packet.packet.target_git_sha != dispatch.target_git_sha:
+        raise ValueError("bridge packet candidate mismatch")
+    if verified_packet.packet.identity_sha256() != dispatch.packet_identity_sha256:
+        raise ValueError("bridge packet identity mismatch")
+    if (
+        verified_packet.signed_bundle_identity_sha256
+        != dispatch.signed_bundle_identity_sha256
+    ):
+        raise ValueError("bridge packet signed bundle mismatch")
+    if (
+        type(signed_packet_bytes) is not bytes
+        or not 0 < len(signed_packet_bytes) <= _BRIDGE_MAX_PACKET_BYTES
+    ):
+        raise ValueError("bridge signed packet byte bound exceeded")
+    spool = _bridge_spool(spool_root)
+    identity = dispatch.identity_sha256()
+    packet_hash = _sha256_bytes(signed_packet_bytes)
+    manifest = {
+        "schema_version": "12-6.bridge-handoff.v1",
+        "dispatch": dispatch.to_dict(),
+        "dispatch_identity_sha256": identity,
+        "signed_packet_sha256": packet_hash,
+        "packet_relative_path": f"packets/{identity}.json",
+        "execution_authority": "SIGNED_PACKET_ONLY",
+        "automatic_retry_allowed": False,
+    }
+    _bridge_write_once(spool / "packets" / f"{identity}.json", signed_packet_bytes)
+    _bridge_write_once(
+        spool / "dispatches" / f"{identity}.json",
+        _canonical_json_bytes(manifest) + b"\n",
+    )
+    return manifest
+
+
+def bridge_status(spool_root: str | Path, dispatch_identity_sha256: str) -> dict[str, str]:
+    """Text-friendly status; neither a receipt nor a self-asserted physical PASS."""
+    identity = _require_sha256("dispatch identity", dispatch_identity_sha256)
+    spool = _bridge_spool(spool_root)
+    staged = spool / "dispatches" / f"{identity}.json"
+    if not staged.exists():
+        return {"state": "NOT_STAGED", "verification": "NOT_CHECKED"}
+    packet = spool / "packets" / f"{identity}.json"
+    raw = _bridge_regular_bytes(staged, _BRIDGE_MAX_PACKET_BYTES)
+    try:
+        envelope = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("bridge handoff envelope is corrupted") from exc
+    if (
+        type(envelope) is not dict
+        or envelope.get("schema_version") != "12-6.bridge-handoff.v1"
+        or envelope.get("dispatch_identity_sha256") != identity
+        or _sha256_bytes(_bridge_regular_bytes(packet, _BRIDGE_MAX_PACKET_BYTES))
+        != envelope.get("signed_packet_sha256")
+    ):
+        raise ValueError("bridge dispatch/packet handoff mismatch")
+    if (spool / "stops" / f"{identity}.json").exists():
+        return {"state": "STOP_REQUESTED", "verification": "NOT_CHECKED"}
+    if (spool / "outbound" / f"{identity}" / "evidence-record.json").exists():
+        return {"state": "EVIDENCE_RECORDED", "verification": "NOT_CHECKED"}
+    if (spool / "claims" / f"{identity}.json").exists():
+        return {"state": "CLAIMED_OUTCOME_UNKNOWN", "verification": "NOT_CHECKED"}
+    return {"state": "READY", "verification": "NOT_CHECKED"}
+
+
+def claim_bridge_dispatch(spool_root: str | Path, dispatch_identity_sha256: str) -> None:
+    """Fence a host effect before execution, never replay an ambiguous attempt."""
+    identity = _require_sha256("dispatch identity", dispatch_identity_sha256)
+    spool = _bridge_spool(spool_root)
+    status = bridge_status(spool, identity)
+    if status["state"] != "READY":
+        raise ValueError(f"bridge run denied: {status['state']}; no automatic retry")
+    claim = _canonical_json_bytes(
+        {"schema_version": "12-6.bridge-attempt.v1", "dispatch": identity}
+    ) + b"\n"
+    if not _bridge_write_once(spool / "claims" / f"{identity}.json", claim):
+        raise ValueError("bridge attempt already claimed; outcome unknown")
+
+
+def stop_bridge_dispatch(spool_root: str | Path, dispatch_identity_sha256: str) -> None:
+    """Durably prevent future starts; running subprocesses still require Ctrl+C."""
+    identity = _require_sha256("dispatch identity", dispatch_identity_sha256)
+    spool = _bridge_spool(spool_root)
+    if bridge_status(spool, identity)["state"] == "NOT_STAGED":
+        raise ValueError("cannot stop an unknown dispatch")
+    marker = _canonical_json_bytes(
+        {"schema_version": "12-6.bridge-stop.v1", "dispatch": identity}
+    ) + b"\n"
+    _bridge_write_once(spool / "stops" / f"{identity}.json", marker)
+
+
+def record_bridge_return(
+    spool_root: str | Path,
+    *,
+    dispatch: HostDispatch,
+    verified_packet: VerifiedSignedPacket,
+    evidence_path: str | Path,
+    log_path: str | Path,
+    agent_source_bytes: bytes,
+    artifact_root: str | Path,
+    evidence_signature_verifier: SignatureVerifier,
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
+) -> dict[str, Any]:
+    """Verify host signature before durable evidence/issue export.
+
+    Interrupted partial publication is recoverable only with identical bytes.
+    A failure without a checked-in pytest reproducer remains INFRASTRUCTURE,
+    never a fabricated code-defect assertion.
+    """
+    if type(dispatch) is not HostDispatch:
+        raise ValueError("bridge return requires an exact dispatch")
+    HostDispatch.__post_init__(dispatch)
+    identity = dispatch.identity_sha256()
+    spool = _bridge_spool(spool_root)
+    status = bridge_status(spool, identity)
+    if status["state"] not in {"CLAIMED_OUTCOME_UNKNOWN", "EVIDENCE_RECORDED"}:
+        raise ValueError("bridge return requires exactly one prior claimed attempt")
+    evidence_bytes = _bridge_regular_bytes(Path(evidence_path), _BRIDGE_MAX_RECEIPT_BYTES)
+    log_bytes = _bridge_regular_bytes(Path(log_path), _BRIDGE_MAX_LOG_BYTES)
+    sealed = verify_physical_execution(
+        dispatch,
+        evidence_path,
+        log_path,
+        verified_packet=verified_packet,
+        agent_source_bytes=agent_source_bytes,
+        artifact_root=artifact_root,
+        evidence_signature_verifier=evidence_signature_verifier,
+        resource_probe_verifiers=resource_probe_verifiers,
+    )
+    record = build_canonical_evidence_record(dispatch, sealed)
+    evidence_report: dict[str, Any] = {
+        "schema_version": "12-6.bridge-return.v1",
+        "dispatch_identity_sha256": identity,
+        "record": record.to_dict(),
+        "receipt_sha256": _sha256_bytes(evidence_bytes),
+        "log_sha256": _sha256_bytes(log_bytes),
+        "verdict": sealed.verdict,
+        "effect": "ONE_CLAIM_NO_AUTO_RETRY",
+    }
+    if sealed.verdict == "FAIL":
+        if sealed.reproducer_command:
+            observation = physical_failure_observation(sealed)
+            evidence_report["defect"] = {
+                "kind": "REPRODUCIBLE_TEST_FAILURE",
+                "reproducer_command": observation.reproducer_command,
+                "candidate_sha": observation.git_sha,
+                "evidence_sha256": observation.evidence_identity_sha256,
+            }
+        else:
+            evidence_report["defect"] = {
+                "kind": "PHYSICAL_INFRASTRUCTURE_FAILURE",
+                "candidate_sha": sealed.target_git_sha,
+                "evidence_sha256": sealed.physical_evidence_identity_sha256,
+                "reproducer_command": None,
+            }
+    out = spool / "outbound" / identity
+    _bridge_write_once(out / "host-evidence.json", evidence_bytes)
+    _bridge_write_once(out / "host-log.bin", log_bytes)
+    _bridge_write_once(
+        out / "bridge-return.json",
+        _canonical_json_bytes(evidence_report) + b"\n",
+    )
+    _bridge_write_once(
+        out / "evidence-record.json",
+        _canonical_json_bytes(record.to_dict()) + b"\n",
+    )
+    return evidence_report
