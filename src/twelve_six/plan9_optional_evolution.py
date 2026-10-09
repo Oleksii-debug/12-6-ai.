@@ -15,6 +15,8 @@ from typing import Any
 _PLAN7 = {
     17: ("src/twelve_six/large_scale_paths.py",
          "699150eea29633d94aa6853acba216c52c41e113", ("3B", "7B", "13B")),
+    18: ("src/twelve_six/very_large_scale_paths.py",
+         "c10701b0f01ef26fa6c8cff70b4ee9c5036324ac", ("30B", "70B", "100B")),
 }
 _FIELDS = frozenset({"schema_version", "plan", "section", "outcome", "tiers",
                      "producer_path", "producer_git_blob_sha1", "reason_codes",

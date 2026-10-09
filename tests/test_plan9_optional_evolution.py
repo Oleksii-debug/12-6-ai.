@@ -1,4 +1,4 @@
-"""Plan 9 S17 fail-closed no-activation, persistence, restart, forgeries."""
+"""Plan 9 S17–S18 fail-closed decisions, persistence, restart, forgeries."""
 import copy
 import json
 
@@ -11,7 +11,10 @@ from twelve_six.plan9_optional_evolution import (
 )
 
 
-@pytest.mark.parametrize("section,tiers", [(17, ["3B", "7B", "13B"])])
+@pytest.mark.parametrize("section,tiers", [
+    (17, ["3B", "7B", "13B"]),
+    (18, ["30B", "70B", "100B"]),
+])
 def test_terminal_nonactivation(section, tiers, tmp_path):
     receipt = not_activated(section)
     assert receipt["outcome"] == "NOT_ACTIVATED"
@@ -46,8 +49,9 @@ def test_activation_cannot_bypass(activation):
     {"activation_prerequisites": []}, {"reason_codes": []},
     {"receipt_sha256": "0" * 64}, {"new": "surprise"},
 ])
-def test_forgery_fails_closed(change):
-    packet = copy.deepcopy(not_activated(17))
+@pytest.mark.parametrize("section", [17, 18])
+def test_forgery_fails_closed(change, section):
+    packet = copy.deepcopy(not_activated(section))
     packet.update(change)
     with pytest.raises(EvolutionDecisionDenied):
         verify_not_activated(packet)
@@ -60,11 +64,25 @@ def test_renumbering_without_producer_binding_denied():
         verify_not_activated(packet)
 
 
-def test_repository_receipt_matches_executable_contract():
+@pytest.mark.parametrize("section", [17, 18])
+def test_repository_receipt_matches_executable_contract(section):
     from pathlib import Path
 
     path = (Path(__file__).resolve().parents[1] / "configs" / "research"
-            / "plan9_section17_not_activated_v1.json")
+            / f"plan9_section{section}_not_activated_v1.json")
     packet = json.loads(path.read_text(encoding="utf-8"))
     verify_not_activated(packet)
-    assert packet == not_activated(17)
+    assert packet == not_activated(section)
+
+
+def test_forged_s18_as_s17_denied():
+    packet = copy.deepcopy(not_activated(18))
+    packet["section"] = 17
+    with pytest.raises(EvolutionDecisionDenied):
+        verify_not_activated(packet)
+
+
+def test_s18_activation_denied_for_any_truthy_owner_request():
+    for activation in (True, 1, "yes", None):
+        with pytest.raises(EvolutionDecisionDenied):
+            not_activated(18, owner_activation=activation)
