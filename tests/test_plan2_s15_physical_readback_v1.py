@@ -181,3 +181,46 @@ def test_symlinked_physical_exposure_denied(tmp_path: Path) -> None:
     member.symlink_to(pd / "shards" / "shard-000000.json")
     with pytest.raises(readback.PhysicalReadbackDenied, match="linked"):
         _verify(pd, ed, packed, ledger)
+
+
+def test_resigned_exposure_token_still_fails_source_replay(
+    tmp_path: Path,
+) -> None:
+    pd, ed, packed, ledger = _fixture(tmp_path)
+    name = "exposures/shard-000000.json"
+    member = ed / name
+    event_doc = json.loads(member.read_bytes())
+    event_doc["ordered_exposures"][1]["target_token_id"] = 110
+    new_bytes = books.canonical(event_doc)
+    member.write_bytes(new_bytes)
+    # Even when attacker recomputes both JSON hashes, source-token equality,
+    # target/exposure IDs and causal chain must remain independently checked.
+    core = {k: v for k, v in ledger.items() if k != "manifest_sha256"}
+    core["exposure_shards"][0]["sha256"] = books.sha(new_bytes)
+    core["exposure_shards"][0]["byte_count"] = len(new_bytes)
+    resign = _receipt(core)
+    (ed / "physical-exposure-candidate.json").write_bytes(
+        books.canonical(resign)
+    )
+    with pytest.raises(readback.PhysicalReadbackDenied, match="replay"):
+        _verify(pd, ed, packed, resign)
+
+
+def test_resigned_packing_mask_still_fails_target_replay(
+    tmp_path: Path,
+) -> None:
+    pd, ed, packed, ledger = _fixture(tmp_path)
+    member = pd / "shards/shard-000000.json"
+    doc = json.loads(member.read_bytes())
+    doc["blocks"][0]["loss_mask"][1] = 0
+    raw = books.canonical(doc)
+    member.write_bytes(raw)
+    core = {k: v for k, v in packed.items() if k != "manifest_sha256"}
+    core["shards"][0]["sha256"] = books.sha(raw)
+    core["shards"][0]["byte_count"] = len(raw)
+    resign = _receipt(core)
+    (pd / "physical-shard-candidate.json").write_bytes(
+        books.canonical(resign)
+    )
+    with pytest.raises(readback.PhysicalReadbackDenied):
+        _verify(pd, ed, resign, ledger)
