@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import inspect
+import json
 import subprocess
 
 import pytest
@@ -585,3 +587,181 @@ def test_verification_entrypoints_expose_no_verifier_override_bypass() -> None:
         assert tuple(inspect.signature(schema.identity_sha256).parameters) == (
             "instance",
         )
+
+
+def _signed_bridge_fixture():
+    raw_signature = bytes(range(64))
+    provisional = _verified_packet(_git("a"), mode=ExecutionMode.REAL_HOST)
+    verified = VerifiedSignedPacket(
+        packet=provisional.packet,
+        signing_key_id=provisional.signing_key_id,
+        signature_sha256=hashlib.sha256(raw_signature).hexdigest(),
+        signed_bundle_identity_sha256=provisional.signed_bundle_identity_sha256,
+        _verification_token=physical_module._VERIFIED_PACKET_TOKEN,
+    )
+    dispatch = HostDispatch(
+        schema_version="12-6.host-dispatch.v1",
+        dispatch_id="signed-dispatch",
+        target_git_sha=verified.packet.target_git_sha,
+        package_identity_sha256=_sha("package-a"),
+        packet_identity_sha256=verified.packet.identity_sha256(),
+        signed_bundle_identity_sha256=verified.signed_bundle_identity_sha256,
+        scenario_id="host-smoke",
+        physical_gate_id="linux-host",
+    )
+    encoded = json.dumps(
+        {
+            "schema_version": "12-6.signed-physical-qualification-packet.v1",
+            "packet": verified.packet.to_dict(),
+            "signature": {
+                "algorithm": "ED25519",
+                "key_id": verified.signing_key_id,
+                "signature_b64": base64.b64encode(raw_signature).decode("ascii"),
+            },
+        },
+        sort_keys=True,
+    ).encode()
+    return dispatch, verified, encoded
+
+
+def test_bridge_handoff_claim_restart_and_stop(tmp_path) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    first = bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    assert first["automatic_retry_allowed"] is False
+    assert bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    ) == first
+    key = dispatch.identity_sha256()
+    assert bridge_module.bridge_status(tmp_path, key)["state"] == "READY"
+    bridge_module.claim_bridge_dispatch(tmp_path, key)
+    assert bridge_module.bridge_status(tmp_path, key)["state"] == "CLAIMED_OUTCOME_UNKNOWN"
+    with pytest.raises(ValueError, match="no automatic retry"):
+        bridge_module.claim_bridge_dispatch(tmp_path, key)
+    bridge_module.stop_bridge_dispatch(tmp_path, key)
+    bridge_module.stop_bridge_dispatch(tmp_path, key)
+    assert bridge_module.bridge_status(tmp_path, key)["state"] == "STOP_REQUESTED"
+    with pytest.raises(ValueError, match="no automatic retry"):
+        bridge_module.claim_bridge_dispatch(tmp_path, key)
+
+
+def test_bridge_different_packet_replay_and_corrupt_handoff_fail_closed(tmp_path) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    bad = signed.replace(b"ED25519", b"UNKNOWN")
+    with pytest.raises(ValueError, match="does not bind"):
+        bridge_module.stage_bridge_dispatch(
+            tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=bad
+        )
+    packet_file = tmp_path / "packets" / (dispatch.identity_sha256() + ".json")
+    packet_file.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="different bytes"):
+        bridge_module.stage_bridge_dispatch(
+            tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+        )
+    with pytest.raises(ValueError, match="handoff mismatch"):
+        bridge_module.bridge_status(tmp_path, dispatch.identity_sha256())
+
+
+def test_bridge_forged_signed_packet_and_symlink_denied(tmp_path) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    with pytest.raises(ValueError, match="malformed"):
+        bridge_module.stage_bridge_dispatch(
+            tmp_path, dispatch=dispatch, verified_packet=verified,
+            signed_packet_bytes=b'{"signature":{},"signature":{}}',
+        )
+    with pytest.raises(ValueError, match="bind"):
+        bridge_module.stage_bridge_dispatch(
+            tmp_path, dispatch=dispatch, verified_packet=verified,
+            signed_packet_bytes=signed.replace(b"signed-dispatch", b"other-dispatch"),
+        )
+    spool_link = tmp_path / "spool-link"
+    spool_link.symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        bridge_module.stage_bridge_dispatch(
+            spool_link, dispatch=dispatch, verified_packet=verified,
+            signed_packet_bytes=signed,
+        )
+
+
+def test_bridge_missing_claim_cannot_publish_unverified_host_result(tmp_path) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    evidence = tmp_path / "receipt.json"
+    log = tmp_path / "log.bin"
+    evidence.write_text("{}", encoding="utf-8")
+    log.write_bytes(b"log")
+    with pytest.raises(ValueError, match="prior claimed attempt"):
+        bridge_module.record_bridge_return(
+            tmp_path, dispatch=dispatch, verified_packet=verified,
+            evidence_path=evidence, log_path=log,
+            agent_source_bytes=b"source", artifact_root=tmp_path,
+            evidence_signature_verifier=lambda *_args: False,
+        )
+
+
+def test_bridge_return_refuses_forged_signature_even_after_claim(tmp_path) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    evidence = tmp_path / "receipt.json"
+    log = tmp_path / "log.bin"
+    evidence.write_text("{}", encoding="utf-8")
+    log.write_bytes(b"log")
+    with pytest.raises((ValueError, KeyError, RuntimeError)):
+        bridge_module.record_bridge_return(
+            tmp_path, dispatch=dispatch, verified_packet=verified,
+            evidence_path=evidence, log_path=log,
+            agent_source_bytes=b"source", artifact_root=tmp_path,
+            evidence_signature_verifier=lambda *_args: False,
+        )
+    assert bridge_module.bridge_status(
+        tmp_path, dispatch.identity_sha256()
+    )["state"] == "CLAIMED_OUTCOME_UNKNOWN"
+
+
+@pytest.mark.parametrize("reproducer,expected_kind", [
+    ("pytest -q tests/test_smoke.py", "REPRODUCIBLE_TEST_FAILURE"),
+    (None, "PHYSICAL_INFRASTRUCTURE_FAILURE"),
+])
+def test_bridge_signed_failure_return_is_durable_and_idempotent(
+    tmp_path, monkeypatch, reproducer, expected_kind,
+) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    sealed = _receipt(
+        dispatch, verdict="FAIL", evidence="signed-physical-failure",
+        reproducer=reproducer,
+    )
+    # Transport test double only: independent S4 tests execute the real signer verifier.
+    monkeypatch.setattr(
+        bridge_module, "verify_physical_execution", lambda *_args, **_kwargs: sealed
+    )
+    evidence = tmp_path / "receipt.json"
+    log = tmp_path / "log.bin"
+    evidence.write_text('{"signed":true}', encoding="utf-8")
+    log.write_bytes(b"physical log")
+    options = dict(
+        dispatch=dispatch, verified_packet=verified, evidence_path=evidence,
+        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
+        evidence_signature_verifier=lambda *_args: False,
+    )
+    first = bridge_module.record_bridge_return(tmp_path, **options)
+    assert first["defect"]["kind"] == expected_kind
+    assert bridge_module.record_bridge_return(tmp_path, **options) == first
+    assert bridge_module.bridge_status(
+        tmp_path, dispatch.identity_sha256()
+    )["state"] == "EVIDENCE_RECORDED"
+    evidence.write_text('{"signed":false}', encoding="utf-8")
+    with pytest.raises(ValueError, match="different bytes"):
+        bridge_module.record_bridge_return(tmp_path, **options)
