@@ -414,6 +414,20 @@ jobs:
           cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-restart.json"
           cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-clean.json"
           cmp "$RUNNER_TEMP/three-family-bpe/three-family-train-bpe-candidate.json" "$RUNNER_TEMP/three-family-bpe-clean/three-family-train-bpe-candidate.json"
+      - name: Lint S15 real three-family S9 mixture mechanics
+        run: ruff check tools/plan2_s15_three_family_mixture_probe_v1.py tests/test_plan2_s15_three_family_mixture_probe_v1.py
+      - name: Verify real three-family S9 fixture-only mixing controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_mixture_probe_v1.py
+      - name: Verify real S9 mixture restart and clean independent destination
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture" > "$RUNNER_TEMP/s15-family-mixture-first.json"
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture" > "$RUNNER_TEMP/s15-family-mixture-restart.json"
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture-clean" > "$RUNNER_TEMP/s15-family-mixture-clean.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture-first.json" "$RUNNER_TEMP/s15-family-mixture-restart.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture-first.json" "$RUNNER_TEMP/s15-family-mixture-clean.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture/three-family-mixture-probe.json" "$RUNNER_TEMP/s15-family-mixture-clean/three-family-mixture-probe.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
