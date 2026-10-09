@@ -212,3 +212,21 @@ from these artifacts. Current exact-head hosted qualification, production
 rights/mix/holdout acceptance, Plan3/4 token compatibility, and final Plan9
 release authority remain terminal gates. Do not change S15 or Plan2 to DONE
 until all of them have verifiable accepted-main evidence.
+
+
+## Additional physical provenance and mirrored-book controls
+
+A whole-document cross-book mirror check now applies the incumbent S7
+versioned near-duplicate matcher even between the two physical reserved
+evaluation roles. Identical spans of the **same original book** are not falsely
+credited as independent documents. A detected different-book mirror is recorded
+as text-free hashed evidence and prevents physical token-fit qualification;
+the original books remain candidate-only. The existing DATA-232 hash-only
+training/evaluation report remains an independent required check.
+
+The physical S13 candidate manifest now carries the complete byte-span offset
+and SHA-256 map from every generated `r50000000+` S15 training segment back to
+the original pinned book bytes. Segments are contiguous, lossless and non-
+overlapping, and the total recorded bytes must equal the original checked
+snapshot. Those exact physical bytes are still NOT a production dataset merely
+because they produce loss targets and shards.
