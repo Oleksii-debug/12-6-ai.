@@ -173,9 +173,18 @@ def stage(root: Path, destination: Path) -> dict[str, Any]:
 
 def stage_from_fit(fitted: dict[str, Any], destination: Path) -> dict[str, Any]:
     """Publish a previously recomputed exact S12 fit without fitting twice."""
+    return _publish(assess(fitted), destination)
+
+
+def stage_fullsize_from_fit(fitted: dict[str, Any],
+                            destination: Path) -> dict[str, Any]:
+    """Check actual 32K physical candidate using the same Plan3/4 contract."""
+    return _publish(assess_fullsize_preproduction(fitted), destination)
+
+
+def _publish(report: dict[str, Any], destination: Path) -> dict[str, Any]:
     need(not any(x.is_symlink() for x in (destination, *destination.parents)),
          "symlink Plan3/4 compatibility output")
-    report = assess(fitted)
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / OUTPUT
     raw = books.canonical(report)
