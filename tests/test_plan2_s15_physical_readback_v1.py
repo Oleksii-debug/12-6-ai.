@@ -235,3 +235,23 @@ def test_resigned_packing_mask_still_fails_target_replay(
     )
     with pytest.raises(readback.PhysicalReadbackDenied):
         _verify(pd, ed, resign, ledger)
+
+
+def test_resigned_physical_source_byte_gap_denied_before_replay(
+    tmp_path: Path,
+) -> None:
+    pd, ed, packed, ledger = _fixture(tmp_path)
+    parent = {k: v for k, v in packed.items() if k != "manifest_sha256"}
+    parent["source_segment_byte_map"][0]["source_byte_start"] = 1
+    altered_packing = _receipt(parent)
+    (pd / "physical-shard-candidate.json").write_bytes(
+        books.canonical(altered_packing)
+    )
+    child = {k: v for k, v in ledger.items() if k != "manifest_sha256"}
+    child["packing_manifest_sha256"] = altered_packing["manifest_sha256"]
+    altered_ledger = _receipt(child)
+    (ed / "physical-exposure-candidate.json").write_bytes(
+        books.canonical(altered_ledger)
+    )
+    with pytest.raises(readback.PhysicalReadbackDenied, match="byte lineage"):
+        _verify(pd, ed, altered_packing, altered_ledger)
