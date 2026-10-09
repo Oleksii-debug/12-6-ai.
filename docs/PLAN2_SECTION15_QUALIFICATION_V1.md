@@ -140,3 +140,42 @@ source-rights promotion or PLAN-9 authority is conveyed.
 
 There is no Section 16 in the second plan; after terminal Section 15 the
 numbered plan closes. Any next-plan assignment must be explicit.
+
+
+## 2026-10-09 S15 real-source holdout and physical-tokenizer candidate — NOT terminal
+
+The continued S15 canonical PR now executes **two exact Git HEAD source
+checkouts**, runs the existing S15 qualification independently in both, and
+checks matching canonical SHA-256 inventories. It rejects dirty tracked HEAD,
+unsafe tar members, symlinks, altered receipts, and a forged release decision.
+
+The new \`plan2_s15_physical_heldout_decontam_v1.py\` stage uses the three
+immutable public-domain **document** identities and the existing S10 whole-book
+split probe. It binds an actual one-document training / one-document validation /
+one-document final-test partition to original source SHA hashes, runs the
+incumbent DATA-232 contamination matcher on the **physical book text**, and
+records a *hash-only*, immutable report. Only the document assignments and
+DATA-232 source scan are evaluated; no final-test **outcomes** are read. This
+is not independent external benchmark custody and is NOT a physical S9 admission.
+
+The new \`plan2_s15_physical_tokenizer_candidate_v1.py\` fits the **incumbent
+frozen byte-BPE algorithm** to exact physical training-document text, after a
+clean real heldout scan. A deterministic lossless UTF-8/line partition uses a
+separate reserved S15 training-segment record-ID range rather than reusing
+S10 span record IDs. It records exact fitted merges, training record hashes,
+an immutable tokenizer identity and complete byte roundtrips. This is a
+**real-data candidate**, not a frozen production tokenizer: the incumbent S12
+cap is only 128 merges and its policy expressly says
+\`LOCAL_FREE_SYNTHETIC_NO_RELEASE\`. No vocabulary-32768 claim is made, and
+no synthetic fixture is promoted. S15 clean builds include these receipts.
+
+The CI extension includes scoped lint, real data checks, forged-authority,
+corruption, symlink, Unicode and restart negatives, plus clean Git-root archive
+rebuild. Exact-head CI and accepted-main integration/readback must still pass
+before this component evidence may be accepted.
+
+**Terminal S15 remains OPEN** until a genuinely admitted full physical S1–S9
+production corpus (with both rights and reserve custody), production-scale
+frozen tokenizer, deterministic production shards and exposures, two clean
+production rebuilds, and a Plan9-compatible signed release handoff are
+established. Neither this PR nor a green component CI alone constitutes DONE.
