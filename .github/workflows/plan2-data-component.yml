@@ -316,6 +316,20 @@ jobs:
         run: ruff check tools/plan2_s15_physical_readback_v1.py tests/test_plan2_s15_physical_readback_v1.py
       - name: Qualify independent published physical S13/S14 readback
         run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_readback_v1.py
+      - name: Lint Plan2 S15 12 physical D03 Ukrainian sources and tests
+        run: ruff check tools/plan2_s15_d03_physical_sources_v1.py tests/test_plan2_s15_d03_physical_sources_v1.py
+      - name: Verify source blobs, license rights, normalization and G06/DATA232
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_d03_physical_sources_v1.py
+      - name: Rebuild D03 physical sources from clean destination and restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real" > "$RUNNER_TEMP/d03-s15-first.json"
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real" > "$RUNNER_TEMP/d03-s15-restart.json"
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real-clean" > "$RUNNER_TEMP/d03-s15-clean.json"
+          cmp "$RUNNER_TEMP/d03-s15-first.json" "$RUNNER_TEMP/d03-s15-restart.json"
+          cmp "$RUNNER_TEMP/d03-s15-first.json" "$RUNNER_TEMP/d03-s15-clean.json"
+          cmp "$RUNNER_TEMP/d03-s15-real/d03-physical-source-candidate.json" "$RUNNER_TEMP/d03-s15-real-clean/d03-physical-source-candidate.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
