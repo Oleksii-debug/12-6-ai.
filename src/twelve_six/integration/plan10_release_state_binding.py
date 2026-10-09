@@ -123,7 +123,7 @@ def _copy_database(src: Path, target: Path, kind: str) -> bytes:
     if src.is_symlink() or not src.is_file():
         raise StateBindingError("unsafe sqlite source")
     try:
-        with sqlite3.connect(f"file:{src}?mode=ro", uri=True) as origin:
+        with sqlite3.connect(f"{src.absolute().as_uri()}?mode=ro", uri=True) as origin:
             _validate_db(origin, kind)
             with sqlite3.connect(target) as out:
                 origin.backup(out)
