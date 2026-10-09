@@ -386,6 +386,20 @@ jobs:
           cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-restart.json"
           cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-clean.json"
           cmp "$RUNNER_TEMP/s15-real-final/eval233-three-family-final-decontamination.json" "$RUNNER_TEMP/s15-real-final-clean/eval233-three-family-final-decontamination.json"
+      - name: Lint Plan2 physical three-family train-only split materialization
+        run: ruff check tools/plan2_s15_three_family_train_materialization_v1.py tests/test_plan2_s15_three_family_train_materialization_v1.py
+      - name: Qualify train-only materialization and holdout negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_train_materialization_v1.py
+      - name: Verify physical train partition restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train" > "$RUNNER_TEMP/three-family-train-first.json"
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train" > "$RUNNER_TEMP/three-family-train-restart.json"
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train-clean" > "$RUNNER_TEMP/three-family-train-clean.json"
+          cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-restart.json"
+          cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-clean.json"
+          diff -r "$RUNNER_TEMP/three-family-train" "$RUNNER_TEMP/three-family-train-clean"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
