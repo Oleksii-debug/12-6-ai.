@@ -16,9 +16,8 @@ from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_physical_packing_candidate_v1 as physical
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as segmenter
-from tools import plan2_s15_three_family_train_bpe_v1 as fit
+from tools import plan2_s15_real_32k_bpe_v1 as fit
 from tools import plan2_s15_three_family_train_materialization_v1 as training
-from tools import plan2_tokenizer_fit_freeze_v1 as frozen
 
 SCHEMA = physical.SCHEMA
 OUTPUT = physical.OUTPUT
@@ -45,15 +44,16 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
          == partition["train_document_count"]
          and fitted["source_train_utf8_bytes"] == partition["physical_train_bytes"]
          and fitted["heldout_payloads_fitted"] is False
-         and fitted["production_target_vocab_frozen"] is False
+         and fitted["actual_vocab_size"] == 32768
+         and fitted["production_train_source_admitted"] is False
          and fitted["production_release_authorized"] is False
          and partition["heldout_plaintext_materialized"] is False
          and partition["physical_s9_admitted"] is False
          and partition["training_corpus_authorized"] is False,
          "physical S10 train-only tokens/rights or holdout boundary changed")
-    tokenizer = frozen.FrozenBPE(fitted["fitted_merges"])
+    tokenizer = fit.ByteBPE32k(fitted["fitted_merges"])
     need(tokenizer.identity.to_dict() == fitted["tokenizer_identity"]
-         and tokenizer.vocab_size == fitted["candidate_vocab_size"],
+         and tokenizer.vocab_size == fitted["actual_vocab_size"],
          "S12 frozen training tokenizer identity mismatch")
     items = sorted(partition["train_members"], key=lambda row: row["path"])
     need(len(items) > 0 and len({x["path"] for x in items}) == len(items),
@@ -108,7 +108,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         })
     need(source_byte_offset == partition["physical_train_bytes"]
          and len(ids) == len(set(ids))
-         and len(segment_map) == fitted["training_segment_count"]
+         and len(segment_map) == fitted["source_train_record_count"]
          and len(train_document_map) == fitted["source_train_document_count"]
          and bool(blocks), "S10 training bytes, segment count or IDs changed")
     shard_bytes: dict[str, bytes] = {}
