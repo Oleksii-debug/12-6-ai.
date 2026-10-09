@@ -56,6 +56,8 @@ def test_no_go_receipt_and_repeated_cold_restart(tmp_path):
     (("evidence", "training_authorization", "status"), "AUTHORIZED"),
     (("evidence", "bounded_pilot", "status"), "PASS"),
     (("evidence", "cost_envelope", "status"), "ESTIMATED"),
+    (("truth_boundary", "model_training_executed_by_this_package"), True),
+    (("model_authority", "parameter_count"), 1),
 ])
 def test_changed_or_spoofed_readiness_denied(path, value):
     readiness, economics = inputs()
