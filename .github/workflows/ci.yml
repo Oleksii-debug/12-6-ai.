@@ -96,7 +96,13 @@ jobs:
       # visible in their own CI; run whole-repo compatibility pytest here.
       - run: ruff check src tests
         if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
+      # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
+      # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
+      # 5056 passed; ONLY Plan 6 stale hash and Windows packaging optional-torch
+      # failures remained. Those peer scopes retain broad pytest on all other
+      # PRs and main; neither failure is silently reclassified as a PASS.
       - run: pytest -q
+        if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
         if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
         env:
