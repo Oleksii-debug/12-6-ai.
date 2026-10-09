@@ -30,6 +30,7 @@ from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
 from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
+from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -213,6 +214,16 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined_partitions["training_corpus_authorized"] is False
              and combined_partitions["production_release_authorized"] is False,
              "source-family split mechanics incorrectly promoted candidate")
+    real_eval = real_final.stage(root, destination / "physical-real-final-custody")
+    _require(real_eval["physical_three_family_sha256"] ==
+             combined["manifest_sha256"]
+             and real_eval["real_final_test_record_count"] == 16
+             and real_eval["real_final_test_custody_verified"] is True
+             and real_eval["real_final_test_outcomes_read"] is False
+             and real_eval["selection_payload_scanned"] is False
+             and real_eval["training_corpus_authorized"] is False
+             and real_eval["production_release_authorized"] is False,
+             "real EVAL233 final-test decontamination cannot authorize training")
     probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
     _require(probe["production_release_authorized"] is False
              and probe["physical_s9_admitted"] is False
@@ -317,6 +328,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             combined_partitions["whole_source_cluster_count"],
         "real_three_family_source_split_leakage_count":
             combined_partitions["cluster_leakage_count"],
+        "real_eval233_final_custody_audit_sha256":
+            real_eval["manifest_sha256"],
+        "real_eval233_final_record_count": real_eval["real_final_test_record_count"],
+        "real_eval233_final_outcomes_read": real_eval["real_final_test_outcomes_read"],
+        "real_eval233_decontamination_clean":
+            real_eval["real_final_decontamination_clean"],
         "real_three_family_candidate_sha256": combined["manifest_sha256"],
         "real_three_family_document_count": combined["document_identity_count"],
         "real_three_family_total_bytes": combined["total_physical_normalized_bytes"],
