@@ -749,7 +749,7 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
     assert inventory.candidate_overlay_surface_count == 38
-    assert len(candidate) == 37
+    assert len(candidate) == 38
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
         for surface in candidate
