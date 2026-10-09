@@ -21,7 +21,6 @@ from twelve_six.evidence_control_bridge import (
     physical_failure_observation,
     write_canonical_evidence_record,
 )
-
 from twelve_six.physical_qualification import (
     ExecutionMode,
     QualificationAction,
@@ -751,11 +750,11 @@ def test_bridge_signed_failure_return_is_durable_and_idempotent(
     log = tmp_path / "log.bin"
     evidence.write_text('{"signed":true}', encoding="utf-8")
     log.write_bytes(b"physical log")
-    options = dict(
-        dispatch=dispatch, verified_packet=verified, evidence_path=evidence,
-        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
-        evidence_signature_verifier=lambda *_args: False,
-    )
+    options = {
+        "dispatch": dispatch, "verified_packet": verified, "evidence_path": evidence,
+        "log_path": log, "agent_source_bytes": b"source", "artifact_root": tmp_path,
+        "evidence_signature_verifier": lambda *_args: False,
+    }
     first = bridge_module.record_bridge_return(tmp_path, **options)
     assert first["defect"]["kind"] == expected_kind
     assert bridge_module.record_bridge_return(tmp_path, **options) == first
@@ -801,12 +800,12 @@ def test_github_bridge_publish_is_create_only_and_hash_only(tmp_path, monkeypatc
         }
 
     monkeypatch.setattr(bridge_module, "_github_evidence_request", pretend_github)
-    args = dict(
-        dispatch=dispatch, verified_packet=verified, evidence_path=receipt,
-        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
-        evidence_signature_verifier=lambda *_args: False,
-        github_token="dummy-secret-token",
-    )
+    args = {
+        "dispatch": dispatch, "verified_packet": verified, "evidence_path": receipt,
+        "log_path": log, "agent_source_bytes": b"source", "artifact_root": tmp_path,
+        "evidence_signature_verifier": lambda *_args: False,
+        "github_token": "dummy-secret-token",
+    }
     first = bridge_module.publish_bridge_return_github(tmp_path, **args)
     assert len(first["publication"]) == 2
     assert all(x["state"] == "VERIFIED_CREATED" for x in first["publication"])
@@ -831,12 +830,12 @@ def test_github_bridge_denies_main_and_ambiguous_remote_conflict(tmp_path, monke
     log = tmp_path / "log.bin"
     receipt.write_bytes(b'{"sealed":true}')
     log.write_bytes(b"local log")
-    kwargs = dict(
-        dispatch=dispatch, verified_packet=verified, evidence_path=receipt,
-        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
-        evidence_signature_verifier=lambda *_args: False,
-        github_token="dummy-secret-token",
-    )
+    kwargs = {
+        "dispatch": dispatch, "verified_packet": verified, "evidence_path": receipt,
+        "log_path": log, "agent_source_bytes": b"source", "artifact_root": tmp_path,
+        "evidence_signature_verifier": lambda *_args: False,
+        "github_token": "dummy-secret-token",
+    }
     with pytest.raises(ValueError, match="dedicated evidence branch"):
         bridge_module.publish_bridge_return_github(
             tmp_path, evidence_branch="main", **kwargs
@@ -907,12 +906,12 @@ def test_bridge_stop_after_claim_preserves_verified_receipt_recovery(
     host_log = tmp_path / "host-log.bin"
     host_receipt.write_bytes(b'{"signed":true}')
     host_log.write_bytes(b"host evidence")
-    kwargs = dict(
-        dispatch=dispatch, verified_packet=verified,
-        evidence_path=host_receipt, log_path=host_log,
-        agent_source_bytes=b"agent", artifact_root=tmp_path,
-        evidence_signature_verifier=lambda *_a: False,
-    )
+    kwargs = {
+        "dispatch": dispatch, "verified_packet": verified,
+        "evidence_path": host_receipt, "log_path": host_log,
+        "agent_source_bytes": b"agent", "artifact_root": tmp_path,
+        "evidence_signature_verifier": lambda *_a: False,
+    }
     result = bridge_module.record_bridge_return(tmp_path, **kwargs)
     assert result["verdict"] == "PASS"
     assert bridge_module.record_bridge_return(tmp_path, **kwargs) == result
