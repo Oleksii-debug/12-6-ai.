@@ -81,3 +81,48 @@ sandbox run, not a full-repository, Windows, hosted-CI, or integrated-release PA
 No real champion, whole-product candidate, cross-component quiescence, semantic
 cold-restart, versioned migration, physical HIL/NVDA or release approval is
 inferred. Section 1 WAITING_UPSTREAM; Section 2 remains NOT DONE.
+
+
+## 2026-10-09 Plan-10-only semantic state audit and live CI readback
+
+**Staging only; Section 2 is NOT terminal DONE.** Audit found that SQLite table
+shapes and `integrity_check` alone could accept a malformed task revision ledger
+or an invalid memory payload. The existing Plan-5 authorities are now reused at
+the release composition boundary rather than copied or replaced:
+
+- `twelve_six_agent_runtime.task_state._decode` validates task digest, canonical
+  encoding, task/effect contract and every history entry; composition additionally
+  checks contiguous revisions, parent task/plan identity, epoch monotonicity,
+  current/latest equality and rejects orphan history rows;
+- `twelve_six_agent_runtime.memory.MemoryStore._rows` validates memory record
+  digests, revision/sequence, schema, and correction lineage before snapshot
+  *and* before restore publication;
+- newly added tests cover real Plan-5 task/memory cold restart, forged orphan
+  history, tampered history digest, stale memory revision, memory digest
+  corruption, and a malicious snapshot whose member and manifest digests were
+  recomputed after semantic tampering.
+
+**Exact Git-byte local mirror qualification:** source
+`db63e09228625dfb7e2a0b4f52d5fd2aa0bfef46`, tests
+`0ec9a3ada759cc41495f933166a90a022c324fde`, matched with
+`git hash-object`. `PYTHONPATH=src python -m pytest -q
+tests/test_plan10_section2_state_binding.py` yielded **22 passed / 0 failed**.
+`python -m compileall` passed. This is scoped LOCAL_FREE testing with the
+reused Plan-5 source code, **not** exact integrated product / whole-repo CI.
+
+Independent live GitHub Actions readback: run
+https://github.com/Oleksii-debug/12-6-ai./actions/runs/37872588159 on
+**previous** PR head `983a065080419872acf02838b6f4fa032d1309f4`
+finished **FAILURE**, bootstrap job `113633800276` failed shared
+`ruff check src tests` (77 issues in other plans' files); full shared pytest
+and SIL were skipped. That run is **not** qualification of this repaired
+candidate; do not present it as PASS or as a Plan-10 scoped Ruff failure.
+New head requires its own CI readback.
+
+**Remaining mandatory release gates (not simulated):** actual stable champion,
+exact approved whole-product release candidate, verified cross-component writer
+quiescence, physical model/checkpoint integrity and cold restart, versioned
+migration including rollback of entire canonical state, actual Nika/Live Agent
+task/memory continuity and same-candidate integration qualification. Upstream
+Plan-9 champion remains unavailable. No product release signature, Windows
+acceptance, paid compute, or terminal Plan-10 status is claimed.
