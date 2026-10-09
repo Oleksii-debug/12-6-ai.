@@ -58,3 +58,13 @@ def test_renumbering_without_producer_binding_denied():
     packet["section"] = 18
     with pytest.raises(EvolutionDecisionDenied):
         verify_not_activated(packet)
+
+
+def test_repository_receipt_matches_executable_contract():
+    from pathlib import Path
+
+    path = (Path(__file__).resolve().parents[1] / "configs" / "research"
+            / "plan9_section17_not_activated_v1.json")
+    packet = json.loads(path.read_text(encoding="utf-8"))
+    verify_not_activated(packet)
+    assert packet == not_activated(17)
