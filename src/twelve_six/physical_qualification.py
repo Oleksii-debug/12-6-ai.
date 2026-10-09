@@ -750,21 +750,17 @@ def _host_inventory_from_dict(value: object) -> HostInventory:
     names = value["cuda_device_names"]
     if not _is_exact_type(names, list) or not all(_is_exact_type(item, str) for item in names):
         raise ValueError("cuda_device_names must be a string array")
-    return HostInventory(
-        os_family=value["os_family"],
-        platform_system=value["platform_system"],
-        platform_release=value["platform_release"],
-        machine=value["machine"],
-        python_version=value["python_version"],
-        python_executable=value["python_executable"],
-        cpu_logical_count=value["cpu_logical_count"],
-        ram_total_bytes=value["ram_total_bytes"],
-        disk_total_bytes=value["disk_total_bytes"],
-        disk_free_bytes=value["disk_free_bytes"],
-        torch_version=value["torch_version"],
-        cuda_available=value["cuda_available"],
-        cuda_device_names=tuple(names),
-    )
+    # Decode untrusted receipts without dispatching monkey-patchable dataclass
+    # constructors or __post_init__; use the original sealed validator instead.
+    inventory = object.__new__(HostInventory)
+    for name, item in value.items():
+        object.__setattr__(
+            inventory,
+            name,
+            tuple(names) if name == "cuda_device_names" else item,
+        )
+    _validate_host_inventory_stored(inventory)
+    return inventory
 
 
 def _probe_ram_total_bytes() -> int | None:
