@@ -1,0 +1,30 @@
+{
+  "candidate": false,
+  "champion_promoted": false,
+  "compute_authorized": false,
+  "decision": "NO_GO",
+  "economics_receipt_sha256": "73d79c59e73f9b71c81b556237a1d756bdfa18c8aacb3104c502bbe32ece2487",
+  "launch_authorized": false,
+  "learned_parent_200m": null,
+  "one_b_capacity_observation": null,
+  "one_b_cost_observation": null,
+  "plan": 9,
+  "plan7_systems_source_git_blob_sha1": "58f31c8db03cdc2d32b2db9e96f9ce6c91e67fa3",
+  "plan7_systems_source_path": "src/twelve_six/billion_systems_gate.py",
+  "readiness_git_blob_sha1": "753c906ef053b997f4518ad825688dc03037ea73",
+  "readiness_sha256": "26317b79996f2377f96e0fa9016d8c2c7859a484f4df09921e3c17a5fa68773f",
+  "real_backend": false,
+  "reason_codes": [
+    "NO_ACCEPTED_LEARNED_20M_BASE_OR_200M_PARENT",
+    "NO_PRODUCTION_CORPUS_TOKENIZER_LOSS_LEDGER",
+    "NO_1B_PHYSICAL_SYSTEMS_ADMISSION",
+    "NO_MEASURED_1B_RESOURCE_OR_ECONOMIC_EVIDENCE",
+    "NO_EXPLICIT_TRAINING_OR_COMPUTE_AUTHORITY"
+  ],
+  "receipt_sha256": "e8e3e6127b1bb8af0678130fbedcd9c2cea0cac27e1d4da1e9900f63fb35be2a",
+  "schema_version": 1,
+  "section": 16,
+  "systems_admission": "NOT_EXECUTED_PRODUCTION",
+  "tier": "1B",
+  "training_authorized": false
+}
