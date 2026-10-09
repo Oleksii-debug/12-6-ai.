@@ -24,6 +24,7 @@ from tools import plan2_s15_physical_book_split_probe_v1 as book_split_probe
 from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
 from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
+from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -189,6 +190,13 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and real_shards["production_release_authorized"] is False
              and real_shards["physical_s9_admitted"] is False,
              "physical shard candidate incorrectly grants release")
+    real_targets = real_exposure.stage(root, destination / "physical-exposures-candidate")
+    _require(real_targets["terminal_done"] is False
+             and real_targets["production_release_authorized"] is False
+             and real_targets["training_corpus_authorized"] is False
+             and real_targets["packing_manifest_sha256"] == real_shards["manifest_sha256"]
+             and real_targets["target_count"] == real_shards["target_count"],
+             "real physical packing-to-exposure identity mismatch")
     cohort = physical.stage_candidate_cohort(root, destination / "source")
     current = mixture.stage_mixture(root, destination / "physical-candidate")
     _require(cohort["source_level_candidate_only"] is True
@@ -261,6 +269,10 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             real_fit["train_document_bytes"],
         "physical_real_text_shard_manifest_sha256": real_shards["manifest_sha256"],
         "physical_real_text_packed_target_count": real_shards["target_count"],
+        "physical_real_text_exposure_manifest_sha256":
+            real_targets["manifest_sha256"],
+        "physical_real_text_exposure_chain_head_sha256":
+            real_targets["chain_head_sha256"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_gate_manifest_sha256": gates,
