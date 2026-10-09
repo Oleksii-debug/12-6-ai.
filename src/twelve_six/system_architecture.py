@@ -3,11 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Mapping
-
+from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -42,7 +42,7 @@ def _require_sha256(name: str, value: object) -> str:
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
     # Closed architecture schemas reject subclasses that can override identity serialization.
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 class SystemPlane(str, Enum):
@@ -186,10 +186,11 @@ class SystemArchitectureManifest:
 
     def __post_init__(
         self,
-        _sealed_plane_values: tuple[str, ...] = _REQUIRED_PLANE_VALUES,
+        # These defaults intentionally freeze the authority against module rebinding.
+        _sealed_plane_values: tuple[str, ...] = _REQUIRED_PLANE_VALUES,  # noqa: RUF033
         _sealed_boundary_specs: Mapping[
             str, tuple[str, str, str, int]
-        ] = _REQUIRED_BOUNDARY_SPECS,
+        ] = _REQUIRED_BOUNDARY_SPECS,  # noqa: RUF033
     ) -> None:
         _require_positive_int("schema_version", self.schema_version)
         if self.schema_version != 1:
@@ -432,6 +433,8 @@ class CoreReplacementReceipt:
     candidate_core_identity_sha256: str
     previous_core: CognitiveCoreIdentity
     candidate_core: CognitiveCoreIdentity
+    previous_binding: CognitiveCoreBinding
+    candidate_binding: CognitiveCoreBinding
     shell_identity_sha256_before: str
     shell_identity_sha256_after: str
     preserved_surface_identities: tuple[tuple[str, str], ...]
@@ -452,10 +455,20 @@ class CoreReplacementReceipt:
             raise ValueError("candidate_core must be a CognitiveCoreIdentity")
         CognitiveCoreIdentity.__post_init__(self.previous_core)
         CognitiveCoreIdentity.__post_init__(self.candidate_core)
+        if not _is_exact_type(self.previous_binding, CognitiveCoreBinding):
+            raise ValueError("previous_binding must be a CognitiveCoreBinding")
+        if not _is_exact_type(self.candidate_binding, CognitiveCoreBinding):
+            raise ValueError("candidate_binding must be a CognitiveCoreBinding")
+        CognitiveCoreBinding.__post_init__(self.previous_binding)
+        CognitiveCoreBinding.__post_init__(self.candidate_binding)
         if self.previous_core_identity_sha256 != self.previous_core.identity_sha256():
             raise ValueError("replacement receipt previous core identity does not match snapshot")
         if self.candidate_core_identity_sha256 != self.candidate_core.identity_sha256():
             raise ValueError("replacement receipt candidate core identity does not match snapshot")
+        if self.previous_binding.core.identity_sha256() != self.previous_core_identity_sha256:
+            raise ValueError("replacement receipt previous binding does not match previous core")
+        if self.candidate_binding.core.identity_sha256() != self.candidate_core_identity_sha256:
+            raise ValueError("replacement receipt candidate binding does not match candidate core")
         if not _is_exact_type(self.preserved_surface_identities, tuple) or any(
             not _is_exact_type(item, tuple) or len(item) != 2
             for item in self.preserved_surface_identities
@@ -470,6 +483,23 @@ class CoreReplacementReceipt:
         if not _is_exact_type(self.preserved_shell, RuntimeShellContract):
             raise ValueError("preserved_shell must be a RuntimeShellContract")
         RuntimeShellContract.__post_init__(self.preserved_shell)
+        preserved_gateway_signature = (
+            self.preserved_shell.gateway_api.name,
+            self.preserved_shell.gateway_api.schema_version,
+        )
+        for label, binding in (
+            ("previous", self.previous_binding),
+            ("candidate", self.candidate_binding),
+        ):
+            binding_gateway_signature = (
+                binding.gateway_api.name,
+                binding.gateway_api.schema_version,
+            )
+            if binding_gateway_signature != preserved_gateway_signature:
+                raise ValueError(
+                    f"replacement receipt {label} binding gateway is incompatible "
+                    "with preserved shell"
+                )
         expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
         observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
         if observed_surfaces != expected_surfaces:
@@ -490,6 +520,8 @@ class CoreReplacementReceipt:
             "candidate_core_identity_sha256": self.candidate_core_identity_sha256,
             "previous_core": self.previous_core.to_dict(),
             "candidate_core": self.candidate_core.to_dict(),
+            "previous_binding": self.previous_binding.to_dict(),
+            "candidate_binding": self.candidate_binding.to_dict(),
             "shell_identity_sha256_before": self.shell_identity_sha256_before,
             "shell_identity_sha256_after": self.shell_identity_sha256_after,
             "preserved_surface_identities": [
@@ -608,6 +640,8 @@ def replace_cognitive_core(
         candidate_core_identity_sha256=candidate.core.identity_sha256(),
         previous_core=assembly.core_binding.core,
         candidate_core=candidate.core,
+        previous_binding=assembly.core_binding,
+        candidate_binding=candidate,
         shell_identity_sha256_before=shell_before,
         shell_identity_sha256_after=shell_after,
         preserved_surface_identities=assembly.shell.surface_identities(),

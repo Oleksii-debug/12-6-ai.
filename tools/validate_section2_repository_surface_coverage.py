@@ -9,7 +9,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-
 _REQUIRED_TOP_LEVEL_FIELDS = {
     "schema_version",
     "observed_main_sha",
@@ -46,7 +45,7 @@ def _load_strict_json(path: Path) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{path} is not strict unambiguous UTF-8 JSON") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{path} root must be an object")
+        raise TypeError(f"{path} root must be an object")
     return value
 
 
@@ -150,6 +149,33 @@ def _surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
             raise ValueError("git ls-tree emitted a malformed blob SHA")
         result[path] = f"{mode}:{blob_sha}"
     return result
+
+
+def _load_git_json(root: Path, treeish: str, path: str) -> dict[str, Any]:
+    completed = subprocess.run(
+        ["git", "-C", str(root), "show", f"{treeish}:{path}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_git_subprocess_env(),
+    )
+    if completed.returncode != 0:
+        raise ValueError(f"cannot read accepted predecessor JSON: {path}")
+    try:
+        value = json.loads(
+            completed.stdout,
+            object_pairs_hook=_unique_object,
+            parse_constant=lambda item: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant: {item}")
+            ),
+        )
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(
+            f"accepted predecessor JSON is not strict unambiguous JSON: {path}"
+        ) from exc
+    if not isinstance(value, dict):
+        raise TypeError(f"accepted predecessor JSON root must be an object: {path}")
+    return value
 
 
 def _validate_rule(rule: object) -> dict[str, str]:
@@ -275,14 +301,10 @@ def validate_repository_surface_coverage(
             raise ValueError(f"{field} must be lowercase 40-hex")
 
     live_main_sha = _resolve_live_main_sha(repo_root)
-    if current_main_sha != live_main_sha:
-        raise ValueError(
-            "current_repository_main_sha does not match the live repository main ref"
-        )
 
     expected_count = inventory["expected_main_surface_count"]
     if not isinstance(expected_count, int) or isinstance(expected_count, bool):
-        raise ValueError("expected_main_surface_count must be an integer")
+        raise TypeError("expected_main_surface_count must be an integer")
     if expected_count <= 0:
         raise ValueError("expected_main_surface_count must be positive")
 
@@ -341,11 +363,11 @@ def validate_repository_surface_coverage(
 
     raw_capabilities = capability_registry.get("capabilities")
     if not isinstance(raw_capabilities, list):
-        raise ValueError("capability registry capabilities must be an array")
+        raise TypeError("capability registry capabilities must be an array")
     capabilities: dict[str, dict[str, Any]] = {}
     for capability in raw_capabilities:
         if not isinstance(capability, dict):
-            raise ValueError("capability entry must be an object")
+            raise TypeError("capability entry must be an object")
         capability_id = capability.get("capability_id")
         if not isinstance(capability_id, str) or not capability_id:
             raise ValueError("capability_id must be non-empty text")
@@ -378,23 +400,38 @@ def validate_repository_surface_coverage(
         )
 
     qualified_surface_blobs = _surface_blob_map(repo_root, main_tree_sha)
-    current_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
-    if current_surface_blobs != qualified_surface_blobs:
+    receipt_surface_blobs = _surface_blob_map(repo_root, current_main_tree_sha)
+    if receipt_surface_blobs != qualified_surface_blobs:
         qualified_paths = set(qualified_surface_blobs)
-        current_paths = set(current_surface_blobs)
+        receipt_paths = set(receipt_surface_blobs)
         changed = sorted(
             path
-            for path in qualified_paths & current_paths
-            if qualified_surface_blobs[path] != current_surface_blobs[path]
+            for path in qualified_paths & receipt_paths
+            if qualified_surface_blobs[path] != receipt_surface_blobs[path]
         )
         raise ValueError(
-            "current main capability-bearing surface drift from qualified baseline: "
-            f"added={sorted(current_paths - qualified_paths)}, "
-            f"removed={sorted(qualified_paths - current_paths)}, "
+            "pinned current-main receipt capability-bearing surface drift from "
+            "qualified baseline: "
+            f"added={sorted(receipt_paths - qualified_paths)}, "
+            f"removed={sorted(qualified_paths - receipt_paths)}, "
             f"changed={changed}"
         )
 
+    current_surface_blobs = _surface_blob_map(repo_root, live_main_sha)
+    qualified_paths = set(qualified_surface_blobs)
+    current_paths = set(current_surface_blobs)
+    removed_live = qualified_paths.difference(current_paths)
+    if removed_live:
+        raise ValueError(
+            "live main removed qualified capability-bearing surfaces: "
+            f"{sorted(removed_live)}"
+        )
+
+    # Peer plans may add executable surfaces after the independently qualified
+    # Plan-8 tree. Such changes are never retrospectively accepted: require
+    # explicit UNAVAILABLE overlays, including changed existing Git blobs.
     _require_clean_capability_worktree(repo_root)
+    checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
 
     main_paths = sorted(
         path for path in qualified_surface_blobs if _is_surface(path)
@@ -403,6 +440,35 @@ def validate_repository_surface_coverage(
         raise ValueError(
             "accepted-main executable surface count drift: "
             f"expected={expected_count}, actual={len(main_paths)}"
+        )
+
+    baseline_inventory = _load_git_json(
+        repo_root,
+        main_sha,
+        "configs/control/product_repository_executable_surface_rules_v1.json",
+    )
+    if set(baseline_inventory) != _REQUIRED_TOP_LEVEL_FIELDS:
+        raise ValueError(
+            "accepted predecessor executable surface inventory schema is non-canonical"
+        )
+    baseline_raw_rules = baseline_inventory["rules"]
+    if not isinstance(baseline_raw_rules, list) or not baseline_raw_rules:
+        raise ValueError("accepted predecessor surface rules must be a non-empty array")
+    baseline_rules = tuple(_validate_rule(rule) for rule in baseline_raw_rules)
+    baseline_rule_ids = [rule["rule_id"] for rule in baseline_rules]
+    if len(baseline_rule_ids) != len(set(baseline_rule_ids)):
+        raise ValueError("accepted predecessor surface rule ids must be unique")
+
+    mapping_drift = sorted(
+        path
+        for path in main_paths
+        if _classify_main_surface(path, baseline_rules)
+        != _classify_main_surface(path, rules)
+    )
+    if mapping_drift:
+        raise ValueError(
+            "accepted-main executable capability mapping drift from predecessor: "
+            f"{mapping_drift}"
         )
 
     observed_counts = Counter(_classify_main_surface(path, rules) for path in main_paths)
@@ -414,7 +480,7 @@ def validate_repository_surface_coverage(
 
     raw_overrides = inventory["candidate_overrides"]
     if not isinstance(raw_overrides, list):
-        raise ValueError("candidate_overrides must be an array")
+        raise TypeError("candidate_overrides must be an array")
     candidate_overrides: dict[str, str] = {}
     for item in raw_overrides:
         if not isinstance(item, dict) or set(item) != {"path", "capability_id"}:
@@ -438,9 +504,19 @@ def validate_repository_surface_coverage(
             raise ValueError(
                 "candidate override capability must remain UNAVAILABLE until integrated"
             )
+        if path in qualified_surface_blobs:
+            predecessor_capability_id = _classify_main_surface(path, baseline_rules)
+            if (
+                predecessor_capability_id != capability_id
+                and checkout_surface_blobs.get(path) == qualified_surface_blobs[path]
+            ):
+                raise ValueError(
+                    "candidate override cannot remap accepted-main executable capability: "
+                    f"path={path}, predecessor={predecessor_capability_id}, "
+                    f"override={capability_id}"
+                )
         candidate_overrides[path] = capability_id
 
-    checkout_surface_blobs = _surface_blob_map(repo_root, "HEAD")
     checkout_paths = sorted(
         path for path in checkout_surface_blobs if _is_surface(path)
     )
@@ -457,10 +533,22 @@ def validate_repository_surface_coverage(
         for path, blob_sha in checkout_surface_blobs.items()
         if _is_surface(path)
     }
-    candidate_actual = _candidate_surface_paths(
-        current_executable_blobs,
-        checkout_executable_blobs,
+    qualified_executable_blobs = {
+        path: blob_sha for path, blob_sha in qualified_surface_blobs.items()
+        if _is_surface(path)
+    }
+    live_overlays = _candidate_surface_paths(
+        qualified_executable_blobs, current_executable_blobs
     )
+    candidate_actual = _candidate_surface_paths(
+        qualified_executable_blobs, checkout_executable_blobs
+    )
+    missing_live_overlays = live_overlays.difference(candidate_actual)
+    if missing_live_overlays:
+        raise ValueError(
+            "checkout omits live unqualified executable overlays: "
+            f"{sorted(missing_live_overlays)}"
+        )
     candidate_expected = set(candidate_overrides)
     if candidate_actual != candidate_expected:
         raise ValueError(

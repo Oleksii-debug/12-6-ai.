@@ -1,0 +1,22 @@
+name: Plan 7 Section 10 LOCAL_FREE distributed control
+on:
+  pull_request:
+    paths:
+      - 'src/twelve_six/distributed_control.py'
+      - 'tests/test_plan7_distributed_control.py'
+      - '.github/workflows/plan7-distributed-control.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan7-s10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m ruff check src/twelve_six/distributed_control.py tests/test_plan7_distributed_control.py
+      - run: python -m pytest -q tests/test_plan7_distributed_control.py

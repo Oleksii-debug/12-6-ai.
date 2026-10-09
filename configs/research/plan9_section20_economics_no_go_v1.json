@@ -1,0 +1,44 @@
+{
+  "campaign_id": "PLAN9-SECTION-19",
+  "champion_promoted": false,
+  "compute_authorized": false,
+  "cost_estimate_total_microusd": null,
+  "cost_observed_total_microusd": null,
+  "decision": "NO_GO",
+  "external_budget_verified": false,
+  "launch_permitted": false,
+  "plan": 9,
+  "proposal": {
+    "budget_ceiling_microusd": null,
+    "campaign_id": "PLAN9-SECTION-19",
+    "capacity_impact_bytes": null,
+    "cost_estimate_microusd": {
+      "api": null,
+      "compute": null,
+      "storage": null
+    },
+    "cost_observed_microusd": {
+      "api": null,
+      "compute": null,
+      "storage": null
+    },
+    "estimated_seconds": null,
+    "expected_gain_ppm": null,
+    "observed_gain_ppm": null,
+    "observed_seconds": null,
+    "owner_approval_ref": null,
+    "schema_version": 1,
+    "source_section": 19
+  },
+  "reason_codes": [
+    "NO_GO_ECONOMIC_FORECAST_INCOMPLETE",
+    "NO_GO_OWNER_BUDGET_NOT_VERIFIED",
+    "NO_GO_UPSTREAM_NOT_ACTIVATED"
+  ],
+  "receipt_sha256": "73d79c59e73f9b71c81b556237a1d756bdfa18c8aacb3104c502bbe32ece2487",
+  "schema_version": 1,
+  "section": 20,
+  "source_receipt_sha256": "3f4a775a448a81da8aca8da6a40cbb4199e2c25cf69485631e48878dad92c56b",
+  "time_per_expected_gain_unit": null,
+  "training_authorized": false
+}

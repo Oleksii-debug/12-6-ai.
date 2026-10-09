@@ -348,6 +348,25 @@ def _venv_paths(venv_dir: Path) -> tuple[Path, Path]:
     return venv_dir / "bin/python", venv_dir / "bin/twelve-six-windows"
 
 
+def test_import_only_windows_cli_without_optional_training_dependencies() -> None:
+    # -I -S removes site packages: this catches import-time torch/model coupling
+    # before the heavier fresh-venv wheel regression runs.
+    script = (
+        "import sys; "
+        f"sys.path.insert(0, {str(ROOT / 'src')!r}); "
+        "from twelve_six.windows_operator_cli import resolve_default_paths; "
+        "assert callable(resolve_default_paths)"
+    )
+    probe = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", script],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert probe.returncode == 0, probe.stdout + probe.stderr
+
+
 def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     tmp_path: Path,
 ) -> None:

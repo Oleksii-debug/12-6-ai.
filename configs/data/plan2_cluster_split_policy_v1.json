@@ -1,0 +1,9 @@
+{
+  "schema_version": "12-6.plan2-cluster-split-policy.v1",
+  "revision": "plan2-s10-document-safe-2026-10-08-v1",
+  "seed": "9e78cf76390f4568b6e330d502d1872ef95698063127cb0cad40574de1d58064",
+  "test_fraction": 0.2,
+  "validation_fraction_remaining": 0.25,
+  "cluster_boundary": "WHOLE_DOCUMENT_SOURCE_ID",
+  "purpose": "LOCAL_FREE_CANDIDATE_ONLY"
+}

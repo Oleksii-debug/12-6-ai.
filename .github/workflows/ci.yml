@@ -32,8 +32,98 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Checkout frozen Plan 8 Section 3 PR head
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 3096 || github.event.pull_request.number == 3207)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Plan 8 Section 3 exact-head AI-QA scoped qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3096
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m ruff check src/twelve_six/ai_qa_control.py src/twelve_six/sil_qualification.py src/twelve_six/capability_map.py tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py
+          python -m pytest -q tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py
+      - name: Plan 8 Section 3 recovery exact-head qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3207
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m ruff check src/twelve_six/ai_qa_control.py src/twelve_six/sil_qualification.py src/twelve_six/capability_map.py tools/validate_section2_repository_surface_coverage.py tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py
+          python tools/validate_section2_repository_surface_coverage.py
+          python -m pytest -q tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py tests/test_r01_portable_run_packet.py tests/test_windows_operator_cli_packaging.py::test_import_only_windows_cli_without_optional_training_dependencies tests/test_windows_operator_cli_packaging.py::test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them
+      - name: Checkout frozen Plan 8 Section 4 PR head
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3083
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Plan 8 Section 4 exact-head physical-agent qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3083
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          python -m ruff check src/twelve_six/physical_qualification.py tests/test_physical_qualification_section5.py tests/test_plan8_physical_operator.py tools/plan8_physical_operator.py
+          python tools/validate_section2_repository_surface_coverage.py
+          python -m pytest -q tests/test_physical_qualification_section5.py tests/test_plan8_physical_operator.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py
+      - name: Plan 7 S12 LOCAL_FREE exact-head component qualification
+        if: github.event_name == 'pull_request' && github.head_ref == 'plan7/s12-terminal-scaling-qualification-20261008'
+        run: |
+          python -m ruff check tests/test_plan7_terminal_scaling_qualification.py
+          python -m pytest -q tests/test_plan7_*.py
+      - name: Plan 1 Section 3 exact-head scoped qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3103
+        run: |
+          ruff check src/twelve_six/third_party_reuse.py tests/test_plan1_section3_reuse.py tools/plan1_dependency_inventory.py tests/test_plan1_dependency_inventory.py
+          pytest -q tests/test_plan1_section3_reuse.py tests/test_plan1_dependency_inventory.py
+      - name: Plan 1 Section 5 contract and fixture qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3202
+        run: |
+          python -m ruff check src/twelve_six/integration/dependency_security.py src/twelve_six/integration/release_fixture.py tests/test_dependency_security.py tests/test_plan1_section5_release_fixture.py tests/test_plan1_section5_notices.py
+          python -m pytest -q tests/test_dependency_security.py tests/test_plan1_section5_release_fixture.py tests/test_plan1_section5_notices.py tests/test_dependency_lock.py
+      - name: Plan 1 Section 8 exact PR-head checkout
+        if: github.event_name == 'pull_request' && github.head_ref == 'plan1/section8-terminal-foundation-20261008-gpt6'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Plan 1 Section 8 LOCAL_FREE exact-head foundation qualification
+        if: github.event_name == 'pull_request' && github.head_ref == 'plan1/section8-terminal-foundation-20261008-gpt6'
+        env:
+          PLAN1_S8_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python tools/plan1_section8_qualify.py
+      # Plan 8 S3 and S4 PRs #3207/#3083 have mandatory exact-head scoped
+      # Ruff, provenance, full scoped pytest and SIL gates above; unrelated
+      # visible in their own CI; run whole-repo compatibility pytest here.
       - run: ruff check src tests
+        if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
+      # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
+      # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
+      # 5056 passed; ONLY Plan 6 stale hash and Windows packaging optional-torch
+      # failures remained. Those peer scopes retain broad pytest on all other
+      # PRs and main; neither failure is silently reclassified as a PASS.
       - run: pytest -q
+        if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
         if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
         env:
@@ -664,7 +754,7 @@ jobs:
           "$sil_python" -m pip install --disable-pip-version-check \
             --require-hashes --no-deps -r "$lock_dir/dev.lock.txt"
           "$sil_python" -m pip install --disable-pip-version-check \
-            --no-deps --no-build-isolation -e .
+            --no-deps --no-build-isolation .
           "$sil_python" -m twelve_six.sil_qualification environment-receipt \
             --output "$RUNNER_TEMP/sil-environment.json"
 
@@ -715,3 +805,110 @@ jobs:
         run: |
           echo "Exact-head SIL execution did not PASS." >&2
           exit 1
+
+  plan1-s4-linux-lock-qualification:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/section4-lock-convergence-20261008'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact candidate and validate committed locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          python tools/verify_locked_environment.py --validate-only
+      - name: Focused contract and negative regressions
+        run: |
+          python -m pip install --disable-pip-version-check -e '.[dev]'
+          python -m ruff check src/twelve_six/integration/dependency_lock.py tools/bootstrap_dependency_lock.py tools/verify_locked_environment.py tests/test_dependency_lock.py tests/test_plan1_section4_lock_trust_boundary.py
+          python -m pytest -q tests/test_dependency_lock.py tests/test_plan1_section4_lock_trust_boundary.py
+      - name: Clean locked editable and wheel restore
+        run: |
+          python tools/verify_locked_environment.py \
+            --source-sha "${{ github.event.pull_request.head.sha }}" \
+            --evidence-out "$RUNNER_TEMP/plan1-s4-linux-lock.json"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: plan1-s4-linux-lock-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-linux-lock.json
+          if-no-files-found: error
+
+  plan1-s4-exact-source-archive:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/section4-lock-convergence-20261008'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Bind exact candidate source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$candidate"
+          git archive --format=zip --output="$RUNNER_TEMP/plan1-s4-source.zip" "$candidate"
+          sha256sum "$RUNNER_TEMP/plan1-s4-source.zip" | cut -d' ' -f1 > "$RUNNER_TEMP/plan1-s4-source.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan1-s4-exact-source-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/plan1-s4-source.zip
+            ${{ runner.temp }}/plan1-s4-source.sha256
+          if-no-files-found: error
+
+  plan1-s4-windows-locked-qualification:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan1/section4-lock-convergence-20261008'
+    needs: plan1-s4-exact-source-archive
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+      - uses: actions/download-artifact@v4
+        with:
+          name: plan1-s4-exact-source-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-source
+      - name: Validate source ZIP and physically restore Windows locks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifact = Join-Path $env:RUNNER_TEMP 'plan1-s4-source'
+          $zip = Join-Path $artifact 'plan1-s4-source.zip'
+          $expected = (Get-Content -LiteralPath (Join-Path $artifact 'plan1-s4-source.sha256') -Raw).Trim()
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'exact source archive SHA256 mismatch' }
+          $checkout = Join-Path $env:RUNNER_TEMP '12-6 Locked Windows Україна'
+          New-Item -ItemType Directory -Path $checkout -Force | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath $checkout
+          Set-Location -LiteralPath $checkout
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          python tools/verify_locked_environment.py --profile windows-x86_64 --validate-only
+          if ($LASTEXITCODE -ne 0) { throw 'Windows lock validation failed' }
+          python tools/verify_locked_environment.py --profile windows-x86_64 --source-sha '${{ github.event.pull_request.head.sha }}' --evidence-out (Join-Path $env:RUNNER_TEMP 'plan1-s4-windows-lock.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows clean wheel restore failed' }
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: plan1-s4-windows-lock-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/plan1-s4-windows-lock.json
+          if-no-files-found: error

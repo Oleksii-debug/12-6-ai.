@@ -1,0 +1,29 @@
+name: Plan 7 Section 5 CPU contracts
+on:
+  pull_request:
+    paths:
+      - 'src/twelve_six/product_scale_recipes.py'
+      - 'tests/test_plan7_product_scale_recipes.py'
+      - '.github/workflows/plan7-product-scale-recipes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan7-s5-local-free:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU-compatible project and tests
+        run: python -m pip install -e '.[dev]'
+      - name: Ruff Plan 7 source and tests
+        run: python -m ruff check src/twelve_six/product_scale_recipes.py tests/test_plan7_product_scale_recipes.py
+      - name: Scoped Section 4 and Section 5 integration, negative and restart tests
+        run: python -m pytest -q tests/test_plan7_optional_risk_probes.py tests/test_plan7_product_scale_recipes.py

@@ -12,7 +12,6 @@ from tools.validate_section2_repository_surface_coverage import (
     validate_repository_surface_coverage,
 )
 
-
 _ROOT = Path(__file__).parents[1]
 _INVENTORY = (
     _ROOT
@@ -37,14 +36,14 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "019944d5fe12334791f05f1232d13de4a12e37d3"
-    assert result["observed_main_tree_sha"] == "c727add7897dd94bdb02493e0cd7a565be7e8d9f"
-    assert result["current_repository_main_sha"] == "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
-    assert result["current_repository_main_tree_sha"] == "429a9933512f3d0c17f42d80193365e5df3f195a"
-    assert result["qualified_current_equivalent_surface_count"] == 233
-    assert result["accepted_main_surface_count"] == 119
-    assert result["candidate_overlay_surface_count"] == 1
-    assert result["checkout_surface_count"] == 120
+    assert result["observed_main_sha"] == "a6c4c269babbac134679a70b719e86e3fbcd4932"
+    assert result["observed_main_tree_sha"] == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
+    assert result["current_repository_main_sha"] == result["observed_main_sha"]
+    assert result["current_repository_main_tree_sha"] == result["observed_main_tree_sha"]
+    assert result["qualified_current_equivalent_surface_count"] == 239
+    assert result["accepted_main_surface_count"] == 120
+    assert result["candidate_overlay_surface_count"] == 61
+    assert result["checkout_surface_count"] == 179
 
 
 def test_repository_executable_surface_distribution_is_pinned() -> None:
@@ -56,6 +55,7 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
         "checkpoint-integrity-mechanics": 1,
         "data-governance-mechanics": 102,
         "deterministic-packing-mechanics": 2,
+        "executable-capability-map": 1,
         "learned20m-control-plane": 5,
         "model-spec-identity": 2,
         "package-runtime": 1,
@@ -64,16 +64,31 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
     }
 
 
-def test_section2_validator_is_itself_an_explicit_candidate_overlay() -> None:
+
+def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     payload = _load_strict_json(_INVENTORY)
+    capabilities = _load_strict_json(_CAPABILITIES)
 
-    assert payload["candidate_overrides"] == [
-        {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
-            "capability_id": "executable-capability-map",
-        }
-    ]
-
+    overrides = payload["candidate_overrides"]
+    assert len(overrides) == 61
+    assert len({entry["path"] for entry in overrides}) == 61
+    assert {
+        "path": ".github/workflows/ci.yml",
+        "capability_id": "peer-source-qualification-pending",
+    } in overrides
+    capability_by_id = {
+        item["capability_id"]: item for item in capabilities["capabilities"]
+    }
+    assert all(
+        capability_by_id[entry["capability_id"]]["status"] == "UNAVAILABLE"
+        for entry in overrides
+    )
+    assert {
+        "rule_id": "section2-surface-validator",
+        "selector": "exact",
+        "pattern": "tools/validate_section2_repository_surface_coverage.py",
+        "capability_id": "executable-capability-map",
+    } in payload["rules"]
 
 def test_candidate_surface_paths_include_changed_existing_surface() -> None:
     current_main_blobs = {
@@ -92,10 +107,12 @@ def test_candidate_surface_paths_include_changed_existing_surface() -> None:
     }
 
 
+
 def test_repository_surface_coverage_rejects_available_candidate_override(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    assert payload["candidate_overrides"]
     payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
@@ -103,12 +120,51 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
     with pytest.raises(ValueError, match="must remain UNAVAILABLE"):
         _validate(inventory)
 
-
-def test_repository_surface_coverage_rejects_missing_candidate_override(
+def test_repository_surface_coverage_rejects_candidate_override_capability_remap(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["candidate_overrides"] = []
+    payload["candidate_overrides"].append(
+        {
+            "path": "tools/validate_d04_learned20m_tokenizer_decision.py",
+            "capability_id": "learned-20m-base",
+        }
+    )
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="cannot remap accepted-main executable capability",
+    ):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_missing_candidate_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original_surface_blob_map = surface_validator._surface_blob_map
+
+    def drifted_surface_blob_map(root: Path, treeish: str) -> dict[str, str]:
+        blobs = original_surface_blob_map(root, treeish)
+        if treeish == "HEAD":
+            blobs = dict(blobs)
+            path = "tools/new_unmapped_qualification_candidate.py"
+            blobs[path] = f"100644:{'f' * 40}"
+        return blobs
+
+    monkeypatch.setattr(
+        surface_validator,
+        "_surface_blob_map",
+        drifted_surface_blob_map,
+    )
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["candidate_overrides"] = [
+        item for item in payload["candidate_overrides"]
+        if item["path"] != ".github/workflows/ci.yml"
+    ]
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -125,6 +181,30 @@ def test_repository_surface_coverage_rejects_unknown_rule_capability(
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="unknown classified capability"):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_accepted_main_capability_remap(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    target = next(
+        rule
+        for rule in payload["rules"]
+        if rule["rule_id"] == "section2-surface-validator"
+    )
+    assert target["capability_id"] == "executable-capability-map"
+    target["capability_id"] = "model-spec-identity"
+    payload["expected_main_capability_counts"]["model-spec-identity"] += 1
+    del payload["expected_main_capability_counts"]["executable-capability-map"]
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="accepted-main executable capability mapping drift",
+    ):
         _validate(inventory)
 
 
@@ -159,7 +239,7 @@ def test_repository_surface_rules_are_nonambiguous_on_exact_main() -> None:
     _validate()
 
 
-def test_repository_surface_coverage_rejects_resealed_current_main(
+def test_repository_surface_coverage_accepts_equivalent_historical_main_receipt(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
@@ -168,7 +248,24 @@ def test_repository_surface_coverage_rejects_resealed_current_main(
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="does not match the live repository main ref"):
+    result = _validate(inventory)
+    assert result["current_repository_main_sha"] == payload["observed_main_sha"]
+    assert result["current_repository_main_tree_sha"] == payload["observed_main_tree_sha"]
+
+
+def test_repository_surface_coverage_rejects_non_equivalent_historical_receipt(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["current_repository_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
+    payload["current_repository_main_tree_sha"] = "95ad101c8965fd49c1711027146253a093fce2f8"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="pinned current-main receipt capability-bearing surface drift",
+    ):
         _validate(inventory)
 
 
@@ -176,7 +273,7 @@ def test_repository_surface_coverage_rejects_current_main_tree_reseal(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["current_repository_main_tree_sha"] = payload["observed_main_tree_sha"]
+    payload["current_repository_main_tree_sha"] = "0" * 40
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -200,7 +297,7 @@ def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
-    payload["observed_main_sha"] = "e5dbb7107d5b54f09a26d07d59f093ac05ede9c7"
+    payload["observed_main_sha"] = "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21"
     capabilities = tmp_path / "capabilities.json"
     capabilities.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -246,9 +343,9 @@ def test_git_probes_strip_ambient_git_redirection(
         assert capture_output is True
         assert text is True
         observed_envs.append(dict(env))
-        stdout = f"{sha}\\n" if "rev-parse" in command else ""
+        stdout = f"{sha}\n" if "rev-parse" in command else ""
         if command[-1] == "HEAD":
-            stdout = "ok\\n"
+            stdout = "ok\n"
         return surface_validator.subprocess.CompletedProcess(
             command,
             0,

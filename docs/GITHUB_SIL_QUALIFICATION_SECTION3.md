@@ -2,9 +2,10 @@
 
 ## Authority and sequential position
 
-This candidate implements the current canonical **Section 3** while the numerical closure
-frontier remains Section 0. It is later-section fallback work only and cannot become canonical
-DONE or merge ahead of Sections 0, 1, or 2.
+This candidate implements the current canonical **Section 3** as the numerical PRIMARY.
+Sections 0, 1, and 2 are terminally closed on accepted main; this Section remains IN_PROGRESS
+until its exact-head shared CI/SIL evidence is terminal success and the qualified candidate is
+integrated without widening training, paid-compute, physical, or release authority.
 
 The project CI policy permits no dedicated workflow. SIL therefore runs as
 `sil-current-capability-journeys` inside the single shared

@@ -8,26 +8,26 @@ import re
 import shlex
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.capability_map import CapabilityRegistry, load_capability_registry
 from twelve_six.sil_qualification import (
     CommandExecution,
     GitProbe,
+    GitState,
     SILScenario,
     build_package_manifest_bytes,
     load_sil_environment_receipt,
     load_sil_scenario,
     parse_vector_command,
     probe_git_state,
-    require_exact_clean_git_state,
     run_command,
     verify_sil_evidence,
 )
-
 
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -82,7 +82,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_sha256(name: str, value: object) -> str:
@@ -205,7 +205,7 @@ def _require_sealed_enum(
     )
     if canonical_members is None or sealed_members is not canonical_members:
         raise ValueError(wire_error)
-    if type(value) is not enum_type:  # noqa: E721
+    if type(value) is not enum_type:
         raise ValueError(type_error)
     for member, wire_value in canonical_members:
         if value is member:
@@ -1201,15 +1201,15 @@ CommandRunner = Callable[
 ]
 
 
-def execute_automated_regressions(
+def _execute_automated_regressions_with_backends(
     chain: RegressionChain,
     *,
     repo_root: str | Path,
     actor_id: str,
     timeout_seconds: int = 300,
-    command_runner: CommandRunner = run_command,
-    git_probe: GitProbe = probe_git_state,
-    candidate_parent_probe: CandidateParentProbe = probe_candidate_parents,
+    command_runner: CommandRunner,
+    git_probe: GitProbe,
+    candidate_parent_probe: CandidateParentProbe,
 ) -> tuple[GateReceipt, GateReceipt]:
     if not _is_exact_type(chain, RegressionChain):
         raise ValueError("chain must be a RegressionChain")
@@ -1315,6 +1315,38 @@ def execute_automated_regressions(
             )
         )
     return receipts[0], receipts[1]
+
+
+def _build_execute_automated_regressions_authority():
+    # Canonical component/adversarial gate receipts must come from repository-owned
+    # execution and Git authorities. Tests may inject deterministic backends only
+    # through the underscore-prefixed harness above.
+    sealed_impl = _execute_automated_regressions_with_backends
+    sealed_runner = run_command
+    sealed_git_probe = probe_git_state
+    sealed_parent_probe = probe_candidate_parents
+
+    def canonical(
+        chain: RegressionChain,
+        *,
+        repo_root: str | Path,
+        actor_id: str,
+        timeout_seconds: int = 300,
+    ) -> tuple[GateReceipt, GateReceipt]:
+        return sealed_impl(
+            chain,
+            repo_root=repo_root,
+            actor_id=actor_id,
+            timeout_seconds=timeout_seconds,
+            command_runner=sealed_runner,
+            git_probe=sealed_git_probe,
+            candidate_parent_probe=sealed_parent_probe,
+        )
+
+    return canonical
+
+
+execute_automated_regressions = _build_execute_automated_regressions_authority()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1704,7 +1736,7 @@ def _regression_cli(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
-def verify_candidate_sil_evidence(
+def _verify_candidate_sil_evidence_with_authorities(
     evidence_path: str | Path,
     log_path: str | Path,
     *,
@@ -1713,30 +1745,80 @@ def verify_candidate_sil_evidence(
     expected_environment_receipt: dict[str, Any],
     expected_registry: CapabilityRegistry,
     expected_scenario: SILScenario,
-    git_probe: GitProbe = probe_git_state,
+    git_probe: GitProbe,
+    git_state_type: type[GitState] = GitState,
+    git_state_validator: Callable[[GitState], None] = GitState.__post_init__,
+    package_manifest_builder: Callable[[str | Path], bytes] = build_package_manifest_bytes,
+    sil_evidence_verifier: Callable[..., dict[str, Any]] = verify_sil_evidence,
 ) -> dict[str, Any]:
     root = Path(repo_root).resolve()
-    require_exact_clean_git_state(
-        root,
-        candidate_git_sha,
-        git_probe=git_probe,
-    )
-    evidence = verify_sil_evidence(
+    candidate_git_sha = _require_git_sha("candidate_git_sha", candidate_git_sha)
+
+    def require_exact_clean_state() -> None:
+        state = git_probe(root)
+        if type(state) is not git_state_type:
+            raise ValueError("candidate Git probe must return exact GitState")
+        git_state_validator(state)
+        if state.sha != candidate_git_sha:
+            raise ValueError(
+                "candidate verification exact-head mismatch: "
+                f"expected {candidate_git_sha}, observed {state.sha}"
+            )
+        if not state.tracked_clean:
+            raise ValueError("candidate verification checkout is dirty")
+
+    require_exact_clean_state()
+    evidence = sil_evidence_verifier(
         evidence_path,
         log_path,
-        expected_package_bytes=build_package_manifest_bytes(root),
+        expected_package_bytes=package_manifest_builder(root),
         expected_environment_receipt=expected_environment_receipt,
         expected_registry=expected_registry,
         expected_scenario=expected_scenario,
         expected_git_sha=candidate_git_sha,
         require_pass=False,
     )
-    require_exact_clean_git_state(
-        root,
-        candidate_git_sha,
-        git_probe=git_probe,
-    )
+    require_exact_clean_state()
     return evidence
+
+
+def _build_verify_candidate_sil_evidence_authority():
+    sealed_impl = _verify_candidate_sil_evidence_with_authorities
+    sealed_probe = probe_git_state
+    sealed_git_state_type = GitState
+    sealed_git_state_validator = GitState.__post_init__
+    sealed_package_manifest_builder = build_package_manifest_bytes
+    sealed_sil_evidence_verifier = verify_sil_evidence
+
+    def canonical(
+        evidence_path: str | Path,
+        log_path: str | Path,
+        *,
+        repo_root: str | Path,
+        candidate_git_sha: str,
+        expected_environment_receipt: dict[str, Any],
+        expected_registry: CapabilityRegistry,
+        expected_scenario: SILScenario,
+    ) -> dict[str, Any]:
+        return sealed_impl(
+            evidence_path,
+            log_path,
+            repo_root=repo_root,
+            candidate_git_sha=candidate_git_sha,
+            expected_environment_receipt=expected_environment_receipt,
+            expected_registry=expected_registry,
+            expected_scenario=expected_scenario,
+            git_probe=sealed_probe,
+            git_state_type=sealed_git_state_type,
+            git_state_validator=sealed_git_state_validator,
+            package_manifest_builder=sealed_package_manifest_builder,
+            sil_evidence_verifier=sealed_sil_evidence_verifier,
+        )
+
+    return canonical
+
+
+verify_candidate_sil_evidence = _build_verify_candidate_sil_evidence_authority()
 
 
 def _sil_receipt_cli(args: argparse.Namespace) -> int:

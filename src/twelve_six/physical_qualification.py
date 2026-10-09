@@ -12,13 +12,13 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.sil_qualification import GitProbe, GitState, probe_git_state
-
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -50,7 +50,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_sha256(name: str, value: object) -> str:
@@ -259,19 +259,45 @@ class QualificationAction:
             raise ValueError("required_resources must use canonical lexical order")
 
     def logical_argv(self, python_executable: str = "python") -> tuple[str, ...]:
-        if not _is_exact_type(python_executable, str) or not python_executable:
-            raise ValueError("python_executable must be a non-empty string")
-        return (python_executable, "-m", "pytest", "-q", *self.pytest_targets)
+        return _qualification_action_logical_argv_from_stored_state(
+            self,
+            python_executable,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        QualificationAction.__post_init__(self)
-        return {
-            "action_id": self.action_id,
-            "pytest_targets": list(self.pytest_targets),
-            "timeout_seconds": self.timeout_seconds,
-            "max_output_bytes": self.max_output_bytes,
-            "required_resources": [item.value for item in self.required_resources],
-        }
+        return _qualification_action_payload_from_stored_state(self)
+
+
+def _validate_qualification_action_stored(
+    value: QualificationAction,
+    _validator: Callable[[QualificationAction], None] = QualificationAction.__post_init__,
+) -> None:
+    if type(value) is not QualificationAction:
+        raise ValueError("qualification action must be an exact QualificationAction")
+    _validator(value)
+
+
+def _qualification_action_payload_from_stored_state(
+    value: QualificationAction,
+) -> dict[str, Any]:
+    _validate_qualification_action_stored(value)
+    return {
+        "action_id": value.action_id,
+        "pytest_targets": list(value.pytest_targets),
+        "timeout_seconds": value.timeout_seconds,
+        "max_output_bytes": value.max_output_bytes,
+        "required_resources": [item.value for item in value.required_resources],
+    }
+
+
+def _qualification_action_logical_argv_from_stored_state(
+    value: QualificationAction,
+    python_executable: str = "python",
+) -> tuple[str, ...]:
+    _validate_qualification_action_stored(value)
+    if not _is_exact_type(python_executable, str) or not python_executable:
+        raise ValueError("python_executable must be a non-empty string")
+    return (python_executable, "-m", "pytest", "-q", *value.pytest_targets)
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,7 +344,7 @@ class QualificationPacket:
         ):
             raise ValueError("artifact_paths must be an immutable string tuple")
         for action in self.actions:
-            QualificationAction.__post_init__(action)
+            _validate_qualification_action_stored(action)
         _require_id("packet_id", self.packet_id)
         _require_git_sha("target_git_sha", self.target_git_sha)
         _require_sha256("agent_source_sha256", self.agent_source_sha256)
@@ -352,22 +378,48 @@ class QualificationPacket:
             raise ValueError("artifact_paths must be canonical unique lexical order")
 
     def to_dict(self) -> dict[str, Any]:
-        QualificationPacket.__post_init__(self)
-        return {
-            "schema_version": self.schema_version,
-            "packet_id": self.packet_id,
-            "target_git_sha": self.target_git_sha,
-            "agent_source_sha256": self.agent_source_sha256,
-            "execution_mode": self.execution_mode.value,
-            "allowed_os_families": list(self.allowed_os_families),
-            "not_before_epoch_seconds": self.not_before_epoch_seconds,
-            "expires_epoch_seconds": self.expires_epoch_seconds,
-            "actions": [item.to_dict() for item in self.actions],
-            "artifact_paths": list(self.artifact_paths),
-        }
+        return _qualification_packet_payload_from_stored_state(self)
 
     def identity_sha256(self) -> str:
-        return _sha256_bytes(_canonical_json_bytes(self.to_dict()))
+        return _qualification_packet_identity_from_stored_state(self)
+
+
+def _validate_qualification_packet_stored(
+    value: QualificationPacket,
+    _validator: Callable[[QualificationPacket], None] = QualificationPacket.__post_init__,
+) -> None:
+    if type(value) is not QualificationPacket:
+        raise ValueError("qualification packet must be an exact QualificationPacket")
+    _validator(value)
+
+
+def _qualification_packet_payload_from_stored_state(
+    value: QualificationPacket,
+) -> dict[str, Any]:
+    _validate_qualification_packet_stored(value)
+    return {
+        "schema_version": value.schema_version,
+        "packet_id": value.packet_id,
+        "target_git_sha": value.target_git_sha,
+        "agent_source_sha256": value.agent_source_sha256,
+        "execution_mode": value.execution_mode.value,
+        "allowed_os_families": list(value.allowed_os_families),
+        "not_before_epoch_seconds": value.not_before_epoch_seconds,
+        "expires_epoch_seconds": value.expires_epoch_seconds,
+        "actions": [
+            _qualification_action_payload_from_stored_state(item)
+            for item in value.actions
+        ],
+        "artifact_paths": list(value.artifact_paths),
+    }
+
+
+def _qualification_packet_identity_from_stored_state(
+    value: QualificationPacket,
+) -> str:
+    return _sha256_bytes(
+        _canonical_json_bytes(_qualification_packet_payload_from_stored_state(value))
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,13 +439,22 @@ class VerifiedSignedPacket:
             raise ValueError("verified packet must be created by signature verification")
         if not _is_exact_type(self.packet, QualificationPacket):
             raise ValueError("verified packet must contain an exact QualificationPacket")
-        QualificationPacket.__post_init__(self.packet)
+        _validate_qualification_packet_stored(self.packet)
         _require_id("signing_key_id", self.signing_key_id)
         _require_sha256("signature_sha256", self.signature_sha256)
         _require_sha256(
             "signed_bundle_identity_sha256",
             self.signed_bundle_identity_sha256,
         )
+
+
+def _validate_verified_signed_packet_stored(
+    value: VerifiedSignedPacket,
+    _validator: Callable[[VerifiedSignedPacket], None] = VerifiedSignedPacket.__post_init__,
+) -> None:
+    if type(value) is not VerifiedSignedPacket:
+        raise ValueError("verified must be an exact VerifiedSignedPacket")
+    _validator(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,14 +477,31 @@ class ExternalResourceEvidence:
             raise ValueError("external resource evidence size is invalid or unbounded")
 
     def to_dict(self) -> dict[str, Any]:
-        ExternalResourceEvidence.__post_init__(self)
-        return {
-            "resource": self.resource.value,
-            "adapter_id": self.adapter_id,
-            "evidence_b64": base64.b64encode(self.evidence).decode("ascii"),
-            "evidence_bytes": len(self.evidence),
-            "evidence_sha256": _sha256_bytes(self.evidence),
-        }
+        return _external_resource_evidence_payload_from_stored_state(self)
+
+
+def _validate_external_resource_evidence_stored(
+    value: ExternalResourceEvidence,
+    _validator: Callable[[ExternalResourceEvidence], None] = (
+        ExternalResourceEvidence.__post_init__
+    ),
+) -> None:
+    if type(value) is not ExternalResourceEvidence:
+        raise ValueError("external resource evidence must be exact ExternalResourceEvidence")
+    _validator(value)
+
+
+def _external_resource_evidence_payload_from_stored_state(
+    value: ExternalResourceEvidence,
+) -> dict[str, Any]:
+    _validate_external_resource_evidence_stored(value)
+    return {
+        "resource": value.resource.value,
+        "adapter_id": value.adapter_id,
+        "evidence_b64": base64.b64encode(value.evidence).decode("ascii"),
+        "evidence_bytes": len(value.evidence),
+        "evidence_sha256": _sha256_bytes(value.evidence),
+    }
 
 
 SignatureVerifier = Callable[[str, bytes, bytes], bool]
@@ -530,7 +608,7 @@ def load_verified_signed_packet(
     if len(signature_bytes) != 64:
         raise ValueError("ED25519 signature must contain exactly 64 bytes")
     packet = _packet_from_dict(payload["packet"])
-    message = _canonical_json_bytes(packet.to_dict())
+    message = _canonical_json_bytes(_qualification_packet_payload_from_stored_state(packet))
     signature_ok = signature_verifier(key_id, message, signature_bytes)
     if type(signature_ok) is not bool:
         raise ValueError("qualification packet signature verifier must return bool")
@@ -541,13 +619,15 @@ def load_verified_signed_packet(
         raise ValueError("now_epoch_seconds must be an integer")
     if now < packet.not_before_epoch_seconds or now > packet.expires_epoch_seconds:
         raise ValueError("qualification packet is outside its validity window")
-    return VerifiedSignedPacket(
+    verified = VerifiedSignedPacket(
         packet=packet,
         signing_key_id=key_id,
         signature_sha256=_sha256_bytes(signature_bytes),
         signed_bundle_identity_sha256=_sha256_bytes(_canonical_json_bytes(payload)),
         _verification_token=_VERIFIED_PACKET_TOKEN,
     )
+    _validate_verified_signed_packet_stored(verified)
+    return verified
 
 
 @dataclass(frozen=True, slots=True)
@@ -607,25 +687,46 @@ class HostInventory:
             raise ValueError("CUDA device names require cuda_available=true")
 
     def to_dict(self) -> dict[str, Any]:
-        HostInventory.__post_init__(self)
-        return {
-            "os_family": self.os_family,
-            "platform_system": self.platform_system,
-            "platform_release": self.platform_release,
-            "machine": self.machine,
-            "python_version": self.python_version,
-            "python_executable": self.python_executable,
-            "cpu_logical_count": self.cpu_logical_count,
-            "ram_total_bytes": self.ram_total_bytes,
-            "disk_total_bytes": self.disk_total_bytes,
-            "disk_free_bytes": self.disk_free_bytes,
-            "torch_version": self.torch_version,
-            "cuda_available": self.cuda_available,
-            "cuda_device_names": list(self.cuda_device_names),
-        }
+        return _host_inventory_payload_from_stored_state(self)
 
     def identity_sha256(self) -> str:
-        return _sha256_bytes(_canonical_json_bytes(self.to_dict()))
+        return _host_inventory_identity_from_stored_state(self)
+
+
+def _validate_host_inventory_stored(
+    value: HostInventory,
+    _validator: Callable[[HostInventory], None] = HostInventory.__post_init__,
+) -> None:
+    if type(value) is not HostInventory:
+        raise ValueError("host inventory must be an exact HostInventory")
+    _validator(value)
+
+
+def _host_inventory_payload_from_stored_state(
+    value: HostInventory,
+) -> dict[str, Any]:
+    _validate_host_inventory_stored(value)
+    return {
+        "os_family": value.os_family,
+        "platform_system": value.platform_system,
+        "platform_release": value.platform_release,
+        "machine": value.machine,
+        "python_version": value.python_version,
+        "python_executable": value.python_executable,
+        "cpu_logical_count": value.cpu_logical_count,
+        "ram_total_bytes": value.ram_total_bytes,
+        "disk_total_bytes": value.disk_total_bytes,
+        "disk_free_bytes": value.disk_free_bytes,
+        "torch_version": value.torch_version,
+        "cuda_available": value.cuda_available,
+        "cuda_device_names": list(value.cuda_device_names),
+    }
+
+
+def _host_inventory_identity_from_stored_state(value: HostInventory) -> str:
+    return _sha256_bytes(
+        _canonical_json_bytes(_host_inventory_payload_from_stored_state(value))
+    )
 
 
 def _host_inventory_from_dict(value: object) -> HostInventory:
@@ -649,21 +750,17 @@ def _host_inventory_from_dict(value: object) -> HostInventory:
     names = value["cuda_device_names"]
     if not _is_exact_type(names, list) or not all(_is_exact_type(item, str) for item in names):
         raise ValueError("cuda_device_names must be a string array")
-    return HostInventory(
-        os_family=value["os_family"],
-        platform_system=value["platform_system"],
-        platform_release=value["platform_release"],
-        machine=value["machine"],
-        python_version=value["python_version"],
-        python_executable=value["python_executable"],
-        cpu_logical_count=value["cpu_logical_count"],
-        ram_total_bytes=value["ram_total_bytes"],
-        disk_total_bytes=value["disk_total_bytes"],
-        disk_free_bytes=value["disk_free_bytes"],
-        torch_version=value["torch_version"],
-        cuda_available=value["cuda_available"],
-        cuda_device_names=tuple(names),
-    )
+    # Decode untrusted receipts without dispatching monkey-patchable dataclass
+    # constructors or __post_init__; use the original sealed validator instead.
+    inventory = object.__new__(HostInventory)
+    for name, item in value.items():
+        object.__setattr__(
+            inventory,
+            name,
+            tuple(names) if name == "cuda_device_names" else item,
+        )
+    _validate_host_inventory_stored(inventory)
+    return inventory
 
 
 def _probe_ram_total_bytes() -> int | None:
@@ -755,7 +852,7 @@ def _validate_external_resource_maps(
                     f"external resource {registry_name} key must be NETWORK/MODEL/PROVIDER"
                 )
             if not callable(callback):
-                raise ValueError(
+                raise ValueError(  # noqa: TRY004
                     f"external resource {registry_name} callback must be callable"
                 )
     return probes, verifiers
@@ -786,6 +883,7 @@ def _collect_external_resource_evidence(
         evidence = probe(repo_root)
         if type(evidence) is not ExternalResourceEvidence:
             raise ValueError("external resource probe must return exact ExternalResourceEvidence")
+        _validate_external_resource_evidence_stored(evidence)
         if evidence.resource is not resource:
             raise ValueError("external resource probe returned evidence for the wrong resource")
         verification_ok = verifier(evidence.adapter_id, evidence.evidence)
@@ -806,7 +904,7 @@ def resource_observations(
     external_verified: frozenset[ResourceKind] = frozenset(),
 ) -> dict[ResourceKind, ResourceObservation]:
     _require_enum_wire_integrity()
-    HostInventory.__post_init__(inventory)
+    _validate_host_inventory_stored(inventory)
     if not external_verified.issubset(_EXTERNAL_RESOURCE_KINDS):
         raise ValueError("external_verified contains a non-external resource")
     if execution_mode is ExecutionMode.SIMULATION:
@@ -884,8 +982,7 @@ def _validate_checked_in_pytest_targets(
             cwd=root,
             env=_bounded_git_env(),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
             check=False,
             shell=False,
@@ -949,8 +1046,9 @@ def _popen_process_group_kwargs() -> dict[str, Any]:
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
     if sys.platform == "win32":
-        if process.poll() is not None:
-            return
+        # A direct pytest parent can exit while descendants still hold inherited pipes.
+        # Always attempt tree termination by PID; skipping solely because the parent exited
+        # can leak descendants beyond the signed action lifetime.
         system_root = os.environ.get("SystemRoot")
         if system_root:
             taskkill = Path(system_root) / "System32" / "taskkill.exe"
@@ -1020,7 +1118,7 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
                         _terminate_process_tree(process)
                     except OSError:
                         pass
-        except BaseException as exc:  # pragma: no cover - defensive pipe failure
+        except BaseException as exc:  # noqa: BLE001 - defensive pipe failure
             read_errors.append(exc)
             try:
                 _terminate_process_tree(process)
@@ -1044,6 +1142,16 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
         _terminate_process_tree(process)
         process.wait()
         return_code = 124
+    except BaseException:
+        # SIGINT/agent shutdown must not orphan a signed test process tree.
+        _terminate_process_tree(process)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+        for reader in readers:
+            reader.join(timeout=5)
+        raise
 
     for reader in readers:
         reader.join(timeout=5)
@@ -1114,11 +1222,11 @@ def execute_qualification(
     _require_enum_wire_integrity()
     if not _is_exact_type(verified, VerifiedSignedPacket):
         raise ValueError("verified must be an exact VerifiedSignedPacket")
-    VerifiedSignedPacket.__post_init__(verified)
+    _validate_verified_signed_packet_stored(verified)
     if host_inventory is not None and not _is_exact_type(host_inventory, HostInventory):
         raise ValueError("host_inventory must be an exact HostInventory")
     if host_inventory is not None:
-        HostInventory.__post_init__(host_inventory)
+        _validate_host_inventory_stored(host_inventory)
     if agent_source_bytes is not None and not _is_exact_type(agent_source_bytes, bytes):
         raise ValueError("agent_source_bytes must be exact bytes")
     packet = verified.packet
@@ -1211,7 +1319,12 @@ def execute_qualification(
         action_evidence.append(
             {
                 "action_id": action.action_id,
-                "argv": list(action.logical_argv(inventory.python_executable)),
+                "argv": list(
+                    _qualification_action_logical_argv_from_stored_state(
+                        action,
+                        inventory.python_executable,
+                    )
+                ),
                 "return_code": execution.return_code,
                 "duration_ms": execution.duration_ms,
                 "stdout_sha256": _sha256_bytes(stdout),
@@ -1240,20 +1353,23 @@ def execute_qualification(
 
     body = {
         "schema_version": "12-6.physical-qualification-evidence.v1",
-        "packet_identity_sha256": packet.identity_sha256(),
+        "packet_identity_sha256": _qualification_packet_identity_from_stored_state(packet),
         "signed_bundle_identity_sha256": verified.signed_bundle_identity_sha256,
         "signing_key_id": verified.signing_key_id,
         "signature_sha256": verified.signature_sha256,
         "agent_source_sha256": source_sha,
         "target_git_sha": packet.target_git_sha,
         "execution_mode": packet.execution_mode.value,
-        "host_inventory": inventory.to_dict(),
-        "host_inventory_identity_sha256": inventory.identity_sha256(),
+        "host_inventory": _host_inventory_payload_from_stored_state(inventory),
+        "host_inventory_identity_sha256": _host_inventory_identity_from_stored_state(inventory),
         "resource_observations": {
             item.value: resources[item].value
             for item in sorted(ResourceKind, key=lambda item: item.value)
         },
-        "external_resource_evidence": [item.to_dict() for item in external_evidence],
+        "external_resource_evidence": [
+            _external_resource_evidence_payload_from_stored_state(item)
+            for item in external_evidence
+        ],
         "actions": action_evidence,
         "artifacts": list(artifacts),
         "log_sha256": _sha256_bytes(log_bytes),
@@ -1315,7 +1431,7 @@ def verify_qualification_evidence(
     _require_enum_wire_integrity()
     if not _is_exact_type(verified_packet, VerifiedSignedPacket):
         raise ValueError("verified_packet must be an exact VerifiedSignedPacket")
-    VerifiedSignedPacket.__post_init__(verified_packet)
+    _validate_verified_signed_packet_stored(verified_packet)
     if not _is_exact_type(agent_source_bytes, bytes):
         raise ValueError("agent_source_bytes must be exact bytes")
     if type(require_real_pass) is not bool:
@@ -1390,7 +1506,10 @@ def verify_qualification_evidence(
         raise ValueError("physical evidence host attestation verification failed")
 
     packet = verified_packet.packet
-    if evidence["packet_identity_sha256"] != packet.identity_sha256():
+    if (
+        evidence["packet_identity_sha256"]
+        != _qualification_packet_identity_from_stored_state(packet)
+    ):
         raise ValueError("physical evidence is bound to a different packet")
     if (
         evidence["signed_bundle_identity_sha256"]
@@ -1408,7 +1527,10 @@ def verify_qualification_evidence(
 
     inventory_payload = evidence["host_inventory"]
     inventory = _host_inventory_from_dict(inventory_payload)
-    if inventory.identity_sha256() != evidence["host_inventory_identity_sha256"]:
+    if (
+        _host_inventory_identity_from_stored_state(inventory)
+        != evidence["host_inventory_identity_sha256"]
+    ):
         raise ValueError("host inventory identity mismatch")
 
     mode = ExecutionMode(evidence["execution_mode"])
@@ -1429,7 +1551,7 @@ def verify_qualification_evidence(
     }
     external_payload = evidence["external_resource_evidence"]
     if not isinstance(external_payload, list):
-        raise ValueError("external resource evidence must be an array")
+        raise ValueError("external resource evidence must be an array")  # noqa: TRY004
     _, external_verifiers = _validate_external_resource_maps(
         None,
         resource_probe_verifiers,
@@ -1455,7 +1577,7 @@ def verify_qualification_evidence(
         adapter_id = _require_id("external resource adapter id", item["adapter_id"])
         encoded = item["evidence_b64"]
         if not isinstance(encoded, str):
-            raise ValueError("external resource evidence_b64 must be a string")
+            raise ValueError("external resource evidence_b64 must be a string")  # noqa: TRY004
         try:
             raw = base64.b64decode(encoded, validate=True)
         except (TypeError, ValueError) as exc:
@@ -1553,7 +1675,7 @@ def verify_qualification_evidence(
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("physical log is not canonical JSONL") from exc
         if not isinstance(row, dict):
-            raise ValueError("physical log row must be an object")
+            raise ValueError("physical log row must be an object")  # noqa: TRY004
         log_rows.append(row)
 
     actions = evidence["actions"]
@@ -1593,7 +1715,12 @@ def verify_qualification_evidence(
             raise ValueError("physical log fields are non-canonical")
         if actual.get("action_id") != expected.action_id:
             raise ValueError("physical action evidence order/id mismatch")
-        if actual.get("argv") != list(expected.logical_argv(inventory.python_executable)):
+        if actual.get("argv") != list(
+            _qualification_action_logical_argv_from_stored_state(
+                expected,
+                inventory.python_executable,
+            )
+        ):
             raise ValueError("physical action argv mismatch")
         if actual.get("pre_git_sha") != packet.target_git_sha:
             raise ValueError("physical action pre-run Git SHA mismatch")

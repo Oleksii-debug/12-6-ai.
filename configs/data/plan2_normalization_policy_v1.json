@@ -1,0 +1,12 @@
+{
+  "schema_version": "12-6.plan2-normalization-policy.v1",
+  "policy_id": "data324-uk-markdown-nfkc-lf.v1",
+  "implementation": "tools/materialize_data324_kubernetes_ua.py:normalize_markdown_uk",
+  "encoding": "UTF-8 strict",
+  "unicode": "NFKC",
+  "line_endings": "LF",
+  "record_boundary": "nonempty-normalized-line",
+  "language": "incumbent-UA-threshold-else-und",
+  "modality": "verified-strict-readable-text-only",
+  "downstream_binding": "policy_sha256+raw_sha256+normalized_sha256"
+}

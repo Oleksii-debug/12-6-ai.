@@ -1,6 +1,44 @@
+# LEGACY MONOLITHIC CLOSURE REGISTRY — SUPERSEDED FOR WORK SELECTION
+
+**Do not use this file to choose the next work front.**
+The former global sequential 96-Section execution model has been superseded by `PROJECT_PLAN_INDEX.md` and `MULTI_PLAN_CLOSURE_STATE.md`.
+The historical entries below are preserved only as audit/evidence for migrated work.
+
+Current migrated mapping:
+- former 0 -> Plan 1 / Section 1 DONE
+- former 1 -> Plan 1 / Section 2 DONE
+- former 2 -> Plan 8 / Section 1 DONE
+- former 3 -> Plan 8 / Section 2 DONE
+- former 4 -> Plan 8 / Section 3 QUALIFYING
+
+---
+
 # Sequential Closure State
 
 This file is the durable GitHub mirror for ordered Section/Subsection closure.
+
+## Binding closure lifecycle v2
+
+This registry obeys the root `AGENTS.md` **Terminal Section Closure Protocol v2**. The following invariants are mandatory when selecting or updating a front:
+
+- **Closure is the optimization target.** Commit/PR count, execution-unit floors, depth targets and elapsed worker time do not justify additional mutation.
+- **One mutation front.** Mutate only the earliest actionable unfinished Section, except for a minimal named direct dependency required to close it.
+- **Audit existing first.** If acceptance-critical implementation already exists, qualify/close it instead of rebuilding or expanding it.
+- **One canonical finisher.** Record/reuse one Section finisher lineage; intermediate feature/integration/prequal merges are not closure.
+- **Candidate freeze.** Once internally controllable acceptance requirements are satisfied, designate and freeze an exact candidate SHA. No unrelated hardening or speculative edge-case work after freeze.
+- **Exact-SHA qualification.** Pending CI freezes the candidate; it does not authorize a new SHA. A failed gate permits only the smallest proven gating repair before refreeze.
+- **Integration then readback.** DONE requires required canonical integration plus post-merge/readback evidence, not merely an intermediate merge.
+- **External-only remainder.** Use `INTERNAL_DONE_BLOCKED_EXTERNAL` when internal scope is exhausted and a genuinely external fact remains. This is not DONE, but the frozen Section becomes immutable for autonomous sequencing until the unblock condition changes.
+- **No reconvergence carousel.** Do not repeatedly propagate a moving predecessor into later Sections. Later work waits for a frozen/accepted predecessor or the explicit external-block escape.
+- **Acceptance boundary is fixed.** New non-gating improvements discovered after freeze go to later/backlog scope. They do not silently enlarge the current Section.
+- **Reopen narrowly.** A DONE Section may reopen only for a demonstrated regression, invalid evidence, changed acceptance contract or breaking later integration; record the exact reason first.
+
+Recommended lifecycle states are:
+`OPEN -> IMPLEMENTING -> CANDIDATE_FROZEN -> QUALIFYING -> DONE`,
+or `... -> INTERNAL_DONE_BLOCKED_EXTERNAL` when only an external unblock remains.
+`REOPENED` is exceptional and must name the invalidated surface.
+
+For the current front, durable state should identify: **canonical finisher**, **candidate SHA if frozen**, **remaining acceptance-critical gap**, and **exact unblock condition if externally blocked**.
 
 ## Rules
 
@@ -14,10 +52,8 @@ This file is the durable GitHub mirror for ordered Section/Subsection closure.
 
 | Section / Subsection | State | Canonical evidence / lineage | Accepted source / build | Notes |
 | --- | --- | --- | --- | --- |
-| Section 0 — Цільова архітектура 12-6 як повної AI-системи | IN_PROGRESS | PR #3074; branch `section/0-system-architecture-contract-v1`; converged from `main@03296d2d33bdeec9167649067af94ef392bdebe3` | — | Candidate architecture implementation exists; Section 0 is not DONE until accepted integration and terminal exact-head CI on the integrated candidate. |
-| Section 1 — Єдина система ідентичностей і маніфестів | IN_PROGRESS | PR #3076; branch `section/1-unified-artifact-identities-v1`; stacked on PR #3074 | — | Prepared only as SECONDARY while Section 0 waits on CI. It cannot become canonical DONE before Section 0; exact-head CI and predecessor closure are required. |
-| Section 2 — Executable capability map і acceptance graph | IN_PROGRESS | PR #3078; branch `section/2-executable-capability-map-v1`; stacked on PR #3076 | — | Re-converged on the current Section-1 candidate; capability/equivalence proof remains non-DONE until Sections 0–1 close and exact-head shared CI succeeds. |
-| Section 3 — GitHub Software-in-the-Loop Live Qualification Plane | IN_PROGRESS | PR #3079; branch `section/3-github-sil-qualification-v1`; stacked on PR #3078 | — | Prepared only under later-actionable fallback; cannot become DONE before Sections 0–2 and exact-head SIL/CI success. |
-| Section 4 — AI QA і автономний defect → repair → retest plane | IN_PROGRESS | PR #3080; branch `section/4-ai-qa-control-v1`; stacked on PR #3079 | — | Current fallback candidate includes exact failing-SHA repair binding, hookless/replacement-object-safe materialization, live regression gates, verified receipt binding, and no self-authorized promotion. Predecessor closure, terminal exact-head CI, and external independent promotion evidence remain required. |
-| Section 5 — Physical Qualification Fabric і device/server test agent | IN_PROGRESS | PR #3083; branch `section/5-physical-qualification-fabric-v1`; stacked on PR #3080; supersedes closed historical PR #3082 after predecessor convergence | — | Current candidate is converged on live Section 4 and hardens signed host evidence with exact tracked-test execution, exact interpreter binding, bounded output, and POSIX/Windows process-tree termination. Still not DONE: predecessor closure, exact-head CI, production trust integration, OS memory/disk quotas, real Windows/Linux/server qualification, and required NETWORK/MODEL/PROVIDER probes remain. |
-| Section 6 — PC ↔ GitHub ↔ AI evidence/control bridge | IN_PROGRESS | PR #3085; branch `section/6-evidence-control-bridge-v1`; stacked on Section 5 exact predecessor `abdf72e69b2f7f1074ae843cfa2c1d7d152048dc` | — | Later-actionable fallback only. Candidate binds exact Git/package/physical evidence, create-only canonical receipts, AI-QA handoff for reproducible physical failures, and mandatory fresh SIL + same-scenario physical requalification after repair. Predecessor closure, exact-head CI, production evidence transport/trust integration, and real host qualification remain required. |
+| Section 0 — Цільова архітектура 12-6 як повної AI-системи | DONE | PR #3074 merged; candidate `4a1486798d8da3ac59bf1a1e6a7673dcb490afaa`; exact-head CI `37606263374` terminal SUCCESS | `main@d74c5c4f6dee7027ca713b3e6579bb66a5fefaf0` | Current 96-Section plan acceptance 0.1/0.2 is integrated: typed seven-plane architecture boundaries and replaceable cognitive-core/runtime-shell contract. Ruff + full pytest passed on the exact candidate head; merge preserved the qualified candidate tree. No training/data/paid-compute/release authority was widened. |
+| Section 1 — Єдина система ідентичностей і маніфестів | DONE | PR #3090 merged; candidate `0e1f301c5123b4e52c111cb94264cfd61b60bf4b`; exact-head CI `37615156740` terminal SUCCESS | `main@9ef945ff977dd4674a9b7cf4d6fd2efff6302eeb` | Current-plan 1.1/1.2 identity and cryptographic cross-binding authority is repaired and integrated. Ruff + full pytest passed on the exact candidate head; merge commit preserves the qualified candidate tree byte-for-byte. Reopened capability/source truth remained fail-closed during repair; no training/data/final-test/paid-compute/physical/release authority was widened. |
+| Section 2 — Executable capability map і acceptance graph | DONE | canonical finisher PR #3093 merged; finalization candidate `b7d0af0f4d0cc3d05d7593142eb882f5ab5640dc`; exact-head CI `37627655061` terminal SUCCESS; phase-1 repair PR #3092 candidate `93a01fe50c94a34eeaf7b586176e0c81153c76b3` CI `37625412078` SUCCESS | `main@15dd345d7b3090afed8cc53d6cd9984044679594` | Post-merge readback is byte-identical to the qualified finalization candidate (candidate→merge: ahead 1 / behind 0 / zero changed files). `executable-capability-map` is AVAILABLE, source inventory is 117 accepted / 0 candidate, and repository candidate overrides are empty. The later `9432f08d...` freeze-status write was stale bookkeeping after successful integration and does not reopen product scope. |
+| Section 3 — GitHub Software-in-the-Loop Live Qualification Plane | DONE | phase-1 PR #3079 merged; phase-1 candidate `698531883661e57bbca6e005d571a467fad552ea`, exact CI/SIL `37633474478` SUCCESS, artifact `11487558408`; canonical promotion PR #3094 merged; final candidate `ed2a5b7476a21321129401599565b7c5154ca505`, exact promotion CI/SIL `37635162482` terminal SUCCESS, artifact `11488092709` (`sha256:d4518bbb3e7096849cac8a2c6d3fb1e8f670e0c5537ceb17b1265db7f10c8690`) | `main@2ec19ac4ea588caf5a907f74a152e5beb4a98605` | Post-merge readback preserves the qualified candidate product/control/test tree; candidate→merge differs only in this closure registry. Source inventory is 118 accepted / 0 overlay, executable candidate overrides are empty, and `project-control-plane` plus `github-sil-qualification` are AVAILABLE. No data, tokenizer-fit, training, learned-weight, final-test, paid-compute, physical-device, release, or scale authority was widened. |
+| Section 4 — AI QA і автономний defect → repair → retest plane | QUALIFYING | canonical finisher PR #3080; branch `section/4-ai-qa-control-v1` | — | Sections 0–3 are accepted DONE. Section-4 implementation is converged onto accepted main; only the proven Ruff I001 import-order repair is included. Exact frozen SHA is recorded durably on PR #3080 after this convergence commit; terminal exact-head CI/SIL, independent promotion evidence, guarded integration and post-merge readback remain required before DONE. |

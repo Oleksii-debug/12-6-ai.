@@ -1,0 +1,36 @@
+{
+  "schema": "12-6.plan6.evolution-engine-release.v1",
+  "plan": 6,
+  "section": 15,
+  "execution_profile": "LOCAL_FREE",
+  "engine_git_blobs": {
+    "src/twelve_six/research_engine.py": "4d0a3424e033f1be591b5ee99f23a7f38b891ff4",
+    "src/twelve_six/post_base_instruction.py": "428832cba92fe0fd459465d8121acdd00d78a9e2",
+    "src/twelve_six/post_base_preference.py": "6c48336ce5ff5960ca6eb9b5b692e5998e2c4098",
+    "src/twelve_six/post_base_reasoning.py": "2a72fc4e34de26c732350156578731b042235680",
+    "src/twelve_six/post_base_agentic.py": "ed85ed3d8f5897f0044fceead9218667c8569824",
+    "src/twelve_six/teacher_council.py": "13c3d25df04ae82f9b2c419654ec29fe454b9628",
+    "src/twelve_six/verified_data_factory.py": "b1aca651818b3d33d5ae1c9292022b98985da7f3",
+    "src/twelve_six/self_play_engine.py": "78dce3addda3cf30e668143a0e7dc4b6558c9c2b",
+    "src/twelve_six/continual_learning.py": "b9a003941c2b9b1900aacf2bcbb04f580d65587c",
+    "src/twelve_six/experience_replay.py": "5645aa33769c304b6113eac978116feaf2c3afdb",
+    "src/twelve_six/autonomous_curriculum.py": "0bc90c74990c770c8ac083b394413038c62b0e50",
+    "src/twelve_six/evolutionary_code.py": "b43f1df36297d80c6f393b2ea9b93251467bf4c2",
+    "src/twelve_six/autonomous_research_loop.py": "b661966738fc26f3ef2cfc508b65a930360dc668",
+    "src/twelve_six/champion_lifecycle.py": "c1b53490ea0416893070d3a92a7049fe7f4fbc81"
+  },
+  "acceptance": [
+    "all-14-component-test-suites",
+    "cross-engine-research-to-promotion-and-rollback",
+    "negative-forgery-and-fail-closed",
+    "durable-restart-readback"
+  ],
+  "limits": {
+    "synthetic_fixtures_only": true,
+    "production_champion_promotion": false,
+    "base_lineage_modified": false,
+    "paid_model_or_teacher_compute": false,
+    "plan9_campaign_authorized": false,
+    "plan10_whole_product_accepted": false
+  }
+}

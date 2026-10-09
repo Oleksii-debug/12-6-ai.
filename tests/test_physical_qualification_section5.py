@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
-import twelve_six.physical_qualification as physical_qualification
+from twelve_six import physical_qualification
 from twelve_six.physical_qualification import (
     ActionExecution,
     ExecutionMode,
@@ -25,7 +26,6 @@ from twelve_six.physical_qualification import (
     write_evidence_bundle,
 )
 from twelve_six.sil_qualification import GitState
-
 
 _GIT_SHA = "a" * 40
 _AGENT_BYTES = b"section-5-agent-source"
@@ -476,6 +476,40 @@ def test_post_action_tree_mutation_or_output_overflow_fails(tmp_path: Path) -> N
     assert evidence["verdict"] == QualificationVerdict.FAIL.value
     assert evidence["actions"][0]["stdout_truncated"] is True
     assert evidence["actions"][0]["post_tracked_clean"] is False
+
+
+def test_windows_taskkill_is_attempted_after_parent_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    class ExitedParent:
+        pid = 4344
+
+        @staticmethod
+        def poll() -> int:
+            return 0
+
+        @staticmethod
+        def kill() -> None:
+            raise AssertionError("direct-process fallback must not be used")
+
+    def fake_run(argv: tuple[str, ...], **kwargs: object) -> object:
+        calls.append((argv, kwargs))
+        return object()
+
+    monkeypatch.setattr(physical_qualification.sys, "platform", "win32")
+    monkeypatch.setattr(physical_qualification.subprocess, "run", fake_run)
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
+
+    physical_qualification._terminate_process_tree(ExitedParent())
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert argv[1:] == ("/PID", "4344", "/T", "/F")
+    assert argv[0].replace("\\", "/").endswith("/System32/taskkill.exe")
+    assert kwargs["shell"] is False
+    assert kwargs["check"] is True
 
 
 def test_process_tree_policy_uses_isolated_posix_group(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1127,3 +1161,130 @@ def test_verifier_callbacks_require_exact_boolean_decisions(tmp_path: Path) -> N
             evidence_signature_verifier=truthy_signature_verifier,
         )
 
+def test_signed_physical_authority_ignores_rebound_class_methods(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = _action(
+        resources=(ResourceKind.CPU, ResourceKind.NETWORK),
+    )
+    packet = _packet(actions=(action,))
+    verified = _load(tmp_path, packet)
+    inventory = _inventory()
+    external = _network_probe(tmp_path)
+
+    def fail_rebound(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("rebound class authority must not be dispatched")
+
+    monkeypatch.setattr(QualificationAction, "__post_init__", fail_rebound)
+    monkeypatch.setattr(QualificationAction, "to_dict", fail_rebound)
+    monkeypatch.setattr(QualificationAction, "logical_argv", fail_rebound)
+    monkeypatch.setattr(QualificationPacket, "__post_init__", fail_rebound)
+    monkeypatch.setattr(QualificationPacket, "to_dict", fail_rebound)
+    monkeypatch.setattr(QualificationPacket, "identity_sha256", fail_rebound)
+    monkeypatch.setattr(
+        physical_qualification.VerifiedSignedPacket,
+        "__post_init__",
+        fail_rebound,
+    )
+    monkeypatch.setattr(HostInventory, "__post_init__", fail_rebound)
+    monkeypatch.setattr(HostInventory, "to_dict", fail_rebound)
+    monkeypatch.setattr(HostInventory, "identity_sha256", fail_rebound)
+    monkeypatch.setattr(ExternalResourceEvidence, "__post_init__", fail_rebound)
+    monkeypatch.setattr(ExternalResourceEvidence, "to_dict", fail_rebound)
+
+    evidence, log_bytes = execute_qualification(
+        verified,
+        repo_root=tmp_path,
+        host_inventory=inventory,
+        action_runner=_pass_runner,
+        git_probe=_git_probe,
+        agent_source_bytes=_AGENT_BYTES,
+        evidence_signing_key_id=_HOST_KEY_ID,
+        evidence_signer=_fake_evidence_signer,
+        resource_probes={ResourceKind.NETWORK: lambda root: external},
+        resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+    )
+    evidence_path = tmp_path / "rebind-evidence.json"
+    log_path = tmp_path / "rebind-log.jsonl"
+    write_evidence_bundle(
+        evidence_path,
+        log_path,
+        evidence=evidence,
+        log_bytes=log_bytes,
+    )
+    checked = verify_qualification_evidence(
+        evidence_path,
+        log_path,
+        verified_packet=verified,
+        agent_source_bytes=_AGENT_BYTES,
+        artifact_root=tmp_path,
+        require_real_pass=True,
+        evidence_signature_verifier=_fake_evidence_verify,
+        resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+    )
+    assert checked["verdict"] == QualificationVerdict.PASS.value
+
+    object.__setattr__(verified.packet.actions[0], "timeout_seconds", 0)
+    with pytest.raises(ValueError, match="action timeout exceeds"):
+        execute_qualification(
+            verified,
+            repo_root=tmp_path,
+            host_inventory=inventory,
+            action_runner=_pass_runner,
+            git_probe=_git_probe,
+            agent_source_bytes=_AGENT_BYTES,
+            evidence_signing_key_id=_HOST_KEY_ID,
+            evidence_signer=_fake_evidence_signer,
+            resource_probes={ResourceKind.NETWORK: lambda root: external},
+            resource_probe_verifiers={ResourceKind.NETWORK: _network_probe_verify},
+        )
+
+
+
+def test_operator_keyboard_interrupt_terminates_qualified_process_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    action = QualificationAction(
+        action_id="keyboard-interrupt",
+        pytest_targets=("tests/test_physical_qualification_section5.py",),
+        timeout_seconds=10,
+        max_output_bytes=256,
+        required_resources=(),
+    )
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"")
+            self.wait_calls = 0
+
+        def wait(self, timeout: int | None = None) -> int:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise KeyboardInterrupt
+            return 130
+
+    process = FakeProcess()
+    terminated: list[FakeProcess] = []
+    monkeypatch.setattr(
+        physical_qualification, "_validate_checked_in_pytest_targets", lambda *_: None
+    )
+    monkeypatch.setattr(
+        physical_qualification, "_popen_process_group_kwargs", dict
+    )
+    monkeypatch.setattr(
+        physical_qualification.subprocess, "Popen", lambda *_, **__: process
+    )
+    monkeypatch.setattr(
+        physical_qualification,
+        "_terminate_process_tree",
+        lambda item: terminated.append(item),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        run_bounded_pytest(action, tmp_path)
+    assert terminated == [process]
+    assert process.wait_calls == 2

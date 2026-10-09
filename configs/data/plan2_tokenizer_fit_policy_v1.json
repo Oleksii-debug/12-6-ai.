@@ -1,0 +1,6 @@
+{
+  "schema_version": "12-6.plan2-tokenizer-fit-policy.v1",
+  "purpose": "LOCAL_FREE_SYNTHETIC_NO_RELEASE",
+  "target_vocab_size": 32768,
+  "max_fixture_merges": 96
+}

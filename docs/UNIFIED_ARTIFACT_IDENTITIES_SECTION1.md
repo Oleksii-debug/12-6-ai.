@@ -7,9 +7,9 @@ This document implements the current canonical Section Plan requirement:
 - **Section 1 — Єдина система ідентичностей і маніфестів**
 - plan document: `16KotBqgSyf3A0FEWpN8Pnobgf2ZJ1ecT8MLgHoQXibY`
 - observed plan revision:
-  `AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw`
+  `ANLCKQnXY8VKCJDDnoyswSWTUVvktY41ODOKs8vJB9_b2whb1GpVUU2nUEZxcqkQXTS7YYo7IcAlrRhEcbUHlYiysiUA00rP9QpL5qUJ0A`
 
-This work is stacked after Section 0 and cannot become canonical DONE before Section 0.
+Section 0 is terminally DONE. Section 1 is REOPENED for the demonstrated identity-authority regression and is the current numerical PRIMARY.
 
 ## Design rule: reuse domain identities, do not replace them
 
@@ -97,6 +97,23 @@ comparison use a sealed stored-state manifest hasher, so rebinding
 cannot forge a bound lineage or hide a post-validation parent/lineage mutation while different
 stored state is serialized.
 
+Identity-bearing serializers and generation accessors route through private stored-state
+validators/serializers whose authority is not exposed as caller-supplied override parameters.
+Rebinding class-level `__post_init__` or `to_dict`, or attempting to pass an alternate
+validator/serializer/hasher into the public API, therefore cannot turn malformed stored state
+into a newly accepted or differently hashed identity after construction.
+
+Because this is a post-closure repair, the shared Section-2 capability/source authorities are
+also refreshed on the same PRIMARY lineage. Their qualified baseline is the last terminal
+Section-2 candidate `3cc8fc430c15cc2dd46c1c1192e3a582fc6ad4d5` with exact-head CI
+`37609405086`; current main is equivalence-checked separately. While this Section-1 repair is
+unintegrated, `unified-generation-identity` is explicitly UNAVAILABLE. The source inventory
+records exactly two modified overlays: `src/twelve_six/artifact_identity.py` for the reopened
+Section-1 implementation and `src/twelve_six/capability_map.py` for the bounded shared-control
+support that makes same-path repair overlays explicit and fail-closed. This prevents either a
+reopened identity implementation or its qualification control from inheriting stale
+AVAILABLE/accepted-main authority; it does not close or advance Section 2.
+
 The canonical graph is:
 
 - ModelSpec, InitSpec and corpus: roots inside this Section-1 graph;
@@ -148,6 +165,6 @@ This Section grants no corpus admission, tokenizer fitting, training, optimizer 
 checkpoint physical qualification, final-test access, learned weights, paid compute, scale
 promotion, release, Windows/NVDA or server authority.
 
-Section 1 remains non-DONE until Section 0 is DONE, this exact delta is integrated onto the
-accepted live lineage, and terminal exact-head evidence is recorded in the canonical
-Section closure registry.
+Section 1 remains REOPENED/non-DONE until this exact repair delta receives terminal fresh
+exact-head CI, is integrated onto live `main`, and the resulting closure evidence is recorded
+in `SEQUENTIAL_CLOSURE_STATE.md`. No prior Section-1 green is transferred across the reopen.

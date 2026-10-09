@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.ai_qa_control as ai_qa_control
-
+from twelve_six import ai_qa_control, sil_qualification
 from twelve_six.ai_qa_control import (
     ExternalObservation,
     FailureClass,
@@ -42,9 +41,7 @@ from twelve_six.sil_qualification import (
     build_package_manifest_bytes,
     canonical_sil_environment_receipt_v1,
     load_sil_scenario,
-    qualify_sil,
 )
-
 
 _ROOT = Path(__file__).parents[1]
 _POLICY = _ROOT / "configs" / "control" / "ai_qa_policy_v1.json"
@@ -233,7 +230,7 @@ def test_native_sil_fail_evidence_yields_minimal_failed_vector_reproducer(
             expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=load_capability_registry(_CAPABILITIES),
@@ -323,7 +320,7 @@ def test_sil_failure_packet_uses_exact_failed_log_record_and_utf8_byte_bound(
             expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=load_capability_registry(_CAPABILITIES),
@@ -401,7 +398,7 @@ def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
             consumed_input_identity_sha256=expected_input_identity_sha256,
         )
 
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_FAIL_SHA,
         registry=registry,
@@ -432,6 +429,7 @@ def test_sil_failure_ingestion_rejects_environment_authority_mismatch(
             evidence_path,
             log_path,
             defect_id="sil-environment-authority-mismatch",
+            expected_git_sha=_FAIL_SHA,
             policy=_policy(),
             expected_package_bytes=_package_bytes(),
             expected_environment_receipt=forged_environment,
@@ -445,7 +443,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
 ) -> None:
     registry = load_capability_registry(_CAPABILITIES)
     scenario = load_sil_scenario(_SCENARIO)
-    evidence, log_text = qualify_sil(
+    evidence, log_text = sil_qualification._qualify_sil_with_backends(
         repo_root=_ROOT,
         expected_git_sha=_CANDIDATE_SHA,
         registry=registry,
@@ -476,7 +474,7 @@ def test_candidate_sil_verifier_rejects_checkout_drift_after_verification(
         )
     )
     with pytest.raises(ValueError, match="dirty"):
-        verify_candidate_sil_evidence(
+        ai_qa_control._verify_candidate_sil_evidence_with_authorities(
             evidence_path,
             log_path,
             repo_root=_ROOT,
@@ -524,7 +522,7 @@ def test_regression_chain_runs_component_then_adversarial_on_exact_candidate() -
         adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
     )
 
-    component, adversarial = execute_automated_regressions(
+    component, adversarial = ai_qa_control._execute_automated_regressions_with_backends(
         chain,
         repo_root=_ROOT,
         actor_id="regression-automation",
@@ -560,15 +558,16 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
         adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
     )
     with pytest.raises(ValueError, match="SHA mismatch"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha="d" * 40, tracked_clean=True),
+            candidate_parent_probe=_candidate_parent_probe,
         )
     with pytest.raises(ValueError, match="direct child"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -577,12 +576,13 @@ def test_regression_chain_rejects_wrong_sha_dirty_tree_and_shell_reproducer() ->
             candidate_parent_probe=lambda _root, _sha: ("d" * 40,),
         )
     with pytest.raises(ValueError, match="dirty"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
             command_runner=_pass_runner,
             git_probe=lambda _: GitState(sha=_CANDIDATE_SHA, tracked_clean=False),
+            candidate_parent_probe=_candidate_parent_probe,
         )
 
 
@@ -603,7 +603,7 @@ def test_regression_chain_rejects_checkout_mutation_during_gate() -> None:
     )
 
     with pytest.raises(ValueError, match="became dirty during component gate"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-automation",
@@ -1082,6 +1082,10 @@ def test_live_local_defect_repair_retest_round_trip_uses_exact_candidate(
     )
     tests_dir = repo / "tests"
     tests_dir.mkdir()
+    (repo / ".gitignore").write_text(
+        ".pytest_cache/\n__pycache__/\n",
+        encoding="utf-8",
+    )
     (repo / "payload.txt").write_text("broken\n", encoding="utf-8")
     (tests_dir / "test_payload.py").write_text(
         "from pathlib import Path\n\n"
@@ -1485,6 +1489,7 @@ def test_aiqa_enum_policy_global_rebind_cannot_reseal_identity(
             failure.identity_sha256()
     finally:
         object.__setattr__(FailureSource.CI, "_value_", original_source_value)
+        monkeypatch.undo()
 
     assert failure.identity_sha256() == baseline_identity
 
@@ -1528,7 +1533,7 @@ def test_aiqa_regression_loop_revalidates_mutated_git_state() -> None:
     object.__setattr__(state, "tracked_clean", "yes")
 
     with pytest.raises(ValueError, match="tracked_clean must be boolean"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-agent",
@@ -1565,12 +1570,44 @@ def test_aiqa_regression_loop_revalidates_mutated_command_result() -> None:
         return result
 
     with pytest.raises(ValueError, match="duration_ms must be a non-negative integer"):
-        execute_automated_regressions(
+        ai_qa_control._execute_automated_regressions_with_backends(
             chain,
             repo_root=_ROOT,
             actor_id="regression-agent",
             command_runner=stale_runner,
             git_probe=_candidate_git_probe,
             candidate_parent_probe=_candidate_parent_probe,
+        )
+
+def test_public_automated_regression_authority_rejects_caller_backends() -> None:
+    failure = _failure()
+    candidate = _candidate(failure)
+    chain = build_regression_chain(
+        failure,
+        candidate,
+        adversarial_command="pytest -q tests/test_ai_qa_control_section4.py",
+    )
+
+    with pytest.raises(TypeError):
+        execute_automated_regressions(  # type: ignore[call-arg]
+            chain,
+            repo_root=_ROOT,
+            actor_id="regression-agent",
+            command_runner=_pass_runner,
+            git_probe=_candidate_git_probe,
+            candidate_parent_probe=_candidate_parent_probe,
+        )
+
+def test_public_candidate_sil_verifier_rejects_caller_git_probe(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        verify_candidate_sil_evidence(  # type: ignore[call-arg]
+            tmp_path / "missing-evidence.json",
+            tmp_path / "missing-log.jsonl",
+            repo_root=_ROOT,
+            candidate_git_sha=_CANDIDATE_SHA,
+            expected_environment_receipt=_environment_receipt(),
+            expected_registry=load_capability_registry(_CAPABILITIES),
+            expected_scenario=load_sil_scenario(_SCENARIO),
+            git_probe=_candidate_git_probe,
         )
 

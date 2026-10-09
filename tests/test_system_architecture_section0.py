@@ -35,6 +35,18 @@ def _core(label: str, parameter_count: int) -> CognitiveCoreIdentity:
     )
 
 
+def _binding(
+    core: CognitiveCoreIdentity,
+    shell: RuntimeShellContract,
+    *,
+    gateway_api: InterfaceContract | None = None,
+) -> CognitiveCoreBinding:
+    return CognitiveCoreBinding(
+        core=core,
+        gateway_api=shell.gateway_api if gateway_api is None else gateway_api,
+    )
+
+
 def _assembly(label: str = "20m", parameter_count: int = 20_613_440) -> ProductAssembly:
     architecture = canonical_system_architecture_v1()
     shell = canonical_runtime_shell_v1()
@@ -334,6 +346,8 @@ def test_core_replacement_preserves_all_persistent_shell_contracts() -> None:
     assert receipt.shell_identity_sha256_before == receipt.shell_identity_sha256_after
     assert receipt.preserved_surface_identities == current.shell.surface_identities()
     assert receipt.preserved_shell == current.shell
+    assert receipt.previous_binding == current.core_binding
+    assert receipt.candidate_binding == candidate
     assert receipt.shell_rewrite_required is False
     assert replacement.identity_sha256() != assembly_before_identity
 
@@ -371,6 +385,32 @@ def test_core_replacement_rejects_incompatible_gateway_before_mutation() -> None
         replace_cognitive_core(current, incompatible)
 
     assert current.identity_sha256() == original_identity
+
+
+def test_replacement_receipt_rejects_gateway_binding_resealing() -> None:
+    shell = canonical_runtime_shell_v1()
+    previous_core = _core("binding-previous", 20_613_440)
+    candidate_core = _core("binding-candidate", 200_000_000)
+    incompatible_gateway = InterfaceContract("twelve_six.model_gateway", 2)
+
+    with pytest.raises(ValueError, match="candidate binding gateway is incompatible"):
+        CoreReplacementReceipt(
+            previous_core_identity_sha256=previous_core.identity_sha256(),
+            candidate_core_identity_sha256=candidate_core.identity_sha256(),
+            previous_core=previous_core,
+            candidate_core=candidate_core,
+            previous_binding=_binding(previous_core, shell),
+            candidate_binding=_binding(
+                candidate_core,
+                shell,
+                gateway_api=incompatible_gateway,
+            ),
+            shell_identity_sha256_before=shell.identity_sha256(),
+            shell_identity_sha256_after=shell.identity_sha256(),
+            preserved_surface_identities=shell.surface_identities(),
+            preserved_shell=shell,
+            shell_rewrite_required=False,
+        )
 
 
 def test_runtime_shell_identity_changes_when_a_surface_contract_changes() -> None:
@@ -412,6 +452,8 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             candidate_core_identity_sha256=candidate_core.identity_sha256(),
             previous_core=previous_core,
             candidate_core=candidate_core,
+            previous_binding=_binding(previous_core, shell),
+            candidate_binding=_binding(candidate_core, shell),
             shell_identity_sha256_before=_sha("shell-a"),
             shell_identity_sha256_after=_sha("shell-b"),
             preserved_surface_identities=(),
@@ -425,6 +467,8 @@ def test_replacement_receipt_rejects_false_claim_of_shell_preservation() -> None
             candidate_core_identity_sha256=candidate_core.identity_sha256(),
             previous_core=previous_core,
             candidate_core=candidate_core,
+            previous_binding=_binding(previous_core, shell),
+            candidate_binding=_binding(candidate_core, shell),
             shell_identity_sha256_before=_sha("shell"),
             shell_identity_sha256_after=_sha("shell"),
             preserved_surface_identities=(),
@@ -456,7 +500,8 @@ def test_manifest_rejects_non_boundary_element_fail_closed() -> None:
 
 
 def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() -> None:
-    surfaces = canonical_runtime_shell_v1().surface_identities()
+    shell = canonical_runtime_shell_v1()
+    surfaces = shell.surface_identities()
     previous_core = _core("previous", 20_000_000)
     candidate_core = _core("candidate", 200_000_000)
     common = {
@@ -464,9 +509,11 @@ def test_replacement_receipt_rejects_mutable_or_malformed_surface_container() ->
         "candidate_core_identity_sha256": candidate_core.identity_sha256(),
         "previous_core": previous_core,
         "candidate_core": candidate_core,
+        "previous_binding": _binding(previous_core, shell),
+        "candidate_binding": _binding(candidate_core, shell),
         "shell_identity_sha256_before": _sha("shell"),
         "shell_identity_sha256_after": _sha("shell"),
-        "preserved_shell": canonical_runtime_shell_v1(),
+        "preserved_shell": shell,
         "shell_rewrite_required": False,
     }
 
@@ -492,6 +539,8 @@ def test_replacement_receipt_cross_binds_shell_snapshot_and_surface_hashes() -> 
         "candidate_core_identity_sha256": candidate_core.identity_sha256(),
         "previous_core": previous_core,
         "candidate_core": candidate_core,
+        "previous_binding": _binding(previous_core, shell),
+        "candidate_binding": _binding(candidate_core, shell),
         "shell_identity_sha256_before": shell.identity_sha256(),
         "shell_identity_sha256_after": shell.identity_sha256(),
         "preserved_shell": shell,
@@ -530,6 +579,8 @@ def test_replacement_receipt_cross_binds_core_snapshots() -> None:
         "candidate_core_identity_sha256": candidate_core.identity_sha256(),
         "previous_core": previous_core,
         "candidate_core": candidate_core,
+        "previous_binding": _binding(previous_core, shell),
+        "candidate_binding": _binding(candidate_core, shell),
         "shell_identity_sha256_before": shell.identity_sha256(),
         "shell_identity_sha256_after": shell.identity_sha256(),
         "preserved_surface_identities": shell.surface_identities(),
@@ -702,6 +753,8 @@ def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> N
             candidate_core_identity_sha256=candidate_core.identity_sha256(),
             previous_core=forged_previous,
             candidate_core=candidate_core,
+            previous_binding=_binding(previous_core, shell),
+            candidate_binding=_binding(candidate_core, shell),
             shell_identity_sha256_before=shell.identity_sha256(),
             shell_identity_sha256_after=shell.identity_sha256(),
             preserved_surface_identities=shell.surface_identities(),
@@ -727,6 +780,8 @@ def test_closed_architecture_receipt_and_candidate_subclasses_fail_closed() -> N
             candidate_core_identity_sha256=candidate_core.identity_sha256(),
             previous_core=previous_core,
             candidate_core=candidate_core,
+            previous_binding=_binding(previous_core, shell),
+            candidate_binding=_binding(candidate_core, shell),
             shell_identity_sha256_before=shell.identity_sha256(),
             shell_identity_sha256_after=shell.identity_sha256(),
             preserved_surface_identities=shell.surface_identities(),

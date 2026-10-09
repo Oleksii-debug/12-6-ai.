@@ -450,11 +450,11 @@ def test_generation_validation_fails_closed_after_policy_global_rebind(
     canonical = artifact_identity_module._GENERATION_PARENT_POLICY
     forged = dict(canonical)
     forged_release = dict(canonical[ArtifactKind.RELEASE])
-    forged_release["evaluation"] = ArtifactKind.EXPORT
+    forged_release["checkpoint"] = ArtifactKind.MODEL_SPEC
     forged[ArtifactKind.RELEASE] = forged_release
     monkeypatch.setattr(artifact_identity_module, "_GENERATION_PARENT_POLICY", forged)
 
-    with pytest.raises(ValueError, match=r"release\.evaluation must reference evaluation"):
+    with pytest.raises(ValueError, match=r"release\.checkpoint must reference checkpoint"):
         _generation("a")
 
 
@@ -1086,3 +1086,123 @@ def test_artifact_ref_dunder_rebinding_cannot_reseal_parent_identity(
             ),
         )
 
+
+def test_artifact_ref_validator_rebinding_cannot_bypass_serialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ref = _ref(ArtifactKind.CORPUS, "validator-rebind-ref")
+    object.__setattr__(ref, "schema_version", 0)
+    monkeypatch.setattr(ArtifactRef, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        ref.to_dict()
+
+
+def test_manifest_method_rebinding_cannot_reseal_stored_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("manifest-method-rebind")
+    release = generation.artifact_manifest(ArtifactKind.RELEASE)
+    expected_identity = release.manifest_identity_sha256()
+
+    monkeypatch.setattr(ArtifactManifest, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        ArtifactManifest,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+    monkeypatch.setattr(
+        ParentBinding,
+        "to_dict",
+        lambda _self: {"forged_parent": True},
+    )
+
+    assert release.manifest_identity_sha256() == expected_identity
+    object.__setattr__(release, "parents", list(release.parents))
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        generation.identity_sha256()
+
+
+def test_generation_method_rebinding_cannot_reseal_incomplete_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation = _generation("generation-method-rebind")
+    expected_identity = generation.identity_sha256()
+
+    monkeypatch.setattr(GenerationIdentityManifest, "__post_init__", lambda _self: None)
+    monkeypatch.setattr(
+        GenerationIdentityManifest,
+        "to_dict",
+        lambda _self: {"forged": True},
+    )
+
+    assert generation.identity_sha256() == expected_identity
+    object.__setattr__(generation, "artifacts", generation.artifacts[:-1])
+
+    with pytest.raises(
+        ValueError,
+        match="generation must contain exactly one artifact of every canonical kind",
+    ):
+        generation.identity_sha256()
+
+
+
+def test_public_identity_apis_do_not_accept_seal_override_hooks() -> None:
+    ref = _ref(ArtifactKind.CORPUS, "public-seal-override")
+    parent = bind_artifact(ref)
+    generation = _generation("public-seal-override")
+
+    with pytest.raises(TypeError):
+        ref.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.to_dict(_sealed_validate=lambda _value: None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        parent.manifest_identity_sha256(  # type: ignore[call-arg]
+            _sealed_hash_payload=lambda _value: "0" * 64
+        )
+    with pytest.raises(TypeError):
+        generation.identity_sha256(  # type: ignore[call-arg]
+            _sealed_to_dict=lambda _value: {"forged": True}
+        )
+    with pytest.raises(TypeError):
+        bind_artifact(  # type: ignore[call-arg]
+            _ref(ArtifactKind.TOKENIZER, "public-seal-override"),
+            parents={"corpus": parent},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
+    with pytest.raises(TypeError):
+        verify_parent_bindings(  # type: ignore[call-arg]
+            parent,
+            expected_parents={},
+            _sealed_manifest_identity=lambda _value: "0" * 64,
+        )
+
+
+def test_builder_validator_rebinding_cannot_admit_invalid_artifact_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refs = _refs("builder-validator-rebind")
+    corpus = refs[ArtifactKind.CORPUS]
+    object.__setattr__(corpus, "schema_version", 0)
+    monkeypatch.setattr(ArtifactRef, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="schema_version must be a positive integer"):
+        build_generation_identity_manifest(refs)
+
+
+def test_verify_parent_bindings_validator_rebinding_cannot_hide_invalid_expected_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_parent = bind_artifact(
+        _ref(ArtifactKind.CORPUS, "verify-validator-rebind")
+    )
+    child = bind_artifact(
+        _ref(ArtifactKind.TOKENIZER, "verify-validator-rebind"),
+        parents={"corpus": expected_parent},
+    )
+    object.__setattr__(expected_parent, "parents", [])
+    monkeypatch.setattr(ArtifactManifest, "__post_init__", lambda _self: None)
+
+    with pytest.raises(ValueError, match="parents must be an immutable tuple"):
+        verify_parent_bindings(child, expected_parents={"corpus": expected_parent})

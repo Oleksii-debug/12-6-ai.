@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+  "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_ci": {
-    "run_id": 37248299503,
+    "run_id": 37659977022,
     "conclusion": "success"
   },
   "capabilities": [
@@ -40,7 +40,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "versioned ModelSpec identity usable by project-owned model and training surfaces",
@@ -80,7 +80,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "project-owned byte tokenizer runtime and compatibility checks",
@@ -122,7 +122,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "deterministic packing mechanics over admitted tokenizer/split inputs",
@@ -164,7 +164,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "fail-closed checkpoint serialization, integrity validation and corruption rejection mechanics",
@@ -177,7 +177,8 @@
       "component_contract": "twelve_six.windows_operator_cli",
       "dependencies": [],
       "journey_ids": [
-        "operator-windows-cli"
+        "operator-windows-cli",
+        "operator-windows-product"
       ],
       "environments": [
         {
@@ -204,7 +205,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "packaged Python operator CLI mechanics; this does not claim physical Windows/NVDA acceptance",
@@ -213,7 +214,7 @@
     {
       "capability_id": "replaceable-cognitive-core-shell",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.system_architecture.replace_cognitive_core",
       "dependencies": [],
       "journey_ids": [
@@ -222,7 +223,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -241,15 +242,19 @@
         {
           "evidence_id": "section0-pr",
           "target": "pull-request:3074"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 0 candidate PR #3074 is not yet integrated and terminally qualified on accepted main"
+      "integrated_result": "integrated replaceable cognitive-core/runtime-shell architecture contract from closed Section 0",
+      "unavailable_reason": null
     },
     {
       "capability_id": "unified-generation-identity",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.artifact_identity.GenerationIdentityManifest",
       "dependencies": [
         "replaceable-cognitive-core-shell"
@@ -260,7 +265,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -278,11 +283,15 @@
       "evidence_targets": [
         {
           "evidence_id": "section1-pr",
-          "target": "pull-request:3076"
+          "target": "pull-request:3090"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 1 is a draft stacked candidate and cannot be accepted before Section 0"
+      "integrated_result": "integrated repaired unified generation identity and exact parent-manifest cross-binding contract from closed Section 1",
+      "unavailable_reason": null
     },
     {
       "capability_id": "learned-20m-base",
@@ -296,7 +305,8 @@
         "checkpoint-integrity-mechanics"
       ],
       "journey_ids": [
-        "operator-local-learned-model"
+        "operator-local-learned-model",
+        "operator-windows-product"
       ],
       "environments": [
         {
@@ -408,7 +418,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "project-owned training-loop and checkpoint-integration mechanics; this does not authorize a learned-20M optimizer run",
@@ -448,7 +458,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "rights/privacy/quality/dedup/decontamination control mechanics on accepted main; this does not assert a launch-authoritative learned-20M corpus",
@@ -491,7 +501,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "fail-closed learned-20M readiness, launch-input and lease-control mechanics; no training authorization or learned weights are implied",
@@ -533,7 +543,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "portable run packet and exact binding validation mechanics",
@@ -575,7 +585,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "content-addressed scale-141 recovery and sidecar validation mechanics",
@@ -650,7 +660,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "deterministic split-robustness and manifest-invariant validation mechanics",
@@ -690,16 +700,16 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37248299503"
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": "repository CI-policy and multi-worker coordination protocol validation mechanics",
+      "integrated_result": "integrated canonical CI workflow policy and multi-worker coordination mechanics, including the Section 3 SIL job, qualified on exact phase-1 head and accepted main",
       "unavailable_reason": null
     },
     {
       "capability_id": "executable-capability-map",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.capability_map.CapabilityRegistry",
       "dependencies": [
         "replaceable-cognitive-core-shell",
@@ -711,7 +721,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -729,16 +739,20 @@
       "evidence_targets": [
         {
           "evidence_id": "section2-pr",
-          "target": "pull-request:3078"
+          "target": "pull-request:3092"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 2 remains IN_PROGRESS until exhaustive capability/source/journey coverage is mechanically demonstrated and predecessors close."
+      "integrated_result": "integrated executable capability registry and acceptance graph with exhaustive source/journey coverage, fail-closed AVAILABLE/UNAVAILABLE truth, and sealed component/source authority",
+      "unavailable_reason": null
     },
     {
       "capability_id": "github-sil-qualification",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.sil_qualification",
       "dependencies": [
         "executable-capability-map"
@@ -749,7 +763,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -768,10 +782,249 @@
         {
           "evidence_id": "section3-pr",
           "target": "pull-request:3079"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
+        }
+      ],
+      "integrated_result": "integrated exact-head GitHub Software-in-the-Loop qualification plane with deterministic clean-runner execution, retained bound evidence, and independent verification",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "ai-qa-repair-control",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.ai_qa_control",
+      "dependencies": [
+        "github-sil-qualification"
+      ],
+      "journey_ids": [
+        "maintainer-ai-qa-repair"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section4-aiqa-component",
+          "level": "component",
+          "command": "pytest -q tests/test_ai_qa_control_section4.py"
+        },
+        {
+          "vector_id": "section4-aiqa-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_sil_qualification_section3.py tests/test_ai_qa_control_section4.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section4-pr",
+          "target": "pull-request:3080"
+        },
+        {
+          "evidence_id": "section4-qualification-ci",
+          "target": "github-actions:37659977022"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
+        }
+      ],
+      "integrated_result": "PR #3080 integrated into main; exact-head Ruff/pytest/SIL verification succeeded at github-actions:37659977022; independent evidence artifact 11501485066; no physical, training or release authority.",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "post-base-research-verification",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.research_engine.ResearchTrial",
+      "dependencies": [
+        "unified-generation-identity"
+      ],
+      "journey_ids": [
+        "researcher-verify-post-base-trial"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-research-component",
+          "level": "component",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py"
+        },
+        {
+          "vector_id": "plan6-research-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_research_engine_plan6_section1.py tests/test_artifact_identity_section1.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-section1-pr",
+          "target": "pull-request:3101"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": null,
-      "unavailable_reason": "Section 3 candidate is not integrated or terminally exact-head qualified."
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
+    },
+    {
+      "capability_id": "post-base-instruction-descendant",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.post_base_instruction.InstructionRecipe",
+      "dependencies": [
+        "unified-generation-identity",
+        "post-base-research-verification"
+      ],
+      "journey_ids": [
+        "researcher-train-instruction-descendant-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-s2-canonical-instruction",
+          "level": "component",
+          "command": "pytest -q tests/test_post_base_instruction.py"
+        },
+        {
+          "vector_id": "plan6-s2-canonical-reuse",
+          "level": "integration",
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-s2-canonical-pr",
+          "target": "pull-request:3117"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
+    },
+    {
+      "capability_id": "post-base-preference-descendant",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.post_base_preference.PreferenceRecipe",
+      "dependencies": [
+        "post-base-instruction-descendant"
+      ],
+      "journey_ids": [
+        "researcher-verify-offline-preference-fixture"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan6-s3-canonical-preference",
+          "level": "component",
+          "command": "pytest -q tests/test_post_base_preference.py"
+        },
+        {
+          "vector_id": "plan6-s3-canonical-reuse",
+          "level": "integration",
+          "command": "pytest -q tests/test_post_base_instruction.py tests/test_post_base_preference.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan6-s3-canonical-pr",
+          "target": "pull-request:3120"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37659977022"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
+    },
+    {
+      "capability_id": "peer-source-qualification-pending",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "12-6.peer-source-staged-evidence",
+      "dependencies": [],
+      "journey_ids": [
+        "maintainer-review-peer-source-overlays"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [],
+      "evidence_targets": [],
+      "integrated_result": null,
+      "unavailable_reason": "27 peer Python sources added after independently qualified AIQA merge baseline; absent exact-tree SIL evidence in this Plan8 snapshot. Staged but not claimed READY."
+    },
+    {
+      "capability_id": "physical-qualification-fabric",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.physical_qualification",
+      "dependencies": [
+        "ai-qa-repair-control"
+      ],
+      "journey_ids": [
+        "operator-physical-qualification"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        },
+        {
+          "environment_id": "windows-local",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan8-s4-physical-fixtures",
+          "level": "component",
+          "command": "pytest -q tests/test_physical_qualification_section5.py"
+        },
+        {
+          "vector_id": "plan8-s4-operator-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_plan8_physical_operator.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan8-s4-canonical-pr",
+          "target": "pull-request:3083"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Plan 8 Section 4 qualification infrastructure is staged; no physical device/NVDA evidence or product-release claim."
     }
   ],
   "journeys": [
@@ -903,6 +1156,48 @@
       "title": "Maintainer executes and independently verifies exact-head GitHub SIL evidence",
       "capability_ids": [
         "github-sil-qualification"
+      ]
+    },
+    {
+      "journey_id": "maintainer-ai-qa-repair",
+      "title": "Maintainer converts failure evidence into an isolated repair candidate and independently gated retest decision",
+      "capability_ids": [
+        "ai-qa-repair-control"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-post-base-trial",
+      "title": "Researcher runs independent replayable post-Base research verification",
+      "capability_ids": [
+        "post-base-research-verification"
+      ]
+    },
+    {
+      "journey_id": "researcher-train-instruction-descendant-fixture",
+      "title": "Researcher verifies provenance-gated instruction descendant against preserved Base CPU fixture",
+      "capability_ids": [
+        "post-base-instruction-descendant"
+      ]
+    },
+    {
+      "journey_id": "researcher-verify-offline-preference-fixture",
+      "title": "Researcher verifies independently bounded offline preference descendants",
+      "capability_ids": [
+        "post-base-preference-descendant"
+      ]
+    },
+    {
+      "journey_id": "maintainer-review-peer-source-overlays",
+      "title": "Maintainer inspects unqualified source additions without granting accidental product authority",
+      "capability_ids": [
+        "peer-source-qualification-pending"
+      ]
+    },
+    {
+      "journey_id": "operator-physical-qualification",
+      "title": "Keyboard-first operator executes signed exact-host test packet and independently verifies evidence",
+      "capability_ids": [
+        "physical-qualification-fabric"
       ]
     }
   ]

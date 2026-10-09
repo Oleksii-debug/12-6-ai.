@@ -1,0 +1,36 @@
+{
+  "schema_version": "12-6.plan2-tokenizer-architecture-fixture.v1",
+  "purpose": "LOCAL_FREE_HANDWRITTEN_TEXTS_NO_CORPUS",
+  "samples": [
+    {
+      "sample_id": "uk_01",
+      "stratum": "uk",
+      "text": "Українська інженерна модель використовує український текст і токенізацію."
+    },
+    {
+      "sample_id": "en_01",
+      "stratum": "en",
+      "text": "A function and model tokenizer compare text and data across languages."
+    },
+    {
+      "sample_id": "code_01",
+      "stratum": "code",
+      "text": "import json\ndef tokenize(text):\n    return list(text.encode('utf-8'))\n"
+    },
+    {
+      "sample_id": "mixed_01",
+      "stratum": "mixed",
+      "text": "Українська модель and Python function operate on UTF-8 text."
+    },
+    {
+      "sample_id": "boundary_01",
+      "stratum": "boundary",
+      "text": "é and é differ bytewise; CRLF\r\nand <unk> remain literal text."
+    },
+    {
+      "sample_id": "adversarial_01",
+      "stratum": "adversarial",
+      "text": "🙂\u0000\t𐍈 <pad> \\u0000 def import model"
+    }
+  ]
+}
