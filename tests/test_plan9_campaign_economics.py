@@ -14,7 +14,6 @@ from twelve_six.plan9_campaign_economics import (
 )
 from twelve_six.plan9_optional_evolution import not_activated
 
-
 UNKNOWN = {"compute": None, "storage": None, "api": None}
 
 
