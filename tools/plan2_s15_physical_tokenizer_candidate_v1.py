@@ -95,6 +95,7 @@ def inspect(root: Path) -> dict[str, Any]:
         "physical_source_manifest_sha256": source["manifest_sha256"],
         "actual_heldout_audit_sha256": admission["manifest_sha256"],
         "physical_split_probe_sha256": assignment["manifest_sha256"],
+        "physical_split_manifest_sha256": assignment["s10_fixture_split_sha256"],
         "train_document_source_id": doc["source_id"],
         "train_document_sha256": doc["snapshot_sha256"],
         "train_document_bytes": doc["snapshot_bytes"],
