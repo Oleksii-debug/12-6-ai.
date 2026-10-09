@@ -101,6 +101,7 @@ _CANONICAL_JOURNEY_E2E_VECTOR_POLICY = (
     ("maintainer-project-control", ("swarm-protocol",)),
     ("maintainer-capability-qualification", ("section2-stack",)),
     ("maintainer-sil-qualification", ("section3-sil-stack",)),
+    ("maintainer-ai-qa-repair", ("section4-aiqa-stack",)),
 )
 
 

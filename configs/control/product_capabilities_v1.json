@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "observed_main_sha": "698531883661e57bbca6e005d571a467fad552ea",
+  "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_ci": {
-    "run_id": 37633474478,
+    "run_id": 37659977022,
     "conclusion": "success"
   },
   "capabilities": [
@@ -40,7 +40,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "versioned ModelSpec identity usable by project-owned model and training surfaces",
@@ -80,7 +80,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "project-owned byte tokenizer runtime and compatibility checks",
@@ -122,7 +122,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "deterministic packing mechanics over admitted tokenizer/split inputs",
@@ -164,7 +164,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "fail-closed checkpoint serialization, integrity validation and corruption rejection mechanics",
@@ -205,7 +205,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "packaged Python operator CLI mechanics; this does not claim physical Windows/NVDA acceptance",
@@ -245,7 +245,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "integrated replaceable cognitive-core/runtime-shell architecture contract from closed Section 0",
@@ -287,7 +287,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "integrated repaired unified generation identity and exact parent-manifest cross-binding contract from closed Section 1",
@@ -418,7 +418,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "project-owned training-loop and checkpoint-integration mechanics; this does not authorize a learned-20M optimizer run",
@@ -458,7 +458,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "rights/privacy/quality/dedup/decontamination control mechanics on accepted main; this does not assert a launch-authoritative learned-20M corpus",
@@ -501,7 +501,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "fail-closed learned-20M readiness, launch-input and lease-control mechanics; no training authorization or learned weights are implied",
@@ -543,7 +543,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "portable run packet and exact binding validation mechanics",
@@ -585,7 +585,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "content-addressed scale-141 recovery and sidecar validation mechanics",
@@ -660,7 +660,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "deterministic split-robustness and manifest-invariant validation mechanics",
@@ -700,7 +700,7 @@
       "evidence_targets": [
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "integrated canonical CI workflow policy and multi-worker coordination mechanics, including the Section 3 SIL job, qualified on exact phase-1 head and accepted main",
@@ -743,7 +743,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "integrated executable capability registry and acceptance graph with exhaustive source/journey coverage, fail-closed AVAILABLE/UNAVAILABLE truth, and sealed component/source authority",
@@ -785,7 +785,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "integrated exact-head GitHub Software-in-the-Loop qualification plane with deterministic clean-runner execution, retained bound evidence, and independent verification",
@@ -831,7 +831,7 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
       "integrated_result": "PR #3080 integrated into main; exact-head Ruff/pytest/SIL verification succeeded at github-actions:37659977022; independent evidence artifact 11501485066; no physical, training or release authority.",
@@ -840,7 +840,7 @@
     {
       "capability_id": "post-base-research-verification",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.research_engine.ResearchTrial",
       "dependencies": [
         "unified-generation-identity"
@@ -873,16 +873,16 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": "Accepted main PR #3101 merge 5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67, exact-Git-blob 16-pass local fixture verification, independent five-stage receipt verifier; GitHub Actions #37728070229 queued, not marked green",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
     },
     {
       "capability_id": "post-base-instruction-descendant",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.post_base_instruction.InstructionRecipe",
       "dependencies": [
         "unified-generation-identity",
@@ -916,16 +916,16 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": "Canonical Plan6 Section2 PR #3117 accepted main 5b1085177b4d7bc61298100e44f673f292a82ecb; source blob 428832cba92fe0fd459465d8121acdd00d78a9e2; local 12-pass fixture SFT, independent rights/quality/train-split, Base preserved; hosted CI #37728803008 queued (not green). Duplicate #3119 descendant removed by convergence.",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
     },
     {
       "capability_id": "post-base-preference-descendant",
       "schema_version": 1,
-      "status": "AVAILABLE",
+      "status": "UNAVAILABLE",
       "component_contract": "twelve_six.post_base_preference.PreferenceRecipe",
       "dependencies": [
         "post-base-instruction-descendant"
@@ -958,11 +958,31 @@
         },
         {
           "evidence_id": "main-ci",
-          "target": "github-actions:37633474478"
+          "target": "github-actions:37659977022"
         }
       ],
-      "integrated_result": "Canonical Plan6 Section3 PR #3120 accepted main 95876135047749d034f0a2404e46006324eec662; exact source blob 6c48336ce5ff5960ca6eb9b5b692e5998e2c4098; 27 scoped tiny CPU S2+S3 tests. Hosted CI #37729163283 queued (not green), no real policy/champion promotion.",
-      "unavailable_reason": null
+      "integrated_result": null,
+      "unavailable_reason": "Component implementation may be accepted by its owning Plan6, but this Plan8 qualified tree predates this source; staged and fail-closed until separately qualified. No Plan6 closure status is changed."
+    },
+    {
+      "capability_id": "peer-source-qualification-pending",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "12-6.peer-source-staged-evidence",
+      "dependencies": [],
+      "journey_ids": [
+        "maintainer-review-peer-source-overlays"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [],
+      "evidence_targets": [],
+      "integrated_result": null,
+      "unavailable_reason": "27 peer Python sources added after independently qualified AIQA merge baseline; absent exact-tree SIL evidence in this Plan8 snapshot. Staged but not claimed READY."
     }
   ],
   "journeys": [
@@ -1122,6 +1142,13 @@
       "title": "Researcher verifies independently bounded offline preference descendants",
       "capability_ids": [
         "post-base-preference-descendant"
+      ]
+    },
+    {
+      "journey_id": "maintainer-review-peer-source-overlays",
+      "title": "Maintainer inspects unqualified source additions without granting accidental product authority",
+      "capability_ids": [
+        "peer-source-qualification-pending"
       ]
     }
   ]

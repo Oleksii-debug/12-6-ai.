@@ -36,14 +36,14 @@ def _validate(
 def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     result = _validate()
 
-    assert result["observed_main_sha"] == "698531883661e57bbca6e005d571a467fad552ea"
-    assert result["observed_main_tree_sha"] == "6e91af737d92cd17ee34404fd86e8e0074d53171"
-    assert result["current_repository_main_sha"] == "14bac89097ba9c1a6ed1b348ed0065afac34859d"
-    assert result["current_repository_main_tree_sha"] == "2a91aed55fed370e4d17e3022a1bb1809fbd6619"
-    assert result["qualified_current_equivalent_surface_count"] == 238
+    assert result["observed_main_sha"] == "a6c4c269babbac134679a70b719e86e3fbcd4932"
+    assert result["observed_main_tree_sha"] == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
+    assert result["current_repository_main_sha"] == result["observed_main_sha"]
+    assert result["current_repository_main_tree_sha"] == result["observed_main_tree_sha"]
+    assert result["qualified_current_equivalent_surface_count"] == 239
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 0
-    assert result["checkout_surface_count"] == 120
+    assert result["candidate_overlay_surface_count"] == 60
+    assert result["checkout_surface_count"] == 178
 
 
 def test_repository_executable_surface_distribution_is_pinned() -> None:
@@ -65,10 +65,24 @@ def test_repository_executable_surface_distribution_is_pinned() -> None:
 
 
 
-def test_section3_promotion_has_zero_candidate_overrides_and_section2_rule_stays_integrated() -> None:
+def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     payload = _load_strict_json(_INVENTORY)
+    capabilities = _load_strict_json(_CAPABILITIES)
 
-    assert payload["candidate_overrides"] == []
+    overrides = payload["candidate_overrides"]
+    assert len(overrides) == 60
+    assert len({entry["path"] for entry in overrides}) == 60
+    assert {
+        "path": ".github/workflows/ci.yml",
+        "capability_id": "peer-source-qualification-pending",
+    } in overrides
+    capability_by_id = {
+        item["capability_id"]: item for item in capabilities["capabilities"]
+    }
+    assert all(
+        capability_by_id[entry["capability_id"]]["status"] == "UNAVAILABLE"
+        for entry in overrides
+    )
     assert {
         "rule_id": "section2-surface-validator",
         "selector": "exact",
@@ -98,13 +112,8 @@ def test_repository_surface_coverage_rejects_available_candidate_override(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    assert payload["candidate_overrides"] == []
-    payload["candidate_overrides"] = [
-        {
-            "path": ".github/workflows/ci.yml",
-            "capability_id": "model-spec-identity",
-        }
-    ]
+    assert payload["candidate_overrides"]
+    payload["candidate_overrides"][0]["capability_id"] = "model-spec-identity"
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -115,12 +124,12 @@ def test_repository_surface_coverage_rejects_candidate_override_capability_remap
     tmp_path: Path,
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["candidate_overrides"] = [
+    payload["candidate_overrides"].append(
         {
-            "path": "tools/validate_section2_repository_surface_coverage.py",
+            "path": "tools/validate_d04_learned20m_tokenizer_decision.py",
             "capability_id": "learned-20m-base",
         }
-    ]
+    )
 
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
@@ -142,9 +151,8 @@ def test_repository_surface_coverage_rejects_missing_candidate_override(
         blobs = original_surface_blob_map(root, treeish)
         if treeish == "HEAD":
             blobs = dict(blobs)
-            path = "tools/validate_section2_repository_surface_coverage.py"
-            mode, _blob_sha = blobs[path].split(":", 1)
-            blobs[path] = f"{mode}:{'f' * 40}"
+            path = "tools/new_unmapped_qualification_candidate.py"
+            blobs[path] = f"100644:{'f' * 40}"
         return blobs
 
     monkeypatch.setattr(
@@ -153,7 +161,10 @@ def test_repository_surface_coverage_rejects_missing_candidate_override(
         drifted_surface_blob_map,
     )
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    payload["candidate_overrides"] = []
+    payload["candidate_overrides"] = [
+        item for item in payload["candidate_overrides"]
+        if item["path"] != ".github/workflows/ci.yml"
+    ]
     inventory = tmp_path / "inventory.json"
     inventory.write_text(json.dumps(payload), encoding="utf-8")
 
