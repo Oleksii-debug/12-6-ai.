@@ -6,9 +6,10 @@ import json
 import os
 import re
 import shlex
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -67,7 +68,7 @@ def _sealed_identity_method(
 
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_text(name: str, value: object) -> str:
