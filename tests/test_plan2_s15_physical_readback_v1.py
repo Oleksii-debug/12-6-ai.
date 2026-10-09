@@ -179,5 +179,5 @@ def test_symlinked_physical_exposure_denied(tmp_path: Path) -> None:
     member = ed / "exposures" / "shard-000000.json"
     member.unlink()
     member.symlink_to(pd / "shards" / "shard-000000.json")
-    with pytest.raises(readback.PhysicalReadbackDenied, match="unsafe"):
+    with pytest.raises(readback.PhysicalReadbackDenied, match="linked"):
         _verify(pd, ed, packed, ledger)
