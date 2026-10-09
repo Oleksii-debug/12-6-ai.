@@ -47,9 +47,9 @@ def normalize_php(raw: bytes) -> bytes:
     """Pure historical NEXT100-028 v2 XML normalization."""
     text = raw.decode("utf-8", "strict").replace("\r\n", "\n").replace("\r", "\n")
     text = unicodedata.normalize("NFC", text)
-    text = re.compile(r"<!--.*?-->", re.S).sub("\n", text)
+    text = re.compile(r"<!--.*?-->", re.DOTALL).sub("\n", text)
     text = text.replace("<![CDATA[", "\n").replace("]]>", "\n")
-    text = re.compile(r"<[^>]+>", re.S).sub("\n", text)
+    text = re.compile(r"<[^>]+>", re.DOTALL).sub("\n", text)
     text = html.unescape(text)
     text = re.compile(r"&[A-Za-z_][A-Za-z0-9_.:-]*;").sub(" ", text)
     lines = [" ".join(line.split()) for line in text.splitlines()]
