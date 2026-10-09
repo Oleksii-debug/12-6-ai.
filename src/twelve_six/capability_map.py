@@ -1632,7 +1632,10 @@ def validate_source_surface_coverage(
     premature_candidate_acceptance = sorted(
         f"{surface.path}->{surface.capability_id}"
         for surface in inventory.surfaces
-        if surface.origin != "accepted_main"
+        # A changed previously-qualified file remains a *candidate* until
+        # exact-head qualification and promotion, even if its predecessor
+        # capability is AVAILABLE. New stacked files cannot inherit that status.
+        if surface.origin == "stacked_candidate"
         and by_capability[surface.capability_id].status
         is not CapabilityStatus.UNAVAILABLE
     )
