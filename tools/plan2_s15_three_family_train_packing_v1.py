@@ -38,7 +38,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     partition, members = training.build(root)
     fitted = fit.inspect(root)
     need(fitted["source_train_partition_sha256"] == partition["manifest_sha256"]
-         and fitted["source_s10_split_manifest_sha256"] ==
+         and fitted["source_s10_split_sha256"] ==
              partition["s10_split_manifest_sha256"]
          and fitted["source_train_document_count"] == len(members)
          == partition["train_document_count"]
@@ -159,7 +159,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         "heldout_plaintext_materialized": False,
         "tokenizer_manifest_sha256": fitted["manifest_sha256"],
         "tokenizer_identity": fitted["tokenizer_identity"],
-        "cluster_split_sha256": fitted["source_s10_split_manifest_sha256"],
+        "cluster_split_sha256": fitted["source_s10_split_sha256"],
         "physical_split_probe_sha256": partition["s10_split_probe_sha256"],
         "packing_policy": "physical_no_cross_record_no_truncation_v1",
         "block_size": packing.BLOCK,
