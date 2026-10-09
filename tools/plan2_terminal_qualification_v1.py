@@ -31,6 +31,7 @@ from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
+from tools import plan2_s15_five_source_rights_v1 as five_source_rights
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
@@ -205,6 +206,16 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined["production_release_authorized"] is False
              and combined["real_evaluation_custody_established"] is False,
              "combined real physical family evidence cannot grant training")
+    five_rights = five_source_rights.stage(
+        root, destination / "physical-five-source-rights")
+    _require(five_rights["three_family_source_sha256"] == combined["manifest_sha256"]
+             and five_rights["source_count"] == 5
+             and five_rights["canonical_source_family_count"] == 3
+             and five_rights["source_level_license_training_permission_evidenced"] is True
+             and five_rights["s3_s9_physical_admission"] is False
+             and five_rights["tokenizer_fit_authorized"] is False
+             and five_rights["production_release_authorized"] is False,
+             "source license catalog must not grant Plan2 training admission")
     family_mixture = three_family_mixture.stage(
         root, destination / "physical-three-family-mixture")
     _require(family_mixture["source_cohort_manifest_sha256"] ==
@@ -380,6 +391,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             train_only["physical_train_bytes"],
         "real_three_family_heldout_document_count":
             train_only["heldout_document_count"],
+        "real_five_source_s1_s2_rights_manifest_sha256":
+            five_rights["manifest_sha256"],
+        "real_five_source_s1_inventory_sha256":
+            five_rights["source_inventory_sha256"],
+        "real_five_source_s2_catalog_sha256":
+            five_rights["source_rights_catalog_sha256"],
         "real_three_family_s9_mixture_mechanics_sha256":
             family_mixture["manifest_sha256"],
         "real_three_family_s9_candidate_record_count":
