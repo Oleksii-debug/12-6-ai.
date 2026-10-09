@@ -1,5 +1,10 @@
 name: Plan 2 Data Component Qualification
 
+# Keep one frozen qualifying head per branch, including push/PR duplicates.
+concurrency:
+  group: plan2-data-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
