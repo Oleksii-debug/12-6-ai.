@@ -12,10 +12,11 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from twelve_six.sil_qualification import GitProbe, GitState, probe_git_state
 
@@ -50,7 +51,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 
 def _is_exact_type(value: object, expected: type[object]) -> bool:
-    return type(value) is expected  # noqa: E721
+    return type(value) is expected
 
 
 def _require_sha256(name: str, value: object) -> str:
@@ -856,7 +857,7 @@ def _validate_external_resource_maps(
                     f"external resource {registry_name} key must be NETWORK/MODEL/PROVIDER"
                 )
             if not callable(callback):
-                raise ValueError(
+                raise ValueError(  # noqa: TRY004
                     f"external resource {registry_name} callback must be callable"
                 )
     return probes, verifiers
@@ -986,8 +987,7 @@ def _validate_checked_in_pytest_targets(
             cwd=root,
             env=_bounded_git_env(),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
             check=False,
             shell=False,
@@ -1123,7 +1123,7 @@ def run_bounded_pytest(action: QualificationAction, repo_root: Path) -> ActionEx
                         _terminate_process_tree(process)
                     except OSError:
                         pass
-        except BaseException as exc:  # pragma: no cover - defensive pipe failure
+        except BaseException as exc:  # noqa: BLE001 - defensive pipe failure
             read_errors.append(exc)
             try:
                 _terminate_process_tree(process)
@@ -1556,7 +1556,7 @@ def verify_qualification_evidence(
     }
     external_payload = evidence["external_resource_evidence"]
     if not isinstance(external_payload, list):
-        raise ValueError("external resource evidence must be an array")
+        raise ValueError("external resource evidence must be an array")  # noqa: TRY004
     _, external_verifiers = _validate_external_resource_maps(
         None,
         resource_probe_verifiers,
@@ -1582,7 +1582,7 @@ def verify_qualification_evidence(
         adapter_id = _require_id("external resource adapter id", item["adapter_id"])
         encoded = item["evidence_b64"]
         if not isinstance(encoded, str):
-            raise ValueError("external resource evidence_b64 must be a string")
+            raise ValueError("external resource evidence_b64 must be a string")  # noqa: TRY004
         try:
             raw = base64.b64decode(encoded, validate=True)
         except (TypeError, ValueError) as exc:
@@ -1680,7 +1680,7 @@ def verify_qualification_evidence(
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("physical log is not canonical JSONL") from exc
         if not isinstance(row, dict):
-            raise ValueError("physical log row must be an object")
+            raise ValueError("physical log row must be an object")  # noqa: TRY004
         log_rows.append(row)
 
     actions = evidence["actions"]
