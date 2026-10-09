@@ -138,9 +138,16 @@ def inspect(root: Path) -> dict[str, Any]:
          "ambiguous English heldout balance; new policy review required")
     assignments = {sid: "train" for sid in sorted(source_to_family)}
     # Keep largest independent English book for tokenizer-fit coverage;
-    # the other two physically independent Gutenberg documents hold out.
-    assignments[ranked_en[1]] = "validation"
-    assignments[ranked_en[2]] = "test"
+    # choose the roles of the two remaining independent book documents
+    # with the incumbent deterministic seed, never an eval outcome.
+    heldout_en = sorted(
+        ranked_en[1:],
+        key=lambda sid: split._sha(
+            (policy["seed"] + ":physical-holdout\\0" + sid).encode("utf-8")
+        ),
+    )
+    assignments[heldout_en[0]] = "validation"
+    assignments[heldout_en[1]] = "test"
     family_roles = {role: sorted({
         source_to_family[source] for source, value in assignments.items()
         if value == role
@@ -150,8 +157,20 @@ def inspect(root: Path) -> dict[str, Any]:
          and family_roles["validation"] == [books.GUTENBERG_FAMILY]
          and family_roles["test"] == [books.GUTENBERG_FAMILY],
          "S15 source-family fit coverage or independent holds missing")
+    s15_policy = {
+        "schema_version": "12-6.plan2-s15-stratified-s10-policy.v1",
+        "revision": "S15_MULTILINGUAL_FIT_COVERAGE_WITH_SOURCE_HOLDOUTS_V1",
+        "original_s10_policy_git_blob_sha1": split.POLICY_GIT_BLOB,
+        "source_choice": "MAX_ENGLISH_UTF8_TRAIN_AND_ALL_UK_FAMILIES_V1",
+        "heldout_role_tie_break": "SHA256_ORIGINAL_S10_SEED_PLUS_SOURCE_ID",
+        "seed": policy["seed"],
+        "physical_source_family_count": 3,
+        "production_release_authorized": False,
+    }
+    s15_policy_sha = books.sha(books.canonical(s15_policy))
     physical_assignment = {
         "schema_version": "12-6.plan2-s15-three-family-stratified-s10-mechanics.v1",
+        "s15_policy_sha256": s15_policy_sha,
         "policy_revision": "S15_MULTILINGUAL_FIT_COVERAGE_WITH_SOURCE_HOLDOUTS_V1",
         "policy_seed": policy["seed"],
         "parent_incumbent_s10_sha256": assigned["split_manifest_sha256"],
@@ -182,7 +201,7 @@ def inspect(root: Path) -> dict[str, Any]:
         "s10_split_manifest_sha256": actual_split_sha,
         "incumbent_s10_split_manifest_sha256": assigned["split_manifest_sha256"],
         "s15_split_policy": physical_assignment["policy_revision"],
-        "s15_split_policy_sha256": books.sha(books.canonical(physical_assignment)),
+        "s15_split_policy_sha256": s15_policy_sha,
         "physical_s10_train_all_three_families": True,
         "validation_test_language_balanced": False,
         "canonical_source_family_count": 3,
