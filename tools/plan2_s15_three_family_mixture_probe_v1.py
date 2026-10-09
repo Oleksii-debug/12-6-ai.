@@ -76,7 +76,10 @@ def inspect(root: Path) -> dict[str, Any]:
     need(len(enriched) == 15 and len(by_source) == 5
          and {x["source_family"] for x in by_source.values()} ==
              set(physical["families"]), "source mixture identity incomplete")
-    upstream_policy = json.loads(books.read_checked(root, mixture.POLICY_PATH))
+    policy_raw = books.read_checked(root, mixture.POLICY_PATH)
+    need(books.git_blob(policy_raw) == mixture.POLICY_GIT_BLOB,
+         "incumbent S9 source policy was replaced")
+    upstream_policy = json.loads(policy_raw)
     incumbent = mixture._parse_policy(books.canonical(upstream_policy))
     need(incumbent["purpose"] == "LOCAL_FREE_CANDIDATE_MIXTURE"
          and incumbent["max_records_total"] == 50,
