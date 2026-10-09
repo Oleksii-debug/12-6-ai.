@@ -28,6 +28,7 @@ from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
+from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -191,6 +192,18 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined["production_release_authorized"] is False
              and combined["real_evaluation_custody_established"] is False,
              "combined real physical family evidence cannot grant training")
+    combined_partitions = combined_split.stage(
+        root, destination / "physical-three-family-split")
+    _require(combined_partitions["upstream_three_family_sha256"] ==
+             combined["manifest_sha256"]
+             and combined_partitions["canonical_source_family_count"] == 3
+             and combined_partitions["physical_document_count"] == 15
+             and combined_partitions["whole_source_cluster_count"] == 5
+             and combined_partitions["cluster_leakage_count"] == 0
+             and combined_partitions["physical_s9_admitted"] is False
+             and combined_partitions["training_corpus_authorized"] is False
+             and combined_partitions["production_release_authorized"] is False,
+             "source-family split mechanics incorrectly promoted candidate")
     probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
     _require(probe["production_release_authorized"] is False
              and probe["physical_s9_admitted"] is False
@@ -289,6 +302,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_three_family_source_split_probe_sha256":
+            combined_partitions["manifest_sha256"],
+        "real_three_family_source_cluster_count":
+            combined_partitions["whole_source_cluster_count"],
+        "real_three_family_source_split_leakage_count":
+            combined_partitions["cluster_leakage_count"],
         "real_three_family_candidate_sha256": combined["manifest_sha256"],
         "real_three_family_document_count": combined["document_identity_count"],
         "real_three_family_total_bytes": combined["total_physical_normalized_bytes"],
