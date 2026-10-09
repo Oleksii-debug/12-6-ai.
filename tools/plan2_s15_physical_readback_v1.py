@@ -107,7 +107,7 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
         observed: set[str] = set()
         for member in folder.rglob("*"):
             need(not member.is_symlink() and (member.is_file() or member.is_dir()),
-                 "unsafe physical publication member")
+                 "unsafe or linked physical publication member")
             if member.is_file():
                 relative = member.relative_to(folder).as_posix()
                 need(relative not in observed, "duplicate publication member")
