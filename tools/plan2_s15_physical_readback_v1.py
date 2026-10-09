@@ -14,6 +14,8 @@ from typing import Any
 from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_public_domain_books_v1 as books
+from tools import plan2_s15_physical_packing_candidate_v1 as physical_packing
+from tools import plan2_s15_physical_exposure_candidate_v1 as physical_exposure
 
 SCHEMA = "12-6.plan2-s15-physical-readback-v1"
 ZERO = "0" * 64
@@ -52,6 +54,13 @@ def check_manifest(directory: Path, name: str, *, expected: str) -> dict[str, An
          and manifest.get("production_release_authorized") is False
          and manifest.get("terminal_done") is False,
          "physical manifest corrupted or release flag escalated")
+    for cap in ("physical_s9_admitted", "tokenizer_fit_authorized",
+                "optimizer_effect_authorized", "evaluation_release_authorized",
+                "evaluation_authorized", "generated_auto_reentry_authorized",
+                "paid_compute_used"):
+        if cap in manifest:
+            need(manifest[cap] is False,
+                 "published candidate escalated authority: " + cap)
     return manifest
 
 
@@ -59,13 +68,20 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
            expected_packed_sha256: str,
            expected_exposure_sha256: str) -> dict[str, Any]:
     packed = check_manifest(
-        packed_dir, "physical-shard-candidate.json",
+        packed_dir, physical_packing.OUTPUT,
         expected=expected_packed_sha256,
     )
     ledger = check_manifest(
-        exposure_dir, "physical-exposure-candidate.json",
+        exposure_dir, physical_exposure.OUTPUT,
         expected=expected_exposure_sha256,
     )
+    need(packed.get("schema_version") == physical_packing.SCHEMA
+         and packed.get("decision") ==
+             "REAL_PHYSICAL_PACKING_CANDIDATE_NOT_RELEASE"
+         and ledger.get("schema_version") == physical_exposure.SCHEMA
+         and ledger.get("decision") ==
+             "PHYSICAL_ORDERED_TARGETS_CANDIDATE_NOT_RELEASE",
+         "wrong physical candidate schema or decision")
     need(packed["manifest_sha256"] == ledger["packing_manifest_sha256"]
          and packed["cluster_split_sha256"] == ledger["cluster_split_sha256"]
          and packed["tokenizer_manifest_sha256"] == ledger["tokenizer_manifest_sha256"]
@@ -74,12 +90,12 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
          and len(packed["shards"]) == len(ledger["exposure_shards"]),
          "S13-to-S14 physical parent identity changed")
     expected_packed_files = {
-        "physical-shard-candidate.json", *(
+        physical_packing.OUTPUT, *(
             x["path"] for x in packed["shards"]
         )
     }
     expected_exposure_files = {
-        "physical-exposure-candidate.json", *(
+        physical_exposure.OUTPUT, *(
             x["path"] for x in ledger["exposure_shards"]
         )
     }
