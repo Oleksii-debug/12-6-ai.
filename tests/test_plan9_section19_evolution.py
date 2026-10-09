@@ -10,7 +10,6 @@ from twelve_six.plan9_optional_evolution import (
     verify_not_activated,
 )
 
-
 SOURCE = "src/twelve_six/extreme_moe_paths.py"
 BLOB = "e964c124892bfb004b1266c4fdad2b54dbc3a355"
 
