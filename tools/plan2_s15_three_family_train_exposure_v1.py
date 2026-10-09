@@ -31,10 +31,12 @@ def need(condition: bool, message: str) -> None:
         raise TrainExposureDenied(message)
 
 
-def stage(root: Path, destination: Path) -> dict[str, Any]:
+def stage(root: Path, destination: Path, *,
+          fitted: dict[str, Any] | None = None) -> dict[str, Any]:
     need(not any(x.is_symlink() for x in (destination, *destination.parents)),
          "symlink physical training publication")
-    packed, shard_bytes = train_packing.build(root)
+    packed, shard_bytes = (train_packing.build(root) if fitted is None
+                           else train_packing.build(root, fitted=fitted))
     need(packed["source_train_partition_sha256"]
          and packed["source_manifest_sha256"]
          and packed["train_document_count"] > 0

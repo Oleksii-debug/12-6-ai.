@@ -2,7 +2,7 @@
 
 The input is the exact physical S10 whole-source train partition only; no
 validation or EVAL233 final-test payload is opened for packing. This module
-reuses FrozenBPE, the incumbent S13 pack and immutable physical publisher.
+reuses frozen 32K ByteBPE, the incumbent S13 pack and immutable physical publisher.
 All products are NONRELEASE until original Plan2 S3-S9 and Plan9 admission.
 """
 from __future__ import annotations
@@ -33,10 +33,17 @@ def need(ok: bool, reason: str) -> None:
         raise ThreeFamilyPackingDenied(reason)
 
 
-def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
+def build(root: Path, *, fitted: dict[str, Any] | None = None
+          ) -> tuple[dict[str, Any], dict[str, bytes]]:
     root = root.resolve(strict=True)
     partition, members = training.build(root)
-    fitted = fit.inspect(root)
+    fitted = fit.inspect(root) if fitted is None else fitted
+    need(type(fitted) is dict
+         and fitted.get("schema_version") == fit.SCHEMA
+         and fitted.get("manifest_sha256") == books.sha(books.canonical({
+             k: v for k, v in fitted.items() if k != "manifest_sha256"
+         })),
+         "precomputed 32K physical fit authority or hash was tampered")
     need(partition.get("train_source_family_count") == 3
          and partition["train_document_count"] == 13,
          "physical multi-family training records were not fully admitted as candidates")

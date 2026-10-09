@@ -314,7 +314,8 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and plan34_32k["plan9_optimizer_handoff_granted"] is False,
              "Plan3/4 model binding overstated a non-release 32K source candidate")
     real_three_targets = three_family_exposure.stage(
-        root, destination / "physical-three-family-s13-s14")
+        root, destination / "physical-three-family-s13-s14",
+        fitted=real_32k)
     _require(real_three_targets["source_cohort_manifest_sha256"] ==
              combined["manifest_sha256"]
              and real_three_targets["source_train_partition_sha256"] ==
