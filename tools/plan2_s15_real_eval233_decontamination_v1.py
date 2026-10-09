@@ -49,7 +49,7 @@ def inspect(root: Path) -> dict[str, Any]:
     contract = selection["usage_contract"]
     firewall = selection["final_test_firewall"]
     need(selection["selection_identity_sha256"] == SELECTION_SHA
-         and selection["purpose"] == "selection_validation"
+         and selection["purpose"] == "selection-validation"
          and contract["selection_only"] is True
          and contract["may_fit_tokenizer"] is False
          and contract["may_train"] is False
