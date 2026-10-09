@@ -35,6 +35,7 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["physical_real_text_packed_target_count"] > 0
     assert len(report["evidence"]["physical_real_text_exposure_manifest_sha256"]) == 64
     assert len(report["evidence"]["physical_real_text_exposure_chain_head_sha256"]) == 64
+    assert len(report["evidence"]["physical_s13_s14_independent_readback_sha256"]) == 64
     assert report["evidence"]["physical_split"] == "DENIED_SINGLE_SOURCE_FAMILY"
     assert report["evidence"]["physical_source_family_count"] == 1
     assert report["evidence"]["synthetic_target_count"] > 0
