@@ -102,3 +102,23 @@ def test_symlink_publication_denied(
     monkeypatch.setattr(heldout, "inspect", lambda _: pytest.fail("unsafe audit"))
     with pytest.raises(heldout.PhysicalHeldoutDenied, match="symlink"):
         heldout.stage(tmp_path, link)
+
+
+def test_cross_book_mirror_is_hash_only_and_excludes_same_book_spans() -> None:
+    duplicate = "One long normalized literary passage in a book " * 6
+    rows = [
+        {"source_id": "book-a", "record_id": "book-a:r00000000",
+         "text": duplicate},
+        {"source_id": "book-a", "record_id": "book-a:r00000001",
+         "text": duplicate},
+        {"source_id": "book-b", "record_id": "book-b:r00000000",
+         "text": duplicate},
+        {"source_id": "book-c", "record_id": "book-c:r00000000",
+         "text": "An unrelated corpus about astronomy and mathematics " * 8},
+    ]
+    matches = heldout.interdocument_mirror_evidence(rows)
+    assert len(matches) == 2
+    assert all(x["relation"] == "MIRROR_CASEFOLD" for x in matches)
+    assert all(len(x["left_record_id_sha256"]) == 64
+               and len(x["right_record_id_sha256"]) == 64 for x in matches)
+    assert duplicate not in repr(matches)
