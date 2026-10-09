@@ -29,12 +29,13 @@ from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
 from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
+from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
+from tools import plan2_s15_real_32k_bpe_v1 as real_32k_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
-from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
@@ -281,6 +282,30 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and plan34["production_backend_binding_granted"] is False
              and plan34["terminal_done"] is False,
              "Plan3/4 migration compatibility cannot grant provisional tokenizer")
+    real_32k = real_32k_bpe.stage(
+        root, destination / "physical-real-32768-byte-bpe")
+    _require(real_32k["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and real_32k["source_s10_split_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and real_32k["actual_vocab_size"] == 32768
+             and real_32k["fitted_merge_count"] == 32508
+             and real_32k["heldout_payloads_fitted"] is False
+             and real_32k["production_train_source_admitted"] is False
+             and real_32k["training_corpus_authorized"] is False
+             and real_32k["production_release_authorized"] is False
+             and real_32k["terminal_done"] is False,
+             "physical 32768 candidate was not fully source-bound and nonrelease")
+    plan34_32k = model_compatibility.stage_fullsize_from_fit(
+        real_32k, destination / "plan34-real-32768-compatibility")
+    _require(plan34_32k["source_fit_manifest_sha256"] ==
+             real_32k["manifest_sha256"]
+             and plan34_32k["candidate_vocab_size"] == 32768
+             and plan34_32k["production_32k_model_spec_compatible"] is True
+             and plan34_32k["checkpoint_weight_reuse_approved"] is False
+             and plan34_32k["production_backend_binding_granted"] is False
+             and plan34_32k["plan9_optimizer_handoff_granted"] is False,
+             "Plan3/4 model binding overstated a non-release 32K source candidate")
     real_eval = real_final.stage(root, destination / "physical-real-final-custody")
     _require(real_eval["physical_three_family_sha256"] ==
              combined["manifest_sha256"]
@@ -389,6 +414,14 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_source_32768_byte_bpe_candidate_sha256":
+            real_32k["manifest_sha256"],
+        "real_source_32768_fitted_merge_count":
+            real_32k["fitted_merge_count"],
+        "plan34_real_32768_candidate_compatibility_sha256":
+            plan34_32k["manifest_sha256"],
+        "plan34_real_32768_model_vocab_compatible":
+            plan34_32k["production_32k_model_spec_compatible"],
         "plan34_real_candidate_compatibility_manifest_sha256":
             plan34["manifest_sha256"],
         "plan34_production_vocab_compatible":
