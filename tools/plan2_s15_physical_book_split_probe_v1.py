@@ -67,6 +67,12 @@ def inspect(root: Path) -> dict[str, Any]:
          and proof["production_release_authorized"] is False
          and proof["data232_fixture_eval_only"] is True,
          "source identity or non-release rights boundary changed")
+    # The probe consumes whole original bodies. Do not reintroduce records
+    # excluded by G06 privacy or the DATA-232 decontamination firewall.
+    need(proof.get("g06_rejected_record_ids") == []
+         and proof.get("data232_excluded_record_count") == 0
+         and proof.get("data232_quarantined_source_family_count") == 0,
+         "privacy or decontamination excluded source; split would reuse rejected text")
     rows = _rows(root, proof)
     ids = sorted(r["record_id"] for r in rows)
     # Deliberately synthetic receipt: not produced by current physical S9,

@@ -77,7 +77,9 @@ def _read_gate(path: Path) -> dict[str, Any]:
              "physical gate incorrectly authorizes training")
     for capability in ("tokenizer_fit_authorized", "evaluation_authorized",
                        "generated_auto_reentry_authorized", "raw_text_emitted",
-                       "real_final_test_material_accessed"):
+                       "real_final_test_material_accessed",
+                       "production_release_authorized",
+                       "physical_tokenizer_fit_authorized"):
         if capability in value:
             _require(value[capability] is False,
                      "physical gate incorrectly authorizes " + capability)
@@ -103,10 +105,16 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
     # Until individually staged S5 proofs exist for every source, refuse
     # multi-source evidence rather than silently accepting partial coverage.
     exact_sources = stages["exact_dedup"].get("sources")
-    _require(type(exact_sources) is list and bool(exact_sources)
-             and all(type(source) is dict
-                     and source.get("privacy_manifest_sha256") == rights
-                     for source in exact_sources),
+    # The physical S5 authority is a single source: a copied self-hash
+    # cannot attest a second S6 source or a different normalized member.
+    # Real multi-source release needs independent S5 proofs for every source.
+    _require(type(exact_sources) is list and len(exact_sources) == 1
+             and type(exact_sources[0]) is dict
+             and exact_sources[0].get("source_id") ==
+             stages["privacy"].get("source_id")
+             and exact_sources[0].get("normalization_manifest_sha256") ==
+             stages["privacy"].get("normalization_manifest_sha256")
+             and exact_sources[0].get("privacy_manifest_sha256") == rights,
              "S5-S6 privacy provenance disconnected")
     _require(stages["near_dedup"]["upstream_exact_manifest_sha256"] ==
              stages["exact_dedup"]["manifest_sha256"],
@@ -135,6 +143,19 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
         stages["reserved_eval"]["manifest_sha256"],
         "S8-S9 mixture lineage disconnected",
     )
+    # A re-signed S9 candidate receipt cannot claim downstream release,
+    # tokenizer-fit, evaluation or raw-payload access while the cohort is
+    # explicitly component-only. Hash validity is not an authority grant.
+    for capability in ("production_release_authorized",
+                       "physical_tokenizer_fit_authorized",
+                       "tokenizer_fit_authorized",
+                       "evaluation_authorized",
+                       "generated_auto_reentry_authorized",
+                       "raw_text_emitted",
+                       "real_final_test_material_accessed"):
+        if capability in mixture_doc:
+            _require(mixture_doc[capability] is False,
+                     "S9 mixture incorrectly authorizes " + capability)
     return {key: value["manifest_sha256"] for key, value in stages.items()}
 
 
