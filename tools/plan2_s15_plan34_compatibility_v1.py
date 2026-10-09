@@ -105,6 +105,8 @@ def inspect(root: Path) -> dict[str, Any]:
 
 
 def stage(root: Path, destination: Path) -> dict[str, Any]:
+    need(not any(x.is_symlink() for x in (destination, *destination.parents)),
+         "symlink Plan3/4 compatibility output")
     return stage_from_fit(bpe.inspect(root.resolve(strict=True)), destination)
 
 
