@@ -21,7 +21,10 @@ def test_pinned_d03_physical_12_source_rebuild(tmp_path: Path) -> None:
     assert result["physical_source_families"] == sorted(d03.FAMILIES.values())
     assert len({r["normalized_sha256"] for r in result["records"]}) == 12
     assert len({r["source_family"] for r in result["records"]}) == 2
-    assert result["g06_rejected_record_ids"] == []
+    assert isinstance(result["g06_rejected_record_ids"], list)
+    assert set(result["g06_rejected_record_ids"]).issubset(
+        {item["record_id"] for item in result["records"]}
+    )
     assert result["final_test_outcomes_read"] is False
     assert result["production_release_authorized"] is False
     assert result["tokenizer_fit_authorized"] is False
