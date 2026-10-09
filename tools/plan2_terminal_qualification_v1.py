@@ -179,6 +179,45 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
 
 def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     """Reuse all extant component authorities, without creating a second pipeline."""
+    # Fail fast on the already canonical one-source physical S3-S10 boundary.
+    # This prevents a wrong source/rights/cluster candidate from running a
+    # full 32K fit before the rejection is visible to the host and CI.
+    cohort = physical.stage_candidate_cohort(root, destination / "source")
+    current = mixture.stage_mixture(root, destination / "physical-candidate")
+    _require(cohort["source_level_candidate_only"] is True
+             and cohort["training_corpus_authorized"] is False,
+             "source candidate unexpectedly promoted")
+    _require(current["training_corpus_authorized"] is False,
+             "physical mixture unexpectedly grants training")
+
+    # A changed source-family count must refuse before reading stale S9 hashes.
+    # Never mislabel an unrelated integrity error as a known corpus limitation.
+    families = current["contributions"]["family"]
+    _require(type(families) is dict and len(families) == 1,
+             "physical source-family count changed; release requires requalification")
+
+    gates = _audit_physical_gates(
+        destination / "physical-candidate", current["dataset_candidate_sha256"]
+    )
+    try:
+        split.stage_candidate(root, destination / "physical-split")
+    except split.Plan2SplitError as exc:
+        causes: list[str] = []
+        reason: BaseException | None = exc
+        while reason is not None:
+            causes.append(str(reason))
+            reason = reason.__cause__
+        _require(
+            "insufficient independent document families" in causes
+            or "three-way cluster-safe split has empty partition" in causes,
+            "unexpected physical split failure; not a family-count refusal",
+        )
+        physical_split = "DENIED_SINGLE_SOURCE_FAMILY"
+    else:
+        raise QualificationDenied(
+            "single-family physical candidate unexpectedly passed safe split"
+        )
+
     d03_ua = d03_sources.stage(root, destination / "physical-d03-ua")
     _require(d03_ua["physical_family_count"] == 2
              and d03_ua["physical_record_count"] == 12
@@ -398,42 +437,6 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and witness["readback_target_count"] == real_targets["target_count"]
              and witness["last_chain_sha256"] == real_targets["chain_head_sha256"],
              "independent physical S13/S14 publication readback mismatch")
-    cohort = physical.stage_candidate_cohort(root, destination / "source")
-    current = mixture.stage_mixture(root, destination / "physical-candidate")
-    _require(cohort["source_level_candidate_only"] is True
-             and cohort["training_corpus_authorized"] is False,
-             "source candidate unexpectedly promoted")
-    _require(current["training_corpus_authorized"] is False,
-             "physical mixture unexpectedly grants training")
-
-    # A changed source-family count must refuse before reading stale S9 hashes.
-    # Never mislabel an unrelated integrity error as a known corpus limitation.
-    families = current["contributions"]["family"]
-    _require(type(families) is dict and len(families) == 1,
-             "physical source-family count changed; release requires requalification")
-
-    gates = _audit_physical_gates(
-        destination / "physical-candidate", current["dataset_candidate_sha256"]
-    )
-    try:
-        split.stage_candidate(root, destination / "physical-split")
-    except split.Plan2SplitError as exc:
-        causes: list[str] = []
-        reason: BaseException | None = exc
-        while reason is not None:
-            causes.append(str(reason))
-            reason = reason.__cause__
-        _require(
-            "insufficient independent document families" in causes
-            or "three-way cluster-safe split has empty partition" in causes,
-            "unexpected physical split failure; not a family-count refusal",
-        )
-        physical_split = "DENIED_SINGLE_SOURCE_FAMILY"
-    else:
-        raise QualificationDenied(
-            "single-family physical candidate unexpectedly passed safe split"
-        )
-
     tokenizer = fit.stage(root, destination / "synthetic-tokenizer")
     packed = packing.stage(root, destination / "synthetic-shards")
     ledger = exposure.stage(root, destination / "synthetic-shards",
