@@ -17,6 +17,8 @@ def test_real_shards_integrity_and_same_path_restart(tmp_path: Path) -> None:
     receipt = physical.stage(ROOT, out)
     assert receipt["decision"] == "REAL_PHYSICAL_PACKING_CANDIDATE_NOT_RELEASE"
     assert receipt["target_count"] > 0
+    assert len(receipt["cluster_split_sha256"]) == 64
+    assert receipt["cluster_split_sha256"] != receipt["physical_split_probe_sha256"]
     assert receipt["block_count"] > 0
     assert receipt["shards"]
     segment_map = receipt["source_segment_byte_map"]
