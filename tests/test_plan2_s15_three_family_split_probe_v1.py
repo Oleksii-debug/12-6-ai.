@@ -24,7 +24,24 @@ def test_five_real_source_clusters_cannot_cross_holdout(tmp_path: Path) -> None:
         "train", "validation", "test",
     }
     assert result["cluster_leakage_count"] == 0
-    assert result["train_source_family_count"] >= 1
+    assert result["train_source_family_count"] == 3
+    assert result["train_record_count"] == 13
+    assert result["validation_record_count"] == 1
+    assert result["test_record_count"] == 1
+    assert result["physical_s10_train_all_three_families"] is True
+    assert result["validation_test_language_balanced"] is False
+    assert len(result["incumbent_s10_split_manifest_sha256"]) == 64
+    assert len(result["s10_split_manifest_sha256"]) == 64
+    assert result["s10_split_manifest_sha256"] != (
+        result["incumbent_s10_split_manifest_sha256"]
+    )
+    assert result["physical_source_cluster_assignments"] == {
+        "en.public-domain.pride-and-prejudice": "train",
+        "en.public-domain.frankenstein": "validation",
+        "en.public-domain.alice-in-wonderland": "test",
+        "next100-028-php-doc-uk": "train",
+        "next100-030-rustbook-ua-oer": "train",
+    }
     assert result["validation_source_family_count"] >= 1
     assert result["test_source_family_count"] >= 1
     assert result["production_train_mixture_admitted"] is False
