@@ -26,7 +26,7 @@ def _invoke(*args: str) -> subprocess.CompletedProcess[str]:
 def test_cli_help_is_keyboard_text_accessible() -> None:
     result = _invoke("--help")
     assert result.returncode == 0
-    for command in ("stage", "execute", "verify", "status", "stop"):
+    for command in ("stage", "execute", "verify", "publish", "status", "stop"):
         assert command in result.stdout
 
 
@@ -56,7 +56,7 @@ def test_cli_rejects_bad_identity_and_unknown_stop(tmp_path: Path) -> None:
     assert "unknown" in stop.stderr
 
 
-@pytest.mark.parametrize("command", ["stage", "execute", "verify"])
+@pytest.mark.parametrize("command", ["stage", "execute", "verify", "publish"])
 def test_cli_requires_preverified_authority_fields(command: str) -> None:
     result = _invoke(command)
     assert result.returncode != 0
