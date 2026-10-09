@@ -251,6 +251,20 @@ jobs:
         run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
       - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
         run: PYTHONPATH=src:. pytest -q tests/test_plan2_terminal_qualification_v1.py
+      - name: Lint Plan 2 S15 physical holdout decontamination
+        run: ruff check tools/plan2_s15_physical_heldout_decontam_v1.py tests/test_plan2_s15_physical_heldout_decontam_v1.py
+      - name: Qualify actual reserved book holdout and forged rights/partition controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_heldout_decontam_v1.py
+      - name: Verify physical heldout audit restart and separate clean destination
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout" > "$RUNNER_TEMP/s15-heldout-first.json"
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout" > "$RUNNER_TEMP/s15-heldout-restart.json"
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout-clean" > "$RUNNER_TEMP/s15-heldout-clean.json"
+          cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-restart.json"
+          cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-clean.json"
+          cmp "$RUNNER_TEMP/s15-heldout/physical-heldout-decontamination.json" "$RUNNER_TEMP/s15-heldout-clean/physical-heldout-decontamination.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
