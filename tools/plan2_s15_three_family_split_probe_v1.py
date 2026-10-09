@@ -104,6 +104,19 @@ def inspect(root: Path) -> dict[str, Any]:
          "physical source-cluster leakage or fabricated family credit")
     assignments = {key: next(iter(value))
                    for key, value in sorted(by_source.items())}
+    source_to_family: dict[str, str] = {}
+    for item in proof["source_members"]:
+        sid = item["source_id"]
+        family = item["source_family"]
+        need(sid not in source_to_family or source_to_family[sid] == family,
+             "same source ID falsely credited to two different families")
+        source_to_family[sid] = family
+    need(set(source_to_family) == set(assignments),
+         "family accounting and source assignments disconnected")
+    family_roles = {role: sorted({
+        source_to_family[source] for source, value in assignments.items()
+        if value == role
+    }) for role in ("train", "validation", "test")}
     need(set(assignments.values()) == {"train", "validation", "test"},
          "empty three-way physical source split")
     core = {
@@ -116,6 +129,11 @@ def inspect(root: Path) -> dict[str, Any]:
         "physical_document_count": 15,
         "whole_source_cluster_count": 5,
         "physical_source_cluster_assignments": assignments,
+        "source_family_roles": family_roles,
+        "train_source_family_count": len(family_roles["train"]),
+        "validation_source_family_count": len(family_roles["validation"]),
+        "test_source_family_count": len(family_roles["test"]),
+        "production_train_mixture_admitted": False,
         "train_record_count": len(assigned["train_record_ids"]),
         "validation_record_count": len(assigned["validation_record_ids"]),
         "test_record_count": len(assigned["test_record_ids"]),
