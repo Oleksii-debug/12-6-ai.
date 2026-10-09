@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.physical_qualification as physical_qualification
+from twelve_six import physical_qualification
 from twelve_six.physical_qualification import (
     ActionExecution,
     ExecutionMode,
@@ -1274,7 +1274,7 @@ def test_operator_keyboard_interrupt_terminates_qualified_process_tree(
         physical_qualification, "_validate_checked_in_pytest_targets", lambda *_: None
     )
     monkeypatch.setattr(
-        physical_qualification, "_popen_process_group_kwargs", lambda: {}
+        physical_qualification, "_popen_process_group_kwargs", dict
     )
     monkeypatch.setattr(
         physical_qualification.subprocess, "Popen", lambda *_, **__: process
