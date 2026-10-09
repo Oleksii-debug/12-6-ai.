@@ -230,3 +230,27 @@ the original pinned book bytes. Segments are contiguous, lossless and non-
 overlapping, and the total recorded bytes must equal the original checked
 snapshot. Those exact physical bytes are still NOT a production dataset merely
 because they produce loss targets and shards.
+
+
+## Published physical S13/S14 replay witness
+
+The scoped S15 code now produces a separate independent
+\`tools/plan2_s15_physical_readback_v1.py\` witness after the real shard and
+exposure publications. Unlike building S13/S14 from the source text again, the
+witness reads the **already published physical files** and checks exact shard
+SHA-256, byte counts, immutable manifest hashes, every canonical S13 block
+mapping, token offsets, loss masks, all S14 target IDs/exposure IDs, and the
+cross-shard ordered causal hash chain. No missing, duplicate or extra physical
+artifact may pass. The witness refuses re-signed incorrect token identities
+and unauthorized capability flags; negative tests cover corruption, orphan
+files and symlinks.
+
+This witness is bound to the S15 double-clean-build audit hash, and scoped
+Actions lint/pytest must verify it at the same frozen PR head. It is still a
+**non-authorizing real physical candidate** because the upstream S9 material is
+not a production-admitted training corpus, the fitted BPE uses the incumbent
+fixture-capped merge policy rather than a frozen target-vocab tokenizer, and
+Plan9 has no signed production data handoff. Final PASS requires actual
+exact-head CI execution plus original-Dataset train/release rights, independent
+final-test custody and full production compatibility, not just these
+reproducibility properties.
