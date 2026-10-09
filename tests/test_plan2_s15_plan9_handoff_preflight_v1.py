@@ -47,6 +47,14 @@ def _parents() -> tuple[dict, dict, dict, dict, dict, dict]:
         "train_document_count": 4,
         "heldout_document_count": 11,
         "target_count": 83000,
+        "actual_loss_targets_are_32k_tokenizer_based": True,
+        "production_language_balance_approved": False,
+        "actual_loss_targets_by_language": {"en": 80000, "uk": 3000},
+        "actual_loss_targets_by_source_family": {
+            "en.gutenberg": 80000,
+            "php.manual": 2000,
+            "rust.book": 1000,
+        },
         "block_count": 3000,
         "heldout_payloads_exposed": False,
         "plan9_optimizer_permission": False,
@@ -90,6 +98,10 @@ def test_plan9_evidence_handoff_is_verifiable_but_never_live(
     assert proof["final_test_document_count"] == 16
     assert proof["frozen_candidate_vocab_size"] == 32768
     assert proof["physical_train_targets"] == 83000
+    assert proof["actual_32k_tokenizer_exposure_count_proven"] is True
+    assert proof["production_language_balance_approved"] is False
+    assert proof["actual_loss_targets_by_language"] == {"en": 80000, "uk": 3000}
+    assert sum(proof["actual_loss_targets_by_source_family"].values()) == 83000
     assert proof["validation_final_payloads_in_handoff"] is False
     assert proof["optimizer_effect_authorized"] is False
     assert proof["production_plan9_bindable"] is False
@@ -106,6 +118,7 @@ def test_plan9_evidence_handoff_is_verifiable_but_never_live(
 
 @pytest.mark.parametrize("name", [
     "rights", "split", "tokenizer", "exposure", "eval", "checkpoint", "source",
+    "language-count",
 ])
 def test_unqualified_plan9_handoff_denied(name: str) -> None:
     items = list(_parents())
@@ -117,6 +130,8 @@ def test_unqualified_plan9_handoff_denied(name: str) -> None:
         items[2]["actual_vocab_size"] = 260
     elif name == "exposure":
         items[3]["heldout_payloads_exposed"] = True
+    elif name == "language-count":
+        items[3]["actual_loss_targets_by_language"]["uk"] += 1
     elif name == "eval":
         items[4]["real_final_decontamination_clean"] = False
     elif name == "checkpoint":

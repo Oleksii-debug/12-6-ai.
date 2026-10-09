@@ -76,6 +76,17 @@ def assemble(
          and data["plan9_optimizer_permission"] is False
          and data["production_release_authorized"] is False,
          "Plan9 S13/S14 replay or original three-family training source drifted")
+    exact_targets = data["actual_loss_targets_by_language"]
+    source_families = data["actual_loss_targets_by_source_family"]
+    need(data["actual_loss_targets_are_32k_tokenizer_based"] is True
+         and data["production_language_balance_approved"] is False
+         and set(exact_targets) == {"en", "uk"}
+         and len(source_families) == 3
+         and sum(exact_targets.values()) == data["target_count"]
+         and sum(source_families.values()) == data["target_count"]
+         and all(type(v) is int and v > 0
+                 for v in source_families.values()),
+         "Plan9 physical source-target exposure lacks exact multilingual balance proof")
     need(compatibility["source_fit_manifest_sha256"] ==
              tokenizer["manifest_sha256"]
          and compatibility["candidate_vocab_size"] == 32768
@@ -121,6 +132,11 @@ def assemble(
         "final_test_document_count": evaluation["real_final_test_record_count"],
         "frozen_candidate_vocab_size": 32768,
         "physical_train_targets": data["target_count"],
+        "actual_loss_targets_by_language": dict(sorted(exact_targets.items())),
+        "actual_loss_targets_by_source_family":
+            dict(sorted(source_families.items())),
+        "actual_32k_tokenizer_exposure_count_proven": True,
+        "production_language_balance_approved": False,
         "ordered_exposure_chain_sha256": data["ordered_exposure_chain_sha256"],
         "validation_final_payloads_in_handoff": False,
         "external_model_weights_or_llm_used": False,
@@ -131,6 +147,7 @@ def assemble(
         "terminal_done": False,
         "blocking_requirements": [
             "S3_S9_CANONICAL_ACCEPTED_MULTI_FAMILY_CORPUS_RELEASE",
+            "PRODUCTION_MULTILINGUAL_TOKEN_BALANCE_AND_HOLDOUT_APPROVAL",
             "INDEPENDENT_EXACT_HEAD_TWO_CLEAN_BUILD_PASS",
             "PLAN9_EXPLICIT_PRODUCTION_DATA_ACCEPTANCE",
         ],
