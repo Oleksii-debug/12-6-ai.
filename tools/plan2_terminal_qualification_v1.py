@@ -31,6 +31,7 @@ from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
+from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
@@ -231,6 +232,19 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and train_only["tokenizer_fit_authorized"] is False
              and train_only["production_release_authorized"] is False,
              "physical S10 train bytes or hash-only holdout custody drifted")
+    bpe_candidate = three_family_bpe.stage(
+        root, destination / "physical-three-family-bpe")
+    _require(bpe_candidate["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and bpe_candidate["source_s10_split_manifest_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and bpe_candidate["source_train_document_count"] ==
+             train_only["train_document_count"]
+             and bpe_candidate["heldout_payloads_fitted"] is False
+             and bpe_candidate["production_target_vocab_frozen"] is False
+             and bpe_candidate["tokenizer_fit_authorized"] is False
+             and bpe_candidate["production_release_authorized"] is False,
+             "real train-only tokenizer candidate or holdout boundary changed")
     real_eval = real_final.stage(root, destination / "physical-real-final-custody")
     _require(real_eval["physical_three_family_sha256"] ==
              combined["manifest_sha256"]
@@ -339,6 +353,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_three_family_train_only_bpe_manifest_sha256":
+            bpe_candidate["manifest_sha256"],
+        "real_three_family_bpe_candidate_vocab_size":
+            bpe_candidate["candidate_vocab_size"],
+        "real_three_family_bpe_target_vocab_size":
+            bpe_candidate["target_vocab_size"],
         "real_three_family_train_partition_manifest_sha256":
             train_only["manifest_sha256"],
         "real_three_family_train_only_document_count":
