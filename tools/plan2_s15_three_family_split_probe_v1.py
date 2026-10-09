@@ -16,6 +16,7 @@ from tools import plan2_corpus_mixture_v1 as mixture
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_d03_physical_sources_v1 as d03
 from tools import plan2_s15_three_family_physical_v1 as combined
+from tools import plan2_s15_d03_physical_sources_v1 as d03
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
 SCHEMA = "12-6.plan2-s15-three-family-source-split-probe.v1"
@@ -102,29 +103,89 @@ def inspect(root: Path) -> dict[str, Any]:
     need(len(by_source) == 5
          and all(len(x) == 1 for x in by_source.values()),
          "physical source-cluster leakage or fabricated family credit")
-    assignments = {key: next(iter(value))
-                   for key, value in sorted(by_source.items())}
+    incumbent_assignments = {
+        key: next(iter(value)) for key, value in sorted(by_source.items())
+    }
     source_to_family: dict[str, str] = {}
+    source_bytes: dict[str, int] = {}
     for item in proof["source_members"]:
         sid = item["source_id"]
         family = item["source_family"]
         need(sid not in source_to_family or source_to_family[sid] == family,
              "same source ID falsely credited to two different families")
         source_to_family[sid] = family
-    need(set(source_to_family) == set(assignments),
+        source_bytes[sid] = source_bytes.get(sid, 0) + item["normalized_bytes"]
+    need(set(source_to_family) == set(incumbent_assignments)
+         and set(source_bytes) == set(incumbent_assignments)
+         and sum(source_bytes.values()) == proof["total_physical_normalized_bytes"],
          "family accounting and source assignments disconnected")
+
+    # The incumbent S10 policy is executed and cryptographically retained above.
+    # On this 5-source cohort its unstratified selection puts ALL English and
+    # Rust books into holdouts: only 10 PHP pages remain for tokenizer fitting.
+    # Define a distinct, versioned S15 physical candidate split, not a forged
+    # incumbent S10 manifest. Preserve whole-source clusters and leave the
+    # original split identity in the evidence chain.
+    english = [sid for sid, fam in source_to_family.items()
+               if fam == books.GUTENBERG_FAMILY]
+    other = [sid for sid, fam in source_to_family.items()
+             if fam != books.GUTENBERG_FAMILY]
+    need(len(english) == 3 and len(other) == 2
+         and {source_to_family[sid] for sid in other} ==
+             {d03.FAMILIES["php"], d03.FAMILIES["rust"]},
+         "multilingual split cannot identify three lawful source families")
+    ranked_en = sorted(english, key=lambda sid: (-source_bytes[sid], sid))
+    need(len({source_bytes[x] for x in ranked_en}) == 3,
+         "ambiguous English heldout balance; new policy review required")
+    assignments = {sid: "train" for sid in sorted(source_to_family)}
+    # Keep largest independent English book for tokenizer-fit coverage;
+    # the other two physically independent Gutenberg documents hold out.
+    assignments[ranked_en[1]] = "validation"
+    assignments[ranked_en[2]] = "test"
     family_roles = {role: sorted({
         source_to_family[source] for source, value in assignments.items()
         if value == role
     }) for role in ("train", "validation", "test")}
-    need(set(assignments.values()) == {"train", "validation", "test"},
-         "empty three-way physical source split")
+    need(set(assignments.values()) == {"train", "validation", "test"}
+         and len(family_roles["train"]) == 3
+         and family_roles["validation"] == [books.GUTENBERG_FAMILY]
+         and family_roles["test"] == [books.GUTENBERG_FAMILY],
+         "S15 source-family fit coverage or independent holds missing")
+    physical_assignment = {
+        "schema_version": "12-6.plan2-s15-three-family-stratified-s10-mechanics.v1",
+        "policy_revision": "S15_MULTILINGUAL_FIT_COVERAGE_WITH_SOURCE_HOLDOUTS_V1",
+        "policy_seed": policy["seed"],
+        "parent_incumbent_s10_sha256": assigned["split_manifest_sha256"],
+        "upstream_three_family_sha256": proof["manifest_sha256"],
+        "physical_source_byte_inventory": dict(sorted(source_bytes.items())),
+        "role_by_source": dict(sorted(assignments.items())),
+        "train_family_count": 3,
+        "holdout_language_coverage": "ENGLISH_ONLY_PHYSICAL_PLUS_SEPARATE_EVAL233_UK",
+        "validation_test_language_balanced": False,
+        "production_release_authorized": False,
+    }
+    actual_split_sha = books.sha(books.canonical(physical_assignment))
+    counts = {
+        role: sum(1 for item in rows
+                  if assignments[item["source_id"]] == role)
+        for role in ("train", "validation", "test")
+    }
+    need(sum(counts.values()) == len(rows) == 15
+         and counts["train"] >= 3
+         and counts["validation"] > 0
+         and counts["test"] > 0,
+         "S15 physical split lost source records or heldout roles")
     core = {
         "schema_version": SCHEMA,
         "decision": "THREE_REAL_FAMILY_SOURCE_SPLIT_MECHANICS_NOT_ADMISSION",
         "upstream_three_family_sha256": proof["manifest_sha256"],
         "s9_synthetic_wrapper_sha256": fixture["dataset_candidate_sha256"],
-        "s10_split_manifest_sha256": assigned["split_manifest_sha256"],
+        "s10_split_manifest_sha256": actual_split_sha,
+        "incumbent_s10_split_manifest_sha256": assigned["split_manifest_sha256"],
+        "s15_split_policy": physical_assignment["policy_revision"],
+        "s15_split_policy_sha256": books.sha(books.canonical(physical_assignment)),
+        "physical_s10_train_all_three_families": True,
+        "validation_test_language_balanced": False,
         "canonical_source_family_count": 3,
         "physical_document_count": 15,
         "whole_source_cluster_count": 5,
@@ -134,9 +195,9 @@ def inspect(root: Path) -> dict[str, Any]:
         "validation_source_family_count": len(family_roles["validation"]),
         "test_source_family_count": len(family_roles["test"]),
         "production_train_mixture_admitted": False,
-        "train_record_count": len(assigned["train_record_ids"]),
-        "validation_record_count": len(assigned["validation_record_ids"]),
-        "test_record_count": len(assigned["test_record_ids"]),
+        "train_record_count": counts["train"],
+        "validation_record_count": counts["validation"],
+        "test_record_count": counts["test"],
         "cluster_leakage_count": 0,
         "real_final_test_outcomes_read": False,
         "physical_s9_admitted": False,
