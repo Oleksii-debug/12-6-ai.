@@ -189,3 +189,12 @@ def test_canonical_store_requires_unique_memory_identity(tmp_path: Path) -> None
     with pytest.raises(StateBindingError, match="canonical component store"):
         capture(roots, tmp_path / "backup", writers_stopped=True)
     assert not (tmp_path / "backup").exists()
+
+
+def test_sqlite_uri_escapes_fragment_in_existing_path(tmp_path: Path) -> None:
+    safe_path = tmp_path / "state#fragment"
+    safe_path.mkdir()
+    roots = make_components(safe_path)
+    digest = capture(roots, safe_path / "backup", writers_stopped=True)
+    restore(safe_path / "backup", safe_path / "restored", manifest_sha256=digest)
+    assert (safe_path / "restored" / "tasks" / "state.sqlite").is_file()
