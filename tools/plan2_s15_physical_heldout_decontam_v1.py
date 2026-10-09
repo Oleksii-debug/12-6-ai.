@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from tools import plan2_public_domain_books_v1 as books
+from tools import plan2_near_dedup_v1 as near
 from tools import plan2_s15_physical_book_split_probe_v1 as split_probe
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 from twelve_six.data import decontamination_authority_v2 as data232
@@ -37,6 +38,25 @@ def fingerprint(value: Any) -> str:
     return books.sha(canonical(value))
 
 
+def interdocument_mirror_evidence(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Use existing S7 matcher; never conflate two spans of one document."""
+    result: list[dict[str, str]] = []
+    for i, left in enumerate(rows):
+        for right in rows[i + 1:]:
+            if left["source_id"] == right["source_id"]:
+                continue
+            relation = near.match_kind(left["text"], right["text"])
+            if relation is not None:
+                result.append({
+                    "left_record_id_sha256": books.sha(left["record_id"].encode()),
+                    "right_record_id_sha256": books.sha(right["record_id"].encode()),
+                    "relation": relation,
+                })
+    return sorted(result, key=lambda x: (
+        x["left_record_id_sha256"], x["right_record_id_sha256"], x["relation"]
+    ))
+
+
 def inspect(root: Path) -> dict[str, Any]:
     root = root.resolve(strict=True)
     source = books.inspect(root)
@@ -57,6 +77,7 @@ def inspect(root: Path) -> dict[str, Any]:
          "split/source identity mismatch")
     doc_meta = {item["source_id"]: item for item in source["books"]}
     rows = split_probe._rows(root, source)
+    interdocument_mirrors = interdocument_mirror_evidence(rows)
     training: list[dict[str, str]] = []
     evaluation: list[dict[str, str]] = []
     role_documents: dict[str, list[dict[str, str]]] = {
@@ -156,9 +177,12 @@ def inspect(root: Path) -> dict[str, Any]:
             report["counts"]["excluded_training_records"],
         "quarantined_source_family_count":
             report["counts"]["quarantined_source_families"],
+        "interdocument_mirror_count": len(interdocument_mirrors),
+        "interdocument_mirror_evidence": interdocument_mirrors,
         "physical_heldout_decontamination_clean": (
             report["counts"]["excluded_training_records"] == 0
             and report["counts"]["quarantined_source_families"] == 0
+            and not interdocument_mirrors
         ),
         "final_test_outcomes_read": False,
         "physical_s9_admitted": False,
