@@ -293,6 +293,20 @@ jobs:
           cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-restart.json"
           cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-clean.json"
           diff -r "$RUNNER_TEMP/s15-physical-shards" "$RUNNER_TEMP/s15-physical-shards-clean"
+      - name: Lint Plan2 physical S14 exposure candidate
+        run: ruff check tools/plan2_s15_physical_exposure_candidate_v1.py tests/test_plan2_s15_physical_exposure_candidate_v1.py
+      - name: Test real physical S14 ordered target identities and negatives
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_exposure_candidate_v1.py
+      - name: Rebuild physical exposure ledger with exact restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures" > "$RUNNER_TEMP/s15-exposures-first.json"
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures" > "$RUNNER_TEMP/s15-exposures-restart.json"
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures-clean" > "$RUNNER_TEMP/s15-exposures-clean.json"
+          cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-restart.json"
+          cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-clean.json"
+          diff -r "$RUNNER_TEMP/s15-exposures" "$RUNNER_TEMP/s15-exposures-clean"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
