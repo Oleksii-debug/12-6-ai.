@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from twelve_six.evidence_control_bridge import (
     build_host_dispatch,
     claim_bridge_dispatch,
     record_bridge_return,
+    publish_bridge_return_github,
     stage_bridge_dispatch,
     stop_bridge_dispatch,
 )
@@ -48,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         cmd = commands.add_parser(name)
         cmd.add_argument("--spool", type=Path, required=True)
         cmd.add_argument("--dispatch-sha256", required=True)
-    for name in ("stage", "execute", "verify"):
+    for name in ("stage", "execute", "verify", "publish"):
         cmd = commands.add_parser(name)
         cmd.add_argument("--spool", type=Path, required=True)
         cmd.add_argument("--packet", type=Path, required=True)
@@ -61,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd.add_argument("--host-keys", type=Path, required=True)
             cmd.add_argument("--receipt", type=Path, required=True)
             cmd.add_argument("--log", type=Path, required=True)
+        if name == "publish":
+            cmd.add_argument("--github-token-env", default="PLAN8_GITHUB_EVIDENCE_TOKEN")
         if name == "execute":
             cmd.add_argument("--host-private-key", type=Path, required=True)
             cmd.add_argument("--host-key-id", required=True)
@@ -101,6 +105,31 @@ def main(argv: list[str] | None = None) -> int:
         if rc:
             _emit({"state": "CLAIMED_OUTCOME_UNKNOWN", "return_code": rc})
             return rc
+
+    if args.action == "publish":
+        if args.github_token_env != "PLAN8_GITHUB_EVIDENCE_TOKEN":
+            raise ValueError("only the dedicated GitHub token environment variable is allowed")
+        token = os.environ.get("PLAN8_GITHUB_EVIDENCE_TOKEN")
+        if not token:
+            raise ValueError("GitHub evidence token is unavailable")
+        published = publish_bridge_return_github(
+            args.spool, dispatch=dispatch, verified_packet=verified,
+            evidence_path=args.receipt, log_path=args.log,
+            agent_source_bytes=(
+                Path(__import__("twelve_six.physical_qualification", fromlist=["__file__"]).__file__)
+                .read_bytes()
+            ),
+            artifact_root=args.repo_root,
+            evidence_signature_verifier=_public_key_verifier(args.host_keys),
+            github_token=token,
+        )
+        _emit({
+            "state": "GITHUB_HASH_ONLY_RECEIPTS_VERIFIED",
+            "dispatch_sha256": identity,
+            "published": published["publication"],
+            "raw_private_logs_uploaded": False,
+        })
+        return 0
 
     report = record_bridge_return(
         args.spool, dispatch=dispatch, verified_packet=verified,
