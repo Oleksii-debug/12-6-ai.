@@ -46,6 +46,10 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["real_three_family_bpe_target_vocab_size"] == 32768
     assert len(report["evidence"]["plan34_real_candidate_compatibility_manifest_sha256"]) == 64
     assert report["evidence"]["plan34_production_vocab_compatible"] is False
+    assert len(report["evidence"]["real_source_32768_byte_bpe_candidate_sha256"]) == 64
+    assert report["evidence"]["real_source_32768_fitted_merge_count"] == 32508
+    assert len(report["evidence"]["plan34_real_32768_candidate_compatibility_sha256"]) == 64
+    assert report["evidence"]["plan34_real_32768_model_vocab_compatible"] is True
     assert report["evidence"]["real_three_family_train_only_physical_bytes"] > 0
     assert report["evidence"]["real_three_family_heldout_document_count"] > 0
     assert report["evidence"]["real_three_family_source_split_leakage_count"] == 0
