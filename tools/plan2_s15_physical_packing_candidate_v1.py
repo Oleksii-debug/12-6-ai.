@@ -134,6 +134,13 @@ def stage(root: Path, destination: Path) -> dict[str, Any]:
          "symlink publication path")
     proof, payloads = build(root)
     destination.mkdir(parents=True, exist_ok=True)
+    expected = set(payloads) | {OUTPUT}
+    for path in destination.rglob("*"):
+        need(not path.is_symlink() and (path.is_file() or path.is_dir()),
+             "unsafe published shard tree member")
+        if path.is_file():
+            need(path.relative_to(destination).as_posix() in expected,
+                 "unexpected physical shard publication member")
     for name, raw in sorted(payloads.items()):
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
