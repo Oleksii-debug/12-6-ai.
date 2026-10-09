@@ -52,7 +52,7 @@ permissions:
 jobs:
   qualify-plan2:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -506,6 +506,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Lint Plan9 data handoff preflight and strict grant-denial tests
+        run: ruff check tools/plan2_s15_plan9_handoff_preflight_v1.py tests/test_plan2_s15_plan9_handoff_preflight_v1.py
+      - name: Verify hash-only Plan9 32K/S13/S14/evaluation lineage guard
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_plan9_handoff_preflight_v1.py
       - name: Lint exact-size preproduction real training tokenizer
         run: ruff check tools/plan2_s15_real_32k_bpe_v1.py tests/test_plan2_s15_real_32k_bpe_v1.py
       - name: Verify frozen byte fallback, reference pair ordering and actual 32K fit
