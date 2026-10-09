@@ -265,6 +265,20 @@ jobs:
           cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-restart.json"
           cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-clean.json"
           cmp "$RUNNER_TEMP/s15-heldout/physical-heldout-decontamination.json" "$RUNNER_TEMP/s15-heldout-clean/physical-heldout-decontamination.json"
+      - name: Lint Plan2 real-document frozen tokenizer candidate
+        run: ruff check tools/plan2_s15_physical_tokenizer_candidate_v1.py tests/test_plan2_s15_physical_tokenizer_candidate_v1.py
+      - name: Qualify real-document S12 tokenizer fit and negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_tokenizer_candidate_v1.py
+      - name: Verify physical tokenizer receipt restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer" > "$RUNNER_TEMP/s15-real-tokenizer-first.json"
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer" > "$RUNNER_TEMP/s15-real-tokenizer-restart.json"
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer-clean" > "$RUNNER_TEMP/s15-real-tokenizer-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-restart.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer/physical-tokenizer-candidate.json" "$RUNNER_TEMP/s15-real-tokenizer-clean/physical-tokenizer-candidate.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
