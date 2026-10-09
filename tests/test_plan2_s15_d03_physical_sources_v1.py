@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import plan2_s15_d03_physical_sources_v1 as d03
 from tools import plan2_public_domain_books_v1 as books
+from tools import plan2_s15_d03_physical_sources_v1 as d03
 
 ROOT = Path(__file__).resolve().parents[1]
 

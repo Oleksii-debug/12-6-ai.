@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import plan2_s15_physical_packing_candidate_v1 as physical
 from tools import plan2_deterministic_packing_v1 as packing
+from tools import plan2_s15_physical_packing_candidate_v1 as physical
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_near_dedup_v1 as near
+from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_physical_book_split_probe_v1 as split_probe
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 from twelve_six.data import decontamination_authority_v2 as data232

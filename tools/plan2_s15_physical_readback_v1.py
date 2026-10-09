@@ -15,8 +15,8 @@ from typing import Any
 from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_public_domain_books_v1 as books
-from tools import plan2_s15_physical_packing_candidate_v1 as physical_packing
 from tools import plan2_s15_physical_exposure_candidate_v1 as physical_exposure
+from tools import plan2_s15_physical_packing_candidate_v1 as physical_packing
 
 SCHEMA = "12-6.plan2-s15-physical-readback-v1"
 ZERO = "0" * 64

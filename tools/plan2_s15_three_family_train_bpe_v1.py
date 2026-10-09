@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from tools import plan2_public_domain_books_v1 as books
-from tools import plan2_s15_three_family_train_materialization_v1 as training
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as segmenter
+from tools import plan2_s15_three_family_train_materialization_v1 as training
 from tools import plan2_tokenizer_fit_freeze_v1 as freeze
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
