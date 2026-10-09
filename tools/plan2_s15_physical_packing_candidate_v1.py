@@ -52,6 +52,22 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     need(token_model.identity.to_dict() == fitted["tokenizer_identity"]
          and len(rows) == fitted["train_record_count"],
          "physical tokenizer source and model identity mismatch")
+    segment_map: list[dict[str, Any]] = []
+    source_offset = 0
+    for row in rows:
+        raw = row["text"].encode("utf-8", "strict")
+        need(bool(raw), "empty physical source segment")
+        segment_map.append({
+            "record_id": row["record_id"],
+            "source_id": doc["source_id"],
+            "source_byte_start": source_offset,
+            "source_byte_end": source_offset + len(raw),
+            "source_sha256": books.sha(raw),
+        })
+        source_offset += len(raw)
+    need(source_offset == len(payload)
+         and segment_map[0]["source_byte_start"] == 0,
+         "physical source segment bytes do not reconstruct original")
     ids = [x["record_id"] for x in rows]
     need(len(ids) == len(set(ids))
          and set(ids).isdisjoint({
@@ -116,6 +132,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         "block_size": packing.BLOCK,
         "blocks_per_shard": BLOCKS_PER_SHARD,
         "train_record_ids": ids,
+        "source_segment_byte_map": segment_map,
         "block_count": len(blocks),
         "target_count": target_count,
         "shards": shard_receipts,
