@@ -100,6 +100,61 @@ def assess(fitted: dict[str, Any]) -> dict[str, Any]:
     return {**core, "manifest_sha256": books.sha(books.canonical(core))}
 
 
+def assess_fullsize_preproduction(fitted: dict[str, Any]) -> dict[str, Any]:
+    """Check candidate-only full 32K ModelSpec binding with the official API."""
+    need(fitted["decision"] ==
+             "SOURCE_BOUND_32768_BYTE_BPE_PREPRODUCTION_NOT_RELEASE"
+         and fitted["actual_vocab_size"] == 32768
+         and fitted["target_vocab_size"] == 32768
+         and fitted["fitted_merge_count"] == 32508
+         and fitted["heldout_payloads_fitted"] is False
+         and fitted["production_train_source_admitted"] is False
+         and fitted["training_corpus_authorized"] is False
+         and fitted["production_release_authorized"] is False
+         and fitted["terminal_done"] is False,
+         "fullsize candidate source/rights or frozen vocab count invalid")
+    ident = fitted["tokenizer_identity"]
+    need(ident["vocab_size"] == 32768
+         and ident["version"] == "12-6-byte-bpe-32k-preproduction-v1"
+         and ident["normalization"] == "none"
+         and ident["encoding"] == "utf-8",
+         "preproduction 32K TokenizerIdentity drift")
+    spec = {
+        "vocab_size": 32768,
+        "tie_word_embeddings": True,
+        "lm_head_bias": False,
+    }
+    decision = migration.assess_tokenizer_checkpoint_migration(
+        target_tokenizer_identity=ident,
+        target_model_spec=spec,
+        reuse_checkpoint_weights=False,
+    )
+    need(decision["status"] == "FRESH_INITIALIZATION_TARGET_TOKENIZER_BOUND"
+         and decision["checkpoint_weight_reuse_allowed_by_tokenizer_contract"]
+             is False
+         and decision["full_checkpoint_compatibility_proven"] is False,
+         "32K candidate bypassed official checkpoint compatibility rules")
+    core = {
+        "schema_version": SCHEMA,
+        "decision": "PLAN34_32768_FRESH_INIT_COMPATIBLE_CANDIDATE_NOT_RELEASE",
+        "source_fit_manifest_sha256": fitted["manifest_sha256"],
+        "candidate_model_spec": spec,
+        "candidate_migration_decision_sha256":
+            books.sha(books.canonical(decision)),
+        "candidate_vocab_size": 32768,
+        "required_production_vocab_size": 32768,
+        "candidate_fresh_random_initialization_migration_compatible": True,
+        "checkpoint_weight_reuse_approved": False,
+        "production_32k_model_spec_compatible": True,
+        "production_backend_binding_granted": False,
+        "plan9_optimizer_handoff_granted": False,
+        "tokenizer_fit_authorized": False,
+        "training_corpus_authorized": False,
+        "terminal_done": False,
+    }
+    return {**core, "manifest_sha256": books.sha(books.canonical(core))}
+
+
 def inspect(root: Path) -> dict[str, Any]:
     return assess(bpe.inspect(root.resolve(strict=True)))
 
