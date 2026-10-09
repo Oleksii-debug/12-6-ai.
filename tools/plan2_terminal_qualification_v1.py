@@ -27,6 +27,7 @@ from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
+from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -179,6 +180,17 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     _require(books_cohort["training_corpus_authorized"] is False
              and books_cohort["production_release_authorized"] is False,
              "book source was promoted without full S5-S14 clearance")
+    combined = combined_sources.stage(root, destination / "physical-three-families")
+    _require(combined["source_family_count"] == 3
+             and combined["document_identity_count"] == 15
+             and combined["total_physical_normalized_bytes"] == 1_314_156
+             and combined["gutenberg_source_sha256"] == books_cohort["manifest_sha256"]
+             and combined["d03_source_sha256"] == d03_ua["manifest_sha256"]
+             and combined["physical_s3_s9_multi_family_admitted"] is False
+             and combined["training_corpus_authorized"] is False
+             and combined["production_release_authorized"] is False
+             and combined["real_evaluation_custody_established"] is False,
+             "combined real physical family evidence cannot grant training")
     probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
     _require(probe["production_release_authorized"] is False
              and probe["physical_s9_admitted"] is False
@@ -277,6 +289,11 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_three_family_candidate_sha256": combined["manifest_sha256"],
+        "real_three_family_document_count": combined["document_identity_count"],
+        "real_three_family_total_bytes": combined["total_physical_normalized_bytes"],
+        "real_three_family_fixture_eval_clean":
+            combined["physical_candidate_fixture_eval_clean"],
         "d03_real_ua_source_candidate_sha256": d03_ua["manifest_sha256"],
         "d03_real_ua_source_candidate_families": d03_ua["physical_family_count"],
         "d03_real_ua_source_candidate_members": d03_ua["physical_record_count"],
