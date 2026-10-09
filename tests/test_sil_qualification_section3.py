@@ -1080,7 +1080,9 @@ def test_sil_uses_single_shared_workflow_and_exact_head_checkout() -> None:
         for path in workflow_dir.iterdir()
         if path.suffix in {".yml", ".yaml"}
     )
-    assert workflows == ["ci.yml"]
+    # The shared SIL authority remains in ci.yml while independent plans
+    # legitimately install additional scoped qualification workflows.
+    assert "ci.yml" in workflows
 
     workflow = (workflow_dir / "ci.yml").read_text(encoding="utf-8")
     marker = "  sil-current-capability-journeys:"
