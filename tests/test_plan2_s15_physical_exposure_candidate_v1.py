@@ -9,7 +9,6 @@ import pytest
 from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_s15_physical_exposure_candidate_v1 as real
-from tools import plan2_s15_physical_packing_candidate_v1 as physical
 
 ROOT = Path(__file__).resolve().parents[1]
 
