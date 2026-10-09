@@ -293,3 +293,36 @@ def test_resealed_but_semantically_invalid_memory_restore_refused(tmp_path: Path
             manifest_sha256=hashlib.sha256(canonical).hexdigest(),
         )
     assert not (tmp_path / "restored").exists()
+
+
+def test_restore_fences_old_task_epoch_and_never_reissues_unknown_effect(
+    tmp_path: Path,
+) -> None:
+    from twelve_six_agent_runtime.task_state import PendingEffect, StaleEpoch, TaskStore
+
+    roots = make_components(tmp_path)
+    task = TaskStore(roots["tasks"] / "state.sqlite")
+    task.create(task_id="task-a", plan_id="plan-a", step_id="initial")
+    task.checkpoint(
+        "task-a", expected_epoch=0, expected_revision=0,
+        step_id="external-tool", checkpoint_id="checkpoint-1",
+        pending_effects=(PendingEffect("effect-a", "external action"),),
+    )
+    before = task.issue_effect(
+        "task-a", "effect-a", expected_epoch=0, expected_revision=1
+    )
+    assert before.pending_effects[0].status == "unknown"
+    digest = capture(roots, tmp_path / "snapshot", writers_stopped=True)
+    restore(tmp_path / "snapshot", tmp_path / "restored", manifest_sha256=digest)
+
+    recovered = TaskStore(tmp_path / "restored" / "tasks" / "state.sqlite")
+    assert recovered.load("task-a") == before
+    resumed = recovered.resume("task-a")
+    assert resumed.control_epoch == before.control_epoch + 1
+    assert resumed.pending_effects == before.pending_effects
+    with pytest.raises(StaleEpoch):
+        recovered.issue_effect(
+            "task-a", "effect-a",
+            expected_epoch=before.control_epoch,
+            expected_revision=resumed.revision,
+        )
