@@ -344,6 +344,20 @@ jobs:
           cmp "$RUNNER_TEMP/three-real-first.json" "$RUNNER_TEMP/three-real-restart.json"
           cmp "$RUNNER_TEMP/three-real-first.json" "$RUNNER_TEMP/three-real-clean.json"
           cmp "$RUNNER_TEMP/three-real/three-family-physical-candidate.json" "$RUNNER_TEMP/three-real-clean/three-family-physical-candidate.json"
+      - name: Lint three-family physical whole-source split probe
+        run: ruff check tools/plan2_s15_three_family_split_probe_v1.py tests/test_plan2_s15_three_family_split_probe_v1.py
+      - name: Qualify 15 physical documents grouped into 5 whole-source clusters
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_split_probe_v1.py
+      - name: Rebuild 3-family S10 mechanics probe with restart and clean trees
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split" > "$RUNNER_TEMP/3f-split-first.json"
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split" > "$RUNNER_TEMP/3f-split-restart.json"
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split-clean" > "$RUNNER_TEMP/3f-split-clean.json"
+          cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-restart.json"
+          cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-clean.json"
+          cmp "$RUNNER_TEMP/3f-split/three-family-source-split-probe.json" "$RUNNER_TEMP/3f-split-clean/three-family-source-split-probe.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
