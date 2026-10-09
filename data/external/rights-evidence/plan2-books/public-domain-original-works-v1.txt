@@ -1,0 +1,23 @@
+Plan 2 S15 — source-level public-domain rights evidence v1
+Scope: THREE original English-language literary texts, NOT a corpus release.
+Works:
+- Jane Austen, Pride and Prejudice (1813); author died 1817.
+- Lewis Carroll, Alice's Adventures in Wonderland (1865); author died 1898.
+- Mary Wollstonecraft Shelley, Frankenstein (1818); author died 1851.
+Upstream: GITenberg public-domain repositories and Git-blob-pinned versions as recorded
+in configs/data/plan2_public_domain_books_v1.json.
+US original-work status: see each GITenberg README, marked Public Domain.
+EU/Slovakia original-author term: EU Directive 2006/116/EC Art.1, author's
+lifetime plus 70 years: https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32006L0116
+Transport/trademark terms: https://www.gutenberg.org/policy/license
+The GITenberg/Project Gutenberg license notices, trademark statements,
+volunteer production credits and generated headers/footers are NOT included
+in the normalized source text. Historical author original texts alone are
+the admitted candidate source objects. Any third-party additions, different
+jurisdiction, new edition or changed upstream revision require requalification.
+Public-domain rights apply to the ORIGINAL works only; these checks DO NOT
+grant corpus/privacy/evaluation admission, tokenizer fitting, production release,
+paid compute, model training, or final-test access.
+The three books are different DOCUMENT families but all count as ONE upstream
+source family en.project-gutenberg.public-domain-books, per
+configs/data/next100_107_gutenberg_terminal_seal_v1.json.

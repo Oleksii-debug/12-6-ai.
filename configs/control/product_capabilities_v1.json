@@ -794,7 +794,7 @@
     {
       "capability_id": "ai-qa-repair-control",
       "schema_version": 1,
-      "status": "UNAVAILABLE",
+      "status": "AVAILABLE",
       "component_contract": "twelve_six.ai_qa_control",
       "dependencies": [
         "github-sil-qualification"
@@ -805,7 +805,7 @@
       "environments": [
         {
           "environment_id": "github-actions-ubuntu",
-          "supported": false
+          "supported": true
         }
       ],
       "test_vectors": [
@@ -824,10 +824,18 @@
         {
           "evidence_id": "section4-pr",
           "target": "pull-request:3080"
+        },
+        {
+          "evidence_id": "section4-qualification-ci",
+          "target": "github-actions:37659977022"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37633474478"
         }
       ],
-      "integrated_result": null,
-      "unavailable_reason": "Section 4 candidate is not integrated; terminal exact-head CI/SIL, independent promotion evidence, accepted-main integration and post-merge readback remain required."
+      "integrated_result": "PR #3080 integrated into main; exact-head Ruff/pytest/SIL verification succeeded at github-actions:37659977022; independent evidence artifact 11501485066; no physical, training or release authority.",
+      "unavailable_reason": null
     },
     {
       "capability_id": "post-base-research-verification",
@@ -862,6 +870,10 @@
         {
           "evidence_id": "plan6-section1-pr",
           "target": "pull-request:3101"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37633474478"
         }
       ],
       "integrated_result": "Accepted main PR #3101 merge 5e134a9d0c5f7638375dbcde61a4c5bbd95fdd67, exact-Git-blob 16-pass local fixture verification, independent five-stage receipt verifier; GitHub Actions #37728070229 queued, not marked green",
@@ -901,6 +913,10 @@
         {
           "evidence_id": "plan6-s2-canonical-pr",
           "target": "pull-request:3117"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37633474478"
         }
       ],
       "integrated_result": "Canonical Plan6 Section2 PR #3117 accepted main 5b1085177b4d7bc61298100e44f673f292a82ecb; source blob 428832cba92fe0fd459465d8121acdd00d78a9e2; local 12-pass fixture SFT, independent rights/quality/train-split, Base preserved; hosted CI #37728803008 queued (not green). Duplicate #3119 descendant removed by convergence.",
@@ -939,6 +955,10 @@
         {
           "evidence_id": "plan6-s3-canonical-pr",
           "target": "pull-request:3120"
+        },
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37633474478"
         }
       ],
       "integrated_result": "Canonical Plan6 Section3 PR #3120 accepted main 95876135047749d034f0a2404e46006324eec662; exact source blob 6c48336ce5ff5960ca6eb9b5b692e5998e2c4098; 27 scoped tiny CPU S2+S3 tests. Hosted CI #37729163283 queued (not green), no real policy/champion promotion.",

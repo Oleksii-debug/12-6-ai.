@@ -7,21 +7,37 @@ on:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/**'
+      - 'data/external/**'
+      - 'src/twelve_six/data/**'
+      - 'src/twelve_six/tokenization/**'
+      - 'src/twelve_six/packing/**'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
       - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
+      - 'configs/data/plan2_public_domain_books_v1.json'
+      - 'data/external/rights-evidence/plan2-books/**'
+      - 'data/external/snapshots/plan2-public-domain-books-v1/**'
       - '.github/workflows/plan2-data-component.yml'
   pull_request:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/**'
+      - 'data/external/**'
+      - 'src/twelve_six/data/**'
+      - 'src/twelve_six/tokenization/**'
+      - 'src/twelve_six/packing/**'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
       - 'configs/data/plan2_cluster_split_policy_v1.json'
       - 'configs/data/plan2_tokenizer_fit_policy_v1.json'
+      - 'configs/data/plan2_public_domain_books_v1.json'
+      - 'data/external/rights-evidence/plan2-books/**'
+      - 'data/external/snapshots/plan2-public-domain-books-v1/**'
       - '.github/workflows/plan2-data-component.yml'
   workflow_dispatch:
 
@@ -31,7 +47,7 @@ permissions:
 jobs:
   qualify-plan2:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -202,3 +218,36 @@ jobs:
           cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-restart.json"
           cmp "$RUNNER_TEMP/plan2-s14-first.json" "$RUNNER_TEMP/plan2-s14-clean.json"
           diff -r "$RUNNER_TEMP/plan2-s14" "$RUNNER_TEMP/plan2-s14-clean"
+
+      - name: Lint Plan 2 Section 15 real public-domain book intake
+        run: ruff check tools/plan2_public_domain_books_v1.py tests/test_plan2_public_domain_books_v1.py
+      - name: Qualify 3 real book snapshots, hashes and negative recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_public_domain_books_v1.py
+      - name: Verify reproducible book audit and same-destination restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_public_domain_books_v1.py --out-dir "$RUNNER_TEMP/plan2-books" > "$RUNNER_TEMP/plan2-books-1.json"
+          python tools/plan2_public_domain_books_v1.py --out-dir "$RUNNER_TEMP/plan2-books" > "$RUNNER_TEMP/plan2-books-restart.json"
+          python tools/plan2_public_domain_books_v1.py --out-dir "$RUNNER_TEMP/plan2-books-clean" > "$RUNNER_TEMP/plan2-books-clean.json"
+          cmp "$RUNNER_TEMP/plan2-books-1.json" "$RUNNER_TEMP/plan2-books-restart.json"
+          cmp "$RUNNER_TEMP/plan2-books-1.json" "$RUNNER_TEMP/plan2-books-clean.json"
+          cmp "$RUNNER_TEMP/plan2-books/public-domain-physical-manifest.json" "$RUNNER_TEMP/plan2-books-clean/public-domain-physical-manifest.json"
+      - name: Lint Plan 2 S15 physical-book document split probe
+        run: ruff check tools/plan2_s15_physical_book_split_probe_v1.py tests/test_plan2_s15_physical_book_split_probe_v1.py
+      - name: Verify real-book document split mechanics and negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_book_split_probe_v1.py
+      - name: Verify physical-book split probe restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe" > "$RUNNER_TEMP/s15-book-probe-first.json"
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe" > "$RUNNER_TEMP/s15-book-probe-restart.json"
+          python tools/plan2_s15_physical_book_split_probe_v1.py --out-dir "$RUNNER_TEMP/s15-book-probe-clean" > "$RUNNER_TEMP/s15-book-probe-clean.json"
+          cmp "$RUNNER_TEMP/s15-book-probe-first.json" "$RUNNER_TEMP/s15-book-probe-restart.json"
+          cmp "$RUNNER_TEMP/s15-book-probe-first.json" "$RUNNER_TEMP/s15-book-probe-clean.json"
+          cmp "$RUNNER_TEMP/s15-book-probe/book-split-probe.json" "$RUNNER_TEMP/s15-book-probe-clean/book-split-probe.json"
+      - name: Lint Plan 2 Section 15 non-release qualification audit
+        run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
+      - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_terminal_qualification_v1.py

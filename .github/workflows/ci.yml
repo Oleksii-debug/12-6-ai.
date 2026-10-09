@@ -32,6 +32,25 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Checkout frozen Plan 8 Section 3 PR head
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3096
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Plan 8 Section 3 exact-head AI-QA scoped qualification
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 3096
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m ruff check src/twelve_six/ai_qa_control.py src/twelve_six/sil_qualification.py src/twelve_six/capability_map.py tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py
+          python -m pytest -q tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py
       - name: Plan 7 S12 LOCAL_FREE exact-head component qualification
         if: github.event_name == 'pull_request' && github.head_ref == 'plan7/s12-terminal-scaling-qualification-20261008'
         run: |
@@ -849,6 +868,7 @@ jobs:
           name: plan1-s4-windows-lock-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/plan1-s4-windows-lock.json
           if-no-files-found: error
+
   plan3-section1-scoped-qualification:
     # Independent Plan 3 component evidence; never substitutes for shared fail-closed gates.
     if: >-
