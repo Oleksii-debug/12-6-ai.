@@ -382,3 +382,33 @@ A single pull request or green code test does not satisfy the
 Section15 DONE/Plan9 release rule. Exact-head execution, two clean-source
 builds, physical S3–S9 promotion under existing rights/privacy/holdout
 contract, final-release receipts and accepted-main readback remain required.
+
+## S15 multilingual source-coverage S10 split correction
+
+The incumbent, unmodified S10 test/validation seed was executed on all
+5 canonical source IDs (15 physical document records). Its original whole-source
+split placed Rust + one Gutenberg book in test, two Gutenberg books in
+validation, and only the 10 small PHP records in train. Consequently, claiming
+that the real 32,768-token candidate was trained on a multilingual 3-family
+corpus would be false; the bytes of the complete cohort must not be confused
+with fit membership.
+
+The S15 candidate-only stratification extension now preserves the original
+incumbent_s10_split_manifest_sha256 but issues a separate, hashed
+s10_split_manifest_sha256 for the ACTUAL physical roles, bound to the exact
+source-byte inventory, original S10 seed, all source IDs, and explicit
+source-role assignments. For this pinned five-source cohort, the largest
+Gutenberg document (Pride and Prejudice), all 10 PHP documents and both
+Rust Ukrainian chapters are training only (13 physical documents,
+three lawful source families, both languages). Frankenstein is in validation
+and Alice in Wonderland in the physical test role (one source document each).
+No source ID crosses roles; heldout text never enters BPE/packing/exposure.
+
+Production warning: Physical validation and test still cover English only
+because there is only one independent PHP source and one independent Rust
+source; these are included in train. The separately controlled EVAL233 real
+Ukrainian final-test source provides independent decontamination custody but
+is NOT a substitute for full multilingual validation/test. This
+versioned S10 candidate does not replace the already DONE incumbent policy
+or authorize S3–S9 production corpus admission. It must be accepted under
+the production review contract before Plan2 terminal DONE.
