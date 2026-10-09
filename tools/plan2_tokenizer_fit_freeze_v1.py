@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 from collections import Counter
+from itertools import pairwise
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -172,7 +173,7 @@ def _fit(records: list[dict[str, str]], cap: int) -> tuple[list[list[int]], str]
     for _ in range(cap):
         counts: Counter[tuple[int, int]] = Counter()
         for seq in sequences:
-            counts.update(zip(seq, seq[1:]))
+            counts.update(pairwise(seq))
         if not counts or max(counts.values()) < 2:
             break
         max_count = max(counts.values())
