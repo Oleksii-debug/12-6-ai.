@@ -36,6 +36,9 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["real_three_family_source_cluster_count"] == 5
     assert len(report["evidence"]["real_three_family_s9_mixture_mechanics_sha256"]) == 64
     assert report["evidence"]["real_three_family_s9_candidate_record_count"] == 15
+    assert len(report["evidence"]["real_five_source_s1_s2_rights_manifest_sha256"]) == 64
+    assert len(report["evidence"]["real_five_source_s1_inventory_sha256"]) == 64
+    assert len(report["evidence"]["real_five_source_s2_catalog_sha256"]) == 64
     assert len(report["evidence"]["real_three_family_train_partition_manifest_sha256"]) == 64
     assert report["evidence"]["real_three_family_train_only_document_count"] > 0
     assert len(report["evidence"]["real_three_family_train_only_bpe_manifest_sha256"]) == 64
