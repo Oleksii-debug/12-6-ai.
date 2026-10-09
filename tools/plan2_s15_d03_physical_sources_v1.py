@@ -127,6 +127,10 @@ def inspect(root: Path) -> dict[str, Any]:
                  sealed["normalized_bundle_sha256"]
              and family["training_rights"] ==
                  "ALLOWED_SOURCE_LEVEL_NOT_PLAN2_CORPUS"
+             and family["source_rights"] == (
+                 "CC-BY-3.0-or-later" if alias == "php"
+                 else "MIT_AND_APACHE-2.0_WITH_NOTICES"
+             )
              and family["evaluation_admitted"] is False,
              "historical rights or exact revisions changed")
     licenses = config["source_license_files"]
