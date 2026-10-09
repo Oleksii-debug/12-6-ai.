@@ -30,6 +30,7 @@ from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
 from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
+from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
@@ -204,6 +205,18 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined["production_release_authorized"] is False
              and combined["real_evaluation_custody_established"] is False,
              "combined real physical family evidence cannot grant training")
+    family_mixture = three_family_mixture.stage(
+        root, destination / "physical-three-family-mixture")
+    _require(family_mixture["source_cohort_manifest_sha256"] ==
+             combined["manifest_sha256"]
+             and family_mixture["source_family_count"] == 3
+             and family_mixture["physical_source_count"] == 5
+             and family_mixture["selected_physical_document_count"] == 15
+             and family_mixture["physical_s3_s9_admitted"] is False
+             and family_mixture["real_s8_authority_issued"] is False
+             and family_mixture["tokenizer_fit_authorized"] is False
+             and family_mixture["training_corpus_authorized"] is False,
+             "S9 real three-family mixture incorrectly grants data authority")
     combined_partitions = combined_split.stage(
         root, destination / "physical-three-family-split")
     _require(combined_partitions["upstream_three_family_sha256"] ==
@@ -367,6 +380,10 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             train_only["physical_train_bytes"],
         "real_three_family_heldout_document_count":
             train_only["heldout_document_count"],
+        "real_three_family_s9_mixture_mechanics_sha256":
+            family_mixture["manifest_sha256"],
+        "real_three_family_s9_candidate_record_count":
+            family_mixture["selected_physical_document_count"],
         "real_three_family_source_split_probe_sha256":
             combined_partitions["manifest_sha256"],
         "real_three_family_source_cluster_count":
