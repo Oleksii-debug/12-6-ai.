@@ -372,6 +372,20 @@ jobs:
           cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-restart.json"
           cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-clean.json"
           diff -r "$RUNNER_TEMP/ua-physical" "$RUNNER_TEMP/ua-physical-clean"
+      - name: Lint real EVAL233 final-test decontamination
+        run: ruff check tools/plan2_s15_real_eval233_decontamination_v1.py tests/test_plan2_s15_real_eval233_decontamination_v1.py
+      - name: Qualify frozen 16-record real external EVAL233 final custody and EVAL303 reservation
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_real_eval233_decontamination_v1.py
+      - name: Verify actual EVAL233 final-custody report restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final" > "$RUNNER_TEMP/s15-real-final-first.json"
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final" > "$RUNNER_TEMP/s15-real-final-restart.json"
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final-clean" > "$RUNNER_TEMP/s15-real-final-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-restart.json"
+          cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-final/eval233-three-family-final-decontamination.json" "$RUNNER_TEMP/s15-real-final-clean/eval233-three-family-final-decontamination.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
