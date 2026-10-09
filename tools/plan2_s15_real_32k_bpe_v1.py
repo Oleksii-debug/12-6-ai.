@@ -13,6 +13,7 @@ import heapq
 import json
 from collections import defaultdict
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from tools import plan2_public_domain_books_v1 as books
@@ -77,23 +78,22 @@ class ByteBPE32k:
             self.merges.append((left, right))
             seen_blobs.add(token_bytes)
             seen_pairs.add((left, right))
-        self.tokens = list(self.tokens)
+        self.tokens = tuple(self.tokens)
+        self.merges = tuple(self.merges)
         self.vocab_size = len(self.tokens)
-        self.rank = {pair: i for i, pair in enumerate(self.merges)}
-        self.special_tokens = dict(frozen.SPECIAL)
+        self.rank = MappingProxyType({pair: i for i, pair in enumerate(self.merges)})
+        self.special_tokens = MappingProxyType(dict(frozen.SPECIAL))
         self._config = {
             "version": self.version,
             "normalization": self.normalization,
             "encoding": self.encoding,
-            "special_tokens": self.special_tokens,
+            "special_tokens": dict(self.special_tokens),
             "byte_fallback": True,
             "max_token_bytes": MAX_TOKEN_BYTES,
             "merges": self.merges,
         }
 
-    @property
-    def identity(self) -> TokenizerIdentity:
-        return TokenizerIdentity(
+        self._identity = TokenizerIdentity(
             version=self.version,
             config_sha256=frozen.sha(self._config),
             vocab_sha256=frozen.sha([value.hex() for value in self.tokens]),
@@ -102,6 +102,10 @@ class ByteBPE32k:
             encoding=self.encoding,
             special_tokens=frozen.SPECIAL,
         )
+
+    @property
+    def identity(self) -> TokenizerIdentity:
+        return self._identity
 
     def encode(self, text: str, *, add_bos: bool = False,
                add_eos: bool = False) -> list[int]:
