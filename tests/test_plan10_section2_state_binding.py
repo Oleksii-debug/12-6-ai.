@@ -232,7 +232,7 @@ def test_task_history_orphan_fails_even_with_valid_sqlite(tmp_path: Path) -> Non
         db.execute(
             "INSERT INTO history VALUES ('orphan', 0, '{}', 'bogus')"
         )
-    with pytest.raises(StateBindingError, match="orphan task history"):
+    with pytest.raises(StateBindingError, match="canonical task history"):
         capture(roots, tmp_path / "snapshot", writers_stopped=True)
     assert not (tmp_path / "snapshot").exists()
 
