@@ -339,3 +339,7 @@ The physical train partition is explicitly `training_corpus_authorized=false`,
 A source-level candidate fit, even on real bytes, is not a production 32K
 vocabulary or Plan9 training permission. Exact-head CI remains an independent
 required test, not presumed from any historical success.
+
+## Real S13/S14 physical three-family target lane — nonrelease
+
+The S10-bound train-only physical source partition can now be packed by the existing S13 deterministic packer with original source-level provenance; no validation or final-test bytes are included. The same S14 builder signs stable ordered target/exposure IDs across all physical shard boundaries. The independent physical reader replays published blocks, next-token targets, source byte maps and causal hash chain. This does not freeze production vocabulary 32768, admit the source families through S3–S9, or authorize Plan9 optimization. A dedicated scoped Actions job must pass at the identical SHA before this lane can be integrated into the terminal two-clean-source-build audit.
