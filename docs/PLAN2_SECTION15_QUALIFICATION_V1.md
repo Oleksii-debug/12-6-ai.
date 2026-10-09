@@ -297,3 +297,24 @@ production-sized frozen 32K tokenizer, compatible production shards/exposure
 stream, two fully clean production rebuilds and Plan9 handoff. Exact current
 head hosted CI remains unverified when the jobs are queued; queued/cancelled is
 never a PASS and a component PASS is not terminal DONE.
+
+
+## Physical UA normalized publication and exact-head lint repair
+
+The candidate D03 authority now also emits **12 standalone immutable normalized
+UTF-8 files** with source-record IDs, upstream normalized SHA-256, source
+snapshot lineage and total physical bytes (**48,675**), instead of merely
+proving normalization transiently in memory. Restart/no-clobber, extra-file,
+symlink and tamper checks refuse unsafe publication; two independent clean
+artifact trees are compared and the resulting source receipt is bound to S15.
+
+Hosted scoped Plan2 run #37958202998 at old head `cd93891e` actually executed
+through the pinned books, S10 mechanics, actual real-book tokenizer fit and
+restart, then **FAILED** at the new Git checkout script's Ruff UP022
+(`stdout=PIPE, stderr=PIPE` instead of `capture_output=True`). The
+incumbent frozen physical tokenizer candidate passed its 8 scoped tests at
+that historical head. The specific source lint error was repaired on this
+canonical branch in commit `e415fc24b21225c1d93b5cb3c2a8408c4a924a20`
+without weakening any release gate. No green CI is asserted for the current
+head until its own complete hosted job finishes; historical failures and
+cancelled/superseded workflow heads are not treated as PASS.
