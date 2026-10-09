@@ -46,7 +46,7 @@ def _load_strict_json(path: Path) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{path} is not strict unambiguous UTF-8 JSON") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{path} root must be an object")
+        raise TypeError(f"{path} root must be an object")
     return value
 
 
@@ -175,7 +175,7 @@ def _load_git_json(root: Path, treeish: str, path: str) -> dict[str, Any]:
             f"accepted predecessor JSON is not strict unambiguous JSON: {path}"
         ) from exc
     if not isinstance(value, dict):
-        raise ValueError(f"accepted predecessor JSON root must be an object: {path}")
+        raise TypeError(f"accepted predecessor JSON root must be an object: {path}")
     return value
 
 
@@ -305,7 +305,7 @@ def validate_repository_surface_coverage(
 
     expected_count = inventory["expected_main_surface_count"]
     if not isinstance(expected_count, int) or isinstance(expected_count, bool):
-        raise ValueError("expected_main_surface_count must be an integer")
+        raise TypeError("expected_main_surface_count must be an integer")
     if expected_count <= 0:
         raise ValueError("expected_main_surface_count must be positive")
 
@@ -364,11 +364,11 @@ def validate_repository_surface_coverage(
 
     raw_capabilities = capability_registry.get("capabilities")
     if not isinstance(raw_capabilities, list):
-        raise ValueError("capability registry capabilities must be an array")
+        raise TypeError("capability registry capabilities must be an array")
     capabilities: dict[str, dict[str, Any]] = {}
     for capability in raw_capabilities:
         if not isinstance(capability, dict):
-            raise ValueError("capability entry must be an object")
+            raise TypeError("capability entry must be an object")
         capability_id = capability.get("capability_id")
         if not isinstance(capability_id, str) or not capability_id:
             raise ValueError("capability_id must be non-empty text")
@@ -481,7 +481,7 @@ def validate_repository_surface_coverage(
 
     raw_overrides = inventory["candidate_overrides"]
     if not isinstance(raw_overrides, list):
-        raise ValueError("candidate_overrides must be an array")
+        raise TypeError("candidate_overrides must be an array")
     candidate_overrides: dict[str, str] = {}
     for item in raw_overrides:
         if not isinstance(item, dict) or set(item) != {"path", "capability_id"}:
