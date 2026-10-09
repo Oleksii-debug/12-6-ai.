@@ -259,6 +259,13 @@ def inspect(root: Path) -> dict[str, Any]:
     privacy = g06.build_privacy_execution_authority(
         privacy_rows, expected_input_rows_sha256=expected_root
     )
+    # Independently verify the self-hash: re-executing a patched builder alone
+    # can silently agree with its own forged execution_identity_sha256.
+    g06.verify_privacy_execution_root(
+        privacy,
+        expected_input_rows_sha256=expected_root,
+        expected_execution_identity_sha256=privacy["execution_identity_sha256"],
+    )
     g06.verify_privacy_execution_authority(
         privacy, privacy_rows,
         expected_input_rows_sha256=expected_root,
