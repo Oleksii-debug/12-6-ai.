@@ -198,3 +198,98 @@ def test_sqlite_uri_escapes_fragment_in_existing_path(tmp_path: Path) -> None:
     digest = capture(roots, safe_path / "backup", writers_stopped=True)
     restore(safe_path / "backup", safe_path / "restored", manifest_sha256=digest)
     assert (safe_path / "restored" / "tasks" / "state.sqlite").is_file()
+
+
+
+def test_plan5_real_task_and_memory_records_survive_cold_restart(tmp_path: Path) -> None:
+    from twelve_six_agent_runtime.memory import MemoryRecord, MemoryStore
+    from twelve_six_agent_runtime.task_state import TaskStore
+
+    roots = make_components(tmp_path)
+    tasks = TaskStore(roots["tasks"] / "state.sqlite")
+    before_task = tasks.create(task_id="task-a", plan_id="plan-a", step_id="initial")
+    memory = MemoryStore(roots["memory"] / "state.sqlite")
+    before_memory = MemoryRecord(
+        memory_id="memo-a", kind="project", content="restored",
+        source_id="owner", source_kind="owner", evidence_id="evidence-a",
+        confidence_ppm=1_000_000, created_at=1,
+    )
+    assert memory.append(before_memory, expected_revision=0) == 1
+
+    digest = capture(roots, tmp_path / "snapshot", writers_stopped=True)
+    restore(tmp_path / "snapshot", tmp_path / "restored", manifest_sha256=digest)
+    assert TaskStore(tmp_path / "restored" / "tasks" / "state.sqlite").load(
+        "task-a"
+    ) == before_task
+    assert MemoryStore(tmp_path / "restored" / "memory" / "state.sqlite").history() == (
+        before_memory,
+    )
+
+
+def test_task_history_orphan_fails_even_with_valid_sqlite(tmp_path: Path) -> None:
+    roots = make_components(tmp_path)
+    with sqlite3.connect(roots["tasks"] / "state.sqlite") as db:
+        db.execute(
+            "INSERT INTO history VALUES ('orphan', 0, '{}', 'bogus')"
+        )
+    with pytest.raises(StateBindingError, match="orphan task history"):
+        capture(roots, tmp_path / "snapshot", writers_stopped=True)
+    assert not (tmp_path / "snapshot").exists()
+
+
+def test_task_history_hash_mismatch_fails_snapshot(tmp_path: Path) -> None:
+    from twelve_six_agent_runtime.task_state import TaskStore
+
+    roots = make_components(tmp_path)
+    TaskStore(roots["tasks"] / "state.sqlite").create(
+        task_id="task-a", plan_id="plan-a", step_id="initial"
+    )
+    with sqlite3.connect(roots["tasks"] / "state.sqlite") as db:
+        db.execute("UPDATE history SET digest=?", ("0" * 64,))
+    with pytest.raises(StateBindingError, match="canonical task history"):
+        capture(roots, tmp_path / "snapshot", writers_stopped=True)
+
+
+def test_memory_revision_and_digest_corruption_refuse_snapshot(tmp_path: Path) -> None:
+    from twelve_six_agent_runtime.memory import MemoryRecord, MemoryStore
+
+    roots = make_components(tmp_path)
+    MemoryStore(roots["memory"] / "state.sqlite").append(
+        MemoryRecord(
+            memory_id="memo-a", kind="project", content="valid",
+            source_id="owner", source_kind="owner", evidence_id="evidence-a",
+            confidence_ppm=900_000, created_at=1,
+        ),
+        expected_revision=0,
+    )
+    path = roots["memory"] / "state.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE meta SET revision=9")
+    with pytest.raises(StateBindingError, match="canonical memory history"):
+        capture(roots, tmp_path / "snapshot", writers_stopped=True)
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE meta SET revision=1")
+        db.execute("UPDATE records SET digest=?", ("0" * 64,))
+    with pytest.raises(StateBindingError, match="canonical memory history"):
+        capture(roots, tmp_path / "snapshot", writers_stopped=True)
+
+
+def test_resealed_but_semantically_invalid_memory_restore_refused(tmp_path: Path) -> None:
+    roots = make_components(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    capture(roots, snapshot, writers_stopped=True)
+    with sqlite3.connect(snapshot / "memory" / "state.sqlite") as db:
+        db.execute("UPDATE meta SET revision=77")
+    member = (snapshot / "memory" / "state.sqlite").read_bytes()
+    manifest = json.loads((snapshot / "manifest.json").read_bytes())
+    manifest["members"]["memory/state.sqlite"] = hashlib.sha256(member).hexdigest()
+    canonical = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
+    (snapshot / "manifest.json").write_bytes(canonical)
+    with pytest.raises(StateBindingError, match="canonical memory history"):
+        restore(
+            snapshot, tmp_path / "restored",
+            manifest_sha256=hashlib.sha256(canonical).hexdigest(),
+        )
+    assert not (tmp_path / "restored").exists()
