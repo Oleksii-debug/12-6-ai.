@@ -96,6 +96,12 @@ def test_changed_physical_family_count_refuses_stale_audit(monkeypatch) -> None:
 
 
 def _signed_gate(path: Path, **fields):
+    if path.name == "privacy-manifest.json":
+        fields = {
+            "source_id": "fixture.source",
+            "normalization_manifest_sha256": "a" * 64,
+            **fields,
+        }
     core = {"training_corpus_authorized": False, **fields}
     result = {**core, "manifest_sha256": terminal._digest(terminal._canonical(core))}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +135,10 @@ def test_partial_s5_s6_source_privacy_coverage_is_refused(tmp_path: Path) -> Non
     dedup = _signed_gate(
         exact / "exact-dedup-manifest.json",
         sources=[
-            {"privacy_manifest_sha256": privacy["manifest_sha256"]},
+            {"source_id": privacy["source_id"],
+             "normalization_manifest_sha256":
+                 privacy["normalization_manifest_sha256"],
+             "privacy_manifest_sha256": privacy["manifest_sha256"]},
             {"privacy_manifest_sha256": "0" * 64},
         ],
     )
@@ -161,7 +170,10 @@ def test_physical_chain_rejects_disconnected_signed_receipts(tmp_path: Path) -> 
     privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
     exact_receipt = _signed_gate(
         exact / "exact-dedup-manifest.json",
-        sources=[{"privacy_manifest_sha256": privacy["manifest_sha256"]}],
+        sources=[{"source_id": privacy["source_id"],
+             "normalization_manifest_sha256":
+                 privacy["normalization_manifest_sha256"],
+             "privacy_manifest_sha256": privacy["manifest_sha256"]}],
     )
     near_receipt = _signed_gate(
         near / "near-dedup-manifest.json",
@@ -199,7 +211,10 @@ def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
     privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
     exact_receipt = _signed_gate(
         exact / "exact-dedup-manifest.json",
-        sources=[{"privacy_manifest_sha256": privacy["manifest_sha256"]}],
+        sources=[{"source_id": privacy["source_id"],
+             "normalization_manifest_sha256":
+                 privacy["normalization_manifest_sha256"],
+             "privacy_manifest_sha256": privacy["manifest_sha256"]}],
     )
     near_receipt = _signed_gate(
         near / "near-dedup-manifest.json",
@@ -235,3 +250,52 @@ def test_signed_gate_rejects_authority_and_payload_leaks(
     _signed_gate(target, **{unsafe_flag: True})
     with pytest.raises(terminal.QualificationDenied, match="incorrectly authorizes"):
         terminal._read_gate(target)
+
+
+@pytest.mark.parametrize("defect", [
+    "source_id",
+    "normalization_manifest_sha256",
+    "duplicate_source",
+])
+def test_s5_s6_source_identity_fails_closed_even_with_valid_self_hashes(
+    tmp_path: Path, defect: str,
+) -> None:
+    """A validly re-signed S6 cannot borrow one unrelated S5 privacy proof."""
+    candidate = tmp_path / "candidate"
+    fw = candidate / "firewall"
+    near = fw / "near"
+    exact = near / "exact"
+    privacy = _signed_gate(exact / "privacy" / "privacy-manifest.json")
+    legitimate = {
+        "source_id": privacy["source_id"],
+        "normalization_manifest_sha256":
+            privacy["normalization_manifest_sha256"],
+        "privacy_manifest_sha256": privacy["manifest_sha256"],
+    }
+    altered = dict(legitimate)
+    if defect == "source_id":
+        altered["source_id"] = "forged.source"
+    elif defect == "normalization_manifest_sha256":
+        altered["normalization_manifest_sha256"] = "b" * 64
+    sources = ([legitimate, altered] if defect == "duplicate_source"
+               else [altered])
+    dedup = _signed_gate(exact / "exact-dedup-manifest.json",
+                         sources=sources)
+    near_receipt = _signed_gate(
+        near / "near-dedup-manifest.json",
+        upstream_exact_manifest_sha256=dedup["manifest_sha256"],
+    )
+    reserved = _signed_gate(
+        fw / "reserved-eval-firewall-manifest.json",
+        physical_s7_manifest_sha256=near_receipt["manifest_sha256"],
+    )
+    core = {
+        "training_corpus_authorized": False,
+        "physical_s8_manifest_sha256": reserved["manifest_sha256"],
+    }
+    mixture_hash = terminal._digest(terminal._canonical(core))
+    (candidate / "corpus-mixture-manifest.json").write_bytes(
+        terminal._canonical({**core, "dataset_candidate_sha256": mixture_hash})
+    )
+    with pytest.raises(terminal.QualificationDenied, match="S5-S6 privacy"):
+        terminal._audit_physical_gates(candidate, mixture_hash)
