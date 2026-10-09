@@ -266,7 +266,15 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_public_domain_books_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_reserved_eval_firewall_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_book_split_probe_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
     {
@@ -275,6 +283,10 @@
     },
     {
       "path": "tools/plan2_source_inventory_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_terminal_qualification_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
     {

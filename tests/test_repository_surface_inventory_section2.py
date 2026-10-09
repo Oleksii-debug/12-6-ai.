@@ -42,8 +42,8 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["current_repository_main_tree_sha"] == result["observed_main_tree_sha"]
     assert result["qualified_current_equivalent_surface_count"] == 239
     assert result["accepted_main_surface_count"] == 120
-    assert result["candidate_overlay_surface_count"] == 57
-    assert result["checkout_surface_count"] == 175
+    assert result["candidate_overlay_surface_count"] == 60
+    assert result["checkout_surface_count"] == 178
 
 
 def test_repository_executable_surface_distribution_is_pinned() -> None:
@@ -70,8 +70,8 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     capabilities = _load_strict_json(_CAPABILITIES)
 
     overrides = payload["candidate_overrides"]
-    assert len(overrides) == 57
-    assert len({entry["path"] for entry in overrides}) == 57
+    assert len(overrides) == 60
+    assert len({entry["path"] for entry in overrides}) == 60
     assert {
         "path": ".github/workflows/ci.yml",
         "capability_id": "peer-source-qualification-pending",
