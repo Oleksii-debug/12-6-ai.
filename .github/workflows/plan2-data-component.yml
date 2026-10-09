@@ -400,6 +400,20 @@ jobs:
           cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-restart.json"
           cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-clean.json"
           diff -r "$RUNNER_TEMP/three-family-train" "$RUNNER_TEMP/three-family-train-clean"
+      - name: Lint physical three-family train-only BPE
+        run: ruff check tools/plan2_s15_three_family_train_bpe_v1.py tests/test_plan2_s15_three_family_train_bpe_v1.py
+      - name: Test three-family real training only BPE candidate
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_train_bpe_v1.py
+      - name: Verify train-only BPE immutable restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe" > "$RUNNER_TEMP/three-family-bpe-first.json"
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe" > "$RUNNER_TEMP/three-family-bpe-restart.json"
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe-clean" > "$RUNNER_TEMP/three-family-bpe-clean.json"
+          cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-restart.json"
+          cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-clean.json"
+          cmp "$RUNNER_TEMP/three-family-bpe/three-family-train-bpe-candidate.json" "$RUNNER_TEMP/three-family-bpe-clean/three-family-train-bpe-candidate.json"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
