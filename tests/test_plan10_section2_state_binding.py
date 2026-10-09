@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.integration.plan10_release_state_binding import KINDS, StateBindingError, capture, restore
+from twelve_six.integration.plan10_release_state_binding import (
+    KINDS,
+    StateBindingError,
+    capture,
+    restore,
+)
 
 
 def make_components(root: Path) -> dict[str, Path]:
