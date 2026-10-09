@@ -85,7 +85,8 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
             target = "train/" + member["record_id_sha256"] + ".utf8"
             need(target not in train_payloads, "train record target collision")
             train_payloads[target] = raw
-            training.append({**member, "path": target})
+            training.append({**member, "source_id": origin["source_id"],
+                             "path": target})
             train_families.add(origin["source_family"])
         else:
             # No heldout plaintext or raw record IDs in the published
