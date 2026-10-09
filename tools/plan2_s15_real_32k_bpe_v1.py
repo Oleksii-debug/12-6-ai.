@@ -269,7 +269,7 @@ def fit_incremental(rows: list[dict[str, str]], *,
         tokens.append(token)
         seen_values.add(token)
         merges.append(list(pair))
-        for i in sorted(tuple(pairs[pair])):
+        for i in sorted(pairs[pair]):
             j = following[i]
             if (not living[i] or j < 0 or not living[j]
                     or (values[i], values[j]) != pair):

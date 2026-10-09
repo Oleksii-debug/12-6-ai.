@@ -29,8 +29,8 @@ from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
 from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
-from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
 from tools import plan2_s15_plan9_handoff_preflight_v1 as plan9_handoff
+from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
 from tools import plan2_s15_real_32k_bpe_v1 as real_32k_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
