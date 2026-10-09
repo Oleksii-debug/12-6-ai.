@@ -6,6 +6,9 @@ import json
 import os
 import re
 import stat
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1072,3 +1075,142 @@ def record_bridge_return(
         _canonical_json_bytes(record.to_dict()) + b"\n",
     )
     return evidence_report
+
+
+class _NoGitHubRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        raise ValueError("GitHub evidence API redirects are not permitted")
+
+
+def _github_evidence_request(
+    method: str,
+    path: str,
+    *,
+    token: str,
+    branch: str,
+    upload: bytes | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """One bounded request to a fixed trusted host; never follow redirects."""
+    if type(token) is not str or not 10 <= len(token) <= 4096:
+        raise ValueError("GitHub evidence token is missing or malformed")
+    if method not in {"GET", "PUT"}:
+        raise ValueError("unsupported evidence publication HTTP method")
+    uri = (
+        "https://api.github.com/repos/Oleksii-debug/12-6-ai./contents/"
+        + quote(path, safe="/")
+    )
+    if method == "GET":
+        uri += "?ref=" + quote(branch, safe="")
+    else:
+        if type(upload) is not bytes or len(upload) > _BRIDGE_MAX_RECEIPT_BYTES:
+            raise ValueError("bridge upload has invalid bytes")
+    payload = None
+    if method == "PUT":
+        payload = _canonical_json_bytes({
+            "message": "evidence(plan8-s5): immutable signed host return (hash-only)",
+            "branch": branch,
+            "content": base64.b64encode(upload).decode("ascii"),
+        })
+    req = Request(
+        uri, method=method, data=payload,
+        headers={
+            "Authorization": "Bearer " + token,
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "12-6-plan8-evidence-bridge-v1",
+            "Content-Type": "application/json",
+        },
+    )
+    opener = build_opener(_NoGitHubRedirects())
+    try:
+        with opener.open(req, timeout=15) as response:
+            content = response.read(16385)
+            if len(content) > 16384:
+                raise ValueError("GitHub evidence response exceeds limit")
+            return response.status, json.loads(content)
+    except HTTPError as exc:
+        if exc.code in {404, 422}:
+            return exc.code, {}
+        raise RuntimeError("GitHub evidence publication failed with HTTP error") from exc
+
+
+def _git_blob_identity(payload: bytes) -> str:
+    return hashlib.sha1(
+        b"blob " + str(len(payload)).encode("ascii") + b"\x00" + payload
+    ).hexdigest()
+
+
+def publish_bridge_return_github(
+    spool_root: str | Path,
+    *,
+    dispatch: HostDispatch,
+    verified_packet: VerifiedSignedPacket,
+    evidence_path: str | Path,
+    log_path: str | Path,
+    agent_source_bytes: bytes,
+    artifact_root: str | Path,
+    evidence_signature_verifier: SignatureVerifier,
+    github_token: str,
+    evidence_branch: str = "plan8-evidence",
+    resource_probe_verifiers: dict[ResourceKind, ExternalResourceVerifier] | None = None,
+) -> dict[str, Any]:
+    """Return safe metadata to the project GitHub evidence branch, create-only.
+
+    Always reverify the host-signed evidence before transfer. Never upload raw
+    host logs, private keys, environment variables, or unverified result claims.
+    A 422 conflict is resolved by a readback; no blind re-execution or writes
+    to main are possible through this adapter.
+    """
+    if evidence_branch != "plan8-evidence":
+        raise ValueError("bridge may publish only to dedicated evidence branch")
+    report = record_bridge_return(
+        spool_root, dispatch=dispatch, verified_packet=verified_packet,
+        evidence_path=evidence_path, log_path=log_path,
+        agent_source_bytes=agent_source_bytes, artifact_root=artifact_root,
+        evidence_signature_verifier=evidence_signature_verifier,
+        resource_probe_verifiers=resource_probe_verifiers,
+    )
+    identity = dispatch.identity_sha256()
+    spool = _bridge_spool(spool_root)
+    out = spool / "outbound" / identity
+    results = []
+    for filename in ("evidence-record.json", "bridge-return.json"):
+        payload = _bridge_regular_bytes(out / filename, _BRIDGE_MAX_RECEIPT_BYTES)
+        expected_blob = _git_blob_identity(payload)
+        remote = "evidence/plan8/" + identity + "/" + filename
+        status, existing = _github_evidence_request(
+            "GET", remote, token=github_token, branch=evidence_branch
+        )
+        if status == 200:
+            if existing.get("type") != "file" or existing.get("sha") != expected_blob:
+                raise ValueError("GitHub evidence path contains different bytes")
+            results.append({"path": remote, "state": "ALREADY_IDENTICAL"})
+            continue
+        if status != 404:
+            raise ValueError("GitHub evidence readback is inconclusive")
+        code, created = _github_evidence_request(
+            "PUT", remote, token=github_token, branch=evidence_branch, upload=payload
+        )
+        if code == 422:
+            # A raced or timed-out create is not blindly repeated.
+            code, created = _github_evidence_request(
+                "GET", remote, token=github_token, branch=evidence_branch
+            )
+            if (
+                code != 200 or created.get("type") != "file"
+                or created.get("sha") != expected_blob
+            ):
+                raise ValueError("GitHub evidence conflict cannot be reconciled")
+        elif (
+            code != 201 or type(created.get("content")) is not dict
+            or created["content"].get("sha") != expected_blob
+        ):
+            raise ValueError("GitHub evidence create readback is invalid")
+        results.append({"path": remote, "state": "VERIFIED_CREATED"})
+    return {
+        "schema_version": "12-6.github-evidence-publish.v1",
+        "dispatch_identity_sha256": identity,
+        "verdict": report["verdict"],
+        "publication": results,
+        "raw_private_logs_uploaded": False,
+    }
