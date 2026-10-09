@@ -55,6 +55,14 @@ def stage(root: Path, destination: Path, *,
          and ledger["production_release_authorized"] is False
          and ledger["optimizer_effect_authorized"] is False,
          "S14 physical ordered source exposure drifted")
+    counts = packed["actual_loss_targets_by_language"]
+    need(packed["actual_loss_target_count_is_32k_tokenizer_based"] is True
+         and packed["production_language_balance_approved"] is False
+         and set(counts) == {"en", "uk"}
+         and sum(counts.values()) == ledger["target_count"]
+         and sum(packed["actual_loss_targets_by_source_family"].values()) ==
+             ledger["target_count"],
+         "frozen S12-to-S14 real language loss-bearing targets do not reconcile")
     destination.mkdir(parents=True, exist_ok=True)
     expected = {"shards", "exposures", OUTPUT}
     for member in destination.iterdir():
@@ -91,6 +99,11 @@ def stage(root: Path, destination: Path, *,
         "block_count": packed["block_count"],
         "target_count": packed["target_count"],
         "ordered_exposure_chain_sha256": ledger["chain_head_sha256"],
+        "actual_loss_targets_by_language": counts,
+        "actual_loss_targets_by_source_family":
+            packed["actual_loss_targets_by_source_family"],
+        "actual_loss_targets_are_32k_tokenizer_based": True,
+        "production_language_balance_approved": False,
         "heldout_payloads_exposed": False,
         "real_final_test_outcomes_read": False,
         "plan9_optimizer_permission": False,

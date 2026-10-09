@@ -111,6 +111,9 @@ def build(root: Path, *, fitted: dict[str, Any] | None = None
         train_document_map.append({
             "source_id": item["source_id"],
             "opaque_source_id": opaque_source_id,
+            "source_family": item["source_family"],
+            "language": ("en" if item["source_family"] == books.GUTENBERG_FAMILY
+                         else "uk"),
             "normalized_sha256": item["normalized_sha256"],
             "byte_start": document_start,
             "byte_end": source_byte_offset,
@@ -156,6 +159,30 @@ def build(root: Path, *, fitted: dict[str, Any] | None = None
          and sum(x["block_count"] for x in receipts) == len(blocks)
          and sum(x["target_count"] for x in receipts) == token_count,
          "physical token targets or shard blocks were lost")
+    # These are ACTUAL frozen-32K causal loss targets, not S9 proxy units.
+    # Aggregate only the S10 train role; no validation/test bytes are packed.
+    by_opaque = {row["opaque_source_id"]: row for row in train_document_map}
+    need(len(by_opaque) == len(train_document_map),
+         "physical training member/opaque source collision")
+    target_sources: dict[str, int] = {}
+    target_families: dict[str, int] = {}
+    target_languages: dict[str, int] = {}
+    for block in blocks:
+        origin = by_opaque[block["source_id"]]
+        n_targets = block["target_count"]
+        for counts, key in (
+            (target_sources, origin["source_id"]),
+            (target_families, origin["source_family"]),
+            (target_languages, origin["language"]),
+        ):
+            counts[key] = counts.get(key, 0) + n_targets
+    need(set(target_languages) == {"en", "uk"}
+         and len(target_families) == 3
+         and sum(target_sources.values()) == token_count
+         and sum(target_families.values()) == token_count
+         and sum(target_languages.values()) == token_count
+         and all(count > 0 for count in target_families.values()),
+         "S13 32K tokenizer target exposure lost a physical language or family")
     core = {
         "schema_version": SCHEMA,
         "decision": "REAL_PHYSICAL_PACKING_CANDIDATE_NOT_RELEASE",
@@ -177,6 +204,11 @@ def build(root: Path, *, fitted: dict[str, Any] | None = None
         "train_record_ids": ids,
         "source_segment_byte_map": segment_map,
         "block_count": len(blocks), "target_count": token_count,
+        "actual_loss_targets_by_source": dict(sorted(target_sources.items())),
+        "actual_loss_targets_by_source_family": dict(sorted(target_families.items())),
+        "actual_loss_targets_by_language": dict(sorted(target_languages.items())),
+        "actual_loss_target_count_is_32k_tokenizer_based": True,
+        "production_language_balance_approved": False,
         "shards": receipts,
         "source_token_shard_mapping": mapping,
         "physical_s9_admitted": False,

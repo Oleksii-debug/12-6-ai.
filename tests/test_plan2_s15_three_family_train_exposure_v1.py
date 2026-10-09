@@ -20,6 +20,16 @@ def test_real_3_family_train_shards_have_causal_replay(tmp_path: Path) -> None:
     assert receipt["heldout_document_count"] > 0
     assert receipt["block_count"] > 0
     assert receipt["target_count"] > 0
+    assert receipt["actual_loss_targets_are_32k_tokenizer_based"] is True
+    assert receipt["production_language_balance_approved"] is False
+    assert set(receipt["actual_loss_targets_by_language"]) == {"en", "uk"}
+    assert sum(receipt["actual_loss_targets_by_language"].values()) == (
+        receipt["target_count"]
+    )
+    assert len(receipt["actual_loss_targets_by_source_family"]) == 3
+    assert sum(receipt["actual_loss_targets_by_source_family"].values()) == (
+        receipt["target_count"]
+    )
     assert receipt["physical_train_byte_count"] > 0
     assert receipt["heldout_payloads_exposed"] is False
     assert receipt["real_final_test_outcomes_read"] is False
