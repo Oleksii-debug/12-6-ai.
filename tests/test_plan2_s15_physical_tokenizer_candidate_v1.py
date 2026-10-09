@@ -22,6 +22,8 @@ def test_real_training_document_is_fitted_but_not_released(tmp_path: Path) -> No
     assert proof["tokenizer_fit_authorized"] is False
     assert proof["physical_s9_admitted"] is False
     assert proof["terminal_done"] is False
+    assert len(proof["physical_split_manifest_sha256"]) == 64
+    assert proof["physical_split_manifest_sha256"] != proof["physical_split_probe_sha256"]
     assert len(proof["manifest_sha256"]) == 64
     assert realfit.stage(ROOT, tmp_path / "fit") == proof
 
