@@ -30,6 +30,7 @@ from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
 from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
+from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
@@ -214,6 +215,22 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined_partitions["training_corpus_authorized"] is False
              and combined_partitions["production_release_authorized"] is False,
              "source-family split mechanics incorrectly promoted candidate")
+    train_only = train_partition.stage(
+        root, destination / "physical-three-family-train")
+    _require(train_only["upstream_three_family_sha256"] == combined["manifest_sha256"]
+             and train_only["s10_split_probe_sha256"] == combined_partitions["manifest_sha256"]
+             and train_only["s10_split_manifest_sha256"] ==
+                 combined_partitions["s10_split_manifest_sha256"]
+             and train_only["train_document_count"] ==
+                 combined_partitions["train_record_count"]
+             and train_only["heldout_document_count"] ==
+                 combined_partitions["validation_record_count"] +
+                 combined_partitions["test_record_count"]
+             and train_only["heldout_plaintext_materialized"] is False
+             and train_only["training_corpus_authorized"] is False
+             and train_only["tokenizer_fit_authorized"] is False
+             and train_only["production_release_authorized"] is False,
+             "physical S10 train bytes or hash-only holdout custody drifted")
     real_eval = real_final.stage(root, destination / "physical-real-final-custody")
     _require(real_eval["physical_three_family_sha256"] ==
              combined["manifest_sha256"]
@@ -322,6 +339,14 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_three_family_train_partition_manifest_sha256":
+            train_only["manifest_sha256"],
+        "real_three_family_train_only_document_count":
+            train_only["train_document_count"],
+        "real_three_family_train_only_physical_bytes":
+            train_only["physical_train_bytes"],
+        "real_three_family_heldout_document_count":
+            train_only["heldout_document_count"],
         "real_three_family_source_split_probe_sha256":
             combined_partitions["manifest_sha256"],
         "real_three_family_source_cluster_count":
