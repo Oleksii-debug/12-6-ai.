@@ -44,6 +44,8 @@ def _fixture(root: Path) -> tuple[Path, Path, dict, dict]:
     })
     (pd / name).write_bytes(raw)
     original = {
+        "schema_version": "12-6.plan2-s15-physical-packed-shards-candidate.v1",
+        "decision": "REAL_PHYSICAL_PACKING_CANDIDATE_NOT_RELEASE",
         "training_corpus_authorized": False,
         "production_release_authorized": False,
         "terminal_done": False,
@@ -106,6 +108,8 @@ def _fixture(root: Path) -> tuple[Path, Path, dict, dict]:
     })
     (ed / out).write_bytes(raw_e)
     ledger = _receipt({
+        "schema_version": "12-6.plan2-s15-physical-ordered-exposure-candidate.v1",
+        "decision": "PHYSICAL_ORDERED_TARGETS_CANDIDATE_NOT_RELEASE",
         "training_corpus_authorized": False,
         "production_release_authorized": False,
         "terminal_done": False,
