@@ -48,7 +48,7 @@
     {
       "path": "src/twelve_six/capability_map.py",
       "capability_id": "executable-capability-map",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/champion_lifecycle.py",
@@ -643,7 +643,7 @@
     {
       "path": "src/twelve_six/sil_qualification.py",
       "capability_id": "github-sil-qualification",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/split_robustness.py",
@@ -751,6 +751,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 118,
-  "candidate_overlay_surface_count": 31
+  "accepted_main_surface_count": 116,
+  "candidate_overlay_surface_count": 33
 }
