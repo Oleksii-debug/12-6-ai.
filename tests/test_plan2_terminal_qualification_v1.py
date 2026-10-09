@@ -29,6 +29,8 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["real_books_s10_probe_document_clusters"] == 3
     assert len(report["evidence"]["real_books_physical_heldout_manifest_sha256"]) == 64
     assert type(report["evidence"]["real_books_physical_heldout_clean"]) is bool
+    assert len(report["evidence"]["physical_real_text_tokenizer_candidate_sha256"]) == 64
+    assert report["evidence"]["physical_real_text_tokenizer_training_bytes"] > 100_000
     assert report["evidence"]["physical_split"] == "DENIED_SINGLE_SOURCE_FAMILY"
     assert report["evidence"]["physical_source_family_count"] == 1
     assert report["evidence"]["synthetic_target_count"] > 0
