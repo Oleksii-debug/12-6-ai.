@@ -752,9 +752,11 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     assert len(candidate) == 33
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
-        for surface in candidate if surface.origin == "stacked_candidate"
+        for surface in candidate
+        if surface.origin == "stacked_candidate"
     )
-    assert {surface.path for surface in candidate if surface.origin == "modified_candidate"} == {
+    modified_paths = {surface.path for surface in candidate if surface.origin == "modified_candidate"}
+    assert modified_paths == {
         "src/twelve_six/accelerated_scaling.py",
         "src/twelve_six/capability_map.py",
         "src/twelve_six/sil_qualification.py",
