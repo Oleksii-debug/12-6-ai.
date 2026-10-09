@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -887,6 +888,38 @@ def stage_bridge_dispatch(
         or not 0 < len(signed_packet_bytes) <= _BRIDGE_MAX_PACKET_BYTES
     ):
         raise ValueError("bridge signed packet byte bound exceeded")
+    # The transport must seal the same bytes that the authority verified.
+    # A signed packet has no standing merely because its file is called signed.
+    def no_duplicate_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        parsed: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in parsed:
+                raise ValueError("duplicate signed packet JSON member")
+            parsed[key] = item
+        return parsed
+
+    try:
+        signed = json.loads(
+            signed_packet_bytes.decode("utf-8"),
+            object_pairs_hook=no_duplicate_fields,
+        )
+        signature = signed["signature"]
+        raw_signature = base64.b64decode(signature["signature_b64"], validate=True)
+    except (UnicodeError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ValueError("bridge signed packet is malformed") from exc
+    if (
+        type(signed) is not dict
+        or set(signed) != {"schema_version", "packet", "signature"}
+        or signed["schema_version"] != "12-6.signed-physical-qualification-packet.v1"
+        or signed["packet"] != verified_packet.packet.to_dict()
+        or type(signature) is not dict
+        or set(signature) != {"algorithm", "key_id", "signature_b64"}
+        or signature["algorithm"] != "ED25519"
+        or signature["key_id"] != verified_packet.signing_key_id
+        or len(raw_signature) != 64
+        or _sha256_bytes(raw_signature) != verified_packet.signature_sha256
+    ):
+        raise ValueError("bridge signed packet does not bind verified authority bytes")
     spool = _bridge_spool(spool_root)
     identity = dispatch.identity_sha256()
     packet_hash = _sha256_bytes(signed_packet_bytes)
