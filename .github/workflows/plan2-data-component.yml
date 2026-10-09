@@ -472,6 +472,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Lint Plan3/4 tokenizer ModelSpec compatibility guard
+        run: ruff check tools/plan2_s15_plan34_compatibility_v1.py tests/test_plan2_s15_plan34_compatibility_v1.py
+      - name: Require exact Plan3/4 contract to refuse fake production 32K vocab
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_plan34_compatibility_v1.py
       - name: Lint S13/S14 real three-family adapters and their independent tests
         run: ruff check tools/plan2_s15_three_family_train_packing_v1.py tools/plan2_s15_three_family_train_exposure_v1.py tests/test_plan2_s15_three_family_train_exposure_v1.py
       - name: Qualify physical 3-family train-only shard/target replay
