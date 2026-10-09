@@ -32,6 +32,8 @@ def test_five_real_source_clusters_cannot_cross_holdout(tmp_path: Path) -> None:
     assert result["validation_test_language_balanced"] is False
     assert len(result["incumbent_s10_split_manifest_sha256"]) == 64
     assert len(result["s10_split_manifest_sha256"]) == 64
+    assert len(result["s15_split_policy_sha256"]) == 64
+    assert result["s15_split_policy_sha256"] != result["s10_split_manifest_sha256"]
     assert result["s10_split_manifest_sha256"] != (
         result["incumbent_s10_split_manifest_sha256"]
     )

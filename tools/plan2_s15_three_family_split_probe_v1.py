@@ -143,7 +143,7 @@ def inspect(root: Path) -> dict[str, Any]:
     heldout_en = sorted(
         ranked_en[1:],
         key=lambda sid: split._sha(
-            (policy["seed"] + ":physical-holdout\\0" + sid).encode("utf-8")
+            (policy["seed"] + ":physical-holdout\0" + sid).encode("utf-8")
         ),
     )
     assignments[heldout_en[0]] = "validation"
