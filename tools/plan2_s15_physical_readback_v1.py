@@ -112,6 +112,28 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
                 need(relative not in observed, "duplicate publication member")
                 observed.add(relative)
         need(observed == expected_members, "missing or unexpected physical artifact")
+    member_ids = packed["train_record_ids"]
+    segment_map = packed["source_segment_byte_map"]
+    need(type(member_ids) is list and bool(member_ids)
+         and len(member_ids) == len(set(member_ids))
+         and type(segment_map) is list
+         and len(segment_map) == len(member_ids)
+         and [row["record_id"] for row in segment_map] == member_ids,
+         "missing or inconsistent physical train segment identities")
+    next_byte = 0
+    segment_digests: dict[str, str] = {}
+    for segment in segment_map:
+        need(segment["source_byte_start"] == next_byte
+             and type(segment["source_byte_end"]) is int
+             and segment["source_byte_end"] > next_byte
+             and type(segment["source_sha256"]) is str
+             and len(segment["source_sha256"]) == 64
+             and segment["record_id"].startswith(segment["source_id"] + ":r"),
+             "physical book-to-token byte lineage changed")
+        next_byte = segment["source_byte_end"]
+        segment_digests[segment["record_id"]] = segment["source_sha256"]
+    need(next_byte == packed["train_document_bytes"],
+         "training source coverage has gap or truncation")
     offsets: dict[str, int] = {}
     targets: set[str] = set()
     exposures: set[str] = set()
@@ -160,6 +182,9 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
                      "token_offset", "target_count",
                  )), "published source/block lineage mismatch")
             rid = block["record_id"]
+            need(rid in segment_digests
+                 and block["source_sha256"] == segment_digests[rid],
+                 "unapproved physical training record in shard")
             n = block["target_count"]
             start = block["token_offset"]
             need(type(n) is int and 0 < n <= packing.BLOCK
@@ -212,6 +237,8 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
         need(pointer == len(events)
              and chain == evidence["chain_tail_sha256"],
              "unaccounted physical exposure or shard-end chain drift")
+    need(set(offsets) == set(member_ids),
+         "missing or repeated physical training source segment")
     need(count == packed["target_count"] == ledger["target_count"]
          and blocks_read == packed["block_count"] == len(mapping)
          and chain == ledger["chain_head_sha256"],
