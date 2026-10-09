@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from twelve_six.accelerated_scaling import REPOSITORY, REQUIRED_RUN_PACKET_FIELDS
+# Pure schema validation must remain importable by the installed Windows CLI
+# without pulling in the training-only torch/model dependency graph.
+REPOSITORY = "Oleksii-debug/12-6-ai."
 
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
 PACKET_SCHEMA_VERSION = 1
@@ -40,6 +42,10 @@ CONTRACT_FIELD_LOCATIONS = {
     "resource_class": ("resource", "resource_class"),
     "maximum_cost": ("resource", "maximum_cost_usd"),
 }
+
+# Derive the exact field set from this module's canonical field-location map.
+# This avoids a second independently maintained list of required packet keys.
+REQUIRED_RUN_PACKET_FIELDS = frozenset(CONTRACT_FIELD_LOCATIONS)
 
 REQUIRED_AUTHORITIES = {
     "code",

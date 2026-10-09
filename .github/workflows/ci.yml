@@ -63,7 +63,7 @@ jobs:
           git diff --cached --quiet HEAD --
           python -m ruff check src/twelve_six/ai_qa_control.py src/twelve_six/sil_qualification.py src/twelve_six/capability_map.py tools/validate_section2_repository_surface_coverage.py tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py
           python tools/validate_section2_repository_surface_coverage.py
-          python -m pytest -q tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py
+          python -m pytest -q tests/test_ai_qa_control_section4.py tests/test_sil_qualification_section3.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py tests/test_r01_portable_run_packet.py tests/test_windows_operator_cli_packaging.py::test_import_only_windows_cli_without_optional_training_dependencies tests/test_windows_operator_cli_packaging.py::test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them
       - name: Plan 7 S12 LOCAL_FREE exact-head component qualification
         if: github.event_name == 'pull_request' && github.head_ref == 'plan7/s12-terminal-scaling-qualification-20261008'
         run: |
