@@ -66,6 +66,16 @@ class ModelSpec:
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
 
+        for name in (
+            "attention_bias",
+            "mlp_bias",
+            "final_norm",
+            "tie_word_embeddings",
+            "lm_head_bias",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be a boolean")
+
         if self.schema_version != 1:
             raise ValueError(f"unsupported ModelSpec schema_version: {self.schema_version}")
         if self.n_heads % self.n_kv_heads != 0:
@@ -84,6 +94,12 @@ class ModelSpec:
             raise ValueError("ModelSpec v1 supports norm_placement='pre' only")
         if self.position_embedding != "rope":
             raise ValueError("ModelSpec v1 supports position_embedding='rope' only")
+        for name in ("rope_theta", "norm_eps", "attention_dropout"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} must be a finite number")
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
         if self.rope_theta <= 0:
             raise ValueError("rope_theta must be positive")
         if self.norm_eps <= 0:
@@ -162,12 +178,14 @@ class InitSpec:
     residual_branch_scale: str = "sqrt_2_layers"
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version != 1:
             raise ValueError(f"unsupported InitSpec schema_version: {self.schema_version}")
         if self.family != "normal":
             raise ValueError("InitSpec v1 supports family='normal' only")
-        if self.std <= 0:
-            raise ValueError("InitSpec std must be positive")
+        if isinstance(self.std, bool) or not isinstance(self.std, (int, float)):
+            raise TypeError("InitSpec std must be numeric")
+        if not math.isfinite(self.std) or self.std <= 0:
+            raise ValueError("InitSpec std must be finite and positive")
         if self.residual_branch_scale not in {"none", "sqrt_2_layers"}:
             raise ValueError("unsupported residual_branch_scale")
 
@@ -451,3 +469,77 @@ class TwelveSixDecoder(nn.Module):
 
 def count_trainable_parameters(model: nn.Module) -> int:
     return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
+
+
+@dataclass(frozen=True, slots=True)
+class BaseInitManifest:
+    """Versioned, portable authority for *scratch* canonical Base weights.
+
+    This is separate from the legacy InitSpec hash: previously serialized
+    ModelSpec/InitSpec v1 identities remain byte-for-byte compatible.
+    """
+
+    schema_version: int
+    model_spec_sha256: str
+    init_spec_sha256: str
+    seed: int
+    weights_origin: str = "random_init"
+    ancestor_checkpoint_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != 1:
+            raise ValueError("unsupported BaseInitManifest schema_version")
+        if type(self.seed) is not int or not 0 <= self.seed < 2**63:
+            raise ValueError("seed must be an integer in [0, 2**63)")
+        for name in ("model_spec_sha256", "init_spec_sha256"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or len(value) != 64 or any(
+                ch not in "0123456789abcdef" for ch in value
+            ):
+                raise ValueError(f"{name} must be a lowercase SHA-256 digest")
+        if self.weights_origin != "random_init":
+            raise ValueError("canonical Base forbids foreign pretrained/instruct/aligned weights")
+        if self.ancestor_checkpoint_sha256 is not None:
+            raise ValueError("canonical Base random initialization cannot have a weight ancestor")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> BaseInitManifest:
+        if not isinstance(payload, dict) or set(payload) != set(cls.__dataclass_fields__):
+            raise ValueError("BaseInitManifest fields must match schema v1 exactly")
+        return cls(**payload)
+
+    def identity_sha256(self) -> str:
+        return canonical_json_sha256(self.to_dict())
+
+
+def build_canonical_base(
+    spec: ModelSpec,
+    init_spec: InitSpec,
+    manifest: BaseInitManifest,
+) -> TwelveSixDecoder:
+    """Build deterministic random-init Base without consuming launcher RNG.
+
+    The constructor's own temporary parameter initializations are also inside
+    the forked RNG context, not merely the final _init_module pass.
+    No weights can be loaded or inherited through this factory.
+    """
+    # A frozen dataclass can still be forged via object.__setattr__; recheck the
+    # full Base ancestry contract at the trust boundary before creating weights.
+    BaseInitManifest.from_dict(manifest.to_dict())
+    # Recheck even frozen spec instances: object.__setattr__ can forge invalid
+    # numeric/architecture fields after dataclass construction. An attacker
+    # must not be able to rehash such a spec into an otherwise valid manifest.
+    ModelSpec.from_dict(spec.to_dict())
+    InitSpec.from_dict(init_spec.to_dict())
+    if manifest.model_spec_sha256 != spec.identity_sha256():
+        raise ValueError("Base initialization ModelSpec identity mismatch")
+    if manifest.init_spec_sha256 != init_spec.identity_sha256():
+        raise ValueError("Base initialization InitSpec identity mismatch")
+    with torch.random.fork_rng(devices=[]):
+        # torch.manual_seed would also overwrite CUDA/MPS/XPU launcher RNG state.
+        # The model is constructed on CPU; seed only its isolated CPU generator.
+        torch.random.default_generator.manual_seed(manifest.seed)
+        return TwelveSixDecoder(spec, init_spec)

@@ -912,3 +912,38 @@ jobs:
           name: plan1-s4-windows-lock-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/plan1-s4-windows-lock.json
           if-no-files-found: error
+
+  plan3-section1-scoped-qualification:
+    # Independent Plan 3 component evidence; never substitutes for shared fail-closed gates.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 3098
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify Plan 3 Section 1 exact PR-head SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Plan 3 Section 1 scoped Ruff
+        run: |
+          ruff check src/twelve_six/model.py \
+            tests/test_plan3_section1_model_init.py \
+            tests/test_model341_current_main_resource_envelope_v1.py \
+            tests/test_model341_current_main_resource_receipt_v1.py
+      - name: Plan 3 Section 1 deterministic and adversarial contract tests
+        run: |
+          pytest -q \
+            tests/test_plan3_section1_model_init.py \
+            tests/test_model341_current_main_resource_envelope_v1.py \
+            tests/test_model341_current_main_resource_receipt_v1.py
