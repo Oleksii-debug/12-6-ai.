@@ -56,6 +56,7 @@ def _one_block() -> tuple[dict, dict[str, bytes]]:
     }
     manifest = {
         "target_count": 2, "block_count": 1,
+        "block_size": packing.BLOCK,
         "production_release_authorized": False,
         "physical_s9_admitted": False,
         "source_token_shard_mapping": [{
