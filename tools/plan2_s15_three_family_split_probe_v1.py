@@ -16,7 +16,6 @@ from tools import plan2_corpus_mixture_v1 as mixture
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_d03_physical_sources_v1 as d03
 from tools import plan2_s15_three_family_physical_v1 as combined
-from tools import plan2_s15_d03_physical_sources_v1 as d03
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
 
 SCHEMA = "12-6.plan2-s15-three-family-source-split-probe.v1"
