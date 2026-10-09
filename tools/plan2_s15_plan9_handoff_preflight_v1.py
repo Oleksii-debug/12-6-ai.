@@ -49,6 +49,11 @@ def assemble(
          and training["training_corpus_authorized"] is False
          and training["physical_s9_admitted"] is False,
          "Plan9 preflight missing S10 exact isolated physical train source")
+    need(rights["three_family_source_sha256"] ==
+             training["upstream_three_family_sha256"]
+         == data["source_cohort_manifest_sha256"]
+         == evaluation["physical_three_family_sha256"],
+         "Plan9 source family lineage differs across rights/S10/S13/EVAL233")
     need(tokenizer["source_train_partition_sha256"] ==
              training["manifest_sha256"]
          and tokenizer["source_s10_split_sha256"] ==
@@ -80,6 +85,7 @@ def assemble(
          and compatibility["production_backend_binding_granted"] is False,
          "Plan3/4 ModelSpec cannot approve checkpoint reuse or optimizer start")
     need(evaluation["real_final_test_custody_verified"] is True
+         and evaluation["real_final_decontamination_clean"] is True
          and evaluation["real_final_test_outcomes_read"] is False
          and evaluation["selection_payload_scanned"] is False
          and evaluation["training_corpus_authorized"] is False
@@ -99,6 +105,12 @@ def assemble(
              and set(x) <= set("0123456789abcdef")
              for x in parents.values()),
          "noncanonical parent SHA in Plan9 handoff")
+    need(len(set(parents.values())) == len(parents)
+         and type(data["ordered_exposure_chain_sha256"]) is str
+         and len(data["ordered_exposure_chain_sha256"]) == 64
+         and set(data["ordered_exposure_chain_sha256"]) <=
+             set("0123456789abcdef"),
+         "Plan9 handoff parent alias or malformed exposure chain")
     core = {
         "schema_version": SCHEMA,
         "decision": "PLAN9_DATA_HANDOFF_PREFLIGHT_ONLY_NOT_PRODUCTION",
