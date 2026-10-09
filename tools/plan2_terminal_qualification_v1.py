@@ -25,6 +25,7 @@ from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
 from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
+from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -202,6 +203,17 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and real_targets["tokenizer_manifest_sha256"] == real_fit["manifest_sha256"]
              and real_targets["target_count"] == real_shards["target_count"],
              "real physical packing-to-exposure identity mismatch")
+    witness = real_readback.verify(
+        destination / "physical-shards-candidate",
+        destination / "physical-exposures-candidate",
+        expected_packed_sha256=real_shards["manifest_sha256"],
+        expected_exposure_sha256=real_targets["manifest_sha256"],
+    )
+    _require(witness["terminal_done"] is False
+             and witness["production_release_authorized"] is False
+             and witness["readback_target_count"] == real_targets["target_count"]
+             and witness["last_chain_sha256"] == real_targets["chain_head_sha256"],
+             "independent physical S13/S14 publication readback mismatch")
     cohort = physical.stage_candidate_cohort(root, destination / "source")
     current = mixture.stage_mixture(root, destination / "physical-candidate")
     _require(cohort["source_level_candidate_only"] is True
@@ -278,6 +290,8 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             real_targets["manifest_sha256"],
         "physical_real_text_exposure_chain_head_sha256":
             real_targets["chain_head_sha256"],
+        "physical_s13_s14_independent_readback_sha256":
+            witness["readback_sha256"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_gate_manifest_sha256": gates,
