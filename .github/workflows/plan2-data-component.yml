@@ -7,6 +7,11 @@ on:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/**'
+      - 'data/external/**'
+      - 'src/twelve_six/data/**'
+      - 'src/twelve_six/tokenization/**'
+      - 'src/twelve_six/packing/**'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
@@ -20,6 +25,11 @@ on:
     paths:
       - 'tools/plan2_*.py'
       - 'tests/test_plan2_*.py'
+      - 'configs/data/**'
+      - 'data/external/**'
+      - 'src/twelve_six/data/**'
+      - 'src/twelve_six/tokenization/**'
+      - 'src/twelve_six/packing/**'
       - 'configs/data/plan2_near_dedup_audit_v1.json'
       - 'configs/data/plan2_reserved_eval_fixture_v1.json'
       - 'configs/data/plan2_corpus_mixture_policy_v1.json'
