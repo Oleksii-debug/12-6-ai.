@@ -203,7 +203,19 @@ def test_physical_chain_rejects_disconnected_signed_receipts(tmp_path: Path) -> 
         terminal._audit_physical_gates(candidate, mixture_hash)
 
 
-def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unsafe_flag", [
+    "training_corpus_authorized",
+    "production_release_authorized",
+    "physical_tokenizer_fit_authorized",
+    "tokenizer_fit_authorized",
+    "evaluation_authorized",
+    "generated_auto_reentry_authorized",
+    "raw_text_emitted",
+    "real_final_test_material_accessed",
+])
+def test_signed_mixture_cannot_grant_training(
+    tmp_path: Path, unsafe_flag: str,
+) -> None:
     candidate = tmp_path / "physical-candidate"
     fw = candidate / "firewall"
     near = fw / "near"
@@ -225,14 +237,17 @@ def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
         physical_s7_manifest_sha256=near_receipt["manifest_sha256"],
     )
     altered = {
-        "training_corpus_authorized": True,
+        "training_corpus_authorized": False,
         "physical_s8_manifest_sha256": reserved["manifest_sha256"],
     }
+    altered[unsafe_flag] = True
     forged_hash = terminal._digest(terminal._canonical(altered))
     (candidate / "corpus-mixture-manifest.json").write_bytes(
         terminal._canonical({**altered, "dataset_candidate_sha256": forged_hash})
     )
-    with pytest.raises(terminal.QualificationDenied, match="lineage disconnected"):
+    expected = ("lineage disconnected" if unsafe_flag == "training_corpus_authorized"
+                else "S9 mixture incorrectly authorizes")
+    with pytest.raises(terminal.QualificationDenied, match=expected):
         terminal._audit_physical_gates(candidate, forged_hash)
 
 
@@ -242,6 +257,8 @@ def test_signed_mixture_cannot_grant_training(tmp_path: Path) -> None:
     "generated_auto_reentry_authorized",
     "raw_text_emitted",
     "real_final_test_material_accessed",
+    "production_release_authorized",
+    "physical_tokenizer_fit_authorized",
 ])
 def test_signed_gate_rejects_authority_and_payload_leaks(
     tmp_path: Path, unsafe_flag: str,
