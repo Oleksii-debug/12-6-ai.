@@ -947,3 +947,37 @@ jobs:
             tests/test_plan3_section1_model_init.py \
             tests/test_model341_current_main_resource_envelope_v1.py \
             tests/test_model341_current_main_resource_receipt_v1.py
+
+  plan8-admit-plan3-model-source:
+    # Direct dependency for Plan3 S1: independent fail-closed Plan8 qualification.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'plan8/s3-admit-plan3-model-20261009'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact Plan8 candidate
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Fail-closed Plan8 source and executable inventory
+        run: python tools/validate_section2_repository_surface_coverage.py
+      - name: Scoped model and Plan8 controls Ruff
+        run: |
+          ruff check src/twelve_six/model.py src/twelve_six/capability_map.py \
+            tests/test_plan3_section1_model_init.py tests/test_capability_map_section2.py \
+            tests/test_repository_surface_inventory_section2.py
+      - name: Exact-head versioned source qualification tests
+        run: |
+          pytest -q tests/test_capability_map_section2.py \
+            tests/test_repository_surface_inventory_section2.py \
+            tests/test_plan3_section1_model_init.py
