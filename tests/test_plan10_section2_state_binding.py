@@ -24,8 +24,9 @@ def make_components(root: Path) -> dict[str, Path]:
                         "snapshot TEXT NOT NULL, digest TEXT NOT NULL)"
                     )
                     db.execute(
-                        "CREATE TABLE history (task_id TEXT, revision INTEGER, "
-                        "snapshot TEXT, digest TEXT, PRIMARY KEY(task_id, revision))"
+                        "CREATE TABLE history (task_id TEXT NOT NULL, revision INTEGER NOT NULL, "
+                        "snapshot TEXT NOT NULL, digest TEXT NOT NULL, "
+                        "PRIMARY KEY(task_id, revision))"
                     )
                 else:
                     db.execute("CREATE TABLE meta (revision INTEGER NOT NULL)")
@@ -157,3 +158,29 @@ def test_snapshot_symlink_rejected_before_restore(tmp_path: Path) -> None:
     item.symlink_to(roots["memory"] / "state.sqlite")
     with pytest.raises(StateBindingError, match="nonregular"):
         restore(tmp_path / "backup", tmp_path / "restored", manifest_sha256=digest)
+
+
+@pytest.mark.parametrize(("kind", "table"), [("tasks", "tasks"), ("memory", "records")])
+def test_canonical_store_rejects_extra_columns(
+    tmp_path: Path, kind: str, table: str
+) -> None:
+    roots = make_components(tmp_path)
+    with sqlite3.connect(roots[kind] / "state.sqlite") as db:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN untrusted TEXT")
+    with pytest.raises(StateBindingError, match="canonical component store"):
+        capture(roots, tmp_path / "backup", writers_stopped=True)
+    assert not (tmp_path / "backup").exists()
+
+
+def test_canonical_store_requires_unique_memory_identity(tmp_path: Path) -> None:
+    roots = make_components(tmp_path)
+    with sqlite3.connect(roots["memory"] / "state.sqlite") as db:
+        db.execute("DROP TABLE records")
+        db.execute(
+            "CREATE TABLE records (memory_id TEXT PRIMARY KEY, "
+            "sequence INTEGER NOT NULL, payload TEXT NOT NULL, "
+            "digest TEXT NOT NULL, replaces_id TEXT)"
+        )
+    with pytest.raises(StateBindingError, match="canonical component store"):
+        capture(roots, tmp_path / "backup", writers_stopped=True)
+    assert not (tmp_path / "backup").exists()
