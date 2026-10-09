@@ -126,7 +126,7 @@ physical PASS by default; simulation can be read back only with explicit
 
 ## Remaining closure gates
 
-This branch remains a candidate until the updated exact-head scoped tests, static/CI checks,
+The Plan-8-S4 exact-head CI installs pinned cryptography 46.0.4 before scoped\nEd25519/operator tests; a skipped signing regression is never physical proof.\n\nThis branch remains a candidate until the updated exact-head scoped tests, static/CI checks,
 accepted-main integration/readback and terminal registry/Drive record are completed.
 Real Windows/Linux/server HIL, production provisioning/trust custody, OS-level resource
 quotas and final product/NVDA acceptance are not claimed from local fixtures. A production
