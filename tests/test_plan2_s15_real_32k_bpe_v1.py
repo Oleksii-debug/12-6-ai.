@@ -59,6 +59,12 @@ def test_incremental_merge_order_matches_incumbent_reference() -> None:
     model = real.ByteBPE32k(merges, required_vocab_size=goal)
     assert model.vocab_size == goal
     assert model.identity.to_dict()["vocab_size"] == goal
+    with pytest.raises(TypeError):
+        model.rank[(97, 98)] = 5
+    with pytest.raises(AttributeError):
+        model.tokens.append(b"forged")
+    with pytest.raises(AttributeError):
+        model.merges.append((97, 98))
     for row in rows:
         assert model.decode(model.encode(row["text"])) == row["text"]
         assert model.decode(model.encode(
