@@ -19,6 +19,14 @@ def test_real_shards_integrity_and_same_path_restart(tmp_path: Path) -> None:
     assert receipt["target_count"] > 0
     assert receipt["block_count"] > 0
     assert receipt["shards"]
+    segment_map = receipt["source_segment_byte_map"]
+    assert [r["record_id"] for r in segment_map] == receipt["train_record_ids"]
+    assert segment_map[0]["source_byte_start"] == 0
+    assert segment_map[-1]["source_byte_end"] == receipt["train_document_bytes"]
+    assert all(a["source_byte_end"] == b["source_byte_start"]
+               for a, b in zip(segment_map, segment_map[1:]))
+    assert all(len(x["source_sha256"]) == 64 for x in segment_map)
+
     assert receipt["source_token_shard_mapping"]
     assert sum(x["target_count"] for x in receipt["shards"]) == (
         receipt["target_count"]
