@@ -102,6 +102,12 @@ def assess(fitted: dict[str, Any]) -> dict[str, Any]:
 
 def assess_fullsize_preproduction(fitted: dict[str, Any]) -> dict[str, Any]:
     """Check candidate-only full 32K ModelSpec binding with the official API."""
+    source_core = {k: v for k, v in fitted.items() if k != "manifest_sha256"}
+    need(fitted.get("schema_version") ==
+             "12-6.plan2-s15-real-32k-byte-bpe-preproduction-v1"
+         and fitted.get("manifest_sha256") ==
+             books.sha(books.canonical(source_core)),
+         "fullsize tokenizer upstream checksum or schema invalid")
     need(fitted["decision"] ==
              "SOURCE_BOUND_32768_BYTE_BPE_PREPRODUCTION_NOT_RELEASE"
          and fitted["actual_vocab_size"] == 32768
