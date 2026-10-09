@@ -27,6 +27,7 @@ from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
+from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
@@ -177,6 +178,14 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and d03_ua["production_release_authorized"] is False
              and d03_ua["terminal_done"] is False,
              "D03 historical source snapshot cannot authorize Plan2 release")
+    normalized_ua = d03_normalized.stage(
+        root, destination / "physical-d03-normalized")
+    _require(normalized_ua["d03_source_manifest_sha256"] == d03_ua["manifest_sha256"]
+             and normalized_ua["normalized_member_count"] == 12
+             and normalized_ua["normalized_total_bytes"] == 48675
+             and normalized_ua["physical_s3_s9_admitted"] is False
+             and normalized_ua["production_release_authorized"] is False,
+             "physical normalized D03 sources cannot promote Plan2 corpus")
     books_cohort = books.stage(root, destination / "public-domain-books")
     _require(books_cohort["training_corpus_authorized"] is False
              and books_cohort["production_release_authorized"] is False,
@@ -313,6 +322,8 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
         "real_three_family_total_bytes": combined["total_physical_normalized_bytes"],
         "real_three_family_fixture_eval_clean":
             combined["physical_candidate_fixture_eval_clean"],
+        "d03_real_ua_normalized_physical_sha256":
+            normalized_ua["manifest_sha256"],
         "d03_real_ua_source_candidate_sha256": d03_ua["manifest_sha256"],
         "d03_real_ua_source_candidate_families": d03_ua["physical_family_count"],
         "d03_real_ua_source_candidate_members": d03_ua["physical_record_count"],
