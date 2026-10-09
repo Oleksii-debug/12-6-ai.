@@ -54,6 +54,13 @@ def _fixture(root: Path) -> tuple[Path, Path, dict, dict]:
         "target_count": n,
         "block_count": 1,
         "block_size": packing.BLOCK,
+        "train_document_bytes": 2,
+        "train_record_ids": [rid],
+        "source_segment_byte_map": [{
+            "record_id": rid, "source_id": source,
+            "source_byte_start": 0, "source_byte_end": 2,
+            "source_sha256": "a" * 64,
+        }],
         "shards": [{
             "path": name,
             "sha256": books.sha(raw),
