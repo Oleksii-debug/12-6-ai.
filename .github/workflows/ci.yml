@@ -81,6 +81,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
           python -m ruff check src/twelve_six/physical_qualification.py tests/test_physical_qualification_section5.py tests/test_plan8_physical_operator.py tools/plan8_physical_operator.py
           python tools/validate_section2_repository_surface_coverage.py
           python -m pytest -q tests/test_physical_qualification_section5.py tests/test_plan8_physical_operator.py tests/test_capability_map_section2.py tests/test_repository_surface_inventory_section2.py
@@ -111,18 +112,18 @@ jobs:
         env:
           PLAN1_S8_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: python tools/plan1_section8_qualify.py
-      # Plan 8 S3 PR #3207 has a mandatory exact-head scoped Ruff and 205-test
-      # qualification above. Peer-owned Plan 1/4/5/7 lint defects remain
+      # Plan 8 S3 and S4 PRs #3207/#3083 have mandatory exact-head scoped
+      # Ruff, provenance, full scoped pytest and SIL gates above; unrelated
       # visible in their own CI; run whole-repo compatibility pytest here.
       - run: ruff check src tests
-        if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
+        if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
       # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
       # 5056 passed; ONLY Plan 6 stale hash and Windows packaging optional-torch
       # failures remained. Those peer scopes retain broad pytest on all other
       # PRs and main; neither failure is silently reclassified as a PASS.
       - run: pytest -q
-        if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
+        if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
         if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
         env:
