@@ -31,7 +31,12 @@ def need(ok: bool, why: str) -> None:
 
 
 def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
-    packed, physical_bytes = physical.build(root)
+    return build_from_packed(*physical.build(root))
+
+
+def build_from_packed(packed: dict[str, Any],
+                      physical_bytes: dict[str, bytes]) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Reuse the exact S14 target/exposure builder with another S13 physical source."""
     need(packed["target_count"] > 0
          and packed["production_release_authorized"] is False
          and packed["physical_s9_admitted"] is False,
