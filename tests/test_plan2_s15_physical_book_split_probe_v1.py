@@ -109,3 +109,28 @@ def test_probe_has_no_effect_on_rights_policy(tmp_path: Path) -> None:
     probe.stage(ROOT, tmp_path / "report")
     after = (ROOT / "configs/data/plan2_rights_admissibility_v1.json").read_bytes()
     assert before == after
+
+
+@pytest.mark.parametrize(
+    ("rejected_field", "rejected_value"),
+    [
+        ("g06_rejected_record_ids", ["en.public-domain.frankenstein:r00000000"]),
+        ("data232_excluded_record_count", 1),
+        ("data232_quarantined_source_family_count", 1),
+    ],
+)
+def test_rejected_physical_text_never_reenters_split(
+    monkeypatch, rejected_field: str, rejected_value: object
+) -> None:
+    """Refuse a full-body S10 probe after an upstream exclusion."""
+    genuine_proof = probe.books.inspect(ROOT)
+    monkeypatch.setattr(
+        probe.books, "inspect",
+        lambda _root: {**genuine_proof, rejected_field: rejected_value},
+    )
+    monkeypatch.setattr(
+        probe, "_rows",
+        lambda *_args: pytest.fail("rejected text must not be materialized"),
+    )
+    with pytest.raises(probe.BookSplitProbeDenied, match="rejected text"):
+        probe.inspect(ROOT)
