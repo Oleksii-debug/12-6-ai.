@@ -11,13 +11,14 @@ import os
 import sys
 from pathlib import Path
 
-from plan8_physical_operator import _public_key_verifier, main as physical_operator
+from plan8_physical_operator import _public_key_verifier
+from plan8_physical_operator import main as physical_operator
 from twelve_six.evidence_control_bridge import (
     bridge_status,
     build_host_dispatch,
     claim_bridge_dispatch,
-    record_bridge_return,
     publish_bridge_return_github,
+    record_bridge_return,
     stage_bridge_dispatch,
     stop_bridge_dispatch,
 )
