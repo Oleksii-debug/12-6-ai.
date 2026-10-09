@@ -36,6 +36,7 @@ from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixtur
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
+from tools import plan2_s15_three_family_train_exposure_v1 as three_family_exposure
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
@@ -306,6 +307,24 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and plan34_32k["production_backend_binding_granted"] is False
              and plan34_32k["plan9_optimizer_handoff_granted"] is False,
              "Plan3/4 model binding overstated a non-release 32K source candidate")
+    real_three_targets = three_family_exposure.stage(
+        root, destination / "physical-three-family-s13-s14")
+    _require(real_three_targets["source_cohort_manifest_sha256"] ==
+             combined["manifest_sha256"]
+             and real_three_targets["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and real_three_targets["source_s10_split_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and real_three_targets["frozen_s12_candidate_sha256"] ==
+             real_32k["manifest_sha256"]
+             and real_three_targets["train_document_count"] ==
+             train_only["train_document_count"]
+             and real_three_targets["heldout_payloads_exposed"] is False
+             and real_three_targets["target_count"] > 0
+             and real_three_targets["production_release_authorized"] is False
+             and real_three_targets["plan9_optimizer_permission"] is False
+             and real_three_targets["terminal_done"] is False,
+             "physical 3-family 32K S13/S14 targets or holdout boundary drifted")
     real_eval = real_final.stage(root, destination / "physical-real-final-custody")
     _require(real_eval["physical_three_family_sha256"] ==
              combined["manifest_sha256"]
@@ -414,6 +433,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_three_family_32768_s13_s14_sha256":
+            real_three_targets["manifest_sha256"],
+        "real_three_family_32768_exposure_count":
+            real_three_targets["target_count"],
+        "real_three_family_32768_exposure_chain_sha256":
+            real_three_targets["ordered_exposure_chain_sha256"],
         "real_source_32768_byte_bpe_candidate_sha256":
             real_32k["manifest_sha256"],
         "real_source_32768_fitted_merge_count":
