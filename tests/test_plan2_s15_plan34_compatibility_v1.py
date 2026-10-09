@@ -87,3 +87,41 @@ def test_symlinked_compatibility_publication_refused(
     monkeypatch.setattr(compat.bpe, "inspect", lambda _: pytest.fail("source read"))
     with pytest.raises(compat.Plan34CompatibilityDenied, match="symlink"):
         compat.stage(tmp_path, link)
+
+
+def test_true_32768_candidate_requires_fresh_initialization_not_release() -> None:
+    from tools import plan2_public_domain_books_v1 as books
+
+    identity = {
+        "version": "12-6-byte-bpe-32k-preproduction-v1",
+        "config_sha256": "b" * 64,
+        "vocab_sha256": "c" * 64,
+        "vocab_size": 32768,
+        "normalization": "none",
+        "encoding": "utf-8",
+        "special_tokens": dict(frozen.SPECIAL),
+    }
+    core = {
+        "schema_version": "12-6.plan2-s15-real-32k-byte-bpe-preproduction-v1",
+        "decision": "SOURCE_BOUND_32768_BYTE_BPE_PREPRODUCTION_NOT_RELEASE",
+        "target_vocab_size": 32768,
+        "actual_vocab_size": 32768,
+        "fitted_merge_count": 32508,
+        "heldout_payloads_fitted": False,
+        "production_train_source_admitted": False,
+        "training_corpus_authorized": False,
+        "production_release_authorized": False,
+        "terminal_done": False,
+        "tokenizer_identity": identity,
+    }
+    signed = {**core, "manifest_sha256": books.sha(books.canonical(core))}
+    proof = compat.assess_fullsize_preproduction(signed)
+    assert proof["production_32k_model_spec_compatible"] is True
+    assert proof["candidate_vocab_size"] == 32768
+    assert proof["checkpoint_weight_reuse_approved"] is False
+    assert proof["production_backend_binding_granted"] is False
+    assert proof["plan9_optimizer_handoff_granted"] is False
+    assert proof["terminal_done"] is False
+    forged = {**signed, "production_release_authorized": True}
+    with pytest.raises(compat.Plan34CompatibilityDenied):
+        compat.assess_fullsize_preproduction(forged)
