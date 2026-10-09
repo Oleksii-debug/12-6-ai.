@@ -67,6 +67,10 @@ def test_unexpected_combined_member_denied_before_publication(
         "tokenizer_manifest_sha256": "4" * 64,
         "target_count": 2,
         "block_count": 1,
+        "actual_loss_target_count_is_32k_tokenizer_based": True,
+        "production_language_balance_approved": False,
+        "actual_loss_targets_by_language": {"en": 1, "uk": 1},
+        "actual_loss_targets_by_source_family": {"php": 1, "gutenberg": 1},
         "manifest_sha256": "5" * 64,
     }
     monkeypatch.setattr(train.train_packing, "build", lambda _: (fake, {}))
