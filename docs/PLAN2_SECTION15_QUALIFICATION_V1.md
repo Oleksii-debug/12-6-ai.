@@ -254,3 +254,46 @@ Plan9 has no signed production data handoff. Final PASS requires actual
 exact-head CI execution plus original-Dataset train/release rights, independent
 final-test custody and full production compatibility, not just these
 reproducibility properties.
+
+
+## Actual 3-family source intake and whole-source split (2026-10-09)
+
+The D03 historical artifacts have been independently retrieved and checked:
+10 original Ukrainian PHP Manual XML objects and 2 original Ukrainian Rust Book
+Markdown objects reproduce all historical normalized object hashes (30,510 +
+18,165 = **48,675** UTF-8 bytes). The exact **12 upstream Git blobs** and 3
+upstream license blobs, attribution notices, preserved source revisions and
+historical D03 source-admission evidence are now present in this Plan2-owned
+branch. PHP docs use CC-BY-3.0-or-later with attribution; Rust Book translation
+retains MIT+Apache-2.0 notices. Historical rights are source-level and have
+**zero canonical Plan2 training-corpus credit**, as stated in the frozen D03
+authority. Do not report this as a Plan2 release.
+
+`tools/plan2_s15_d03_physical_sources_v1.py` replays normalization byte for
+byte from these committed original sources and the frozen metadata, checks
+source/license/attribution/provenance seals, runs the incumbent G06 and DATA-232
+LOCAL_FREE reserved-fixture audit and produces a signed nonrelease receipt.
+
+`tools/plan2_s15_three_family_physical_v1.py` unites **three actual physical
+source families**, i.e. 3 Gutenberg public-domain original books (one upstream
+family) plus 10 PHP pages (one upstream family) plus 2 Rust Book pages (one
+upstream family): **15 real documents, 1,314,156 normalized UTF-8 bytes**.
+It enforces global physical exact hashes, cross-family same-language S7 near
+mirror inspection, combined G06 privacy, DATA-232 reserve-fixture checks and
+candidate-only source provenance. Cross-language semantic dedup is explicitly
+NOT established, and the fixture is not real benchmark custody.
+
+`tools/plan2_s15_three_family_split_probe_v1.py` binds all 15 original
+document IDs to an incumbent S10 **fixture-shaped, non-authoritative** S9
+wrapper and proves whole-original-source (not individual paragraph) cluster
+assignment. The exact S10 policy creates 5 source clusters, not 15 independent
+source families. Train/validation/test family coverage and leakage are recorded
+explicitly. This mechanism does NOT supply a verified S3-S9 production mix,
+externally sealed test custody, fitted production tokenizer or a Plan9 binding.
+
+Every part is currently **candidate-only and no-release**; final Plan2 S15
+remains OPEN pending actual accepted S1–S9 full lineage, final eval custody,
+production-sized frozen 32K tokenizer, compatible production shards/exposure
+stream, two fully clean production rebuilds and Plan9 handoff. Exact current
+head hosted CI remains unverified when the jobs are queued; queued/cancelled is
+never a PASS and a component PASS is not terminal DONE.
