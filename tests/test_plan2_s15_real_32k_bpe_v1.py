@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from tools import plan2_s15_real_32k_bpe_v1 as real
-from tools import plan2_tokenizer_fit_freeze_v1 as legacy
 
 ROOT = Path(__file__).resolve().parents[1]
 
