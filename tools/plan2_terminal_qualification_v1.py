@@ -239,6 +239,11 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and combined_partitions["canonical_source_family_count"] == 3
              and combined_partitions["physical_document_count"] == 15
              and combined_partitions["whole_source_cluster_count"] == 5
+             and combined_partitions["train_source_family_count"] == 3
+             and combined_partitions["train_record_count"] == 13
+             and combined_partitions["validation_record_count"] == 1
+             and combined_partitions["test_record_count"] == 1
+             and combined_partitions["validation_test_language_balanced"] is False
              and combined_partitions["cluster_leakage_count"] == 0
              and combined_partitions["physical_s9_admitted"] is False
              and combined_partitions["training_corpus_authorized"] is False

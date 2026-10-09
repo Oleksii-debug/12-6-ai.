@@ -92,6 +92,12 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
             # No heldout plaintext or raw record IDs in the published
             # partition. Do not merge validation/final identities.
             heldout.append({**member, "role": role})
+    need(len(train_families) == 3
+         and assigned["physical_s10_train_all_three_families"] is True
+         and assigned["train_record_count"] == 13
+         and assigned["validation_record_count"] == 1
+         and assigned["test_record_count"] == 1,
+         "physical train split is not multilingual or roles drifted")
     need(accounted == proof["total_physical_normalized_bytes"]
          and len(training) + len(heldout) == 15
          and len(training) == assigned["train_record_count"]

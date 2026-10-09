@@ -37,6 +37,9 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     root = root.resolve(strict=True)
     partition, members = training.build(root)
     fitted = fit.inspect(root)
+    need(partition.get("train_source_family_count") == 3
+         and partition["train_document_count"] == 13,
+         "physical multi-family training records were not fully admitted as candidates")
     need(fitted["source_train_partition_sha256"] == partition["manifest_sha256"]
          and fitted["source_s10_split_sha256"] ==
              partition["s10_split_manifest_sha256"]

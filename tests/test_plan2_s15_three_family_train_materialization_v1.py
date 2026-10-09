@@ -15,6 +15,10 @@ def test_real_train_partition_persists_only_train(tmp_path: Path) -> None:
     report = physical.stage(ROOT, tmp_path / "partition")
     assert report["source_families_total"] == 3
     assert report["source_clusters_total"] == 5
+    assert report["train_source_family_count"] == 3
+    assert report["train_document_count"] == 13
+    assert report["physical_train_bytes"] == 740_518
+    assert report["heldout_document_count"] == 2
     assert report["train_document_count"] > 0
     assert report["heldout_document_count"] > 0
     assert report["train_document_count"] + report["heldout_document_count"] == 15

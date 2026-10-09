@@ -307,6 +307,8 @@ def inspect(root: Path) -> dict[str, Any]:
     root = root.resolve(strict=True)
     partition, physical = training.build(root)
     need(partition["source_families_total"] == 3
+         and partition.get("train_source_family_count") == 3
+         and partition["train_document_count"] == 13
          and partition["train_document_count"] > 0
          and partition["heldout_document_count"] > 0
          and partition["heldout_plaintext_materialized"] is False
