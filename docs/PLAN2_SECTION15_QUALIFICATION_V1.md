@@ -179,3 +179,36 @@ production corpus (with both rights and reserve custody), production-scale
 frozen tokenizer, deterministic production shards and exposures, two clean
 production rebuilds, and a Plan9-compatible signed release handoff are
 established. Neither this PR nor a green component CI alone constitutes DONE.
+
+
+## Physical real-text S13/S14 candidates (not production release)
+
+Section 15 now separately reconstructs physical S13 token targets from the
+verified **actual training book**. The versioned
+`tools/plan2_s15_physical_packing_candidate_v1.py` reuses the accepted S12
+FrozenBPE identity and incumbent S13 packer's BOS/EOS, token labels, source
+boundaries and loss/attention masks. Source text is segmented losslessly under
+S12's bounded fit policy; its S15 segment IDs occupy a separate numeric domain
+from S10's two original per-book spans. Every physical shard carries a
+deterministic canonical JSON SHA-256, a block count and a parent tokenizer/split
+identity. A changed or additional shard, symlink or manifest is rejected at
+immutable readback. A versioned **64-block per shard** grouping is explicitly
+recorded; it does not impersonate the original four-block S13 fixture layout.
+
+`tools/plan2_s15_physical_exposure_candidate_v1.py` uses the incumbent
+S14 target/exposure identity and causal hash-chain formulas to generate
+ordered, uniquely identified **real physical next-token exposures**. Each
+exposure shard binds the exact parent shard hash; missing targets, offset
+discontinuities, mask drift, changed parent shards, duplicate target/exposure
+IDs and unexpected output members fail closed. The bound physical target count
+and chain head are compared against S13 under both S15 clean rebuilds.
+
+**These are physical LOCAL_FREE CANDIDATE artifacts, not released training
+inputs.** Neither S9 `training_corpus_authorized` nor the S12
+`physical_tokenizer_fit_authorized` grant is present. The incumbent tokenizer
+is a bounded 128-merge engineering candidate, **not** a production-frozen
+32K-vocabulary tokenizer. No Plan9 launch or optimizer training is permitted
+from these artifacts. Current exact-head hosted qualification, production
+rights/mix/holdout acceptance, Plan3/4 token compatibility, and final Plan9
+release authority remain terminal gates. Do not change S15 or Plan2 to DONE
+until all of them have verifiable accepted-main evidence.
