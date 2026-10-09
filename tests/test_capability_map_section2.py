@@ -698,8 +698,8 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     assert inventory.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
     assert inventory.observed_main_tree_sha == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
     assert inventory.accepted_main_surface_count == 115
-    assert inventory.candidate_overlay_surface_count == 37
-    assert inventory.source_surface_count == 152
+    assert inventory.candidate_overlay_surface_count == 38
+    assert inventory.source_surface_count == 153
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -748,8 +748,8 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 37
-    assert len(candidate) == 37
+    assert inventory.candidate_overlay_surface_count == 38
+    assert len(candidate) == 38
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
         for surface in candidate
