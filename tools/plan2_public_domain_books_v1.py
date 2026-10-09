@@ -13,12 +13,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tools import plan2_reserved_eval_firewall_v1 as firewall
 from tools import plan2_source_admissibility_v1 as rights
 from tools import plan2_source_inventory_v1 as inventory
-from tools import plan2_reserved_eval_firewall_v1 as firewall
-from twelve_six.data import privacy_execution_authority as g06
-from twelve_six.data import decontamination_authority_v2 as decontam
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
+from twelve_six.data import decontamination_authority_v2 as decontam
+from twelve_six.data import privacy_execution_authority as g06
 
 SCHEMA = "12-6.plan2.public-domain-physical-audit.v1"
 CATALOG = "configs/data/plan2_public_domain_books_v1.json"
