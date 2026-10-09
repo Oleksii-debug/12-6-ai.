@@ -765,3 +765,97 @@ def test_bridge_signed_failure_return_is_durable_and_idempotent(
     evidence.write_text('{"signed":false}', encoding="utf-8")
     with pytest.raises(ValueError, match="different bytes"):
         bridge_module.record_bridge_return(tmp_path, **options)
+
+
+def test_github_bridge_publish_is_create_only_and_hash_only(tmp_path, monkeypatch) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    sealed = _receipt(dispatch, verdict="FAIL", evidence="physical", reproducer=None)
+    monkeypatch.setattr(
+        bridge_module, "verify_physical_execution", lambda *_args, **_kwargs: sealed
+    )
+    receipt = tmp_path / "receipt.json"
+    log = tmp_path / "private-log.bin"
+    receipt.write_bytes(b'{"sealed":true}')
+    log.write_bytes(b"SECRET_LOCAL_LOG_NOT_FOR_GITHUB")
+    remote: dict[str, bytes] = {}
+    calls = []
+
+    def pretend_github(method, path, *, token, branch, upload=None):
+        calls.append((method, path, branch))
+        assert token == "dummy-secret-token"
+        assert branch == "plan8-evidence"
+        if method == "GET":
+            if path not in remote:
+                return 404, {}
+            return 200, {
+                "type": "file", "sha": bridge_module._git_blob_identity(remote[path])
+            }
+        assert method == "PUT" and path not in remote
+        remote[path] = upload
+        return 201, {
+            "content": {"sha": bridge_module._git_blob_identity(upload)}
+        }
+
+    monkeypatch.setattr(bridge_module, "_github_evidence_request", pretend_github)
+    args = dict(
+        dispatch=dispatch, verified_packet=verified, evidence_path=receipt,
+        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
+        evidence_signature_verifier=lambda *_args: False,
+        github_token="dummy-secret-token",
+    )
+    first = bridge_module.publish_bridge_return_github(tmp_path, **args)
+    assert len(first["publication"]) == 2
+    assert all(x["state"] == "VERIFIED_CREATED" for x in first["publication"])
+    assert len(remote) == 2
+    assert all(b"SECRET_LOCAL_LOG_NOT_FOR_GITHUB" not in b for b in remote.values())
+    second = bridge_module.publish_bridge_return_github(tmp_path, **args)
+    assert all(x["state"] == "ALREADY_IDENTICAL" for x in second["publication"])
+    assert len([x for x in calls if x[0] == "PUT"]) == 2
+
+
+def test_github_bridge_denies_main_and_ambiguous_remote_conflict(tmp_path, monkeypatch):
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified, signed_packet_bytes=signed
+    )
+    bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    sealed = _receipt(dispatch, verdict="PASS", evidence="physical")
+    monkeypatch.setattr(
+        bridge_module, "verify_physical_execution", lambda *_args, **_kwargs: sealed
+    )
+    receipt = tmp_path / "receipt.json"
+    log = tmp_path / "log.bin"
+    receipt.write_bytes(b'{"sealed":true}')
+    log.write_bytes(b"local log")
+    kwargs = dict(
+        dispatch=dispatch, verified_packet=verified, evidence_path=receipt,
+        log_path=log, agent_source_bytes=b"source", artifact_root=tmp_path,
+        evidence_signature_verifier=lambda *_args: False,
+        github_token="dummy-secret-token",
+    )
+    with pytest.raises(ValueError, match="dedicated evidence branch"):
+        bridge_module.publish_bridge_return_github(
+            tmp_path, evidence_branch="main", **kwargs
+        )
+    monkeypatch.setattr(
+        bridge_module, "_github_evidence_request",
+        lambda method, path, **_other: (404, {}) if method == "GET" else (422, {}),
+    )
+    with pytest.raises(ValueError, match="conflict cannot be reconciled"):
+        bridge_module.publish_bridge_return_github(tmp_path, **kwargs)
+
+
+def test_github_bridge_rejects_missing_secret_without_network(monkeypatch):
+    def no_http(_request, **_options):
+        raise AssertionError("must never contact internet with empty credential")
+
+    monkeypatch.setattr(bridge_module, "build_opener", lambda *_args: no_http)
+    with pytest.raises(ValueError, match="token"):
+        bridge_module._github_evidence_request(
+            "GET", "evidence/plan8/test/bridge-return.json",
+            token="", branch="plan8-evidence",
+        )
