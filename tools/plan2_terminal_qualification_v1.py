@@ -26,6 +26,7 @@ from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
 from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
 from tools import plan2_s15_physical_readback_v1 as real_readback
+from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -166,6 +167,14 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
 
 def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     """Reuse all extant component authorities, without creating a second pipeline."""
+    d03_ua = d03_sources.stage(root, destination / "physical-d03-ua")
+    _require(d03_ua["physical_family_count"] == 2
+             and d03_ua["physical_record_count"] == 12
+             and d03_ua["training_corpus_authorized"] is False
+             and d03_ua["tokenizer_fit_authorized"] is False
+             and d03_ua["production_release_authorized"] is False
+             and d03_ua["terminal_done"] is False,
+             "D03 historical source snapshot cannot authorize Plan2 release")
     books_cohort = books.stage(root, destination / "public-domain-books")
     _require(books_cohort["training_corpus_authorized"] is False
              and books_cohort["production_release_authorized"] is False,
@@ -268,6 +277,12 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "d03_real_ua_source_candidate_sha256": d03_ua["manifest_sha256"],
+        "d03_real_ua_source_candidate_families": d03_ua["physical_family_count"],
+        "d03_real_ua_source_candidate_members": d03_ua["physical_record_count"],
+        "d03_real_ua_source_candidate_bytes": d03_ua["normalized_source_bytes"],
+        "real_multifamily_source_candidates_not_s3_s9_admitted":
+            d03_ua["physical_family_count"] + books_cohort["physical_source_families"],
         "real_books_manifest_sha256": books_cohort["manifest_sha256"],
         "real_books_distinct_document_families":
             books_cohort["physical_document_families"],
