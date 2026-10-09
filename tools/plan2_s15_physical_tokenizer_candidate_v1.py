@@ -52,7 +52,7 @@ def segments(source_id: str, text: str) -> list[dict[str, str]]:
     need(bool(chunks) and "".join(chunks) == text,
          "physical fit segmentation lost source bytes")
     return [
-        {"record_id": f"{source_id}:r{index:08d}", "text": payload}
+        {"record_id": f"{source_id}:r{50_000_000 + index:08d}", "text": payload}
         for index, payload in enumerate(chunks)
     ]
 
