@@ -134,3 +134,21 @@ def test_symlink_publication_is_denied(
     monkeypatch.setattr(real, "build", lambda _: pytest.fail("unsafe source read"))
     with pytest.raises(real.PhysicalExposureDenied, match="symlink"):
         real.stage(tmp_path, link)
+
+
+def test_reused_s14_builder_exactly_matches_incumbent_and_publisher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed = _one_block()
+    monkeypatch.setattr(real.physical, "build", lambda _: fixed)
+    existing, existing_bytes = real.build(tmp_path)
+    reused, reused_bytes = real.build_from_packed(*fixed)
+    assert reused == existing
+    assert reused_bytes == existing_bytes
+    first = real.stage_manifest(reused, reused_bytes, tmp_path / "reused")
+    second = real.stage(tmp_path, tmp_path / "existing")
+    assert first == second == existing
+    assert (tmp_path / "reused" / real.OUTPUT).read_bytes() == (
+        tmp_path / "existing" / real.OUTPUT
+    ).read_bytes()
+    assert real.stage_manifest(reused, reused_bytes, tmp_path / "reused") == existing
