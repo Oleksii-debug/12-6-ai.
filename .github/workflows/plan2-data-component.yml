@@ -492,3 +492,36 @@ jobs:
           name: plan2-s15-real-three-family-s13-s14-candidate
           path: ${{ runner.temp }}/real-three-s13-s14/three-family-physical-s13-s14-candidate.json
           if-no-files-found: error
+
+  qualify-32k-real-source-byte-bpe:
+    name: real-source-32768-byte-bpe
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LOCAL_FREE source-only tokenizer dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint exact-size preproduction real training tokenizer
+        run: ruff check tools/plan2_s15_real_32k_bpe_v1.py tests/test_plan2_s15_real_32k_bpe_v1.py
+      - name: Verify frozen byte fallback, reference pair ordering and actual 32K fit
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_real_32k_bpe_v1.py
+      - name: Independently reproduce exact 32768-vocabulary candidate
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_real_32k_bpe_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-real-bpe" > "$RUNNER_TEMP/plan2-s15-real-bpe-1.json"
+          python -m tools.plan2_s15_real_32k_bpe_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-real-bpe-clean" > "$RUNNER_TEMP/plan2-s15-real-bpe-2.json"
+          cmp "$RUNNER_TEMP/plan2-s15-real-bpe-1.json" "$RUNNER_TEMP/plan2-s15-real-bpe-2.json"
+          cmp "$RUNNER_TEMP/plan2-s15-real-bpe/real-32k-byte-bpe-preproduction.json" "$RUNNER_TEMP/plan2-s15-real-bpe-clean/real-32k-byte-bpe-preproduction.json"
+          python -c "import json,os,pathlib; r=pathlib.Path(os.environ['RUNNER_TEMP']); p=r/'plan2-s15-real-bpe/real-32k-byte-bpe-preproduction.json'; x=json.loads(p.read_bytes()); assert x['actual_vocab_size']==32768 and x['fitted_merge_count']==32508 and x['heldout_payloads_fitted'] is False and x['production_release_authorized'] is False and x['terminal_done'] is False"
+      - name: Retain real 32K local-free candidate identity only
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s15-actual-32768-bpe-nonrelease
+          path: ${{ runner.temp }}/plan2-s15-real-bpe-1.json
+          if-no-files-found: error
