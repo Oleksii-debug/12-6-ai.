@@ -66,7 +66,7 @@ def test_false_production_migration_never_passes(change: str) -> None:
 def test_compatibility_publication_tampering_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(compat, "inspect", lambda _: compat.assess(_fitted()))
+    monkeypatch.setattr(compat.bpe, "inspect", lambda _: _fitted())
     out = tmp_path / "out"
     report = compat.stage(tmp_path, out)
     assert report["terminal_done"] is False
@@ -84,6 +84,6 @@ def test_symlinked_compatibility_publication_refused(
     target.mkdir()
     link = tmp_path / "link"
     link.symlink_to(target, target_is_directory=True)
-    monkeypatch.setattr(compat, "inspect", lambda _: pytest.fail("source read"))
+    monkeypatch.setattr(compat.bpe, "inspect", lambda _: pytest.fail("source read"))
     with pytest.raises(compat.Plan34CompatibilityDenied, match="symlink"):
         compat.stage(tmp_path, link)
