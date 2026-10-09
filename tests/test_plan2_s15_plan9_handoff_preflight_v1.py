@@ -51,7 +51,7 @@ def _parents() -> tuple[dict, dict, dict, dict, dict, dict]:
         "heldout_payloads_exposed": False,
         "plan9_optimizer_permission": False,
         "production_release_authorized": False,
-        "independent_s13_s14_readback_sha256": "g" * 64,
+        "independent_s13_s14_readback_sha256": "7" * 64,
         "ordered_exposure_chain_sha256": "9" * 64,
         "manifest_sha256": "d" * 64,
     }
