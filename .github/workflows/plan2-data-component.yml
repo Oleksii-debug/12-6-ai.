@@ -251,3 +251,19 @@ jobs:
         run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
       - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
         run: PYTHONPATH=src:. pytest -q tests/test_plan2_terminal_qualification_v1.py
+      - name: Lint Section 15 independent Git checkout reproducibility
+        run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
+      - name: Reject unsafe archives, dirty source and false receipts
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_git_clean_checkout_v1.py
+      - name: Rebuild S15 component audit in two clean source archives
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_git_clean_checkout_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-git-rebuild"
+          python -c "import json, os, pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json'; e=json.loads(p.read_bytes()); assert e['independent_source_checkouts']==2 and e['terminal_done'] is False and e['production_release_authorized'] is False"
+      - name: Retain Section 15 clean Git rebuild metadata only
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s15-clean-checkout-evidence
+          path: ${{ runner.temp }}/plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json
+          if-no-files-found: error
