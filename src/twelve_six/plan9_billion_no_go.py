@@ -17,6 +17,7 @@ from twelve_six.plan9_optional_evolution import not_activated
 PLAN7_GATE_PATH = "src/twelve_six/billion_systems_gate.py"
 PLAN7_GATE_GIT_BLOB_SHA1 = "58f31c8db03cdc2d32b2db9e96f9ce6c91e67fa3"
 READINESS_GIT_BLOB_SHA1 = "753c906ef053b997f4518ad825688dc03037ea73"
+PINNED_READINESS_SHA256 = "26317b79996f2377f96e0fa9016d8c2c7859a484f4df09921e3c17a5fa68773f"
 S20_ECONOMICS_RECEIPT_SHA256 = (
     "73d79c59e73f9b71c81b556237a1d756bdfa18c8aacb3104c502bbe32ece2487"
 )
@@ -92,6 +93,8 @@ def decide_1b_no_go(readiness: Mapping[str, Any], economics: Mapping[str, Any]
     """
     if not _blocked_readiness(readiness):
         raise BillionDecisionDenied("R01 production prerequisite truth changed or invalid")
+    if _sha(readiness) != PINNED_READINESS_SHA256:
+        raise BillionDecisionDenied("R01 snapshot differs from accepted source identity")
     try:
         verify_campaign_economics_receipt(
             economics, not_activated(19),
