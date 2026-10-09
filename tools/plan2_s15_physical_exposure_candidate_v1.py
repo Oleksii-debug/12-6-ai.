@@ -106,8 +106,8 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
                 row = {
                     "index": index, "record_id": rid,
                     "token_offset": offset + position,
+                    "block_index": mapped_index - 1,
                     "shard_path": source_name,
-                    "block_ordinal": ordinal,
                     "position_in_block": position,
                     "target_token_id": token,
                     "target_id": target_id,
