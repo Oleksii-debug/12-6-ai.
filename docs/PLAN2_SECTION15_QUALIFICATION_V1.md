@@ -318,3 +318,24 @@ canonical branch in commit `e415fc24b21225c1d93b5cb3c2a8408c4a924a20`
 without weakening any release gate. No green CI is asserted for the current
 head until its own complete hosted job finishes; historical failures and
 cancelled/superseded workflow heads are not treated as PASS.
+
+
+## 2026-10-09 physical train-only partition of three-source-family candidate
+
+The same canonical S10 whole-source split of fifteen physical documents
+(Gutenberg English books, PHP Ukrainian docs, Rust Book Ukrainian docs)
+now drives `tools/plan2_s15_three_family_train_materialization_v1.py`.
+It writes only SHA-256-bound training UTF-8 bytes, with immutable restart,
+clean-rebuild comparison and full source-byte accounting. Validation and
+final-test records are represented by **hash-only member inventories**;
+no heldout plaintext is staged or passed to a tokenizer fitter by this
+new component. The parent S10 split manifest and split-mechanics probe
+identities are separately asserted by the S15 two-build qualification.
+
+The three actual canonical source families and source-level training rights
+have NOT yet been accepted by the inherited Plan2 S3-S9 physical pipeline.
+The physical train partition is explicitly `training_corpus_authorized=false`,
+`tokenizer_fit_authorized=false`, and `production_release_authorized=false`.
+A source-level candidate fit, even on real bytes, is not a production 32K
+vocabulary or Plan9 training permission. Exact-head CI remains an independent
+required test, not presumed from any historical success.
