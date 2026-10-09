@@ -1,0 +1,32 @@
+{
+  "activated": false,
+  "activation_prerequisites": [
+    "OWNER_EXPLICIT_ACTIVATION_AND_BUDGET",
+    "ACCEPTED_PRODUCTION_CORPUS_TOKENIZER_EXPOSURES",
+    "TERMINAL_BASE_AND_PARENT_MODEL_LINEAGE",
+    "ACTUAL_BACKEND_CHECKPOINT_AND_SAME_RUN_RECOVERY",
+    "INDEPENDENT_FROZEN_EVALUATION_AND_PROMOTION"
+  ],
+  "champion_promoted": false,
+  "compute_authorized": false,
+  "outcome": "NOT_ACTIVATED",
+  "plan": 9,
+  "producer_git_blob_sha1": "c10701b0f01ef26fa6c8cff70b4ee9c5036324ac",
+  "producer_path": "src/twelve_six/very_large_scale_paths.py",
+  "production_candidate": false,
+  "reason_codes": [
+    "NO_EXPLICIT_OWNER_SCALE_ACTIVATION",
+    "UPSTREAM_PRODUCTION_BASE_MISSING"
+  ],
+  "receipt_sha256": "c1ce6c7d5d540b354dbf10f75781b7dc8ce9fc7135f5c9946232706569f9fd6e",
+  "release_blocking": false,
+  "schema_version": 1,
+  "section": 18,
+  "tiers": [
+    "30B",
+    "70B",
+    "100B"
+  ],
+  "trained": false,
+  "training_authorized": false
+}

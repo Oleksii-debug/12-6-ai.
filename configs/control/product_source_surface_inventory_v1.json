@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 149,
+  "source_surface_count": 151,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -576,6 +576,16 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/plan9_campaign_economics.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/plan9_optional_evolution.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/portable_run_binding.py",
       "capability_id": "portable-run-authority",
       "origin": "accepted_main"
@@ -752,5 +762,5 @@
     }
   ],
   "accepted_main_surface_count": 116,
-  "candidate_overlay_surface_count": 33
+  "candidate_overlay_surface_count": 35
 }
