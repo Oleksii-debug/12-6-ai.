@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import re
-import stat
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
