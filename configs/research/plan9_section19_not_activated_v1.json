@@ -1,0 +1,33 @@
+{
+  "activated": false,
+  "activation_prerequisites": [
+    "OWNER_EXPLICIT_ACTIVATION_AND_BUDGET",
+    "ACCEPTED_PRODUCTION_CORPUS_TOKENIZER_EXPOSURES",
+    "TERMINAL_BASE_AND_PARENT_MODEL_LINEAGE",
+    "ACTUAL_BACKEND_CHECKPOINT_AND_SAME_RUN_RECOVERY",
+    "INDEPENDENT_FROZEN_EVALUATION_AND_PROMOTION"
+  ],
+  "champion_promoted": false,
+  "compute_authorized": false,
+  "outcome": "NOT_ACTIVATED",
+  "plan": 9,
+  "producer_git_blob_sha1": "e964c124892bfb004b1266c4fdad2b54dbc3a355",
+  "producer_path": "src/twelve_six/extreme_moe_paths.py",
+  "production_candidate": false,
+  "reason_codes": [
+    "NO_EXPLICIT_OWNER_SCALE_ACTIVATION",
+    "UPSTREAM_PRODUCTION_BASE_MISSING",
+    "NO_MEASURED_DENSE_MOE_EFFICIENCY"
+  ],
+  "receipt_sha256": "3f4a775a448a81da8aca8da6a40cbb4199e2c25cf69485631e48878dad92c56b",
+  "release_blocking": false,
+  "schema_version": 1,
+  "section": 19,
+  "tiers": [
+    "300B",
+    "1T",
+    "MoE"
+  ],
+  "trained": false,
+  "training_authorized": false
+}
