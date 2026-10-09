@@ -149,9 +149,14 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
 
 
 def stage(root: Path, destination: Path) -> dict[str, Any]:
+    return stage_manifest(*build(root), destination)
+
+
+def stage_manifest(proof: dict[str, Any], payloads: dict[str, bytes],
+                   destination: Path) -> dict[str, Any]:
+    """Publish generated S13 shards immutably, without refitting their tokenizer."""
     need(not any(p.is_symlink() for p in (destination, *destination.parents)),
          "symlink publication path")
-    proof, payloads = build(root)
     destination.mkdir(parents=True, exist_ok=True)
     expected = set(payloads) | {OUTPUT}
     for path in destination.rglob("*"):
