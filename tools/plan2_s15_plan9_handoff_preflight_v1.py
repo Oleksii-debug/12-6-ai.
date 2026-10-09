@@ -155,16 +155,16 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, required=True)
     args = parser.parse_args()
     files = {
-        "rights": "five-physical-source-rights.json",
-        "training": "three-family-train-partition.json",
-        "tokenizer": "real-32k-byte-bpe-preproduction.json",
-        "data": "three-family-physical-s13-s14-candidate.json",
-        "evaluation": "real-eval233-decontamination.json",
-        "compatibility": "plan34-tokenizer-compatibility-candidate.json",
+        "rights": ("physical-five-source-rights", "five-physical-source-rights.json"),
+        "training": ("physical-three-family-train", "three-family-train-partition.json"),
+        "tokenizer": ("physical-real-32768-byte-bpe", "real-32k-byte-bpe-preproduction.json"),
+        "data": ("physical-three-family-s13-s14", "three-family-physical-s13-s14-candidate.json"),
+        "evaluation": ("physical-real-final-custody", "eval233-three-family-final-decontamination.json"),
+        "compatibility": ("plan34-real-32768-compatibility", "plan34-tokenizer-compatibility-candidate.json"),
     }
     payloads = {}
-    for key, name in files.items():
-        target = args.source_receipt_directory / key / name
+    for key, (directory, name) in files.items():
+        target = args.source_receipt_directory / directory / name
         need(target.is_file() and not target.is_symlink(),
              "required immutable source receipt missing")
         raw = target.read_bytes()
