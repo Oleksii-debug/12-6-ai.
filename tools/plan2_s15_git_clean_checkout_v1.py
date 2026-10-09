@@ -44,7 +44,7 @@ def sha(raw: bytes) -> str:
 def _git(root: Path, *args: str) -> bytes:
     proc = subprocess.run(
         ["git", "-C", str(root), *args],
-        check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=False, capture_output=True,
         timeout=60,
     )
     need(proc.returncode == 0, "Git source checkout or inventory unavailable")
