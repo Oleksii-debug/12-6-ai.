@@ -68,6 +68,12 @@ def inspect(root: Path) -> dict[str, Any]:
     revision_by_family = {row["id"]: row["revision"]
                           for row in d03_config["source_families"]}
     rights_bytes: dict[str, bytes] = {}
+    license_git_seals = {
+        x["path"]: x["git_blob_sha1"]
+        for x in d03_config["source_license_files"]
+    }
+    need(len(license_git_seals) == len(d03_config["source_license_files"]) == 3,
+         "D03 license Git objects are ambiguous")
     entries: list[dict[str, Any]] = []
     grants: list[dict[str, Any]] = []
 
@@ -75,7 +81,14 @@ def inspect(root: Path) -> dict[str, Any]:
                     evidence_path: str, basis: str,
                     permission_ref: str) -> None:
         raw = books.read_checked(root, evidence_path)
-        need(len(raw) > 100 and raw.strip(), "source rights evidence missing")
+        expected_blob = (
+            books.RIGHTS_EVIDENCE_BLOB if evidence_path == BOOK_RIGHTS
+            else license_git_seals.get(evidence_path)
+        )
+        need(len(raw) > 100 and raw.strip()
+             and type(expected_blob) is str
+             and books.git_blob(raw) == expected_blob,
+             "source rights evidence Git SHA changed")
         rights_bytes[evidence_path] = raw
         grants.append({
             "source_id": sid, "rights_class": "public_licensed",
