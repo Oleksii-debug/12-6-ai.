@@ -52,3 +52,32 @@ checkpoint restore, or physical Windows/cloud qualifications are claimed.
    to `DONE`; later Sections remain unpromoted.
 
 No other Drive plan is modified. No materially paid compute is requested or run.
+
+
+## Narrow repair follow-up — exact Git-byte LOCAL_FREE qualification (2026-10-09)
+
+The originally qualified 13-test source/test blobs listed above are historical,
+not the latest repaired candidate. A security/restore review found that checking
+SQLite table names and `PRAGMA integrity_check` alone accepted altered schemas,
+including changed column sets or missing canonical unique indexes. A second
+reproduced defect used an unescaped SQLite URI: a real directory containing
+`#` failed a valid snapshot with an unsupported-schema error.
+
+Repairs on this same Plan-10-S2 PR lineage:
+- validate canonical Plan-5 v1 task/memory column signatures and unique key sets,
+  without changing the Plan-5 store implementation or its ownership;
+- construct the read-only SQLite URI using percent-encoded absolute Path.as_uri();
+- add negative extra-column and missing-unique-identity cases, plus a literal
+  `#` source-path capture/restore roundtrip.
+
+Reconstructed exact Git blob copies, verified byte identity to the PR branch:
+source `8fc32c1024d7d7eb2719738b8e3c17ebb2d499e6`;
+tests `9ffdcd95b06b6b85b5c44412f1c39a576780ac4c`.
+On these exact code/test bytes, LOCAL_FREE
+`PYTHONPATH=src python -m pytest -q tests/test_plan10_section2_state_binding.py`
+**17 passed / 0 failed**, with AST syntax parsing PASS. This is a focused Linux
+sandbox run, not a full-repository, Windows, hosted-CI, or integrated-release PASS.
+
+No real champion, whole-product candidate, cross-component quiescence, semantic
+cold-restart, versioned migration, physical HIL/NVDA or release approval is
+inferred. Section 1 WAITING_UPSTREAM; Section 2 remains NOT DONE.
