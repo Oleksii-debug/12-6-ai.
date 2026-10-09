@@ -697,22 +697,22 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     assert inventory.observed_main_sha == registry.observed_main_sha
     assert inventory.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
     assert inventory.observed_main_tree_sha == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
-    assert inventory.accepted_main_surface_count == 118
-    assert inventory.candidate_overlay_surface_count == 31
+    assert inventory.accepted_main_surface_count == 116
+    assert inventory.candidate_overlay_surface_count == 33
     assert inventory.source_surface_count == 149
     integrated = next(
         surface
         for surface in inventory.surfaces
         if surface.path == "src/twelve_six/capability_map.py"
     )
-    assert integrated.origin == "accepted_main"
+    assert integrated.origin == "modified_candidate"
     assert registry.capability(integrated.capability_id).status is CapabilityStatus.AVAILABLE
     sil_surface = next(
         surface
         for surface in inventory.surfaces
         if surface.path == "src/twelve_six/sil_qualification.py"
     )
-    assert sil_surface.origin == "accepted_main"
+    assert sil_surface.origin == "modified_candidate"
     assert (
         registry.capability(sil_surface.capability_id).status
         is CapabilityStatus.AVAILABLE
@@ -748,12 +748,17 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 31
-    assert len(candidate) == 31
+    assert inventory.candidate_overlay_surface_count == 33
+    assert len(candidate) == 33
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
-        for surface in candidate
+        for surface in candidate if surface.origin == "stacked_candidate"
     )
+    assert {surface.path for surface in candidate if surface.origin == "modified_candidate"} == {
+        "src/twelve_six/accelerated_scaling.py",
+        "src/twelve_six/capability_map.py",
+        "src/twelve_six/sil_qualification.py",
+    }
     assert "src/twelve_six/ai_qa_control.py" not in {s.path for s in candidate}
     accepted_instruction = next(
         surface for surface in inventory.surfaces
@@ -801,12 +806,10 @@ def test_source_surface_coverage_rejects_candidate_overlay_mapped_to_available_c
     target = next(
         surface
         for surface in payload["surfaces"]
-        if surface["path"] == "src/twelve_six/artifact_identity.py"
+        if surface["path"] == "src/twelve_six/post_base_preference.py"
     )
-    target["origin"] = "modified_candidate"
+    target["origin"] = "stacked_candidate"
     target["capability_id"] = "model-spec-identity"
-    payload["accepted_main_surface_count"] -= 1
-    payload["candidate_overlay_surface_count"] += 1
     path = tmp_path / "surface-inventory.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     inventory = load_source_surface_inventory(path)
@@ -846,7 +849,7 @@ def test_source_surface_coverage_ignores_public_capability_lookup_rebinding(
         lambda _self, _capability_id: unavailable,
     )
 
-    with pytest.raises(ValueError, match="must map to UNAVAILABLE"):
+    with pytest.raises(ValueError, match="modified candidate source classification drift"):
         validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
 
@@ -860,7 +863,7 @@ def test_source_surface_coverage_rejects_capability_remap_of_existing_source(
         for surface in payload["surfaces"]
         if surface["path"] == "src/twelve_six/capability_map.py"
     )
-    assert target["origin"] == "accepted_main"
+    assert target["origin"] == "modified_candidate"
     assert target["capability_id"] == "executable-capability-map"
     replacement = next(
         capability.capability_id
