@@ -185,5 +185,10 @@ def test_s15_ci_requalifies_corpus_input_changes(
         "configs/data/plan2_public_domain_books_v1.json",
         "data/external/rights-evidence/plan2-books/**",
         "data/external/snapshots/plan2-public-domain-books-v1/**",
+        "configs/data/**",
+        "data/external/**",
+        "src/twelve_six/data/**",
+        "src/twelve_six/tokenization/**",
+        "src/twelve_six/packing/**",
     ):
         assert f"      - '{trigger}'" in block
