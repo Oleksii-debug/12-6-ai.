@@ -99,14 +99,15 @@ the release composition boundary rather than copied or replaced:
   *and* before restore publication;
 - newly added tests cover real Plan-5 task/memory cold restart, forged orphan
   history, tampered history digest, stale memory revision, memory digest
-  corruption, and a malicious snapshot whose member and manifest digests were
-  recomputed after semantic tampering.
+  corruption, a malicious snapshot whose member and manifest digests were
+  recomputed after semantic tampering, and unknown-effect preservation plus
+  stale-epoch fencing on a real Plan-5 task-store cold restart.
 
 **Exact Git-byte local mirror qualification:** source
 `db63e09228625dfb7e2a0b4f52d5fd2aa0bfef46`, tests
-`0ec9a3ada759cc41495f933166a90a022c324fde`, matched with
+`744c31d59455263e3e6f492d12f589ef811c9519`, matched with
 `git hash-object`. `PYTHONPATH=src python -m pytest -q
-tests/test_plan10_section2_state_binding.py` yielded **22 passed / 0 failed**.
+tests/test_plan10_section2_state_binding.py` yielded **23 passed / 0 failed**.
 `python -m compileall` passed. This is scoped LOCAL_FREE testing with the
 reused Plan-5 source code, **not** exact integrated product / whole-repo CI.
 
@@ -126,3 +127,8 @@ migration including rollback of entire canonical state, actual Nika/Live Agent
 task/memory continuity and same-candidate integration qualification. Upstream
 Plan-9 champion remains unavailable. No product release signature, Windows
 acceptance, paid compute, or terminal Plan-10 status is claimed.
+
+The additional completed shared workflow run #37873388834 (prior intermediate
+S2 head) also failed Ruff with **77 unrelated Plan-1/4/5/7 test/source issues**;
+no Plan-10 file was named in its diagnostics and pytest was skipped. Newer
+S2 heads are not declared CI PASS unless their exact workflow finishes green.
