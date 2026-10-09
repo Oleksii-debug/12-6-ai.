@@ -10,8 +10,8 @@ import hashlib
 import json
 import re
 from collections import Counter
-from itertools import pairwise
 from collections.abc import Mapping, Sequence
+from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
