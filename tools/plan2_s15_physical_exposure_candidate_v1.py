@@ -166,9 +166,14 @@ def build_from_packed(packed: dict[str, Any],
 
 
 def stage(root: Path, destination: Path) -> dict[str, Any]:
+    return stage_manifest(*build(root), destination)
+
+
+def stage_manifest(manifest: dict[str, Any], payloads: dict[str, bytes],
+                   destination: Path) -> dict[str, Any]:
+    """Reuse immutable S14 exposure publication for any verified S13 source."""
     need(not any(p.is_symlink() for p in (destination, *destination.parents)),
          "symlink exposure publication")
-    manifest, payloads = build(root)
     destination.mkdir(parents=True, exist_ok=True)
     expected = set(payloads) | {OUTPUT}
     for path in destination.rglob("*"):
