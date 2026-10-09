@@ -312,6 +312,10 @@ jobs:
           cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-restart.json"
           cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-clean.json"
           diff -r "$RUNNER_TEMP/s15-exposures" "$RUNNER_TEMP/s15-exposures-clean"
+      - name: Lint Plan2 independent physical S13/S14 readback
+        run: ruff check tools/plan2_s15_physical_readback_v1.py tests/test_plan2_s15_physical_readback_v1.py
+      - name: Qualify independent published physical S13/S14 readback
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_readback_v1.py
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
