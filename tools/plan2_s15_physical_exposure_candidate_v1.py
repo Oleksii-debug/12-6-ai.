@@ -166,6 +166,8 @@ def build_from_packed(packed: dict[str, Any],
 
 
 def stage(root: Path, destination: Path) -> dict[str, Any]:
+    need(not any(p.is_symlink() for p in (destination, *destination.parents)),
+         "symlink publication path")
     return stage_manifest(*build(root), destination)
 
 
