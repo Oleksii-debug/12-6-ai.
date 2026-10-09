@@ -103,10 +103,16 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
     # Until individually staged S5 proofs exist for every source, refuse
     # multi-source evidence rather than silently accepting partial coverage.
     exact_sources = stages["exact_dedup"].get("sources")
-    _require(type(exact_sources) is list and bool(exact_sources)
-             and all(type(source) is dict
-                     and source.get("privacy_manifest_sha256") == rights
-                     for source in exact_sources),
+    # The physical S5 authority is a single source: a copied self-hash
+    # cannot attest a second S6 source or a different normalized member.
+    # Real multi-source release needs independent S5 proofs for every source.
+    _require(type(exact_sources) is list and len(exact_sources) == 1
+             and type(exact_sources[0]) is dict
+             and exact_sources[0].get("source_id") ==
+             stages["privacy"].get("source_id")
+             and exact_sources[0].get("normalization_manifest_sha256") ==
+             stages["privacy"].get("normalization_manifest_sha256")
+             and exact_sources[0].get("privacy_manifest_sha256") == rights,
              "S5-S6 privacy provenance disconnected")
     _require(stages["near_dedup"]["upstream_exact_manifest_sha256"] ==
              stages["exact_dedup"]["manifest_sha256"],
