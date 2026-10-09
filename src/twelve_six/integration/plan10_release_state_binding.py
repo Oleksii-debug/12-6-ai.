@@ -118,6 +118,54 @@ def _validate_db(db: sqlite3.Connection, kind: str) -> None:
         if uniques != STORE_UNIQUES[kind][table]:
             raise StateBindingError("invalid canonical component store")
 
+    _validate_semantic_state(db, kind)
+
+
+def _validate_semantic_state(db: sqlite3.Connection, kind: str) -> None:
+    """Use the Plan 5 readers: valid SQLite alone is not valid agent state."""
+    if kind == "memory":
+        from twelve_six_agent_runtime.memory import MemoryError, MemoryStore
+
+        try:
+            MemoryStore._rows(db)
+        except (MemoryError, ValueError, TypeError, KeyError) as exc:
+            raise StateBindingError("invalid canonical memory history") from exc
+        return
+
+    from twelve_six_agent_runtime.task_state import StateError, _decode
+
+    try:
+        total_history = 0
+        for task_id, raw, digest in db.execute(
+            "SELECT task_id, snapshot, digest FROM tasks"
+        ):
+            current = _decode(raw, digest)
+            if current.task_id != task_id:
+                raise StateBindingError("task identity mismatch")
+            history = db.execute(
+                "SELECT revision, snapshot, digest FROM history "
+                "WHERE task_id=? ORDER BY revision", (task_id,)
+            ).fetchall()
+            if not history or len(history) != current.revision + 1:
+                raise StateBindingError("incomplete task history")
+            prior_epoch = 0
+            for expected_revision, (revision, entry, checksum) in enumerate(history):
+                state = _decode(entry, checksum)
+                if (revision != expected_revision
+                        or state.revision != expected_revision
+                        or state.task_id != task_id
+                        or state.plan_id != current.plan_id
+                        or state.control_epoch < prior_epoch):
+                    raise StateBindingError("invalid task lineage")
+                prior_epoch = state.control_epoch
+            if (history[-1][1], history[-1][2]) != (raw, digest):
+                raise StateBindingError("task latest/history mismatch")
+            total_history += len(history)
+        if db.execute("SELECT COUNT(*) FROM history").fetchone()[0] != total_history:
+            raise StateBindingError("orphan task history")
+    except (StateError, TypeError, KeyError, ValueError) as exc:
+        raise StateBindingError("invalid canonical task history") from exc
+
 
 def _copy_database(src: Path, target: Path, kind: str) -> bytes:
     if src.is_symlink() or not src.is_file():
