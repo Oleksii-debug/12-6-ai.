@@ -35,13 +35,13 @@ def physical_rows(root: Path, proof: dict[str, Any]) -> list[dict[str, str]]:
     source_meta = proof["source_members"]
     ua_config = json.loads(books.read_checked(root, d03.CONFIG))
     ua_objects = {item["physical_path"]: item for item in ua_config["objects"]}
+    en_sources = {item["source_id"]: item
+                  for item in books.inspect(root)["books"]}
     records = []
     for member in source_meta:
         if member["modality"] == "en":
-            en_metadata = next(
-                book for book in books.inspect(root)["books"]
-                if book["source_id"] == member["source_id"]
-            )
+            en_metadata = en_sources.get(member["source_id"])
+            need(type(en_metadata) is dict, "unknown physical book source")
             payload = books.read_checked(root, en_metadata["snapshot_path"])
         else:
             path = member["document_family"]
