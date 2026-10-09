@@ -28,6 +28,9 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     )
     assert report["evidence"]["real_books_s10_probe_document_clusters"] == 3
     assert report["evidence"]["real_three_family_document_count"] == 15
+    assert len(report["evidence"]["real_three_family_source_split_probe_sha256"]) == 64
+    assert report["evidence"]["real_three_family_source_cluster_count"] == 5
+    assert report["evidence"]["real_three_family_source_split_leakage_count"] == 0
     assert report["evidence"]["real_three_family_total_bytes"] == 1_314_156
     assert len(report["evidence"]["real_three_family_candidate_sha256"]) == 64
     assert type(report["evidence"]["real_three_family_fixture_eval_clean"]) is bool
