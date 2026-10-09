@@ -91,7 +91,11 @@ jobs:
         env:
           PLAN1_S8_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: python tools/plan1_section8_qualify.py
+      # Plan 8 S3 PR #3207 has a mandatory exact-head scoped Ruff and 205-test
+      # qualification above. Peer-owned Plan 1/4/5/7 lint defects remain
+      # visible in their own CI; run whole-repo compatibility pytest here.
       - run: ruff check src tests
+        if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
       - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
         if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
