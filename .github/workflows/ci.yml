@@ -952,7 +952,8 @@ jobs:
     # Direct dependency for Plan3 S1: independent fail-closed Plan8 qualification.
     if: >-
       github.event_name == 'pull_request' &&
-      github.head_ref == 'plan8/s3-admit-plan3-model-20261009'
+      (github.head_ref == 'plan8/s3-admit-plan3-model-20261009' ||
+       github.event.pull_request.number == 3098)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
