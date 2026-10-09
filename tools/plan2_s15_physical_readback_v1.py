@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +128,8 @@ def verify(packed_dir: Path, exposure_dir: Path, *,
              and type(segment["source_byte_end"]) is int
              and segment["source_byte_end"] > next_byte
              and type(segment["source_sha256"]) is str
-             and len(segment["source_sha256"]) == 64
+             and re.fullmatch(r"[0-9a-f]{64}", segment["source_sha256"])
+                 is not None
              and segment["record_id"].startswith(segment["source_id"] + ":r"),
              "physical book-to-token byte lineage changed")
         next_byte = segment["source_byte_end"]
