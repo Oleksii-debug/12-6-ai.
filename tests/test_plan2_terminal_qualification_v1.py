@@ -34,6 +34,7 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
     assert report["evidence"]["real_three_family_total_bytes"] == 1_314_156
     assert len(report["evidence"]["real_three_family_candidate_sha256"]) == 64
     assert type(report["evidence"]["real_three_family_fixture_eval_clean"]) is bool
+    assert len(report["evidence"]["d03_real_ua_normalized_physical_sha256"]) == 64
     assert report["evidence"]["d03_real_ua_source_candidate_families"] == 2
     assert report["evidence"]["d03_real_ua_source_candidate_members"] == 12
     assert report["evidence"]["d03_real_ua_source_candidate_bytes"] == 48675
