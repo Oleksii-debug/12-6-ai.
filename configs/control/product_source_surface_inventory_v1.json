@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 153,
+  "source_surface_count": 154,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -456,6 +456,11 @@
       "origin": "stacked_candidate"
     },
     {
+      "path": "src/twelve_six/evidence_control_bridge.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/evolutionary_code.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
@@ -772,5 +777,5 @@
     }
   ],
   "accepted_main_surface_count": 115,
-  "candidate_overlay_surface_count": 38
+  "candidate_overlay_surface_count": 39
 }

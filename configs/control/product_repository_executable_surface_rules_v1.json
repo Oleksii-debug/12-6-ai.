@@ -322,6 +322,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan8_evidence_bridge.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan8_physical_operator.py",
       "capability_id": "physical-qualification-fabric"
     },
