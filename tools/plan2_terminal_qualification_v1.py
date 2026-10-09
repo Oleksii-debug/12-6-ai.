@@ -30,6 +30,7 @@ from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
 from tools import plan2_s15_physical_readback_v1 as real_readback
 from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
 from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
+from tools import plan2_s15_plan9_handoff_preflight_v1 as plan9_handoff
 from tools import plan2_s15_real_32k_bpe_v1 as real_32k_bpe
 from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
 from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
@@ -335,6 +336,18 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and real_eval["training_corpus_authorized"] is False
              and real_eval["production_release_authorized"] is False,
              "real EVAL233 final-test decontamination cannot authorize training")
+    plan9 = plan9_handoff.stage_from_receipts(
+        five_rights, train_only, real_32k, real_three_targets,
+        real_eval, plan34_32k, destination / "plan9-handoff-preflight",
+    )
+    _require(plan9["source_family_count"] == 3
+             and plan9["frozen_candidate_vocab_size"] == 32768
+             and plan9["physical_train_targets"] == real_three_targets["target_count"]
+             and plan9["optimizer_effect_authorized"] is False
+             and plan9["production_plan9_bindable"] is False
+             and plan9["physical_s3_s9_release_admitted"] is False
+             and plan9["terminal_done"] is False,
+             "Plan9 data handoff cannot authorize prematurely released data")
     probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
     _require(probe["production_release_authorized"] is False
              and probe["physical_s9_admitted"] is False
@@ -433,6 +446,8 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_plan9_handoff_preflight_sha256": plan9["manifest_sha256"],
+        "real_plan9_handoff_bindable": plan9["production_plan9_bindable"],
         "real_three_family_32768_s13_s14_sha256":
             real_three_targets["manifest_sha256"],
         "real_three_family_32768_exposure_count":
