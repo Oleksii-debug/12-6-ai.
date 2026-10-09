@@ -124,6 +124,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         "migration_contract": "migration-contract-baseline-v1",
         "source_manifest_sha256": cohort["manifest_sha256"],
         "train_document_sha256": fitted["train_document_sha256"],
+        "train_document_bytes": fitted["train_document_bytes"],
         "tokenizer_manifest_sha256": fitted["manifest_sha256"],
         "tokenizer_identity": fitted["tokenizer_identity"],
         "heldout_audit_sha256": fitted["actual_heldout_audit_sha256"],
