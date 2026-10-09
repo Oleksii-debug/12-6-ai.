@@ -343,3 +343,42 @@ required test, not presumed from any historical success.
 ## Real S13/S14 physical three-family target lane — nonrelease
 
 The S10-bound train-only physical source partition can now be packed by the existing S13 deterministic packer with original source-level provenance; no validation or final-test bytes are included. The same S14 builder signs stable ordered target/exposure IDs across all physical shard boundaries. The independent physical reader replays published blocks, next-token targets, source byte maps and causal hash chain. This does not freeze production vocabulary 32768, admit the source families through S3–S9, or authorize Plan9 optimization. A dedicated scoped Actions job must pass at the identical SHA before this lane can be integrated into the terminal two-clean-source-build audit.
+
+
+## Exact 32,768 real train-only Byte-BPE and S13/S14 / Plan9 preflight
+
+Section15 has a separately versioned **physical source-fit PREPRODUCTION**
+byte-BPE implementation in \`tools/plan2_s15_real_32k_bpe_v1.py\`.
+It retains the incumbent byte fallback and special-token IDs
+PAD 256, BOS 257, EOS 258, UNK 259, and uses an incremental
+deterministic greedy pair-frequency fitter on **only the physical S10
+training partition**. It fails closed when a real source cannot support
+32,508 distinct merges; it never invents foreign pretrained token weights,
+reuses external LLMs, or includes final-test or validation text in fitting.
+The full 32,768-token vocabulary, pair table, UTF-8 roundtrips,
+tokenizer implementation identity and physically bound dataset/S10 hashes
+must be exact and reproducible across two clean builds.
+
+\`tools/plan2_s15_three_family_train_packing_v1.py\` now consumes that
+same source-fitted 32K identity and reuses the incumbent S13 packet
+builder and immutable publisher; \`tools/plan2_s15_three_family_train_exposure_v1.py\`
+uses the *same incumbent S14* target-identity algorithm, immutable
+publisher and independent byte-exact physical replay. Plan3/4 compatibility
+is evaluated using the already published tokenizer migration contract,
+not by mutating Plans3/4 or assuming checkpoint weights can be reused.
+
+The hash-only \`tools/plan2_s15_plan9_handoff_preflight_v1.py\` checks
+the exact **S1/S2 rights → S10 train/holdout → 32K S12 → S13/S14 real
+targets → EVAL233 final custody → Plan3/4 ModelSpec** parent identities
+and refuses any early optimizer/training authorization. A distinct hosted
+test job qualifies the 32K vocabulary, and a separate job qualifies
+the source-bound 32K S13/S14 physical stream.
+
+**Important release distinction:** these are candidates even when
+the concrete 32,768 vocabulary exists. The repository's S3–S9 current-main
+production corpus gate still has only a nonrelease source candidate,
+and no current-main Plan9 **production data acceptance** has been proven.
+A single pull request or green code test does not satisfy the
+Section15 DONE/Plan9 release rule. Exact-head execution, two clean-source
+builds, physical S3–S9 promotion under existing rights/privacy/holdout
+contract, final-release receipts and accepted-main readback remain required.
