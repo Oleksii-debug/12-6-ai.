@@ -9,7 +9,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-
 _REQUIRED_TOP_LEVEL_FIELDS = {
     "schema_version",
     "observed_main_sha",
