@@ -17,6 +17,8 @@ _PLAN7 = {
          "699150eea29633d94aa6853acba216c52c41e113", ("3B", "7B", "13B")),
     18: ("src/twelve_six/very_large_scale_paths.py",
          "c10701b0f01ef26fa6c8cff70b4ee9c5036324ac", ("30B", "70B", "100B")),
+    19: ("src/twelve_six/extreme_moe_paths.py",
+         "e964c124892bfb004b1266c4fdad2b54dbc3a355", ("300B", "1T", "MoE")),
 }
 _FIELDS = frozenset({"schema_version", "plan", "section", "outcome", "tiers",
                      "producer_path", "producer_git_blob_sha1", "reason_codes",
@@ -52,7 +54,8 @@ def not_activated(section: int, *, owner_activation: bool = False) -> dict[str, 
         "schema_version": 1, "plan": 9, "section": section,
         "outcome": "NOT_ACTIVATED", "tiers": list(tiers),
         "producer_path": provider, "producer_git_blob_sha1": blob,
-        "reason_codes": ["NO_EXPLICIT_OWNER_SCALE_ACTIVATION", "UPSTREAM_PRODUCTION_BASE_MISSING"],
+        "reason_codes": ["NO_EXPLICIT_OWNER_SCALE_ACTIVATION", "UPSTREAM_PRODUCTION_BASE_MISSING"]
+        + (["NO_MEASURED_DENSE_MOE_EFFICIENCY"] if section == 19 else []),
         "activated": False, "trained": False,
         "production_candidate": False, "champion_promoted": False,
         "training_authorized": False, "compute_authorized": False,

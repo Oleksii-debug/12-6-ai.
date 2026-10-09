@@ -29,7 +29,7 @@ def test_terminal_nonactivation(section, tiers, tmp_path):
     verify_not_activated(json.loads(root.read_text(encoding="utf-8")))
 
 
-@pytest.mark.parametrize("section", [0, 16, 19, True, "17", None])
+@pytest.mark.parametrize("section", [0, 16, 20, True, "17", None])
 def test_wrong_section_denied(section):
     with pytest.raises(EvolutionDecisionDenied):
         not_activated(section)
