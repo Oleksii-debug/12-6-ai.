@@ -20,7 +20,6 @@ from typing import Any
 
 from twelve_six.sil_qualification import GitProbe, GitState, probe_git_state
 
-
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")

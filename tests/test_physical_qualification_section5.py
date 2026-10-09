@@ -27,7 +27,6 @@ from twelve_six.physical_qualification import (
 )
 from twelve_six.sil_qualification import GitState
 
-
 _GIT_SHA = "a" * 40
 _AGENT_BYTES = b"section-5-agent-source"
 _AGENT_SHA = hashlib.sha256(_AGENT_BYTES).hexdigest()
