@@ -78,3 +78,18 @@ def test_symlink_publication_denied_without_reading_source(
     monkeypatch.setattr(physical, "build", lambda _: pytest.fail("source read"))
     with pytest.raises(physical.PhysicalPackingDenied, match="symlink"):
         physical.stage(tmp_path, link)
+
+
+def test_stale_extra_shard_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    member = "shards/shard-000000.json"
+    proof = {"schema_version": physical.SCHEMA,
+             "production_release_authorized": False}
+    monkeypatch.setattr(physical, "build",
+                        lambda _root: (proof, {member: b"clean\n"}))
+    out = tmp_path / "out"
+    physical.stage(tmp_path, out)
+    (out / "shards" / "shard-stale.json").write_bytes(b"stale\n")
+    with pytest.raises(physical.PhysicalPackingDenied, match="unexpected"):
+        physical.stage(tmp_path, out)
