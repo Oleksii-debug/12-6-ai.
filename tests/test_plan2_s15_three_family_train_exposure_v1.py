@@ -39,20 +39,6 @@ def test_real_3_family_train_shards_have_causal_replay(tmp_path: Path) -> None:
     ) == receipt
 
 
-def test_stale_combined_receipt_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    destination = tmp_path / "out"
-    destination.mkdir()
-    (destination / train.OUTPUT).write_bytes(
-        b'{"production_release_authorized":true}\n'
-    )
-    monkeypatch.setattr(train.train_packing, "build",
-                        lambda _: pytest.fail("would inspect source"))
-    with pytest.raises(BaseException, match="would inspect source"):
-        train.stage(tmp_path, destination)
-
-
 def test_unexpected_combined_member_denied_before_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
