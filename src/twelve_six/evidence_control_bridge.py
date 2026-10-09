@@ -826,7 +826,7 @@ def _bridge_regular_bytes(path: Path, max_bytes: int) -> bytes:
 
 def _bridge_write_once(path: Path, payload: bytes) -> bool:
     """Atomic exclusive claim/publication; replay is safe only for identical bytes."""
-    if type(payload) is not bytes or not payload:
+    if type(payload) is not bytes:
         raise ValueError("bridge publication must contain bytes")
     if path.parent.is_symlink() or path.is_symlink():
         raise ValueError("bridge publication refuses symlink paths")
