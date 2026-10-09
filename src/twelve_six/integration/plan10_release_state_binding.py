@@ -18,6 +18,27 @@ SCHEMA = "12-6.plan10.release-state.v1"
 KINDS = frozenset({"configs", "manifests", "registries", "model", "checkpoints", "tasks", "memory"})
 DB_KINDS = {"tasks", "memory"}
 STORE_TABLES = {"tasks": {"tasks", "history"}, "memory": {"meta", "records"}}
+STORE_COLUMNS = {
+    "tasks": {
+        "tasks": [("task_id", "TEXT", 0, 1), ("snapshot", "TEXT", 1, 0),
+                  ("digest", "TEXT", 1, 0)],
+        "history": [("task_id", "TEXT", 1, 1), ("revision", "INTEGER", 1, 2),
+                    ("snapshot", "TEXT", 1, 0), ("digest", "TEXT", 1, 0)],
+    },
+    "memory": {
+        "meta": [("revision", "INTEGER", 1, 0)],
+        "records": [("memory_id", "TEXT", 0, 1), ("sequence", "INTEGER", 1, 0),
+                    ("payload", "TEXT", 1, 0), ("digest", "TEXT", 1, 0),
+                    ("replaces_id", "TEXT", 0, 0)],
+    },
+}
+STORE_UNIQUES = {
+    "tasks": {"tasks": {("task_id",)}, "history": {("task_id", "revision")}},
+    "memory": {
+        "meta": set(),
+        "records": {("memory_id",), ("sequence",), ("replaces_id",)},
+    },
+}
 MAX_BYTES = 256 * 1024 * 1024  # LOCAL_FREE transport cap; not a production size claim
 
 
@@ -83,6 +104,19 @@ def _validate_db(db: sqlite3.Connection, kind: str) -> None:
     )}
     if tables != STORE_TABLES[kind] or db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
         raise StateBindingError("invalid canonical component store")
+    for table, expected in STORE_COLUMNS[kind].items():
+        columns = [(row[1], row[2], row[3], row[5]) for row in
+                   db.execute(f"PRAGMA table_info('{table}')")]
+        if columns != expected:
+            raise StateBindingError("invalid canonical component store")
+        uniques = set()
+        for index in db.execute(f"PRAGMA index_list('{table}')"):
+            if index[2] == 1:
+                fields = tuple(row[2] for row in
+                               db.execute(f"PRAGMA index_info('{index[1]}')"))
+                uniques.add(fields)
+        if uniques != STORE_UNIQUES[kind][table]:
+            raise StateBindingError("invalid canonical component store")
 
 
 def _copy_database(src: Path, target: Path, kind: str) -> bytes:
