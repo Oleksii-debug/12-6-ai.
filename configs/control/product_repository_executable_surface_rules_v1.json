@@ -198,6 +198,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "pyproject.toml",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/_dependency_contract_loader.py",
       "capability_id": "peer-source-qualification-pending"
     },
