@@ -1,11 +1,15 @@
 """Plan2 S12 frozen BPE local fixture, positive/negative/compatibility/restart."""
 from __future__ import annotations
+
 import copy
 from pathlib import Path
+
 import pytest
+
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
+from twelve_six.tokenization.base import TokenizerCompatibilityError, require_tokenizer_identity
 from twelve_six.tokenization.byte import ByteTokenizer
-from twelve_six.tokenization.base import require_tokenizer_identity,TokenizerCompatibilityError
+
 ROOT=Path(__file__).resolve().parents[1]
 
 

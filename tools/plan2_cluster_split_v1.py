@@ -16,9 +16,7 @@ from typing import Any
 
 from tools import plan2_corpus_mixture_v1 as mixture
 from tools import plan2_reserved_eval_firewall_v1 as firewall
-from tools.plan2_physical_materialization_v1 import (
-    _atomic_write, _json, _read_destination,
-)
+from tools.plan2_physical_materialization_v1 import _atomic_write, _json, _read_destination
 from twelve_six import split_robustness as canonical
 
 SCHEMA = "12-6.plan2-cluster-safe-split-candidate.v1"

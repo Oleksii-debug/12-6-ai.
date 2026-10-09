@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from tools.plan2_physical_materialization_v1 import (
-    _atomic_write, _read_destination, _read_source,
+    _atomic_write,
+    _read_destination,
+    _read_source,
 )
 from twelve_six.tokenization import byte as incumbent
 
