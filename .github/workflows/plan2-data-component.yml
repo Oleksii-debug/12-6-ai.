@@ -47,7 +47,7 @@ permissions:
 jobs:
   qualify-plan2:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -279,6 +279,20 @@ jobs:
           cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-restart.json"
           cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-clean.json"
           cmp "$RUNNER_TEMP/s15-real-tokenizer/physical-tokenizer-candidate.json" "$RUNNER_TEMP/s15-real-tokenizer-clean/physical-tokenizer-candidate.json"
+      - name: Lint Plan2 physical train packing candidate
+        run: ruff check tools/plan2_s15_physical_packing_candidate_v1.py tests/test_plan2_s15_physical_packing_candidate_v1.py
+      - name: Test physical real-token shards, deterministic bytes and recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_packing_candidate_v1.py
+      - name: Rebuild physical shards and verify immutable restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards" > "$RUNNER_TEMP/s15-shards-first.json"
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards" > "$RUNNER_TEMP/s15-shards-restart.json"
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards-clean" > "$RUNNER_TEMP/s15-shards-clean.json"
+          cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-restart.json"
+          cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-clean.json"
+          diff -r "$RUNNER_TEMP/s15-physical-shards" "$RUNNER_TEMP/s15-physical-shards-clean"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
