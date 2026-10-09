@@ -676,7 +676,7 @@ def test_bridge_forged_signed_packet_and_symlink_denied(tmp_path) -> None:
     with pytest.raises(ValueError, match="bind"):
         bridge_module.stage_bridge_dispatch(
             tmp_path, dispatch=dispatch, verified_packet=verified,
-            signed_packet_bytes=signed.replace(b"signed-dispatch", b"other-dispatch"),
+            signed_packet_bytes=signed.replace(b"packet-a", b"packet-b"),
         )
     spool_link = tmp_path / "spool-link"
     spool_link.symlink_to(tmp_path, target_is_directory=True)
