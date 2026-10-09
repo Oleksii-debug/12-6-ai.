@@ -859,3 +859,65 @@ def test_github_bridge_rejects_missing_secret_without_network(monkeypatch):
             "GET", "evidence/plan8/test/bridge-return.json",
             token="", branch="plan8-evidence",
         )
+
+
+def test_bridge_stop_interleaved_claim_fences_execution(tmp_path, monkeypatch) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified,
+        signed_packet_bytes=signed,
+    )
+    real_write = bridge_module._bridge_write_once
+    raced = False
+
+    def race_stop(path, payload):
+        nonlocal raced
+        if path.parent.name == "claims" and not raced:
+            raced = True
+            bridge_module.stop_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+        return real_write(path, payload)
+
+    monkeypatch.setattr(bridge_module, "_bridge_write_once", race_stop)
+    with pytest.raises(ValueError, match="STOP_REQUESTED"):
+        bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    assert raced
+    assert bridge_module.bridge_status(
+        tmp_path, dispatch.identity_sha256()
+    )["state"] == "STOP_REQUESTED"
+    with pytest.raises(ValueError, match="no automatic retry"):
+        bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+
+
+def test_bridge_stop_after_claim_preserves_verified_receipt_recovery(
+    tmp_path, monkeypatch,
+) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    bridge_module.stage_bridge_dispatch(
+        tmp_path, dispatch=dispatch, verified_packet=verified,
+        signed_packet_bytes=signed,
+    )
+    bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    bridge_module.stop_bridge_dispatch(tmp_path, dispatch.identity_sha256())
+    receipt = _receipt(dispatch, verdict="PASS", evidence="post-stop-pass")
+    # Transport test double only; S4 tests independently test signature validation.
+    monkeypatch.setattr(
+        bridge_module, "verify_physical_execution", lambda *_a, **_k: receipt,
+    )
+    host_receipt = tmp_path / "host-receipt.json"
+    host_log = tmp_path / "host-log.bin"
+    host_receipt.write_bytes(b'{"signed":true}')
+    host_log.write_bytes(b"host evidence")
+    kwargs = dict(
+        dispatch=dispatch, verified_packet=verified,
+        evidence_path=host_receipt, log_path=host_log,
+        agent_source_bytes=b"agent", artifact_root=tmp_path,
+        evidence_signature_verifier=lambda *_a: False,
+    )
+    result = bridge_module.record_bridge_return(tmp_path, **kwargs)
+    assert result["verdict"] == "PASS"
+    assert bridge_module.record_bridge_return(tmp_path, **kwargs) == result
+    assert (
+        tmp_path / "outbound" / dispatch.identity_sha256() / "evidence-record.json"
+    ).is_file()
+    with pytest.raises(ValueError, match="no automatic retry"):
+        bridge_module.claim_bridge_dispatch(tmp_path, dispatch.identity_sha256())

@@ -5,13 +5,13 @@ import hashlib
 import json
 import os
 import re
-from urllib.error import HTTPError
-from urllib.parse import quote
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from twelve_six.ai_qa_control import ExternalObservation, FailureSource
 from twelve_six.capability_map import CapabilityRegistry
@@ -984,6 +984,9 @@ def claim_bridge_dispatch(spool_root: str | Path, dispatch_identity_sha256: str)
     ) + b"\n"
     if not _bridge_write_once(spool / "claims" / f"{identity}.json", claim):
         raise ValueError("bridge attempt already claimed; outcome unknown")
+    # A concurrent STOP may have landed after READY but before the claim.
+    if bridge_status(spool, identity)["state"] == "STOP_REQUESTED":
+        raise ValueError("bridge run denied: STOP_REQUESTED; no automatic retry")
 
 
 def stop_bridge_dispatch(spool_root: str | Path, dispatch_identity_sha256: str) -> None:
@@ -1022,6 +1025,18 @@ def record_bridge_return(
     identity = dispatch.identity_sha256()
     spool = _bridge_spool(spool_root)
     status = bridge_status(spool, identity)
+    # STOP forbids new effects, but cannot discard a previously claimed host
+    # result; the independent signature verifier below remains mandatory.
+    if status["state"] == "STOP_REQUESTED":
+        claim_path = spool / "claims" / f"{identity}.json"
+        if claim_path.exists():
+            expected_claim = _canonical_json_bytes({
+                "schema_version": "12-6.bridge-attempt.v1", "dispatch": identity,
+            }) + b"\n"
+            if _bridge_regular_bytes(
+                claim_path, _BRIDGE_MAX_PACKET_BYTES,
+            ) == expected_claim:
+                status = {"state": "CLAIMED_OUTCOME_UNKNOWN"}
     if status["state"] not in {"CLAIMED_OUTCOME_UNKNOWN", "EVIDENCE_RECORDED"}:
         raise ValueError("bridge return requires exactly one prior claimed attempt")
     evidence_bytes = _bridge_regular_bytes(Path(evidence_path), _BRIDGE_MAX_RECEIPT_BYTES)
