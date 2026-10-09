@@ -358,6 +358,20 @@ jobs:
           cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-restart.json"
           cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-clean.json"
           cmp "$RUNNER_TEMP/3f-split/three-family-source-split-probe.json" "$RUNNER_TEMP/3f-split-clean/three-family-source-split-probe.json"
+      - name: Lint real D03 normalized physical materialization
+        run: ruff check tools/plan2_s15_d03_normalized_materialization_v1.py tests/test_plan2_s15_d03_normalized_materialization_v1.py
+      - name: Test 12 physical normalized Ukrainian files and negative recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_d03_normalized_materialization_v1.py
+      - name: Verify physical Ukrainian normalized-byte restart and clean builds
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical" > "$RUNNER_TEMP/ua-first.json"
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical" > "$RUNNER_TEMP/ua-restart.json"
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical-clean" > "$RUNNER_TEMP/ua-clean.json"
+          cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-restart.json"
+          cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-clean.json"
+          diff -r "$RUNNER_TEMP/ua-physical" "$RUNNER_TEMP/ua-physical-clean"
       - name: Lint Section 15 independent Git checkout reproducibility
         run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
       - name: Reject unsafe archives, dirty source and false receipts
