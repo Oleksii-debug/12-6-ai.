@@ -24,6 +24,13 @@ def test_five_real_source_clusters_cannot_cross_holdout(tmp_path: Path) -> None:
         "train", "validation", "test",
     }
     assert result["cluster_leakage_count"] == 0
+    assert result["train_source_family_count"] >= 1
+    assert result["validation_source_family_count"] >= 1
+    assert result["test_source_family_count"] >= 1
+    assert result["production_train_mixture_admitted"] is False
+    assert set(result["source_family_roles"]) == {
+        "train", "validation", "test",
+    }
     assert result["train_record_count"] > 0
     assert result["validation_record_count"] > 0
     assert result["test_record_count"] > 0
