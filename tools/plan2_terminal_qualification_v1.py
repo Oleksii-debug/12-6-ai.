@@ -231,11 +231,13 @@ def audit(root: Path) -> dict[str, Any]:
     """Compare two independently materialized complete LOCAL_FREE artifact trees."""
     root = root.resolve(strict=True)
     _require(root.is_dir(), "missing repository root")
-    with tempfile.TemporaryDirectory(prefix="plan2-s15-first-") as a:
-        with tempfile.TemporaryDirectory(prefix="plan2-s15-clean-") as b:
-            first = _rebuild(root, Path(a))
-            second = _rebuild(root, Path(b))
-            _require(first == second, "clean rebuild hash or inventory mismatch")
+    with (
+        tempfile.TemporaryDirectory(prefix="plan2-s15-first-") as a,
+        tempfile.TemporaryDirectory(prefix="plan2-s15-clean-") as b,
+    ):
+        first = _rebuild(root, Path(a))
+        second = _rebuild(root, Path(b))
+        _require(first == second, "clean rebuild hash or inventory mismatch")
     core = {
         "schema_version": SCHEMA,
         "decision": "COMPONENT_AUDIT_ONLY_NOT_TERMINAL",
