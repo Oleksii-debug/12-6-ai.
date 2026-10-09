@@ -34,6 +34,7 @@ from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixtur
 from tools import plan2_s15_three_family_physical_v1 as combined_sources
 from tools import plan2_s15_three_family_split_probe_v1 as combined_split
 from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
+from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
 from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
@@ -269,6 +270,17 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              and bpe_candidate["tokenizer_fit_authorized"] is False
              and bpe_candidate["production_release_authorized"] is False,
              "real train-only tokenizer candidate or holdout boundary changed")
+    plan34 = model_compatibility.stage_from_fit(
+        bpe_candidate, destination / "plan34-compatibility")
+    _require(plan34["source_fit_manifest_sha256"] ==
+             bpe_candidate["manifest_sha256"]
+             and plan34["candidate_vocab_size"] == bpe_candidate["candidate_vocab_size"]
+             and plan34["required_production_vocab_size"] == 32768
+             and plan34["checkpoint_weight_reuse_approved"] is False
+             and plan34["production_32k_model_spec_compatible"] is False
+             and plan34["production_backend_binding_granted"] is False
+             and plan34["terminal_done"] is False,
+             "Plan3/4 migration compatibility cannot grant provisional tokenizer")
     real_eval = real_final.stage(root, destination / "physical-real-final-custody")
     _require(real_eval["physical_three_family_sha256"] ==
              combined["manifest_sha256"]
@@ -377,6 +389,10 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "plan34_real_candidate_compatibility_manifest_sha256":
+            plan34["manifest_sha256"],
+        "plan34_production_vocab_compatible":
+            plan34["production_32k_model_spec_compatible"],
         "real_three_family_train_only_bpe_manifest_sha256":
             bpe_candidate["manifest_sha256"],
         "real_three_family_bpe_candidate_vocab_size":
