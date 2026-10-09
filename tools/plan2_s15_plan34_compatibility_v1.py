@@ -105,9 +105,14 @@ def inspect(root: Path) -> dict[str, Any]:
 
 
 def stage(root: Path, destination: Path) -> dict[str, Any]:
+    return stage_from_fit(bpe.inspect(root.resolve(strict=True)), destination)
+
+
+def stage_from_fit(fitted: dict[str, Any], destination: Path) -> dict[str, Any]:
+    """Publish a previously recomputed exact S12 fit without fitting twice."""
     need(not any(x.is_symlink() for x in (destination, *destination.parents)),
          "symlink Plan3/4 compatibility output")
-    report = inspect(root)
+    report = assess(fitted)
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / OUTPUT
     raw = books.canonical(report)
