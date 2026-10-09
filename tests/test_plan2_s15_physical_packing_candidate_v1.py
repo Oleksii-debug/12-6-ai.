@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def test_real_shards_integrity_and_same_path_restart(tmp_path: Path) -> None:
     assert segment_map[0]["source_byte_start"] == 0
     assert segment_map[-1]["source_byte_end"] == receipt["train_document_bytes"]
     assert all(a["source_byte_end"] == b["source_byte_start"]
-               for a, b in zip(segment_map, segment_map[1:]))
+               for a, b in pairwise(segment_map))
     assert all(len(x["source_sha256"]) == 64 for x in segment_map)
 
     assert receipt["source_token_shard_mapping"]
