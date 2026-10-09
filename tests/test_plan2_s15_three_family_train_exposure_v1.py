@@ -86,3 +86,35 @@ def test_symlinked_output_denied_before_expensive_source_read(
                         lambda _: pytest.fail("read unsafe input"))
     with pytest.raises(train.TrainExposureDenied, match="symlink"):
         train.stage(tmp_path, link)
+
+
+def test_precomputed_32k_fit_is_forwarded_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = {"schema_version": "candidate", "manifest_sha256": "a" * 64}
+    calls = []
+
+    def deny_after_capture(root: Path, *, fitted: dict) -> None:
+        calls.append((root, fitted))
+        raise train.TrainExposureDenied("precomputed receipt recognized")
+
+    monkeypatch.setattr(train.train_packing, "build", deny_after_capture)
+    with pytest.raises(train.TrainExposureDenied, match="precomputed receipt"):
+        train.stage(tmp_path, tmp_path / "destination", fitted=identity)
+    assert calls == [(tmp_path, identity)]
+
+
+def test_tampered_precomputed_32k_fitter_receipt_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import plan2_s15_three_family_train_packing_v1 as packer
+
+    monkeypatch.setattr(packer.training, "build",
+                        lambda _: ({"source_families_total": 3}, {}))
+    monkeypatch.setattr(packer.fit, "inspect",
+                        lambda _: pytest.fail("precomputed receipt must avoid refit"))
+    forged = {"schema_version": packer.fit.SCHEMA,
+              "manifest_sha256": "0" * 64,
+              "actual_vocab_size": 32768}
+    with pytest.raises(packer.ThreeFamilyPackingDenied, match="tampered"):
+        packer.build(tmp_path, fitted=forged)
