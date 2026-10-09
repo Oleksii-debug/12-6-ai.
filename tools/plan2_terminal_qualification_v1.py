@@ -77,7 +77,9 @@ def _read_gate(path: Path) -> dict[str, Any]:
              "physical gate incorrectly authorizes training")
     for capability in ("tokenizer_fit_authorized", "evaluation_authorized",
                        "generated_auto_reentry_authorized", "raw_text_emitted",
-                       "real_final_test_material_accessed"):
+                       "real_final_test_material_accessed",
+                       "production_release_authorized",
+                       "physical_tokenizer_fit_authorized"):
         if capability in value:
             _require(value[capability] is False,
                      "physical gate incorrectly authorizes " + capability)
@@ -141,6 +143,19 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
         stages["reserved_eval"]["manifest_sha256"],
         "S8-S9 mixture lineage disconnected",
     )
+    # A re-signed S9 candidate receipt cannot claim downstream release,
+    # tokenizer-fit, evaluation or raw-payload access while the cohort is
+    # explicitly component-only. Hash validity is not an authority grant.
+    for capability in ("production_release_authorized",
+                       "physical_tokenizer_fit_authorized",
+                       "tokenizer_fit_authorized",
+                       "evaluation_authorized",
+                       "generated_auto_reentry_authorized",
+                       "raw_text_emitted",
+                       "real_final_test_material_accessed"):
+        if capability in mixture_doc:
+            _require(mixture_doc[capability] is False,
+                     "S9 mixture incorrectly authorizes " + capability)
     return {key: value["manifest_sha256"] for key, value in stages.items()}
 
 
