@@ -39,7 +39,7 @@ def test_real_frozen_final_test_custody_and_nonrelease(tmp_path: Path) -> None:
     "selection_final_outcomes",
 ])
 def test_real_final_authority_escalation_fail_closed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, alter: str,
+    monkeypatch: pytest.MonkeyPatch, alter: str,
 ) -> None:
     source = {
         "source_family_count": 3,
@@ -69,8 +69,10 @@ def test_real_final_authority_escalation_fail_closed(
             return real.books.canonical(manifest)
 
         monkeypatch.setattr(real.books, "read_checked", altered)
+    # Use the pinned repository corpus: a temporary directory lacks EVAL-303
+    # source evidence and would fail for an unrelated missing-file reason.
     with pytest.raises(real.RealFinalDenied):
-        real.inspect(tmp_path)
+        real.inspect(ROOT)
 
 
 def test_readback_denies_tampered_final_custody_receipt(
