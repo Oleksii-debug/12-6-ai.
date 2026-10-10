@@ -65,4 +65,4 @@ Plan 10 is final convergence and release.
 - New Plan 1 / Section 2 = former Section 1 — DONE.
 - New Plan 8 / Section 1 = former Section 2 — DONE.
 - New Plan 8 / Section 2 = former Section 3 — DONE.
-- New Plan 8 / Section 3 = former Section 4 — QUALIFYING, not DONE at migration time.
+- New Plan 8 / Section 3 = former Section 4 — DONE on accepted main via canonical PR #3207 (supersedes historic migration QUALIFYING).
