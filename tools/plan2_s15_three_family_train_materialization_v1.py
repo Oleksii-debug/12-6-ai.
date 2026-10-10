@@ -33,7 +33,8 @@ def need(ok: bool, why: str) -> None:
 def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     root = root.resolve(strict=True)
     proof = combined.inspect(root)
-    assigned = split_probe.inspect(root)
+    # Reject source/rights/privacy tampering before invoking downstream split
+    # reconstruction, which must not read unqualified upstream candidates.
     need(proof["source_family_count"] == 3
          and proof["document_identity_count"] == 15
          and proof["global_exact_duplicates"] == 0
@@ -41,8 +42,10 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
          and proof["data232_excluded_record_count"] == 0
          and proof["data232_quarantined_source_family_count"] == 0
          and proof["physical_s3_s9_multi_family_admitted"] is False
-         and proof["production_release_authorized"] is False
-         and assigned["canonical_source_family_count"] == 3
+         and proof["production_release_authorized"] is False,
+         "source, privacy or whole-source split is not an admitted candidate")
+    assigned = split_probe.inspect(root)
+    need(assigned["canonical_source_family_count"] == 3
          and assigned["physical_document_count"] == 15
          and assigned["upstream_three_family_sha256"] == proof["manifest_sha256"]
          and assigned["physical_s9_admitted"] is False
