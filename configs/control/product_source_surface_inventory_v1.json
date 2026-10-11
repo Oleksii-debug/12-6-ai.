@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 152,
+  "source_surface_count": 153,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -576,6 +576,11 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/physical_qualification.py",
+      "capability_id": "physical-qualification-fabric",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/plan9_billion_no_go.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
@@ -767,5 +772,5 @@
     }
   ],
   "accepted_main_surface_count": 115,
-  "candidate_overlay_surface_count": 37
+  "candidate_overlay_surface_count": 38
 }

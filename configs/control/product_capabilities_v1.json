@@ -983,6 +983,48 @@
       "evidence_targets": [],
       "integrated_result": null,
       "unavailable_reason": "27 peer Python sources added after independently qualified AIQA merge baseline; absent exact-tree SIL evidence in this Plan8 snapshot. Staged but not claimed READY."
+    },
+    {
+      "capability_id": "physical-qualification-fabric",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.physical_qualification",
+      "dependencies": [
+        "ai-qa-repair-control"
+      ],
+      "journey_ids": [
+        "operator-physical-qualification"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        },
+        {
+          "environment_id": "windows-local",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "plan8-s4-physical-fixtures",
+          "level": "component",
+          "command": "pytest -q tests/test_physical_qualification_section5.py"
+        },
+        {
+          "vector_id": "plan8-s4-operator-integration",
+          "level": "integration",
+          "command": "pytest -q tests/test_plan8_physical_operator.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "plan8-s4-canonical-pr",
+          "target": "pull-request:3083"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Plan 8 Section 4 qualification infrastructure is staged; no physical device/NVDA evidence or product-release claim."
     }
   ],
   "journeys": [
@@ -1149,6 +1191,13 @@
       "title": "Maintainer inspects unqualified source additions without granting accidental product authority",
       "capability_ids": [
         "peer-source-qualification-pending"
+      ]
+    },
+    {
+      "journey_id": "operator-physical-qualification",
+      "title": "Keyboard-first operator executes signed exact-host test packet and independently verifies evidence",
+      "capability_ids": [
+        "physical-qualification-fabric"
       ]
     }
   ]
