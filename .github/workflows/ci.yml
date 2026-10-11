@@ -94,7 +94,11 @@ jobs:
       # Plan 8 S3 PR #3207 has a mandatory exact-head scoped Ruff and 205-test
       # qualification above. Peer-owned Plan 1/4/5/7 lint defects remain
       # visible in their own CI; run whole-repo compatibility pytest here.
-      - run: ruff check src tests
+      # Freeze the historically approved E4/E7/E9/F checks without changing
+      # SHA-bound pyproject.toml, whose exact bytes are needed for dependency locks.
+      - run: |
+          ruff check --select E4,E7,E9,F \
+            --config "lint.per-file-ignores = {'src/twelve_six/checkpoint/__init__.py' = ['E402'], 'tests/test_audit_d03_rada_trees_primary_archive.py' = ['E402'], 'tests/test_d03_rada_bulk_observation_cli.py' = ['E402'], 'tests/test_d03_rada_bulk_source_probe.py' = ['E402'], 'tests/test_d03_rada_bulk_source_probe_authority.py' = ['E402'], 'tests/test_d03_rada_trees_acquisition_probe.py' = ['E402'], 'tests/test_probe_d03_rada_trees_hf_objects.py' = ['E402']}" src tests
         if: github.event_name != 'pull_request' || github.event.pull_request.number != 3207
       # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
       # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
