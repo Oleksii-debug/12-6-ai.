@@ -33,17 +33,23 @@ def need(value: bool, reason: str) -> None:
 def inspect(root: Path) -> dict[str, Any]:
     root = root.resolve(strict=True)
     physical = combined.inspect(root)
+    # Validate the lower-level source/rights/privacy proof BEFORE any downstream
+    # split/materialization probe. Bad or partial upstream proofs fail closed
+    # under this API's documented exception, without downstream reads.
+    need(physical.get("source_family_count") == 3
+         and physical.get("document_identity_count") == 15
+         and physical.get("global_exact_duplicates") == 0
+         and physical.get("same_modality_cross_family_near_pairs") == 0
+         and physical.get("g06_rejected_record_ids") == []
+         and physical.get("data232_excluded_record_count") == 0
+         and physical.get("data232_quarantined_source_family_count") == 0
+         and physical.get("training_corpus_authorized") is False
+         and physical.get("physical_s3_s9_multi_family_admitted") is False,
+         "missing physical and non-authorizing source privacy/rights controls")
     s10 = physical_split.inspect(root)
-    need(physical["source_family_count"] == 3
-         and physical["document_identity_count"] == 15
-         and physical["g06_rejected_record_ids"] == []
-         and physical["data232_excluded_record_count"] == 0
-         and physical["data232_quarantined_source_family_count"] == 0
-         and physical["training_corpus_authorized"] is False
-         and physical["physical_s3_s9_multi_family_admitted"] is False
-         and s10["upstream_three_family_sha256"] == physical["manifest_sha256"]
-         and s10["canonical_source_family_count"] == 3
-         and s10["physical_s9_admitted"] is False,
+    need(s10.get("upstream_three_family_sha256") == physical["manifest_sha256"]
+         and s10.get("canonical_source_family_count") == 3
+         and s10.get("physical_s9_admitted") is False,
          "missing physical and non-authorizing source privacy/rights controls")
     metadata = physical["source_members"]
     rows = physical_split.physical_rows(root, physical)
