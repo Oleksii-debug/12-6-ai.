@@ -1,5 +1,10 @@
 name: Plan 2 Data Component Qualification
 
+# Keep one frozen qualifying head per branch, including push/PR duplicates.
+concurrency:
+  group: plan2-data-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -47,7 +52,7 @@ permissions:
 jobs:
   qualify-plan2:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -251,3 +256,276 @@ jobs:
         run: ruff check tools/plan2_terminal_qualification_v1.py tests/test_plan2_terminal_qualification_v1.py
       - name: Qualify S15 exact physical-candidate and synthetic clean-build refusal
         run: PYTHONPATH=src:. pytest -q tests/test_plan2_terminal_qualification_v1.py
+      - name: Lint Plan 2 S15 physical holdout decontamination
+        run: ruff check tools/plan2_s15_physical_heldout_decontam_v1.py tests/test_plan2_s15_physical_heldout_decontam_v1.py
+      - name: Qualify actual reserved book holdout and forged rights/partition controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_heldout_decontam_v1.py
+      - name: Verify physical heldout audit restart and separate clean destination
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout" > "$RUNNER_TEMP/s15-heldout-first.json"
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout" > "$RUNNER_TEMP/s15-heldout-restart.json"
+          python -m tools.plan2_s15_physical_heldout_decontam_v1 --root . --out-dir "$RUNNER_TEMP/s15-heldout-clean" > "$RUNNER_TEMP/s15-heldout-clean.json"
+          cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-restart.json"
+          cmp "$RUNNER_TEMP/s15-heldout-first.json" "$RUNNER_TEMP/s15-heldout-clean.json"
+          cmp "$RUNNER_TEMP/s15-heldout/physical-heldout-decontamination.json" "$RUNNER_TEMP/s15-heldout-clean/physical-heldout-decontamination.json"
+      - name: Lint Plan2 real-document frozen tokenizer candidate
+        run: ruff check tools/plan2_s15_physical_tokenizer_candidate_v1.py tests/test_plan2_s15_physical_tokenizer_candidate_v1.py
+      - name: Qualify real-document S12 tokenizer fit and negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_tokenizer_candidate_v1.py
+      - name: Verify physical tokenizer receipt restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer" > "$RUNNER_TEMP/s15-real-tokenizer-first.json"
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer" > "$RUNNER_TEMP/s15-real-tokenizer-restart.json"
+          python -m tools.plan2_s15_physical_tokenizer_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-tokenizer-clean" > "$RUNNER_TEMP/s15-real-tokenizer-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-restart.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer-first.json" "$RUNNER_TEMP/s15-real-tokenizer-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-tokenizer/physical-tokenizer-candidate.json" "$RUNNER_TEMP/s15-real-tokenizer-clean/physical-tokenizer-candidate.json"
+      - name: Lint Plan2 physical train packing candidate
+        run: ruff check tools/plan2_s15_physical_packing_candidate_v1.py tests/test_plan2_s15_physical_packing_candidate_v1.py
+      - name: Test physical real-token shards, deterministic bytes and recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_packing_candidate_v1.py
+      - name: Rebuild physical shards and verify immutable restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards" > "$RUNNER_TEMP/s15-shards-first.json"
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards" > "$RUNNER_TEMP/s15-shards-restart.json"
+          python -m tools.plan2_s15_physical_packing_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-physical-shards-clean" > "$RUNNER_TEMP/s15-shards-clean.json"
+          cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-restart.json"
+          cmp "$RUNNER_TEMP/s15-shards-first.json" "$RUNNER_TEMP/s15-shards-clean.json"
+          diff -r "$RUNNER_TEMP/s15-physical-shards" "$RUNNER_TEMP/s15-physical-shards-clean"
+      - name: Lint Plan2 physical S14 exposure candidate
+        run: ruff check tools/plan2_s15_physical_exposure_candidate_v1.py tests/test_plan2_s15_physical_exposure_candidate_v1.py
+      - name: Test real physical S14 ordered target identities and negatives
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_exposure_candidate_v1.py
+      - name: Rebuild physical exposure ledger with exact restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures" > "$RUNNER_TEMP/s15-exposures-first.json"
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures" > "$RUNNER_TEMP/s15-exposures-restart.json"
+          python -m tools.plan2_s15_physical_exposure_candidate_v1 --root . --out-dir "$RUNNER_TEMP/s15-exposures-clean" > "$RUNNER_TEMP/s15-exposures-clean.json"
+          cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-restart.json"
+          cmp "$RUNNER_TEMP/s15-exposures-first.json" "$RUNNER_TEMP/s15-exposures-clean.json"
+          diff -r "$RUNNER_TEMP/s15-exposures" "$RUNNER_TEMP/s15-exposures-clean"
+      - name: Lint Plan2 independent physical S13/S14 readback
+        run: ruff check tools/plan2_s15_physical_readback_v1.py tests/test_plan2_s15_physical_readback_v1.py
+      - name: Qualify independent published physical S13/S14 readback
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_physical_readback_v1.py
+      - name: Lint Plan2 S15 12 physical D03 Ukrainian sources and tests
+        run: ruff check tools/plan2_s15_d03_physical_sources_v1.py tests/test_plan2_s15_d03_physical_sources_v1.py
+      - name: Verify source blobs, license rights, normalization and G06/DATA232
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_d03_physical_sources_v1.py
+      - name: Rebuild D03 physical sources from clean destination and restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real" > "$RUNNER_TEMP/d03-s15-first.json"
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real" > "$RUNNER_TEMP/d03-s15-restart.json"
+          python -m tools.plan2_s15_d03_physical_sources_v1 --root . --out-dir "$RUNNER_TEMP/d03-s15-real-clean" > "$RUNNER_TEMP/d03-s15-clean.json"
+          cmp "$RUNNER_TEMP/d03-s15-first.json" "$RUNNER_TEMP/d03-s15-restart.json"
+          cmp "$RUNNER_TEMP/d03-s15-first.json" "$RUNNER_TEMP/d03-s15-clean.json"
+          cmp "$RUNNER_TEMP/d03-s15-real/d03-physical-source-candidate.json" "$RUNNER_TEMP/d03-s15-real-clean/d03-physical-source-candidate.json"
+      - name: Lint combined Plan2 three-family physical candidate
+        run: ruff check tools/plan2_s15_three_family_physical_v1.py tests/test_plan2_s15_three_family_physical_v1.py
+      - name: Qualify 15 real document identities across 3 physical source families
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_physical_v1.py
+      - name: Rebuild exact three-family real candidate and restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_physical_v1 --root . --out-dir "$RUNNER_TEMP/three-real" > "$RUNNER_TEMP/three-real-first.json"
+          python -m tools.plan2_s15_three_family_physical_v1 --root . --out-dir "$RUNNER_TEMP/three-real" > "$RUNNER_TEMP/three-real-restart.json"
+          python -m tools.plan2_s15_three_family_physical_v1 --root . --out-dir "$RUNNER_TEMP/three-real-clean" > "$RUNNER_TEMP/three-real-clean.json"
+          cmp "$RUNNER_TEMP/three-real-first.json" "$RUNNER_TEMP/three-real-restart.json"
+          cmp "$RUNNER_TEMP/three-real-first.json" "$RUNNER_TEMP/three-real-clean.json"
+          cmp "$RUNNER_TEMP/three-real/three-family-physical-candidate.json" "$RUNNER_TEMP/three-real-clean/three-family-physical-candidate.json"
+      - name: Lint three-family physical whole-source split probe
+        run: ruff check tools/plan2_s15_three_family_split_probe_v1.py tests/test_plan2_s15_three_family_split_probe_v1.py
+      - name: Qualify 15 physical documents grouped into 5 whole-source clusters
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_split_probe_v1.py
+      - name: Rebuild 3-family S10 mechanics probe with restart and clean trees
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split" > "$RUNNER_TEMP/3f-split-first.json"
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split" > "$RUNNER_TEMP/3f-split-restart.json"
+          python -m tools.plan2_s15_three_family_split_probe_v1 --root . --out-dir "$RUNNER_TEMP/3f-split-clean" > "$RUNNER_TEMP/3f-split-clean.json"
+          cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-restart.json"
+          cmp "$RUNNER_TEMP/3f-split-first.json" "$RUNNER_TEMP/3f-split-clean.json"
+          cmp "$RUNNER_TEMP/3f-split/three-family-source-split-probe.json" "$RUNNER_TEMP/3f-split-clean/three-family-source-split-probe.json"
+      - name: Lint real D03 normalized physical materialization
+        run: ruff check tools/plan2_s15_d03_normalized_materialization_v1.py tests/test_plan2_s15_d03_normalized_materialization_v1.py
+      - name: Test 12 physical normalized Ukrainian files and negative recovery
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_d03_normalized_materialization_v1.py
+      - name: Verify physical Ukrainian normalized-byte restart and clean builds
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical" > "$RUNNER_TEMP/ua-first.json"
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical" > "$RUNNER_TEMP/ua-restart.json"
+          python -m tools.plan2_s15_d03_normalized_materialization_v1 --root . --out-dir "$RUNNER_TEMP/ua-physical-clean" > "$RUNNER_TEMP/ua-clean.json"
+          cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-restart.json"
+          cmp "$RUNNER_TEMP/ua-first.json" "$RUNNER_TEMP/ua-clean.json"
+          diff -r "$RUNNER_TEMP/ua-physical" "$RUNNER_TEMP/ua-physical-clean"
+      - name: Lint real EVAL233 final-test decontamination
+        run: ruff check tools/plan2_s15_real_eval233_decontamination_v1.py tests/test_plan2_s15_real_eval233_decontamination_v1.py
+      - name: Qualify frozen 16-record real external EVAL233 final custody and EVAL303 reservation
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_real_eval233_decontamination_v1.py
+      - name: Verify actual EVAL233 final-custody report restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final" > "$RUNNER_TEMP/s15-real-final-first.json"
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final" > "$RUNNER_TEMP/s15-real-final-restart.json"
+          python -m tools.plan2_s15_real_eval233_decontamination_v1 --root . --out-dir "$RUNNER_TEMP/s15-real-final-clean" > "$RUNNER_TEMP/s15-real-final-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-restart.json"
+          cmp "$RUNNER_TEMP/s15-real-final-first.json" "$RUNNER_TEMP/s15-real-final-clean.json"
+          cmp "$RUNNER_TEMP/s15-real-final/eval233-three-family-final-decontamination.json" "$RUNNER_TEMP/s15-real-final-clean/eval233-three-family-final-decontamination.json"
+      - name: Lint Plan2 physical three-family train-only split materialization
+        run: ruff check tools/plan2_s15_three_family_train_materialization_v1.py tests/test_plan2_s15_three_family_train_materialization_v1.py
+      - name: Qualify train-only materialization and holdout negative controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_train_materialization_v1.py
+      - name: Verify physical train partition restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train" > "$RUNNER_TEMP/three-family-train-first.json"
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train" > "$RUNNER_TEMP/three-family-train-restart.json"
+          python -m tools.plan2_s15_three_family_train_materialization_v1 --root . --out-dir "$RUNNER_TEMP/three-family-train-clean" > "$RUNNER_TEMP/three-family-train-clean.json"
+          cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-restart.json"
+          cmp "$RUNNER_TEMP/three-family-train-first.json" "$RUNNER_TEMP/three-family-train-clean.json"
+          diff -r "$RUNNER_TEMP/three-family-train" "$RUNNER_TEMP/three-family-train-clean"
+      - name: Lint physical three-family train-only BPE
+        run: ruff check tools/plan2_s15_three_family_train_bpe_v1.py tests/test_plan2_s15_three_family_train_bpe_v1.py
+      - name: Test three-family real training only BPE candidate
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_train_bpe_v1.py
+      - name: Verify train-only BPE immutable restart and clean rebuild
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe" > "$RUNNER_TEMP/three-family-bpe-first.json"
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe" > "$RUNNER_TEMP/three-family-bpe-restart.json"
+          python -m tools.plan2_s15_three_family_train_bpe_v1 --root . --out-dir "$RUNNER_TEMP/three-family-bpe-clean" > "$RUNNER_TEMP/three-family-bpe-clean.json"
+          cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-restart.json"
+          cmp "$RUNNER_TEMP/three-family-bpe-first.json" "$RUNNER_TEMP/three-family-bpe-clean.json"
+          cmp "$RUNNER_TEMP/three-family-bpe/three-family-train-bpe-candidate.json" "$RUNNER_TEMP/three-family-bpe-clean/three-family-train-bpe-candidate.json"
+      - name: Lint S15 real three-family S9 mixture mechanics
+        run: ruff check tools/plan2_s15_three_family_mixture_probe_v1.py tests/test_plan2_s15_three_family_mixture_probe_v1.py
+      - name: Verify real three-family S9 fixture-only mixing controls
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_mixture_probe_v1.py
+      - name: Verify real S9 mixture restart and clean independent destination
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture" > "$RUNNER_TEMP/s15-family-mixture-first.json"
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture" > "$RUNNER_TEMP/s15-family-mixture-restart.json"
+          python -m tools.plan2_s15_three_family_mixture_probe_v1 --root . --out-dir "$RUNNER_TEMP/s15-family-mixture-clean" > "$RUNNER_TEMP/s15-family-mixture-clean.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture-first.json" "$RUNNER_TEMP/s15-family-mixture-restart.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture-first.json" "$RUNNER_TEMP/s15-family-mixture-clean.json"
+          cmp "$RUNNER_TEMP/s15-family-mixture/three-family-mixture-probe.json" "$RUNNER_TEMP/s15-family-mixture-clean/three-family-mixture-probe.json"
+      - name: Lint five real S1 S2 source license authority
+        run: ruff check tools/plan2_s15_five_source_rights_v1.py tests/test_plan2_s15_five_source_rights_v1.py
+      - name: Qualify five physical source license/catalog identity and negative tests
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_five_source_rights_v1.py
+      - name: Verify immutable five-source rights catalog restart
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_five_source_rights_v1 --root . --out-dir "$RUNNER_TEMP/s15-five-rights" > "$RUNNER_TEMP/s15-five-rights-first.json"
+          python -m tools.plan2_s15_five_source_rights_v1 --root . --out-dir "$RUNNER_TEMP/s15-five-rights" > "$RUNNER_TEMP/s15-five-rights-restart.json"
+          python -m tools.plan2_s15_five_source_rights_v1 --root . --out-dir "$RUNNER_TEMP/s15-five-rights-clean" > "$RUNNER_TEMP/s15-five-rights-clean.json"
+          cmp "$RUNNER_TEMP/s15-five-rights-first.json" "$RUNNER_TEMP/s15-five-rights-restart.json"
+          cmp "$RUNNER_TEMP/s15-five-rights-first.json" "$RUNNER_TEMP/s15-five-rights-clean.json"
+          cmp "$RUNNER_TEMP/s15-five-rights/five-physical-source-rights.json" "$RUNNER_TEMP/s15-five-rights-clean/five-physical-source-rights.json"
+      - name: Lint Section 15 independent Git checkout reproducibility
+        run: ruff check tools/plan2_s15_git_clean_checkout_v1.py tests/test_plan2_s15_git_clean_checkout_v1.py
+      - name: Reject unsafe archives, dirty source and false receipts
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_git_clean_checkout_v1.py
+      - name: Rebuild S15 component audit in two clean source archives
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_git_clean_checkout_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-git-rebuild"
+          python -c "import json, os, pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json'; e=json.loads(p.read_bytes()); assert e['independent_source_checkouts']==2 and e['terminal_done'] is False and e['production_release_authorized'] is False"
+      - name: Retain Section 15 clean Git rebuild metadata only
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s15-clean-checkout-evidence
+          path: ${{ runner.temp }}/plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json
+          if-no-files-found: error
+
+  qualify-three-family-s13-s14:
+    name: real-three-family-s13-s14
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LOCAL_FREE tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint Plan3/4 tokenizer ModelSpec compatibility guard
+        run: ruff check tools/plan2_s15_plan34_compatibility_v1.py tests/test_plan2_s15_plan34_compatibility_v1.py
+      - name: Require exact Plan3/4 contract to refuse fake production 32K vocab
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_plan34_compatibility_v1.py
+      - name: Lint S13/S14 real three-family adapters and their independent tests
+        run: ruff check tools/plan2_s15_three_family_train_packing_v1.py tools/plan2_s15_three_family_train_exposure_v1.py tests/test_plan2_s15_three_family_train_exposure_v1.py
+      - name: Qualify physical 3-family train-only shard/target replay
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_three_family_train_exposure_v1.py
+      - name: Fresh training-only physical shard and exposure publication
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_three_family_train_exposure_v1 --root . --out-dir "$RUNNER_TEMP/real-three-s13-s14"
+          python -c "import json,os,pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'real-three-s13-s14/three-family-physical-s13-s14-candidate.json'; x=json.loads(p.read_bytes()); assert x['target_count']>0 and x['train_document_count']>0 and x['heldout_payloads_exposed'] is False and x['production_release_authorized'] is False and x['terminal_done'] is False"
+      - name: Retain nonrelease cross-S13-S14 audit manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s15-real-three-family-s13-s14-candidate
+          path: ${{ runner.temp }}/real-three-s13-s14/three-family-physical-s13-s14-candidate.json
+          if-no-files-found: error
+
+  qualify-32k-real-source-byte-bpe:
+    name: real-source-32768-byte-bpe
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LOCAL_FREE source-only tokenizer dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint Plan9 data handoff preflight and strict grant-denial tests
+        run: ruff check tools/plan2_s15_plan9_handoff_preflight_v1.py tests/test_plan2_s15_plan9_handoff_preflight_v1.py
+      - name: Verify hash-only Plan9 32K/S13/S14/evaluation lineage guard
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_plan9_handoff_preflight_v1.py
+      - name: Lint exact-size preproduction real training tokenizer
+        run: ruff check tools/plan2_s15_real_32k_bpe_v1.py tests/test_plan2_s15_real_32k_bpe_v1.py
+      - name: Verify frozen byte fallback, reference pair ordering and actual 32K fit
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s15_real_32k_bpe_v1.py
+      - name: Independently reproduce exact 32768-vocabulary candidate
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s15_real_32k_bpe_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-real-bpe" > "$RUNNER_TEMP/plan2-s15-real-bpe-1.json"
+          python -m tools.plan2_s15_real_32k_bpe_v1 --root . --out-dir "$RUNNER_TEMP/plan2-s15-real-bpe-clean" > "$RUNNER_TEMP/plan2-s15-real-bpe-2.json"
+          cmp "$RUNNER_TEMP/plan2-s15-real-bpe-1.json" "$RUNNER_TEMP/plan2-s15-real-bpe-2.json"
+          cmp "$RUNNER_TEMP/plan2-s15-real-bpe/real-32k-byte-bpe-preproduction.json" "$RUNNER_TEMP/plan2-s15-real-bpe-clean/real-32k-byte-bpe-preproduction.json"
+          python -c "import json,os,pathlib; r=pathlib.Path(os.environ['RUNNER_TEMP']); p=r/'plan2-s15-real-bpe/real-32k-byte-bpe-preproduction.json'; x=json.loads(p.read_bytes()); assert x['actual_vocab_size']==32768 and x['fitted_merge_count']==32508 and x['heldout_payloads_fitted'] is False and x['production_release_authorized'] is False and x['terminal_done'] is False"
+      - name: Retain real 32K local-free candidate identity only
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s15-actual-32768-bpe-nonrelease
+          path: ${{ runner.temp }}/plan2-s15-real-bpe-1.json
+          if-no-files-found: error

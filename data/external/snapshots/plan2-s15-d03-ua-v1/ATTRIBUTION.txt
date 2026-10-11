@@ -1,0 +1,14 @@
+Plan 2 / Section 15 — D03 archival source intake (NONRELEASE)
+
+PHP Manual Ukrainian docs: source https://github.com/php/doc-uk at c165db75cc6f81cfdabf754656e73a68940de46c
+Copyright PHP Documentation Group. CC BY 3.0 or later; see licenses/php/license.xml.
+Snapshot selected/normalized in bounded archival D03 audit; retain attribution and mark modifications.
+
+Rust Book Ukrainian translation: source https://github.com/rust-lang-ua/rustbook_ukrainian at ca2d2e4f4434c661836926017af23bdd40ad4e3d
+Original Rust Project Developers and applicable translation contributors.
+Retain BOTH licenses/rust/LICENSE-MIT and licenses/rust/LICENSE-APACHE and applicable notices.
+Snapshot selection/normalization constitutes modification; source metadata must be retained.
+
+These are exactly TWO canonical source families, NOT 12 independent source families.
+Historical source training rights are not Plan-2 physical training-corpus or final-evaluation permission.
+NO production release, fit authorization, model training, or Plan9 handoff is conveyed.

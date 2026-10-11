@@ -27,6 +27,55 @@ def test_real_candidate_and_fixture_clean_rebuild_are_not_release(tmp_path: Path
         "S10_MECHANICS_ONLY_NOT_PHYSICAL_S9_ADMISSION"
     )
     assert report["evidence"]["real_books_s10_probe_document_clusters"] == 3
+    assert report["evidence"]["real_three_family_document_count"] == 15
+    assert len(report["evidence"]["real_eval233_final_custody_audit_sha256"]) == 64
+    assert report["evidence"]["real_eval233_final_record_count"] == 16
+    assert report["evidence"]["real_eval233_final_outcomes_read"] is False
+    assert type(report["evidence"]["real_eval233_decontamination_clean"]) is bool
+    assert len(report["evidence"]["real_three_family_source_split_probe_sha256"]) == 64
+    assert report["evidence"]["real_three_family_source_cluster_count"] == 5
+    assert len(report["evidence"]["real_three_family_s9_mixture_mechanics_sha256"]) == 64
+    assert report["evidence"]["real_three_family_s9_candidate_record_count"] == 15
+    assert len(report["evidence"]["real_five_source_s1_s2_rights_manifest_sha256"]) == 64
+    assert len(report["evidence"]["real_five_source_s1_inventory_sha256"]) == 64
+    assert len(report["evidence"]["real_five_source_s2_catalog_sha256"]) == 64
+    assert len(report["evidence"]["real_three_family_train_partition_manifest_sha256"]) == 64
+    assert report["evidence"]["real_three_family_train_only_document_count"] > 0
+    assert len(report["evidence"]["real_three_family_train_only_bpe_manifest_sha256"]) == 64
+    assert report["evidence"]["real_three_family_bpe_candidate_vocab_size"] <= 388
+    assert report["evidence"]["real_three_family_bpe_target_vocab_size"] == 32768
+    assert len(report["evidence"]["plan34_real_candidate_compatibility_manifest_sha256"]) == 64
+    assert report["evidence"]["plan34_production_vocab_compatible"] is False
+    assert len(report["evidence"]["real_source_32768_byte_bpe_candidate_sha256"]) == 64
+    assert report["evidence"]["real_source_32768_fitted_merge_count"] == 32508
+    assert len(report["evidence"]["real_three_family_32768_s13_s14_sha256"]) == 64
+    assert report["evidence"]["real_three_family_32768_exposure_count"] > 0
+    assert len(report["evidence"]["real_plan9_handoff_preflight_sha256"]) == 64
+    assert report["evidence"]["real_plan9_handoff_bindable"] is False
+    assert len(report["evidence"]["real_three_family_32768_exposure_chain_sha256"]) == 64
+    assert len(report["evidence"]["plan34_real_32768_candidate_compatibility_sha256"]) == 64
+    assert report["evidence"]["plan34_real_32768_model_vocab_compatible"] is True
+    assert report["evidence"]["real_three_family_train_only_physical_bytes"] > 0
+    assert report["evidence"]["real_three_family_heldout_document_count"] > 0
+    assert report["evidence"]["real_three_family_source_split_leakage_count"] == 0
+    assert report["evidence"]["real_three_family_total_bytes"] == 1_314_156
+    assert len(report["evidence"]["real_three_family_candidate_sha256"]) == 64
+    assert type(report["evidence"]["real_three_family_fixture_eval_clean"]) is bool
+    assert len(report["evidence"]["d03_real_ua_normalized_physical_sha256"]) == 64
+    assert report["evidence"]["d03_real_ua_source_candidate_families"] == 2
+    assert report["evidence"]["d03_real_ua_source_candidate_members"] == 12
+    assert report["evidence"]["d03_real_ua_source_candidate_bytes"] == 48675
+    assert report["evidence"]["real_multifamily_source_candidates_not_s3_s9_admitted"] == 3
+    assert len(report["evidence"]["d03_real_ua_source_candidate_sha256"]) == 64
+    assert len(report["evidence"]["real_books_physical_heldout_manifest_sha256"]) == 64
+    assert type(report["evidence"]["real_books_physical_heldout_clean"]) is bool
+    assert len(report["evidence"]["physical_real_text_tokenizer_candidate_sha256"]) == 64
+    assert report["evidence"]["physical_real_text_tokenizer_training_bytes"] > 100_000
+    assert len(report["evidence"]["physical_real_text_shard_manifest_sha256"]) == 64
+    assert report["evidence"]["physical_real_text_packed_target_count"] > 0
+    assert len(report["evidence"]["physical_real_text_exposure_manifest_sha256"]) == 64
+    assert len(report["evidence"]["physical_real_text_exposure_chain_head_sha256"]) == 64
+    assert len(report["evidence"]["physical_s13_s14_independent_readback_sha256"]) == 64
     assert report["evidence"]["physical_split"] == "DENIED_SINGLE_SOURCE_FAMILY"
     assert report["evidence"]["physical_source_family_count"] == 1
     assert report["evidence"]["synthetic_target_count"] > 0
