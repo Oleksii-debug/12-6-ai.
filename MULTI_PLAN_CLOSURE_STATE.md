@@ -1,3 +1,11 @@
+# 2026-10-11 OWNER LIVE DECOMPOSITION — authoritative current denominator, no lost work
+
+- Plan 2 `2. Другий план` has **18** terminal sections now; 1–14 DONE carried forward without reopen, S15–18 OPEN with exact scope in Google Drive. **Terminal 14/18**, not 14/15. Existing #3220 and every previous S15 physical/corpus/rights/32K-BPE candidate proof are carried to S15, not invalidated.
+- S15 current existing owner PR #3220 (last personally authored SHA at 2026-10-11: `074c5bdeeb5f1db32a0729f0f1359a0b2931dfe0`) has passed narrow BPE/three-family probes in previous commits; revised rights-negative CI and broad bootstrap must be rerun for the *new exact head*. Do not treat old job successes as current full CI.
+- S16 independently licensed multilingual UA/EN S3–S9 physical corpus, balanced holdouts/privacy; S17 deterministic clean frozen tokenizer/shards/splits/exposure; S18 release/Plan9 consumer. Do not silently deem any of these passed, and do not multiply PRs.
+- Plan 3 remains 12 sections; Section1 = 1A source model schema, 1B scratch-init reproducibility, 1C trusted seal/negative/integration; only all 3 yields Section1 DONE. Existing PR #3098. Prior exact bootstrap 5237 PASS/1 FAIL: Plan6 `teacher_council.py` expected sealed blob vs changed callable contract. Qualify dependent provenance rather than forge receipt.
+- Binding short-loop for existing workers without prompt replacement: REUSE/PIN → REPAIR EXACT FAIL → TEST → INTEGRATE → SHA READBACK → milestone+section registry/Drive. Preserve all earlier history below; older 14/15 totals below are not live after 2026-10-11.
+
 # 12-6 AI — Multi-Plan Closure State
 
 This file is the durable GitHub coordination mirror for the new independent-plan architecture.
