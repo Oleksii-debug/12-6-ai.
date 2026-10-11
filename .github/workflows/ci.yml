@@ -120,7 +120,12 @@ jobs:
       - name: Preflight all 14 Plan6 engine source seals
         if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
         run: python -m pytest -q tests/test_plan6_terminal_qualification.py::test_source_manifest_pins_all_fourteen_exact_engine_blobs
-      - run: ruff check src tests
+      # Keep the established E4/E7/E9/F bootstrap checks without modifying
+      # pyproject.toml: dependency locks cryptographically bind that file.
+      # Expanded Ruff rule families require a separately versioned lint migration.
+      - run: |
+          ruff check --select E4,E7,E9,F \
+            --config "lint.per-file-ignores = {'src/twelve_six/checkpoint/__init__.py' = ['E402'], 'tests/test_audit_d03_rada_trees_primary_archive.py' = ['E402'], 'tests/test_d03_rada_bulk_observation_cli.py' = ['E402'], 'tests/test_d03_rada_bulk_source_probe.py' = ['E402'], 'tests/test_d03_rada_bulk_source_probe_authority.py' = ['E402'], 'tests/test_d03_rada_trees_acquisition_probe.py' = ['E402'], 'tests/test_probe_d03_rada_trees_hf_objects.py' = ['E402']}" src tests
         if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
       # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
@@ -917,3 +922,73 @@ jobs:
           name: plan1-s4-windows-lock-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/plan1-s4-windows-lock.json
           if-no-files-found: error
+
+  plan3-section1-scoped-qualification:
+    # Independent Plan 3 component evidence; never substitutes for shared fail-closed gates.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 3098
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify Plan 3 Section 1 exact PR-head SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Plan 3 Section 1 scoped Ruff
+        run: |
+          ruff check src/twelve_six/model.py \
+            tests/test_plan3_section1_model_init.py \
+            tests/test_model341_current_main_resource_envelope_v1.py \
+            tests/test_model341_current_main_resource_receipt_v1.py
+      - name: Plan 3 Section 1 deterministic and adversarial contract tests
+        run: |
+          pytest -q \
+            tests/test_plan3_section1_model_init.py \
+            tests/test_model341_current_main_resource_envelope_v1.py \
+            tests/test_model341_current_main_resource_receipt_v1.py
+
+  plan8-admit-plan3-model-source:
+    # Direct dependency for Plan3 S1: independent fail-closed Plan8 qualification.
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.head_ref == 'plan8/s3-admit-plan3-model-20261009' ||
+       github.event.pull_request.number == 3098)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact Plan8 candidate
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Fail-closed Plan8 source and executable inventory
+        run: python tools/validate_section2_repository_surface_coverage.py
+      - name: Scoped model and Plan8 controls Ruff
+        run: |
+          ruff check src/twelve_six/model.py src/twelve_six/capability_map.py \
+            tests/test_plan3_section1_model_init.py tests/test_capability_map_section2.py \
+            tests/test_repository_surface_inventory_section2.py
+      - name: Exact-head versioned source qualification tests
+        run: |
+          pytest -q tests/test_capability_map_section2.py \
+            tests/test_repository_surface_inventory_section2.py \
+            tests/test_plan3_section1_model_init.py

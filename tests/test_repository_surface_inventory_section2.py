@@ -42,6 +42,8 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["current_repository_main_tree_sha"] == result["observed_main_tree_sha"]
     assert result["qualified_current_equivalent_surface_count"] == 239
     assert result["accepted_main_surface_count"] == 120
+    # The protected packaging surface belongs to accepted-main authority and
+    # must never be counted as an unqualified candidate override.
     assert result["candidate_overlay_surface_count"] == 61
     assert result["checkout_surface_count"] == 179
 
@@ -76,6 +78,13 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
         "path": ".github/workflows/ci.yml",
         "capability_id": "peer-source-qualification-pending",
     } in overrides
+    assert all(item["path"] != "pyproject.toml" for item in overrides)
+    assert {
+        "rule_id": "packaging",
+        "selector": "exact",
+        "pattern": "pyproject.toml",
+        "capability_id": "package-runtime",
+    } in payload["rules"]
     capability_by_id = {
         item["capability_id"]: item for item in capabilities["capabilities"]
     }
