@@ -246,7 +246,7 @@ def select_experiment(
         return _choice(state, None, "STOP_BUDGET")
     if not ranked:
         return _choice(state, None, "STOP_NO_INFORMATION_GAIN")
-    winner = min(ranked)[2]
+    winner = sorted(ranked)[0][2]
     return _choice(state, winner, "RUN_FIXTURE_CANDIDATE")
 
 

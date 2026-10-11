@@ -9,11 +9,7 @@ from dataclasses import asdict, dataclass, replace
 
 from .post_base_instruction import bounded_id, canonical_digest, sha_field
 from .post_base_reasoning import (
-    ReasoningRecipe,
-    TinyPolicy,
-    VerifiedTask,
-    run_verified_rl,
-    verify_reasoning_run,
+    ReasoningRecipe, TinyPolicy, VerifiedTask, run_verified_rl, verify_reasoning_run,
 )
 
 
