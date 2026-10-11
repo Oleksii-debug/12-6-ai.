@@ -30,6 +30,7 @@ from twelve_six.learned20m_global_training_lease import (
     _run_git,
     _validate_transport,
     build_global_lease_state,
+    decode_global_lease_state,
     global_training_run_lease_ref,
     inspect_global_training_run_lease,
 )
@@ -481,6 +482,7 @@ def _global_lease_binding_blockers(
     repo_root: str | Path,
     remote: str,
     state: Mapping[str, Any],
+    manifest: Mapping[str, Any],
 ) -> tuple[str, ...]:
     ref = str(state["global_lease_ref"])
     tip = str(state["global_lease_remote_tip"])
@@ -493,35 +495,21 @@ def _global_lease_binding_blockers(
     if hashlib.sha256(raw).hexdigest() != state["global_lease_state_sha256"]:
         return ("current_run_global_lease_state_sha256_mismatch",)
     try:
-        parsed = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return ("current_run_global_lease_state_json_invalid",)
-    if not isinstance(parsed, Mapping):
-        return ("current_run_global_lease_state_not_canonical",)
-    try:
-        canonical = canonical_json_bytes(parsed)
-    except (TypeError, ValueError):
-        return ("current_run_global_lease_state_not_canonical",)
-    if canonical != raw:
-        return ("current_run_global_lease_state_not_canonical",)
+        parsed = decode_global_lease_state(raw, manifest)
+    except (TypeError, ValueError) as exc:
+        return (f"current_run_global_lease_contract_invalid:{exc}",)
+
     blockers: list[str] = []
-    if parsed.get("repository") != CANONICAL_REPOSITORY:
-        blockers.append("current_run_global_lease_repository_mismatch")
-    if parsed.get("lock_domain") != CANONICAL_LOCK_DOMAIN:
-        blockers.append("current_run_global_lease_lock_domain_mismatch")
-    if parsed.get("launch_manifest_sha256") != state["launch_manifest_sha256"]:
+    if parsed["launch_manifest_sha256"] != state["launch_manifest_sha256"]:
         blockers.append("current_run_global_lease_manifest_mismatch")
-    lease = parsed.get("lease")
+    lease = parsed["lease"]
     identity = state["current_run_identity"]
-    if not isinstance(lease, Mapping):
-        blockers.append("current_run_global_lease_payload_missing")
-    else:
-        if lease.get("run_id") != identity["run_id"]:
-            blockers.append("current_run_global_lease_run_id_mismatch")
-        if lease.get("status") != "RUNNING":
-            blockers.append("current_run_global_lease_not_running")
-        if lease.get("expires_at_utc") != state["global_lease_expires_at_utc"]:
-            blockers.append("current_run_global_lease_expiry_mismatch")
+    if lease["run_id"] != identity["run_id"]:
+        blockers.append("current_run_global_lease_run_id_mismatch")
+    if lease["status"] != "RUNNING":
+        blockers.append("current_run_global_lease_not_running")
+    if lease["expires_at_utc"] != state["global_lease_expires_at_utc"]:
+        blockers.append("current_run_global_lease_expiry_mismatch")
     return tuple(blockers)
 
 
@@ -529,6 +517,7 @@ def inspect_current_run_authority(
     repo_root: str | Path,
     remote: str,
     *,
+    manifest: Mapping[str, Any] | None = None,
     now: datetime | None = None,
 ) -> CurrentRunAuthorityInspection:
     _validate_transport(remote)
@@ -577,23 +566,49 @@ def inspect_current_run_authority(
     active = state["status"] == "ACTIVE"
     blockers: list[str] = []
     if active:
-        try:
-            observed_global_tip = _remote_tip(
-                repo_root,
-                remote,
-                str(state["global_lease_ref"]),
-            )
-        except _GlobalLeaseFailure as exc:
-            blockers.append(
-                f"current_run_global_lease_tip_read_failed:{exc.blocker}"
-            )
+        manifest_snapshot: dict[str, Any] | None = None
+        if manifest is None:
+            blockers.append("current_run_trusted_launch_manifest_required")
         else:
-            if observed_global_tip != state["global_lease_remote_tip"]:
-                blockers.append("current_run_global_lease_tip_changed")
+            try:
+                manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+            except (TypeError, ValueError) as exc:
+                blockers.append(f"current_run_trusted_launch_manifest_invalid:{exc}")
             else:
-                blockers.extend(
-                    _global_lease_binding_blockers(repo_root, remote, state)
+                manifest_errors = validate_launch_manifest(manifest_snapshot)
+                if manifest_errors:
+                    blockers.append(
+                        "current_run_trusted_launch_manifest_invalid:"
+                        + ";".join(manifest_errors)
+                    )
+                elif (
+                    launch_manifest_sha256(manifest_snapshot)
+                    != state["launch_manifest_sha256"]
+                ):
+                    blockers.append("current_run_trusted_launch_manifest_mismatch")
+        if manifest_snapshot is not None and not blockers:
+            try:
+                observed_global_tip = _remote_tip(
+                    repo_root,
+                    remote,
+                    str(state["global_lease_ref"]),
                 )
+            except _GlobalLeaseFailure as exc:
+                blockers.append(
+                    f"current_run_global_lease_tip_read_failed:{exc.blocker}"
+                )
+            else:
+                if observed_global_tip != state["global_lease_remote_tip"]:
+                    blockers.append("current_run_global_lease_tip_changed")
+                else:
+                    blockers.extend(
+                        _global_lease_binding_blockers(
+                            repo_root,
+                            remote,
+                            state,
+                            manifest_snapshot,
+                        )
+                    )
         expiry = _parse_utc_second(state["global_lease_expires_at_utc"])
         current = _normalized_now(now)
         if expiry is None or current >= expiry:
@@ -900,6 +915,7 @@ def activate_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -948,7 +964,12 @@ def activate_current_run_authority(
             run_id=str(identity_snapshot["run_id"]),
             identity_sha256=str(identity_snapshot["identity_sha256"]),
         )
-    reread = inspect_current_run_authority(repo_root, remote, now=now)
+    reread = inspect_current_run_authority(
+        repo_root,
+        remote,
+        manifest=manifest_snapshot,
+        now=now,
+    )
     verified = (
         reread.valid
         and reread.active
@@ -1145,6 +1166,7 @@ def refresh_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -1194,7 +1216,12 @@ def refresh_current_run_authority(
             identity_sha256=identity_sha256,
         )
 
-    reread = inspect_current_run_authority(repo_root, remote, now=now)
+    reread = inspect_current_run_authority(
+        repo_root,
+        remote,
+        manifest=manifest_snapshot,
+        now=now,
+    )
     verified = (
         reread.valid
         and reread.active
@@ -1284,6 +1311,7 @@ def retire_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
