@@ -115,6 +115,11 @@ jobs:
       # Plan 8 S3 and S4 PRs #3207/#3083 have mandatory exact-head scoped
       # Ruff, provenance, full scoped pytest and SIL gates above; unrelated
       # visible in their own CI; run whole-repo compatibility pytest here.
+      # Fast, comprehensive Plan6 source provenance gate. One check lists every
+      # mismatched sealed engine instead of consuming minutes per single error.
+      - name: Preflight all 14 Plan6 engine source seals
+        if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
+        run: python -m pytest -q tests/test_plan6_terminal_qualification.py::test_source_manifest_pins_all_fourteen_exact_engine_blobs
       - run: ruff check src tests
         if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
