@@ -322,7 +322,8 @@ def test_boolean_privacy_detector_count_is_rejected(
 ) -> None:
     candidate = tmp_path / "candidate.jsonl"
     write_jsonl(candidate, [record()])
-    privacy = lambda text: FakePrivacyResult(text, "ALLOW", {"email": True})
+    def privacy(text):
+        return FakePrivacyResult(text, "ALLOW", {"email": True})
     monkeypatch.setattr(MODULE, "_load_mechanics", lambda: mechanics(privacy=privacy))
     with pytest.raises(MODULE.MaterializationError, match="detector count malformed"):
         run(candidate, tmp_path / "out.jsonl", tmp_path / "report.json")
