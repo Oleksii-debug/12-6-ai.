@@ -34,17 +34,21 @@ def need(value: bool, reason: str) -> None:
 
 def inspect(root: Path) -> dict[str, Any]:
     root = root.resolve(strict=True)
+    physical = combined.inspect(root)
+    # Validate physical source identities and non-promotion first. A damaged or
+    # forged upstream receipt must never induce unrelated catalog reads or
+    # escape as a lower-level BookCohortDenied from a fixture-only test root.
+    need(physical.get("source_family_count") == 3
+         and physical.get("document_identity_count") == 15
+         and physical.get("training_corpus_authorized") is False
+         and physical.get("physical_s3_s9_multi_family_admitted") is False,
+         "invalid physical source cohort or pre-authorized release")
     english = books.inspect(root)
     ua = d03.inspect(root)
-    physical = combined.inspect(root)
     need(english["physical_source_families"] == 1
          and english["physical_document_families"] == 3
          and ua["physical_family_count"] == 2
-         and ua["physical_record_count"] == 12
-         and physical["source_family_count"] == 3
-         and physical["document_identity_count"] == 15
-         and physical["training_corpus_authorized"] is False
-         and physical["physical_s3_s9_multi_family_admitted"] is False,
+         and ua["physical_record_count"] == 12,
          "invalid physical source cohort or pre-authorized release")
     record_groups: dict[str, list[dict[str, Any]]] = {}
     for row in ua["records"]:
