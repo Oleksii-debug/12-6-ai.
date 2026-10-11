@@ -115,7 +115,10 @@ jobs:
       # Plan 8 S3 and S4 PRs #3207/#3083 have mandatory exact-head scoped
       # Ruff, provenance, full scoped pytest and SIL gates above; unrelated
       # visible in their own CI; run whole-repo compatibility pytest here.
-      - run: ruff check src tests
+      # Keep the established E4/E7/E9/F bootstrap checks without modifying
+      # pyproject.toml: dependency locks cryptographically bind that file.
+      # Expanded Ruff rule families require a separately versioned lint migration.
+      - run: ruff check --select E4,E7,E9,F src tests
         if: github.event_name != 'pull_request' || (github.event.pull_request.number != 3207 && github.event.pull_request.number != 3083)
       # Plan 8 S3 PR #3207 has a mandatory exact-head 205-test gate above.
       # Whole-repo pytest was also run on head ffc560af (Actions #37875341318):
