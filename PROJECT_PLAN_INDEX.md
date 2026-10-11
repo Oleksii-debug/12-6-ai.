@@ -1,3 +1,9 @@
+## CURRENT OWNER SECTION MAPPING — 2026-10-11
+
+**Plan 2 is now 18 Sections (previously 15),** source-of-truth Google Drive `2. Другий план`. Exactly original Sections 1–14 retain terminal DONE. Original Section 15's existing code, PR #3220 and evidence stay attached to new 15 (physical candidate/right-bound proof). New 16 = real balanced UA/EN S3–S9 corpus source approval; 17 = clean deterministic tokenization/split/packing/shard production; 18 = final production release and Plan9 handoff. Current verified aggregate = **14/18 DONE**, 15–18 OPEN. The former 14/15 state only describes an older historical audit. Do not renumber other plans or produce second PR for Section15.
+
+**Plan 3 retains 12 numbered Sections** but first Section now closes sequentially through micro-checkpoints 1A/1B/1C. These markers are evidence ledger items, not phantom completed Sections. Existing Plan3 PR #3098 stays owner. Keep source truth, negative/recovery/rights and independent plan-law.
+
 # 12-6 AI — Canonical Multi-Plan Index
 
 ## Authority
@@ -65,4 +71,4 @@ Plan 10 is final convergence and release.
 - New Plan 1 / Section 2 = former Section 1 — DONE.
 - New Plan 8 / Section 1 = former Section 2 — DONE.
 - New Plan 8 / Section 2 = former Section 3 — DONE.
-- New Plan 8 / Section 3 = former Section 4 — QUALIFYING, not DONE at migration time.
+- New Plan 8 / Section 3 = former Section 4 — DONE on accepted main via canonical PR #3207 (supersedes historic migration QUALIFYING).

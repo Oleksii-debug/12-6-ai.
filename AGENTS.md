@@ -1,3 +1,16 @@
+# OWNER CLOSURE DECOMPOSITION 2026-10-11 — active for current workers without prompt changes
+
+Plan 2 Google Drive `2. Другий план` has been restructured **15 → 18 terminal sections**. Sections 1–14 remain previously DONE; original S15 work and evidence preserved in existing PR #3220 and historical Drive appendices, now decomposed as:
+- S15 = physical candidate source identity, source-level rights and fail-closed five-source/32K BPE/S10–S14 candidate qualifications. Source grants do **not** constitute approved training-corpus release.
+- S16 = independently license-approved, balanced real Ukrainian/English S3–S9 train/eval corpus, privacy/dedup/holdout/decontamination; no fake rights, no promotion of unverified sources.
+- S17 = deterministic tokenizer/shards/splits/exposure clean-checkout reproduction from S16-authorized data; reuse verified 32K tokenization.
+- S18 = final qualified dataset/tokenizer/shard release and real Plan9 binding. Only 18/18 earns full Plan2 DONE.
+Write 14/18 terminal at the point of this migration, never 14/15 as current. Old 14/15 references are immutable historical snapshots. S15 completion is possible independent of eventual S16/17/18 external source/legal blockers. Maintain Plan2 #3220 as existing work owner; no second implementation or PR.
+
+Plan 3 remains 12 numbered Sections to avoid breaking references but S1 is decomposed into separately VERIFIED micro-milestones 1A (ModelSpec schema), 1B (manifest/seed scratch initialization) and 1C (compatibility/negative CI/approved source provenance/integration). The Google Drive `3. Третій план` is the current gate definition. Keep existing #3098 and accepted work. Historical full CI showed 5237 PASS / one Plan6 teacher_council Git blob mismatch; treat it as precise dependency provenance, not grounds for speculative hardening or changing the Plan3 problem statement.
+
+General closure method for all plans: first actionable original Section → A reuse/prove exact SHA, B fix FIRST real failed CI job with negative/recovery checks in existing owner branch, C qualify + integrate + readback. Record VERIFIED checkpoints in Drive+registry immediately, but only original acceptance yields terminal DONE. No prompt/session replacement. Reuse; minimize cross-plan file mutations; never bypass law/security/corpus rights or fabricate tests/compute.
+
 # Multi-Plan Parallel Closure Protocol v4 — owner directive
 
 **This v4 directive overrides every older conflicting global-sequential / one-mutation-front / earliest-monolithic-Section rule in this repository.**
