@@ -1,6 +1,10 @@
 """Plan 3 S2: independent causal numerical qualification on LOCAL_FREE tiny tensors."""
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+
 import pytest
 import torch
 
@@ -75,6 +79,25 @@ def test_future_suffix_cannot_change_prefix_logits_or_prefix_loss_gradient() -> 
     assert torch.allclose(ga, gb, rtol=0, atol=1e-6)
 
 
+def test_tiny_decoder_parameter_gradient_matches_finite_difference() -> None:
+    model = _tiny_model().double().eval()
+    tokens = torch.tensor([[1, 2, 3, 4]])
+    loss = causal_lm_loss(model(tokens).logits, tokens)
+    gradient = torch.autograd.grad(loss, model.token_embedding.weight)[0][1, 0].item()
+    weight = model.token_embedding.weight
+    original = weight[1, 0].item()
+    epsilon = 1e-5
+    with torch.no_grad():
+        weight[1, 0] = original - epsilon
+    left = causal_lm_loss(model(tokens).logits, tokens).item()
+    with torch.no_grad():
+        weight[1, 0] = original + epsilon
+    right = causal_lm_loss(model(tokens).logits, tokens).item()
+    with torch.no_grad():
+        weight[1, 0] = original
+    assert abs(gradient - (right - left) / (2 * epsilon)) < 1e-7
+
+
 def test_aligned_padded_pairs_match_manual_masked_mean() -> None:
     logits = torch.tensor([[[1.0, 2.0], [3.0, -1.0], [0.4, 0.6]]],
                           requires_grad=True)
@@ -136,3 +159,42 @@ def test_aligned_loss_rejects_nonbinary_mask(mask: torch.Tensor) -> None:
 def test_shifted_loss_rejects_zero_valid_targets(labels: torch.Tensor) -> None:
     with pytest.raises(ValueError, match="unmasked|valid"):
         causal_lm_loss(torch.zeros(1, 3, 4), labels)
+
+
+def test_partitioned_loss_reduction_matches_unpartitioned_loss_and_gradients() -> None:
+    logits = torch.tensor([[[0.1, 0.3, -0.2], [-0.6, 0.2, 0.7],
+                            [0.8, -0.1, -0.4]],
+                           [[-0.2, 0.5, 0.7], [0.1, 1.1, -0.3],
+                            [0.6, -0.7, 0.2]]], dtype=torch.float64,
+                          requires_grad=True)
+    labels = torch.tensor([[0, 1, -100], [2, 0, 1]])
+    whole = causal_lm_loss(logits, labels)
+    count_a = int(labels[:1, 1:].ne(-100).sum())
+    count_b = int(labels[1:, 1:].ne(-100).sum())
+    reduced = (count_a * causal_lm_loss(logits[:1], labels[:1])
+               + count_b * causal_lm_loss(logits[1:], labels[1:])) / (count_a + count_b)
+    assert torch.allclose(whole, reduced, rtol=0, atol=1e-12)
+    whole_grad = torch.autograd.grad(whole, logits, retain_graph=True)[0]
+    reduced_grad = torch.autograd.grad(reduced, logits)[0]
+    assert torch.allclose(whole_grad, reduced_grad, rtol=0, atol=1e-12)
+
+
+def test_serialized_fresh_process_loss_contract_matches_local_reference() -> None:
+    """Fixture transport parity; no claim of an actual server or distributed host."""
+    values = [[[0.3, -0.1, 0.8], [0.2, 0.9, -0.3], [0.4, -0.2, 0.1]]]
+    labels = [[2, 1, 0]]
+    expected = causal_lm_loss(torch.tensor(values, dtype=torch.float64),
+                              torch.tensor(labels)).item()
+    code = (
+        "import json,sys,torch\n"
+        "from twelve_six.training.loss import causal_lm_loss\n"
+        "p=json.load(sys.stdin)\n"
+        "v=torch.tensor(p['logits'],dtype=torch.float64)\n"
+        "t=torch.tensor(p['labels'])\n"
+        "print(json.dumps({'loss':causal_lm_loss(v,t).item()}))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], input=json.dumps({"logits": values, "labels": labels}),
+        text=True, capture_output=True, check=True, timeout=30,
+    )
+    assert abs(json.loads(proc.stdout)["loss"] - expected) < 1e-12
