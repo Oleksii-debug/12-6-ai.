@@ -18,6 +18,7 @@ from twelve_six.model import (
     count_trainable_parameters,
     load_stage_config,
 )
+from twelve_six.training.loss import causal_lm_loss
 
 
 def tiny_spec() -> ModelSpec:
@@ -307,3 +308,21 @@ def test_scale_config_rejects_swapped_and_tampered_authorities(tmp_path: Path) -
         BaseInitManifest.from_dict(dict(
             first["base_init_manifest"], weights_origin="pretrained",
         ))
+
+@pytest.mark.parametrize("name", [row[0] for row in _SCALE_ROWS])
+def test_seven_scale_seeds_use_one_tiny_scratch_decoder_proxy(name: str) -> None:
+    """Proxy math/gradients only; does not instantiate the large profile."""
+    raw = json.loads(_scale_path(name).read_text(encoding="utf-8"))
+    seed = BaseInitManifest.from_dict(raw["base_init_manifest"]).seed
+    spec, init = tiny_spec(), InitSpec.from_dict(raw["init"])
+    first = build_canonical_base(spec, init, manifest(spec, init, seed=seed))
+    second = build_canonical_base(spec, init, manifest(spec, init, seed=seed))
+    assert all(torch.equal(a, b) for a, b in zip(first.parameters(), second.parameters()))
+    tokens = torch.tensor([[1, 2, 3, 4]], dtype=torch.long)
+    logits = first(tokens).logits
+    assert logits.shape == (1, 4, spec.vocab_size)
+    loss = causal_lm_loss(logits, tokens)
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert first.token_embedding.weight.grad is not None
+    assert torch.isfinite(first.token_embedding.weight.grad).all()
