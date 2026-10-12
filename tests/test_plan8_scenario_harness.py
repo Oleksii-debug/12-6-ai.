@@ -1,6 +1,9 @@
+import json
 import unittest
 
-from twelve_six.scenario_harness import Scenario, ScenarioStep, _digest, coverage_map, run_scenario
+from twelve_six.scenario_harness import (
+    Scenario, ScenarioStep, _digest, coverage_map, parse_scenario_bytes, run_scenario,
+)
 
 
 class ScenarioHarnessTests(unittest.TestCase):
@@ -44,6 +47,16 @@ class ScenarioHarnessTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate step"):
             Scenario("bad", ("cap",), ("ready",),
                      (scenario.steps[0], scenario.steps[0]), "Q0")
+
+    def test_manifest_roundtrip_and_fail_closed_json(self):
+        scenario = self.scenario()
+        raw = json.dumps(scenario.to_dict()).encode("utf-8")
+        self.assertEqual(parse_scenario_bytes(raw), scenario)
+        with self.assertRaisesRegex(ValueError, "duplicate scenario JSON key"):
+            parse_scenario_bytes(raw.replace(b'"schema_version":',
+                                             b'"schema_version": "duplicate", "schema_version":'))
+        with self.assertRaisesRegex(ValueError, "bounded bytes"):
+            parse_scenario_bytes(raw + b" " * 65_536)
 
 
 if __name__ == "__main__":
