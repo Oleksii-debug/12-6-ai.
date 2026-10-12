@@ -59,6 +59,11 @@ class ChaosHarnessTests(unittest.TestCase):
             receipt.write_text(json.dumps({"forged": True}))
             with self.assertRaisesRegex(ValueError, "conflicting durable"):
                 recover_fault(root, campaign, case, recover=lambda: {"corrupt": True})
+            stale = root / "generation"
+            stale.write_text("old")
+            campaign, case = self.case("stale_state", {"stale_denied": True})
+            run_fault(root, campaign, case, inject=lambda: None,
+                      recover=lambda: {"stale_denied": stale.read_text() != "current"})
 
     def test_interrupted_checkpoint_and_provider_failure_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -68,9 +73,11 @@ class ChaosHarnessTests(unittest.TestCase):
             def interrupted():
                 checkpoint.write_bytes(b"partial")
                 raise RuntimeError("power loss")
+            def rollback_checkpoint():
+                checkpoint.unlink(missing_ok=True)
+                return {"rollback": not checkpoint.exists()}
             run_fault(root, campaign, case, inject=interrupted,
-                      recover=lambda: {"rollback": checkpoint.read_bytes() == b"partial"})
-            checkpoint.unlink()
+                      recover=rollback_checkpoint)
             campaign, case = self.case("provider_failure", {"denied": True})
             def unavailable():
                 raise ConnectionError("provider unavailable")
@@ -79,6 +86,17 @@ class ChaosHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "never replay"):
                 run_fault(root, campaign, case, inject=unavailable,
                           recover=lambda: {"denied": True})
+            campaign, case = self.case("node_failure", {"replica_required": True})
+            run_fault(root, campaign, case, inject=unavailable,
+                      recover=lambda: {"replica_required": True})
+            publication = root / "published"
+            campaign, case = self.case("interrupted_publication", {"rollback": True})
+            def rollback_publication():
+                publication.unlink(missing_ok=True)
+                return {"rollback": not publication.exists()}
+            run_fault(root, campaign, case,
+                      inject=lambda: publication.write_bytes(b"partial"),
+                      recover=rollback_publication)
 
 
 if __name__ == "__main__":
