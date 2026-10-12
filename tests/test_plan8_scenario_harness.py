@@ -1,6 +1,6 @@
 import unittest
 
-from scenario_harness import Scenario, ScenarioStep, _digest, coverage_map, run_scenario
+from twelve_six.scenario_harness import Scenario, ScenarioStep, _digest, coverage_map, run_scenario
 
 
 class ScenarioHarnessTests(unittest.TestCase):
