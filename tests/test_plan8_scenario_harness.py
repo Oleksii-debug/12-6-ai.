@@ -2,7 +2,12 @@ import json
 import unittest
 
 from twelve_six.scenario_harness import (
-    Scenario, ScenarioStep, _digest, coverage_map, parse_scenario_bytes, run_scenario,
+    Scenario,
+    ScenarioStep,
+    _digest,
+    coverage_map,
+    parse_scenario_bytes,
+    run_scenario,
 )
 
 
