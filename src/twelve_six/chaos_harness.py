@@ -14,6 +14,7 @@ from typing import Any
 FAULTS = frozenset({
     "process_kill", "network_loss", "disk_corruption",
     "checkpoint_interruption", "stale_state", "provider_failure",
+    "node_failure", "interrupted_publication",
 })
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
