@@ -32,7 +32,6 @@ from twelve_six.sil_qualification import (
     verify_sil_evidence,
 )
 
-
 _SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
