@@ -12,6 +12,45 @@ _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _LEVELS = ("Q0", "Q1", "Q2", "Q3", "Q4")
 
 
+def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate scenario JSON key")
+        result[key] = value
+    return result
+
+
+def parse_scenario_bytes(raw: bytes) -> Scenario:
+    """Parse a bounded, unambiguous versioned scenario manifest."""
+    if type(raw) is not bytes or len(raw) > 65_536:
+        raise ValueError("scenario manifest must be bounded bytes")
+    try:
+        value = json.loads(raw.decode("utf-8", errors="strict"), object_pairs_hook=_unique_pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError("invalid scenario JSON") from exc
+    if type(value) is not dict or set(value) != {
+        "schema_version", "scenario_id", "capability_ids", "prerequisites", "steps", "required_level"
+    }:
+        raise ValueError("noncanonical scenario manifest")
+    if type(value["capability_ids"]) is not list or type(value["prerequisites"]) is not list or (
+        type(value["steps"]) is not list or len(value["steps"]) > 64
+    ):
+        raise ValueError("invalid scenario arrays")
+    steps: list[ScenarioStep] = []
+    for item in value["steps"]:
+        if type(item) is not dict or set(item) != {"step_id", "adapter_id", "expected_sha256"}:
+            raise ValueError("noncanonical scenario step")
+        steps.append(ScenarioStep(**item))
+    return Scenario(
+        schema_version=value["schema_version"], scenario_id=value["scenario_id"],
+        capability_ids=tuple(value["capability_ids"]),
+        prerequisites=tuple(value["prerequisites"]), steps=tuple(steps),
+        required_level=value["required_level"],
+    )
+
+
 def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
