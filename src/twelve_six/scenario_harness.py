@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Callable, Mapping
 
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _LEVELS = ("Q0", "Q1", "Q2", "Q3", "Q4")
