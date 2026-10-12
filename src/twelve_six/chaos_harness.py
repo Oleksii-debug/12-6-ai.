@@ -124,9 +124,9 @@ def run_fault(
     _write_once(claim, _bytes({"campaign": identity, "case": case.case_id}))
     try:
         inject()
-    except Exception:
+    except (OSError, RuntimeError):
         # A fault is expected; the independent recovery witness decides success.
-        pass
+        return recover_fault(root, campaign, case, recover=recover)
     return recover_fault(root, campaign, case, recover=recover)
 
 
@@ -141,14 +141,31 @@ def recover_fault(
     campaign.__post_init__()
     if type(case) is not FaultCase or case not in campaign.cases:
         raise ValueError("case is outside campaign")
+    if not isinstance(root, Path) or root.is_symlink():
+        raise ValueError("unsafe campaign root")
     identity = campaign.identity_sha256()
     directory = root / identity
+    if directory.is_symlink():
+        raise ValueError("unsafe campaign journal path")
     if _read_exact(directory / (case.case_id + ".claim")) != _bytes({
         "campaign": identity, "case": case.case_id
     }):
         raise ValueError("claim was corrupted")
     observed = _digest(_bytes(recover()))
     if observed != case.expected_recovery_sha256:
+        failure = _bytes({
+            "schema_version": "12-6.plan8-chaos-failure.v1",
+            "campaign_sha256": identity,
+            "case_id": case.case_id,
+            "observed_sha256": observed,
+            "expected_sha256": case.expected_recovery_sha256,
+        }) + b"\n"
+        failure_path = directory / (case.case_id + ".failure")
+        if failure_path.exists():
+            if _read_exact(failure_path) != failure:
+                raise ValueError("conflicting durable failure receipt")
+        else:
+            _write_once(failure_path, failure)
         raise ValueError("recovery witness mismatch")
     payload: dict[str, object] = {
         "schema_version": "12-6.plan8-chaos-receipt.v1",
