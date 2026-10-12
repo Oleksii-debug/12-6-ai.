@@ -2,12 +2,7 @@ import json
 import unittest
 
 from twelve_six.scenario_harness import (
-    Scenario,
-    ScenarioStep,
-    _digest,
-    coverage_map,
-    parse_scenario_bytes,
-    run_scenario,
+    Scenario, ScenarioStep, _digest, coverage_map, parse_scenario_bytes, run_scenario,
 )
 
 
@@ -49,6 +44,12 @@ class ScenarioHarnessTests(unittest.TestCase):
         altered = dict(receipt, source_sha="b" * 40)
         with self.assertRaisesRegex(ValueError, "identity mismatch"):
             coverage_map((scenario,), (altered,))
+        forged = dict(receipt, observations=[])
+        forged["identity_sha256"] = _digest({k: v for k, v in forged.items() if k != "identity_sha256"})
+        with self.assertRaisesRegex(ValueError, "observations differ"):
+            coverage_map((scenario,), (forged,))
+        with self.assertRaisesRegex(ValueError, "duplicate scenario receipt"):
+            coverage_map((scenario,), (receipt, receipt))
         with self.assertRaisesRegex(ValueError, "duplicate step"):
             Scenario("bad", ("cap",), ("ready",),
                      (scenario.steps[0], scenario.steps[0]), "Q0")
