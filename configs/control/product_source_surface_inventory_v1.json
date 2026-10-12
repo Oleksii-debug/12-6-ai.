@@ -533,7 +533,7 @@
     {
       "path": "src/twelve_six/model.py",
       "capability_id": "model-spec-identity",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/optional_risk_probes.py",
@@ -771,6 +771,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 115,
-  "candidate_overlay_surface_count": 38
+  "accepted_main_surface_count": 114,
+  "candidate_overlay_surface_count": 39
 }

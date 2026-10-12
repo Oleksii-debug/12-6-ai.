@@ -63,39 +63,39 @@ def test_fixture_same_run_and_deterministic_receipt(tier, tp):
     ("paid_compute_requested", True, "paid_compute_denied"),
 ])
 def test_fail_closed_resource(field, value, reason):
-    c, l, a, shards, manifest = inputs()
-    report = assess_large("3B", replace(c, **{field: value}), l, a, shards, manifest)
+    c, limits, a, shards, manifest = inputs()
+    report = assess_large("3B", replace(c, **{field: value}), limits, a, shards, manifest)
     assert reason in report["reasons"] and report["status"] == "NO_GO"
 
 
 def test_worker_loss_same_identity_new_capacity_receipt():
-    c, l, a, shards, manifest = inputs()
-    old = assess_large("3B", c, l, a, shards, manifest)
-    restarted = assess_large("3B", replace(c, workers=15), l, a, shards,
+    c, limits, a, shards, manifest = inputs()
+    old = assess_large("3B", c, limits, a, shards, manifest)
+    restarted = assess_large("3B", replace(c, workers=15), limits, a, shards,
                              manifest, recovered_run_sha256="a" * 64)
     assert old["run_sha256"] == restarted["run_sha256"]
     assert old["capacity_sha256"] != restarted["capacity_sha256"]
     with pytest.raises(LargePathDenied, match="scientific run identity"):
-        assess_large("3B", c, l, a, shards, manifest,
+        assess_large("3B", c, limits, a, shards, manifest,
                      recovered_run_sha256="f" * 64)
 
 
 def test_shards_reject_partial_corrupt_reordered_duplicate():
-    c, l, a, shards, manifest = inputs()
+    c, limits, a, shards, manifest = inputs()
     corrupt = (shards[0], (shards[1][0], b"bad", shards[1][2]))
     for bad in (shards[:1], shards[::-1], shards + shards[-1:], corrupt):
         with pytest.raises(ValueError):
-            assess_large("3B", c, l, a, bad, manifest)
+            assess_large("3B", c, limits, a, bad, manifest)
 
 
 def test_adversarial_types_and_adapter_tamper():
-    c, l, a, shards, manifest = inputs()
+    c, limits, a, shards, manifest = inputs()
     for changes in ({"workers": True}, {"tokens_per_second": float("nan")},
                     {"paid_compute_requested": "false"}):
         with pytest.raises(ValueError):
             LargeCapacity(**{**asdict(c), **changes})
     object.__setattr__(a, "same_run_resume_tested", "true")
     with pytest.raises(ValueError):
-        assess_large("3B", c, l, a, shards, manifest)
+        assess_large("3B", c, limits, a, shards, manifest)
     with pytest.raises(LargePathDenied):
         large_recipe("30B")
