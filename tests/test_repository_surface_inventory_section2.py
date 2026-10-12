@@ -258,3 +258,198 @@ def test_repository_surface_coverage_rejects_non_equivalent_historical_receipt(
 ) -> None:
     payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     payload["current_repository_main_sha"] = "5c041ca56edda55a5c3334f722361754051e121c"
+    payload["current_repository_main_tree_sha"] = "95ad101c8965fd49c1711027146253a093fce2f8"
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="pinned current-main receipt capability-bearing surface drift",
+    ):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_current_main_tree_reseal(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_INVENTORY.read_text(encoding="utf-8"))
+    payload["current_repository_main_tree_sha"] = "0" * 40
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match current_repository_main_sha"):
+        _validate(inventory)
+
+
+def test_repository_surface_coverage_rejects_duplicate_capability_ids(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["capabilities"].append(dict(payload["capabilities"][0]))
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="capability ids must be unique"):
+        _validate(capabilities=capabilities)
+
+
+def test_repository_surface_coverage_rejects_capability_registry_baseline_reseal(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["observed_main_sha"] = "cb94ca7a0c2b9a453356db45ef4d228c44e0ee21"
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match coverage baseline"):
+        _validate(capabilities=capabilities)
+
+
+def test_repository_surface_coverage_rejects_nonterminal_capability_ci(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_CAPABILITIES.read_text(encoding="utf-8"))
+    payload["observed_main_ci"]["conclusion"] = "failure"
+    capabilities = tmp_path / "capabilities.json"
+    capabilities.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be terminal success"):
+        _validate(capabilities=capabilities)
+
+
+def test_git_probes_strip_ambient_git_redirection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hostile = {
+        "Git_Dir": str(tmp_path / "forged.git"),
+        "git_work_tree": str(tmp_path / "forged-worktree"),
+        "gIt_CoNfIg_PaRaMeTeRs": "core.worktree=/forged",
+    }
+    for key, value in hostile.items():
+        monkeypatch.setenv(key, value)
+    observed_envs: list[dict[str, str]] = []
+    sha = "a" * 40
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+        env: dict[str, str],
+    ) -> object:
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        observed_envs.append(dict(env))
+        stdout = f"{sha}\n" if "rev-parse" in command else ""
+        if command[-1] == "HEAD":
+            stdout = "ok\n"
+        return surface_validator.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=stdout,
+            stderr="",
+        )
+
+    monkeypatch.setattr(surface_validator.subprocess, "run", fake_run)
+
+    assert surface_validator._run_git(tmp_path, "show", "HEAD") == ["ok"]
+    assert surface_validator._run_git_z(tmp_path, "ls-files", "-z") == []
+    assert surface_validator._resolve_live_main_sha(tmp_path) == sha
+    assert len(observed_envs) == 3
+    for env in observed_envs:
+        assert all(
+            not key.upper().startswith("GIT_") or key == "GIT_OPTIONAL_LOCKS"
+            for key in env
+        )
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
+
+
+def test_worktree_capability_surface_drift_detects_tracked_and_untracked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fake_run_git_z(_root: Path, *args: str) -> list[str]:
+        if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+            return ["src/twelve_six/model.py", "README.md"]
+        if args == ("ls-files", "-z", "--others", "--exclude-standard"):
+            return ["tools/forged.py", "notes.txt"]
+        raise AssertionError(args)
+
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git_z)
+
+    tracked, untracked = surface_validator._worktree_capability_surface_drift(tmp_path)
+
+    assert tracked == {"src/twelve_six/model.py"}
+    assert untracked == {"tools/forged.py"}
+
+
+def test_clean_capability_worktree_guard_rejects_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        surface_validator,
+        "_worktree_capability_surface_drift",
+        lambda _root: ({"pyproject.toml"}, {"tools/forged.sh"}),
+    )
+
+    with pytest.raises(ValueError, match="working tree capability surface drift"):
+        surface_validator._require_clean_capability_worktree(tmp_path)
+
+
+def test_surface_blob_map_identity_includes_regular_file_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    blob_sha = "a" * 40
+
+    def fake_run_git(_root: Path, *args: str) -> list[str]:
+        treeish = args[2]
+        mode = "100644" if treeish == "main-tree" else "100755"
+        return [f"{mode} blob {blob_sha}\ttools/mode_sensitive.py"]
+
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git)
+    main_blobs = surface_validator._surface_blob_map(tmp_path, "main-tree")
+    checkout_blobs = surface_validator._surface_blob_map(tmp_path, "checkout-tree")
+
+    assert main_blobs["tools/mode_sensitive.py"] != checkout_blobs[
+        "tools/mode_sensitive.py"
+    ]
+    assert _candidate_surface_paths(main_blobs, checkout_blobs) == {
+        "tools/mode_sensitive.py"
+    }
+
+
+def test_surface_blob_map_preserves_unquoted_unicode_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = "tools/перевірка.py"
+    line = "100644 blob " + ("a" * 40) + f"\t{path}"
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_git_z(_root: Path, *args: str) -> list[str]:
+        calls.append(args)
+        return [line]
+
+    monkeypatch.setattr(surface_validator, "_run_git_z", fake_run_git_z)
+
+    blobs = surface_validator._surface_blob_map(tmp_path, "HEAD")
+
+    assert blobs[path] == "100644:" + ("a" * 40)
+    assert calls == [("ls-tree", "-rz", "HEAD")]
+
+
+def test_surface_blob_map_rejects_symlink_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    line = "120000 blob " + ("a" * 40) + "\ttools/forged.py"
+    monkeypatch.setattr(surface_validator, "_run_git_z", lambda *_args: [line])
+
+    with pytest.raises(ValueError, match="regular Git blob"):
+        surface_validator._surface_blob_map(tmp_path, "HEAD")
+
