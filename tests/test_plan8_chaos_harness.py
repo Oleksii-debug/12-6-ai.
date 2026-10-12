@@ -5,7 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from twelve_six.chaos_harness import FaultCampaign, FaultCase, _bytes, _digest, recover_fault, run_fault
+from twelve_six.chaos_harness import (
+    FaultCampaign,
+    FaultCase,
+    _bytes,
+    _digest,
+    recover_fault,
+    run_fault,
+)
 
 
 class ChaosHarnessTests(unittest.TestCase):
@@ -46,6 +53,8 @@ class ChaosHarnessTests(unittest.TestCase):
                       recover=lambda: {"corrupt": artifact.read_bytes() != b"correct"})
             with self.assertRaisesRegex(ValueError, "witness mismatch"):
                 recover_fault(root, campaign, case, recover=lambda: {"corrupt": False})
+            failure = root / campaign.identity_sha256() / (case.case_id + ".failure")
+            self.assertEqual(json.loads(failure.read_text())["case_id"], case.case_id)
             receipt = root / campaign.identity_sha256() / (case.case_id + ".receipt")
             receipt.write_text(json.dumps({"forged": True}))
             with self.assertRaisesRegex(ValueError, "conflicting durable"):
