@@ -1,0 +1,42 @@
+name: Plan 8 S5 exact-head qualification
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/evidence_control_bridge.py"
+      - "tools/plan8_evidence_bridge.py"
+      - "tests/test_evidence_control_bridge_section6.py"
+      - "tests/test_plan8_bridge_operator.py"
+      - "configs/plan6/evolution_engine_release_v1.json"
+      - ".github/workflows/plan8_s5_bridge.yml"
+  workflow_dispatch:
+
+jobs:
+  bridge:
+    if: github.event_name != 'pull_request' || github.event.pull_request.number == 3085
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - name: Verify exact candidate and bounded S5 bridge
+        env:
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m ruff check src/twelve_six/evidence_control_bridge.py tests/test_evidence_control_bridge_section6.py tests/test_plan8_bridge_operator.py tools/plan8_evidence_bridge.py
+          python tools/validate_section2_repository_surface_coverage.py
+          python -m pytest -q tests/test_evidence_control_bridge_section6.py tests/test_plan8_bridge_operator.py tests/test_physical_qualification_section5.py tests/test_plan8_physical_operator.py
