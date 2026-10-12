@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 import torch
@@ -14,6 +16,7 @@ from twelve_six.model import (
     build_canonical_base,
     canonical_json_sha256,
     count_trainable_parameters,
+    load_stage_config,
 )
 
 
@@ -225,3 +228,82 @@ def test_rehashed_mutated_init_spec_fails_at_weight_construction(bad) -> None:
     forged_manifest = manifest(spec, init)
     with pytest.raises((ValueError, TypeError)):
         build_canonical_base(spec, init, forged_manifest)
+
+_SCALE_ROWS = (
+    ("SCALE-500M", 1280, 24, 494_204_160),
+    ("SCALE-750M", 1536, 26, 755_842_560),
+    ("SCALE-1B", 1792, 26, 1_018_983_168),
+    ("SCALE-2B", 2048, 40, 1_996_654_592),
+    ("SCALE-3B", 2304, 48, 3_005_966_592),
+    ("SCALE-4B", 2560, 52, 4_003_207_680),
+    ("SCALE-5B", 2816, 54, 5_017_022_208),
+)
+
+
+def _scale_path(name: str) -> Path:
+    return Path(__file__).resolve().parents[1] / "configs" / "stages" / (
+        name.lower().replace("-", "_") + ".json"
+    )
+
+
+def test_seven_scale_configs_have_distinct_scratch_identities_and_exact_counts() -> None:
+    names = tuple(row[0] for row in _SCALE_ROWS)
+    assert names == (
+        "SCALE-500M", "SCALE-750M", "SCALE-1B", "SCALE-2B",
+        "SCALE-3B", "SCALE-4B", "SCALE-5B",
+    )
+    spec_hashes: set[str] = set()
+    manifest_hashes: set[str] = set()
+    for name, width, depth, expected in _SCALE_ROWS:
+        path = _scale_path(name)
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        loaded = load_stage_config(path)
+        manifest = BaseInitManifest.from_dict(raw["base_init_manifest"])
+        model = loaded.model
+        assert (model.d_model, model.n_layers) == (width, depth)
+        assert model.vocab_size == 32_768 and model.max_seq_len == 2048
+        assert model.n_kv_heads * 4 == model.n_heads
+        assert model.d_ff == 3 * width and model.head_dim == 64
+        # Independent matrix-shape sum, including tied embeddings and RMSNorms.
+        independent = model.vocab_size * width + depth * (
+            width * model.n_heads * 64 + 2 * width * model.n_kv_heads * 64
+            + model.n_heads * 64 * width + 3 * width * model.d_ff + 2 * width
+        ) + width
+        assert independent == expected == loaded.expected_parameters
+        assert manifest.model_spec_sha256 == model.identity_sha256()
+        assert manifest.init_spec_sha256 == loaded.init.identity_sha256()
+        assert manifest.weights_origin == "random_init"
+        assert manifest.ancestor_checkpoint_sha256 is None
+        assert raw["profile_id"] == raw["stage"] == name
+        assert raw["profile_schema_version"] == 1
+        assert raw["qualification"] == "CONFIG_DEFINED"
+        assert raw["paid_training_authorized"] is False
+        assert raw["resource_evidence_class"] == "ARITHMETIC_ONLY_NOT_MEASURED"
+        assert raw["tokenizer_contract"] == "32K_VERSIONED_MANIFEST_REQUIRED_AT_RUN_BINDING"
+        spec_hashes.add(model.identity_sha256())
+        manifest_hashes.add(manifest.identity_sha256())
+    assert len(spec_hashes) == len(manifest_hashes) == 7
+
+
+def test_scale_config_rejects_swapped_and_tampered_authorities(tmp_path: Path) -> None:
+    first = json.loads(_scale_path("SCALE-500M").read_text(encoding="utf-8"))
+    second = json.loads(_scale_path("SCALE-750M").read_text(encoding="utf-8"))
+    assert first["base_init_manifest"]["seed"] != second["base_init_manifest"]["seed"]
+    for key, value in (
+        ("expected_parameters", second["expected_parameters"]),
+        ("expected_model_identity_sha256", second["expected_model_identity_sha256"]),
+        ("canonical_base", "pretrained"),
+    ):
+        changed = dict(first, **{key: value})
+        path = tmp_path / "tampered.json"
+        path.write_text(json.dumps(changed), encoding="utf-8")
+        with pytest.raises(ValueError):
+            load_stage_config(path)
+    swapped = dict(first, base_init_manifest=second["base_init_manifest"])
+    manifest = BaseInitManifest.from_dict(swapped["base_init_manifest"])
+    loaded = load_stage_config(_scale_path("SCALE-500M"))
+    assert manifest.model_spec_sha256 != loaded.model.identity_sha256()
+    with pytest.raises(ValueError, match="foreign"):
+        BaseInitManifest.from_dict(dict(
+            first["base_init_manifest"], weights_origin="pretrained",
+        ))
