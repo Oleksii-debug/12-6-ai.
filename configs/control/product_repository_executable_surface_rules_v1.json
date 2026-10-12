@@ -198,10 +198,6 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
-      "path": ".github/workflows/plan8_s6_scenarios.yml",
-      "capability_id": "peer-source-qualification-pending"
-    },
-    {
       "path": "tools/_dependency_contract_loader.py",
       "capability_id": "peer-source-qualification-pending"
     },
