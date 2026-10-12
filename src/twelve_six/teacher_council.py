@@ -109,7 +109,7 @@ def gather_teacher_candidates(prompt: TeacherPrompt, members: tuple[TeacherModel
     if type(members) is not tuple or not 1 <= len(members) <= 8:
         raise ValueError("unbounded council size")
     if not callable(getattr(gateway, "invoke", None)):
-        raise ValueError("typed ModelGateway adapter missing")
+        raise TypeError("typed ModelGateway adapter missing")
     ids: set[str] = set()
     for model in members:
         if type(model) is not TeacherModel:
@@ -179,9 +179,14 @@ def attest_teacher_candidate(candidate: TeacherCandidate, *, verifier_id: str,
     sha_field(verifier_version_sha256)
     if verifier_id == candidate.teacher.gateway_id or any(type(x) is not bool for x in (accepted, rights_ok, quality_ok)):
         raise ValueError("teacher cannot self-verify")
-    fields = dict(candidate_sha256=candidate.identity(), verifier_id=verifier_id,
-                  verifier_version_sha256=verifier_version_sha256,
-                  accepted=accepted, rights_ok=rights_ok, quality_ok=quality_ok)
+    fields = {
+        "candidate_sha256": candidate.identity(),
+        "verifier_id": verifier_id,
+        "verifier_version_sha256": verifier_version_sha256,
+        "accepted": accepted,
+        "rights_ok": rights_ok,
+        "quality_ok": quality_ok,
+    }
     return TeacherVerdict(**fields, signature=_seal(fields, verifier_key))
 
 
@@ -203,8 +208,12 @@ def attest_council_judge(batch: TeacherBatch, selected: TeacherCandidate, *, jud
     sha_field(judge_version_sha256)
     if judge_id in {x.teacher.gateway_id for x in batch.candidates}:
         raise ValueError("teacher cannot self-judge")
-    fields = dict(batch_sha256=batch.identity_sha256, selected_candidate_sha256=selected.identity(),
-                  judge_id=judge_id, judge_version_sha256=judge_version_sha256)
+    fields = {
+        "batch_sha256": batch.identity_sha256,
+        "selected_candidate_sha256": selected.identity(),
+        "judge_id": judge_id,
+        "judge_version_sha256": judge_version_sha256,
+    }
     return CouncilJudge(**fields, signature=_seal(fields, judge_key))
 
 
