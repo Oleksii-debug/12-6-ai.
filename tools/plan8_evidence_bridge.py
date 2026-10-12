@@ -3,6 +3,7 @@
 Only approved signed Section-4 test packets can launch; no arbitrary commands.
 Raw host logs stay local and are never posted to public GitHub by default.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +14,7 @@ from pathlib import Path
 
 from plan8_physical_operator import _public_key_verifier
 from plan8_physical_operator import main as physical_operator
+
 from twelve_six.evidence_control_bridge import (
     bridge_status,
     build_host_dispatch,
