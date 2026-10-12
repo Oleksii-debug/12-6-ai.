@@ -1,6 +1,6 @@
-# Plan 2 / Section 15 — terminal data qualification contract
+# Plan 2 / Section 15 — physical candidate qualification contract
 
-Status: **OPEN — component audit implemented but real dataset release NOT authorized**.
+Status: **QUALIFYING — candidate evidence complete; production release NOT authorized**.
 Plan authority: Google Drive "2. Другий план", Sections 15.1–15.3, and
 `MULTI_PLAN_CLOSURE_STATE.md` (GitHub overrides the Drive migration snapshot).
 
@@ -110,27 +110,21 @@ Run once more with a fresh output directory and compare reports.
 The GitHub "Plan 2 Data Component Qualification" workflow includes prior
 S1–S14 scoped gates and the S15 audit. A queued or cancelled run is **NOT PASS**.
 
-## Exact terminal acceptance — no promotion by assertion
+## Exact Section 15 acceptance — no production promotion by assertion
 
 Only mark Plan-2 Section 15 DONE after all are *actually* true:
 
-1. An accepted multi-family corpus has independently verified source identity,
-   explicit training/release rights, member provenance and removal path.
-2. Physical rights, privacy, global dedup, evaluation decontamination,
-   mixture and family-safe split pass on the **same exact** candidate, without
-   seeding test/validation records into tokenizer fit or model training.
-3. The tokenizer is fitted/frozen on this accepted train partition, with
-   immutable vocab, IDs, normalization and compatibility proof (not S12 fixture).
-4. Physical deterministic shards, source/target mapping and stable ordered
-   exposures exist; exact identities match the frozen corpus and tokenizer.
-5. At least two clean rebuilds produce identical physical dataset/tokenizer/
-   shard/exposure hashes; negative and restart/recovery tests qualify the
-   release, not merely a staging fixture.
-6. The release manifest provides immutable, read-back-verified dataset,
-   tokenizer, shard and exposure identities for Plan 9. This is a **data
-   handoff only**; Plan 9 must still independently authorize any pretraining.
-7. A canonical integrated SHA and evidence are read back from GitHub, then
-   both GitHub closure state and Drive plan are updated to terminal DONE.
+1. The existing physical S10–S14 candidate results, three source families,
+   five source identities and exact 32,768-token byte-BPE identity are
+   preserved and independently reproducible.
+2. Source catalog, source-level rights, privacy, integrity, split, mixture,
+   clean-checkout, restart/recovery and forged-authority negative checks all
+   fail closed on the same exact candidate SHA.
+3. Receipts remain explicitly candidate-only: they grant neither S3–S9
+   production admission, tokenizer-fit authority, training, release nor Plan9
+   launch authority. The missing S16 evidence is listed precisely.
+4. Exact-head qualification passes, the canonical PR is integrated, accepted
+   main is read back, and GitHub plus Drive record the same accepted SHA.
 
 Until then, the report must keep
 `decision=COMPONENT_AUDIT_ONLY_NOT_TERMINAL`,
@@ -138,8 +132,11 @@ Until then, the report must keep
 No model training, final-test reading, paid GPU run, foreign pretrained weights,
 source-rights promotion or PLAN-9 authority is conveyed.
 
-There is no Section 16 in the second plan; after terminal Section 15 the
-numbered plan closes. Any next-plan assignment must be explicit.
+Plan 2 has 18 Sections under the 2026-10-11 owner decomposition. Section 16
+owns lawful balanced real UA/EN S3–S9 corpus admission; Section 17 owns the
+production tokenizer/shards/exposure release derived from accepted S16 data;
+Section 18 owns final release qualification and Plan9 handoff. Closing this
+candidate-only Section 15 does not satisfy or authorize any of those Sections.
 
 
 ## 2026-10-09 S15 real-source holdout and physical-tokenizer candidate — NOT terminal
@@ -174,11 +171,11 @@ corruption, symlink, Unicode and restart negatives, plus clean Git-root archive
 rebuild. Exact-head CI and accepted-main integration/readback must still pass
 before this component evidence may be accepted.
 
-**Terminal S15 remains OPEN** until a genuinely admitted full physical S1–S9
-production corpus (with both rights and reserve custody), production-scale
-frozen tokenizer, deterministic production shards and exposures, two clean
-production rebuilds, and a Plan9-compatible signed release handoff are
-established. Neither this PR nor a green component CI alone constitutes DONE.
+**S15 remains QUALIFYING** until this exact candidate passes scoped CI, is
+integrated, and is read back from accepted main. A genuinely admitted physical
+S3–S9 production corpus belongs to S16; production tokenizer/shards/exposures
+belong to S17; final release and Plan9 handoff belong to S18. Neither candidate
+evidence nor S15 DONE grants any of those downstream authorities.
 
 
 ## Physical real-text S13/S14 candidates (not production release)
@@ -210,8 +207,8 @@ is a bounded 128-merge engineering candidate, **not** a production-frozen
 32K-vocabulary tokenizer. No Plan9 launch or optimizer training is permitted
 from these artifacts. Current exact-head hosted qualification, production
 rights/mix/holdout acceptance, Plan3/4 token compatibility, and final Plan9
-release authority remain terminal gates. Do not change S15 or Plan2 to DONE
-until all of them have verifiable accepted-main evidence.
+release authority remain downstream S16–S18 gates. They do not block honest
+candidate-only S15 closure and must not be inferred from it.
 
 
 ## Additional physical provenance and mirrored-book controls
@@ -291,12 +288,11 @@ source families. Train/validation/test family coverage and leakage are recorded
 explicitly. This mechanism does NOT supply a verified S3-S9 production mix,
 externally sealed test custody, fitted production tokenizer or a Plan9 binding.
 
-Every part is currently **candidate-only and no-release**; final Plan2 S15
-remains OPEN pending actual accepted S1–S9 full lineage, final eval custody,
-production-sized frozen 32K tokenizer, compatible production shards/exposure
-stream, two fully clean production rebuilds and Plan9 handoff. Exact current
-head hosted CI remains unverified when the jobs are queued; queued/cancelled is
-never a PASS and a component PASS is not terminal DONE.
+Every part is currently **candidate-only and no-release**. S15 closure requires
+exact-head CI, integration and accepted-main readback of these candidate proofs.
+Actual accepted S3–S9 lineage and balanced holdouts are S16; production 32K
+tokenizer/shards/exposures are S17; final release and Plan9 handoff are S18.
+Queued or cancelled CI is never a PASS.
 
 
 ## Physical UA normalized publication and exact-head lint repair
@@ -378,10 +374,11 @@ the source-bound 32K S13/S14 physical stream.
 the concrete 32,768 vocabulary exists. The repository's S3–S9 current-main
 production corpus gate still has only a nonrelease source candidate,
 and no current-main Plan9 **production data acceptance** has been proven.
-A single pull request or green code test does not satisfy the
-Section15 DONE/Plan9 release rule. Exact-head execution, two clean-source
-builds, physical S3–S9 promotion under existing rights/privacy/holdout
-contract, final-release receipts and accepted-main readback remain required.
+A single pull request or green code test does not satisfy Section 15 DONE.
+Exact-head execution, clean-source reproducibility, integration and
+accepted-main readback remain required. Physical S3–S9 promotion and final
+release receipts are explicitly deferred to Sections 16–18 and are not
+silently granted by S15 closure.
 
 ## S15 multilingual source-coverage S10 split correction
 
@@ -410,5 +407,6 @@ source; these are included in train. The separately controlled EVAL233 real
 Ukrainian final-test source provides independent decontamination custody but
 is NOT a substitute for full multilingual validation/test. This
 versioned S10 candidate does not replace the already DONE incumbent policy
-or authorize S3–S9 production corpus admission. It must be accepted under
-the production review contract before Plan2 terminal DONE.
+or authorize S3–S9 production corpus admission. Sections 16–18 must separately
+accept production corpus, materialization and final release before Plan2 can
+reach 18/18 terminal DONE.
