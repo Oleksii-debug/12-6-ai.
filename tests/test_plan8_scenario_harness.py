@@ -12,8 +12,8 @@ class ScenarioHarnessTests(unittest.TestCase):
 
     def test_reproducible_receipt_and_physical_gap(self):
         scenario = self.scenario()
-        kwargs = dict(source_sha="a" * 40, available_prerequisites=frozenset({"fixture-ready"}),
-                      adapters={"fixture-adapter": lambda: {"value": 1}})
+        kwargs = {"source_sha": "a" * 40, "available_prerequisites": frozenset({"fixture-ready"}),
+                  "adapters": {"fixture-adapter": lambda: {"value": 1}}}
         first = run_scenario(scenario, **kwargs)
         self.assertEqual(first, run_scenario(scenario, **kwargs))
         coverage = coverage_map((scenario,), (first,))
