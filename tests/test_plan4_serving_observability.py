@@ -23,7 +23,7 @@ class ModelFixture:
         self.sessions = {}
 
     def call(self, request):
-        op, _args = request["op"], request["args"]
+        op, _ = request["op"], request["args"]
         self.calls.append(op)
         if op == "identity":
             data = {
