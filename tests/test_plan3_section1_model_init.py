@@ -13,6 +13,7 @@ from twelve_six.model import (
     BaseInitManifest,
     InitSpec,
     ModelSpec,
+    TwelveSixDecoder,
     build_canonical_base,
     canonical_json_sha256,
     count_trainable_parameters,
@@ -326,3 +327,16 @@ def test_seven_scale_seeds_use_one_tiny_scratch_decoder_proxy(name: str) -> None
     loss.backward()
     assert first.token_embedding.weight.grad is not None
     assert torch.isfinite(first.token_embedding.weight.grad).all()
+
+@pytest.mark.parametrize("name,width,depth,expected", _SCALE_ROWS)
+def test_full_scale_module_geometry_on_meta_without_allocating_weights(
+    name: str, width: int, depth: int, expected: int,
+) -> None:
+    """Count constructed parameters, with no physical weights or training claim."""
+    config = load_stage_config(_scale_path(name))
+    assert (config.model.d_model, config.model.n_layers) == (width, depth)
+    with torch.device("meta"):
+        model = TwelveSixDecoder(config.model, config.init)
+    assert count_trainable_parameters(model) == expected
+    assert model.lm_head.weight is model.token_embedding.weight
+    assert all(parameter.is_meta for parameter in model.parameters())
