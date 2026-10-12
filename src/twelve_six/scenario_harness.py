@@ -170,6 +170,9 @@ def coverage_map(
     scenarios: tuple[Scenario, ...], receipts: tuple[dict[str, object], ...]
 ) -> dict[str, dict[str, object]]:
     """Report proven fixture coverage and explicit gaps, never promote Q0 to HIL."""
+    scenario_by_sha = {scenario.identity_sha256(): scenario for scenario in scenarios}
+    if len(scenario_by_sha) != len(scenarios):
+        raise ValueError("duplicate scenario identity")
     receipt_ids: set[str] = set()
     for receipt in receipts:
         if type(receipt) is not dict or set(receipt) != {
@@ -183,6 +186,19 @@ def coverage_map(
             raise ValueError("unsupported scenario receipt evidence")
         if _digest({key: value for key, value in receipt.items() if key != "identity_sha256"}) != receipt["identity_sha256"]:
             raise ValueError("scenario receipt identity mismatch")
+        scenario = scenario_by_sha.get(receipt["scenario_sha256"])
+        if scenario is None:
+            raise ValueError("receipt references unknown scenario")
+        if type(receipt["source_sha"]) is not str or not re.fullmatch(r"[0-9a-f]{40}", receipt["source_sha"]):
+            raise ValueError("receipt source SHA is invalid")
+        expected = [
+            {"step_id": step.step_id, "observation_sha256": step.expected_sha256}
+            for step in scenario.steps
+        ]
+        if receipt["observations"] != expected:
+            raise ValueError("receipt observations differ from scenario")
+        if receipt["scenario_sha256"] in receipt_ids:
+            raise ValueError("duplicate scenario receipt")
         receipt_ids.add(receipt["scenario_sha256"])
     result: dict[str, dict[str, object]] = {}
     for scenario in scenarios:
