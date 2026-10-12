@@ -88,7 +88,7 @@ def _sandbox_path(candidate: CodeCandidate, *, sandbox_root: Path,
                   production_root: Path) -> Path:
     candidate.identity()
     if not isinstance(sandbox_root, Path) or not isinstance(production_root, Path):
-        raise ValueError("explicit local directories required")
+        raise TypeError("explicit local directories required")
     if sandbox_root.is_symlink() or production_root.is_symlink():
         raise ValueError("untrusted sandbox/repository symlink")
     sandbox = sandbox_root.resolve()
