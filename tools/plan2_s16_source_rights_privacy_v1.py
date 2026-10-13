@@ -36,6 +36,11 @@ def inspect(root: Path) -> dict[str, Any]:
         physical_proof = physical.inspect(root)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise SourceAdmissionDenied("physical source rights/privacy evidence denied") from exc
+    for name, proof in (("rights", rights_proof), ("physical", physical_proof)):
+        core = dict(proof)
+        digest = core.pop("manifest_sha256", None)
+        _need(digest == books.sha(books.canonical(core)),
+              f"{name} proof self-hash drift")
     _need(rights_proof["three_family_source_sha256"] ==
           physical_proof["manifest_sha256"], "source/rights/privacy lineage mismatch")
     _need(rights_proof["source_count"] == 5 and

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tools import plan2_s15_three_family_physical_v1 as physical
 from tools.plan2_s16_source_rights_privacy_v1 import (
     OUTPUT,
     SourceAdmissionDenied,
@@ -81,3 +82,11 @@ def test_no_manifest_on_source_failure(tmp_path: Path) -> None:
     with pytest.raises(SourceAdmissionDenied):
         stage(root, destination)
     assert not destination.exists()
+
+
+def test_unsealed_intermediate_privacy_proof_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = physical.inspect(ROOT)
+    original["g06_execution_identity_sha256"] = "0" * 64
+    monkeypatch.setattr(physical, "inspect", lambda _root: original)
+    with pytest.raises(SourceAdmissionDenied, match="physical proof self-hash drift"):
+        inspect(ROOT)
