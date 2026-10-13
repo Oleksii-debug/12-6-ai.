@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EN-Revision: 6b09bb638aa64d1fad5f4a630a8da9a2692ce733 Maintainer: mproshchuk Status: ready -->
+ <chapter xml:id="language.basic-syntax" xmlns="http://docbook.org/ns/docbook">
+  <title>Основний синтаксис</title>
+  <sect1 xml:id="language.basic-syntax.phptags">
+   <title>Теги PHP</title>
+   <para>
+    Коли парсер PHP обробляє файл, то шукає спеціальні початковий та кінцевий
+    теги, тобто <literal>&lt;?php</literal> та <literal>?&gt;</literal>, які
+    вказують PHP, що текст між ними потрібно виконати як код. Такий алгоритм
+    дозволяє вбудовувати PHP-код у різні документи, оскільки дані за межами
+    спеціальних тегів ігноруються парсером PHP.
+   </para>
+
+   <para>
+    PHP має echo-тег <literal>&lt;?=</literal>, який є скороченим варіантом
+    <code>&lt;?php echo</code>.
+   </para>
+
+   <para>
+    <example>
+     <title>Початковий та кінцевий теги PHP</title>
+     <programlisting role="php">
+<![CDATA[
+1.  <?php echo 'якщо потрібно вставити PHP-код в XHTML- або XML-документи,
+                використовуються ці теги.'; ?>
+
+2.  Можна застосувати короткий echo-тег, щоб <?= 'надрукувати цей рядок' ?>.
+    Це те саме, що й <?php echo 'надрукувати оцей рядок' ?>.
+
+3.  <? echo 'Цей код записано всередині коротких тегів, але він спрацює тільки, якщо '.
+            'short_open_tag увімкнено.'; ?>
+]]>
+     </programlisting>
+    </example>
+   </para>
+
+   <para>
+    Початково короткі теги (приклад 3) доступні, але можуть бути вимкнені
+    директивою <link linkend="ini.short-open-tag">short_open_tag</link> файлу
+    налаштувань &php.ini;, або під час збирання інтерпретатора, додавши до рядка
+    конфігурації прапорець <option>--disable-short-tags</option>.
+   </para>
+   <para>
+    <note>
+     <para>
+      Оскільки короткі теги можна вимкнути, то для найкращої сумісності
+      рекомендується використовувати звичайні теги (<code>&lt;?php ?&gt;</code>
+      та <code>&lt;?= ?&gt;</code>).
+     </para>
+    </note>
+   </para>
+
+   <para>
+    Якщо файл містить тільки PHP-код, бажано не використовувати кінцевий
+    PHP-тег. Бо якщо після кінцевого тегу вписані випадкові пропуски або символи
+    початку рядка, PHP розпочне буферизацію виводу, коли програміст не має
+    наміру надсилати будь-який вивід у цій точці сценарію.
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<?php
+echo "Hello world";
+
+// ... ще код
+
+echo "Останній вивід";
+
+// тут скрипт завершується без додавання кінцевого тегу PHP
+]]>
+
+     </programlisting>
+    </informalexample>
+   </para>
+  </sect1>
+  <sect1 xml:id="language.basic-syntax.phpmode">
+   <title>Відмежування від HTML</title>
+   <para>
+    Все, що за межами пари початкового та кінцевого тегів, ігнорується
+    парсером PHP. Таким чином можна обробляти PHP-файли зі змішаним
+    вмістом, тобто вбудовувати PHP-код в HTML-документи, наприклад, для
+    створення шаблонів.
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<p>Ця частина коду буде проігнорована PHP, але показана в браузері.</p>
+<?php echo 'В той час, як ця частина коду буде оброблятись.'; ?>
+<p>І цей код також буде проігноровано PHP, але показано в браузері.</p>
+]]>
+     </programlisting>
+    </informalexample>
+    Такий код обробляється як і очікується, оскільки коли парсер PHP зчитує
+    кінцевий тег ?&gt;, інтерпретатор просто починає виводити все, що записано
+    далі аж до наступного початкового тегу. Але є два винятки, коли
+    інтерпретатор не виводить вміст після кінцевого тегу: по-перше, якщо
+    безпосередньо далі йде символ нового рядка, про це можна прочитати на
+    сторінці <link linkend="language.basic-syntax.instruction-separation">поділ
+    інструкцій</link>; по-друге, якщо наступний текст записано всередині
+    умовного оператора (в такому разі інтерпретатор визначає результат умови,
+    від якого залежить, що саме виводити). Наступний приклад показує, як це
+    виглядає.
+   </para>
+   <para>
+    Використання структур з умовами.
+    <example>
+     <title>Розмежування коду PHP та HTML з використанням умовних операторів</title>
+     <programlisting role="php">
+<![CDATA[
+<?php if ($expression == true): ?>
+  Цей текст буде показано, якщо змінна $expression матиме значення true,
+  тобто вираз if ($expression == true) буде дійсним.
+<?php else: ?>
+  А інакше буде виводитись цей текст.
+<?php endif; ?>
+]]>
+     </programlisting>
+    </example>
+    В цьому прикладі PHP буде пропускати ті блоки, де умова виразу не
+    виконується навіть, якщо ці блоки знаходяться за межами початкового та
+    кінцевого PHP-тегів. PHP-інтерпретатор просто "перестрибне" їх.
+   </para>
+   <para>
+    Для виводу великих блоків тексту, вихід з PHP-режиму є більш ефективним, ніж
+    виведення всього тексту через <function>echo</function> чи
+    <function>print</function>.
+   </para>
+   <para>
+    <note>
+     <para>
+      Вставляючи блоки PHP всередину XML чи XHTML, потрібно використовувати
+      теги &lt;?php ?&gt;, щоб код відповідав стандартам цих розміток.
+     </para>
+    </note>
+   </para>
+  </sect1>
+
+  <sect1 xml:id="language.basic-syntax.instruction-separation">
+   <title>Поділ інструкцій</title>
+   <para>
+    Як і C чи Perl, PHP вимагає завершення інструкцій символом крапки з комою в
+    кінці кожного виразу. Кінцевий тег в блоці PHP-коду автоматично виконуватиме
+    роль символа крапки з комою. Тобто не потрібно завершувати останній рядок
+    PHP-блоку символом крапки з комою. Кінцевий тег також зумовить видалення
+    символа нового рядка, що йде безпосередньо після нього.
+    </para>
+   <para>
+    <example>
+     <title>Приклад з кінцевим тегом та символом нового рядка</title>
+     <programlisting role="php">
+<![CDATA[
+<?php echo "Якийсь текст"; ?>
+Немає нового рядка
+<?= "А тут є" ?>
+]]>
+     </programlisting>
+     &example.outputs;
+     <screen>
+<![CDATA[
+Якийсь текстНемає нового рядка
+А тут є
+]]>
+     </screen>
+    </example>
+   </para>
+
+   <para>
+    Приклади входу та виходу з парсера PHP:
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<?php
+    echo 'Це перевірка';
+?>
+
+<?php echo 'Це перевірка' ?>
+
+<?php echo 'Ми опустили кінцевий тег';
+]]>
+     </programlisting>
+    </informalexample>
+    <note>
+     <para>
+      Кінцевий тег PHP-блока в кінці файлу є необов'язковим, а в деяких випадках
+      з конструкціями <function>include</function> чи
+      <function>require</function> його відсутність є корисною, оскільки
+      випадковий пропуск в кінці файлу не додається у вивід, а також залишається
+      можливість додавати заголовки для відповіді пізніше. Також це зручно під
+      час буферизації виводу, коли пропуски в кінці частини виводу, згенерованої
+      підключеним файлом — небажані.
+     </para>
+    </note>
+   </para>
+  </sect1>
+  <sect1 xml:id="language.basic-syntax.comments">
+   <title>Коментарі</title>
+   <para>
+    PHP підтримує коментарі в стилі "C", "C++", Unix та shell (Perl). Наприклад:
+
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<?php
+    echo 'Це перевірка'; // Це однорядковий коментар в стилі C++
+    
+    /* Це багаторядковий коментар
+       і в цьому рядку можна писати щось */
+       
+    echo 'Це вже інша перевірка';
+    
+    echo 'Завершальна перевірка'; # Це однорядковий коментар в стилі shell
+?>
+]]>
+     </programlisting>
+    </informalexample>
+   </para>
+   <simpara>
+    Однорядкові коментарі діють тільки до кінця рядка або блока PHP-коду,
+    дивлячись, що йде першим. Це означає, що HTML-код після
+    <literal>// ... ?&gt;</literal> чи <literal># ...  ?&gt;</literal> БУДЕ
+    надруковано, оскільки кінцевий тег ?&gt; перериває PHP-режим та вмикає
+    вивід тексту і <literal>//</literal> чи <literal>#</literal> не впливають на
+    це.
+   </simpara>
+   <para>
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<h1>Це <?php # echo 'простий';?> приклад</h1>
+<p>Заголовок, що у верхньому рядку, буде виводити 'Це  приклад'.</p>
+]]>
+     </programlisting>
+    </informalexample>
+   </para>
+   <simpara>
+    Коментарі в стилі "C" завершуються, коли зустрічається перша ж послідовність
+    <literal>*/</literal>. Потрібно обережно використовувати такі коментарі та
+    перевіряти, чи не створено вкладених коментарів в такому ж стилі. Часто це
+    стається, якщо намагатись закоментувати великий блок коду.
+   </simpara>
+   <para>
+    <informalexample>
+     <programlisting role="php">
+<![CDATA[
+<?php
+ /*
+    echo 'Це перевірка'; /* Цей коментар спричинить проблеми */
+ */
+?>
+]]>
+     </programlisting>
+    </informalexample>
+   </para>
+  </sect1>
+ </chapter>
+
+<!-- Keep this comment at the end of the file
+Local variables:
+mode: sgml
+sgml-omittag:t
+sgml-shorttag:t
+sgml-minimize-attributes:nil
+sgml-always-quote-attributes:t
+sgml-indent-step:1
+sgml-indent-data:t
+indent-tabs-mode:nil
+sgml-parent-document:nil
+sgml-default-dtd-file:"~/.phpdoc/manual.ced"
+sgml-exposed-tags:nil
+sgml-local-catalogs:nil
+sgml-local-ecat-files:nil
+End:
+vim600: syn=xml fen fdm=syntax fdl=2 si
+vim: et tw=78 syn=sgml
+vi: ts=1 sw=1
+-->

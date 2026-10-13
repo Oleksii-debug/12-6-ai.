@@ -8,7 +8,7 @@ import sys
 import pytest
 import torch
 
-from twelve_six.model import BaseInitManifest, InitSpec, ModelSpec, build_canonical_base
+from twelve_six.model import BaseInitManifest, InitSpec, ModelSpec, RMSNorm, build_canonical_base
 from twelve_six.training.loss import causal_lm_loss, causal_pair_loss
 
 
@@ -62,6 +62,19 @@ def _tiny_model():
     init = InitSpec()
     manifest = BaseInitManifest(1, spec.identity_sha256(), init.identity_sha256(), 77)
     return build_canonical_base(spec, init, manifest)
+
+
+@pytest.mark.parametrize("dtype", [torch.float64, torch.float32, torch.bfloat16, torch.float16])
+def test_rmsnorm_precision_contract(dtype: torch.dtype) -> None:
+    layer = RMSNorm(4, 1e-6).to(dtype=dtype)
+    x = torch.tensor([[0.013, -0.29, 1.13, -2.71]], dtype=dtype, requires_grad=True)
+    accumulation = x if dtype == torch.float64 else x.float()
+    reference = x * torch.rsqrt(accumulation.square().mean(-1, keepdim=True) + 1e-6).to(dtype)
+    result = layer(x)
+    assert result.dtype == dtype
+    assert torch.equal(result, reference)
+    if dtype == torch.float64:
+        assert torch.autograd.gradcheck(layer, (x,), eps=1e-6, atol=1e-7, rtol=1e-5)
 
 
 def test_future_suffix_cannot_change_prefix_logits_or_prefix_loss_gradient() -> None:

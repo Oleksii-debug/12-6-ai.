@@ -20,7 +20,25 @@ from tools import plan2_deterministic_packing_v1 as packing
 from tools import plan2_exposure_ledger_v1 as exposure
 from tools import plan2_physical_materialization_v1 as physical
 from tools import plan2_public_domain_books_v1 as books
+from tools import plan2_s15_d03_normalized_materialization_v1 as d03_normalized
+from tools import plan2_s15_d03_physical_sources_v1 as d03_sources
+from tools import plan2_s15_five_source_rights_v1 as five_source_rights
 from tools import plan2_s15_physical_book_split_probe_v1 as book_split_probe
+from tools import plan2_s15_physical_exposure_candidate_v1 as real_exposure
+from tools import plan2_s15_physical_heldout_decontam_v1 as physical_heldout
+from tools import plan2_s15_physical_packing_candidate_v1 as real_packing
+from tools import plan2_s15_physical_readback_v1 as real_readback
+from tools import plan2_s15_physical_tokenizer_candidate_v1 as real_tokenizer
+from tools import plan2_s15_plan9_handoff_preflight_v1 as plan9_handoff
+from tools import plan2_s15_plan34_compatibility_v1 as model_compatibility
+from tools import plan2_s15_real_32k_bpe_v1 as real_32k_bpe
+from tools import plan2_s15_real_eval233_decontamination_v1 as real_final
+from tools import plan2_s15_three_family_mixture_probe_v1 as three_family_mixture
+from tools import plan2_s15_three_family_physical_v1 as combined_sources
+from tools import plan2_s15_three_family_split_probe_v1 as combined_split
+from tools import plan2_s15_three_family_train_bpe_v1 as three_family_bpe
+from tools import plan2_s15_three_family_train_exposure_v1 as three_family_exposure
+from tools import plan2_s15_three_family_train_materialization_v1 as train_partition
 from tools import plan2_tokenizer_fit_freeze_v1 as fit
 
 SCHEMA = "12-6.plan2-final-audit-local-free.v1"
@@ -161,16 +179,9 @@ def _audit_physical_gates(candidate: Path, mixture_hash: str) -> dict[str, str]:
 
 def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
     """Reuse all extant component authorities, without creating a second pipeline."""
-    books_cohort = books.stage(root, destination / "public-domain-books")
-    _require(books_cohort["training_corpus_authorized"] is False
-             and books_cohort["production_release_authorized"] is False,
-             "book source was promoted without full S5-S14 clearance")
-    probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
-    _require(probe["production_release_authorized"] is False
-             and probe["physical_s9_admitted"] is False
-             and probe["canonical_source_families"] == 1
-             and probe["physical_document_clusters"] == 3,
-             "physical-book mechanics probe incorrectly promoted corpus")
+    # Fail fast on the already canonical one-source physical S3-S10 boundary.
+    # This prevents a wrong source/rights/cluster candidate from running a
+    # full 32K fit before the rejection is visible to the host and CI.
     cohort = physical.stage_candidate_cohort(root, destination / "source")
     current = mixture.stage_mixture(root, destination / "physical-candidate")
     _require(cohort["source_level_candidate_only"] is True
@@ -207,6 +218,225 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
             "single-family physical candidate unexpectedly passed safe split"
         )
 
+    d03_ua = d03_sources.stage(root, destination / "physical-d03-ua")
+    _require(d03_ua["physical_family_count"] == 2
+             and d03_ua["physical_record_count"] == 12
+             and d03_ua["training_corpus_authorized"] is False
+             and d03_ua["tokenizer_fit_authorized"] is False
+             and d03_ua["production_release_authorized"] is False
+             and d03_ua["terminal_done"] is False,
+             "D03 historical source snapshot cannot authorize Plan2 release")
+    normalized_ua = d03_normalized.stage(
+        root, destination / "physical-d03-normalized")
+    _require(normalized_ua["d03_source_manifest_sha256"] == d03_ua["manifest_sha256"]
+             and normalized_ua["normalized_member_count"] == 12
+             and normalized_ua["normalized_total_bytes"] == 48675
+             and normalized_ua["physical_s3_s9_admitted"] is False
+             and normalized_ua["production_release_authorized"] is False,
+             "physical normalized D03 sources cannot promote Plan2 corpus")
+    books_cohort = books.stage(root, destination / "public-domain-books")
+    _require(books_cohort["training_corpus_authorized"] is False
+             and books_cohort["production_release_authorized"] is False,
+             "book source was promoted without full S5-S14 clearance")
+    combined = combined_sources.stage(root, destination / "physical-three-families")
+    _require(combined["source_family_count"] == 3
+             and combined["document_identity_count"] == 15
+             and combined["total_physical_normalized_bytes"] == 1_314_156
+             and combined["gutenberg_source_sha256"] == books_cohort["manifest_sha256"]
+             and combined["d03_source_sha256"] == d03_ua["manifest_sha256"]
+             and combined["physical_s3_s9_multi_family_admitted"] is False
+             and combined["training_corpus_authorized"] is False
+             and combined["production_release_authorized"] is False
+             and combined["real_evaluation_custody_established"] is False,
+             "combined real physical family evidence cannot grant training")
+    five_rights = five_source_rights.stage(
+        root, destination / "physical-five-source-rights")
+    _require(five_rights["three_family_source_sha256"] == combined["manifest_sha256"]
+             and five_rights["source_count"] == 5
+             and five_rights["canonical_source_family_count"] == 3
+             and five_rights["source_level_license_training_permission_evidenced"] is True
+             and five_rights["s3_s9_physical_admission"] is False
+             and five_rights["tokenizer_fit_authorized"] is False
+             and five_rights["production_release_authorized"] is False,
+             "source license catalog must not grant Plan2 training admission")
+    family_mixture = three_family_mixture.stage(
+        root, destination / "physical-three-family-mixture")
+    _require(family_mixture["source_cohort_manifest_sha256"] ==
+             combined["manifest_sha256"]
+             and family_mixture["source_family_count"] == 3
+             and family_mixture["physical_source_count"] == 5
+             and family_mixture["selected_physical_document_count"] == 15
+             and family_mixture["physical_s3_s9_admitted"] is False
+             and family_mixture["real_s8_authority_issued"] is False
+             and family_mixture["tokenizer_fit_authorized"] is False
+             and family_mixture["training_corpus_authorized"] is False,
+             "S9 real three-family mixture incorrectly grants data authority")
+    combined_partitions = combined_split.stage(
+        root, destination / "physical-three-family-split")
+    _require(combined_partitions["upstream_three_family_sha256"] ==
+             combined["manifest_sha256"]
+             and combined_partitions["canonical_source_family_count"] == 3
+             and combined_partitions["physical_document_count"] == 15
+             and combined_partitions["whole_source_cluster_count"] == 5
+             and combined_partitions["train_source_family_count"] == 3
+             and combined_partitions["train_record_count"] == 13
+             and combined_partitions["validation_record_count"] == 1
+             and combined_partitions["test_record_count"] == 1
+             and combined_partitions["validation_test_language_balanced"] is False
+             and combined_partitions["cluster_leakage_count"] == 0
+             and combined_partitions["physical_s9_admitted"] is False
+             and combined_partitions["training_corpus_authorized"] is False
+             and combined_partitions["production_release_authorized"] is False,
+             "source-family split mechanics incorrectly promoted candidate")
+    train_only = train_partition.stage(
+        root, destination / "physical-three-family-train")
+    _require(train_only["upstream_three_family_sha256"] == combined["manifest_sha256"]
+             and train_only["s10_split_probe_sha256"] == combined_partitions["manifest_sha256"]
+             and train_only["s10_split_manifest_sha256"] ==
+                 combined_partitions["s10_split_manifest_sha256"]
+             and train_only["train_document_count"] ==
+                 combined_partitions["train_record_count"]
+             and train_only["heldout_document_count"] ==
+                 combined_partitions["validation_record_count"] +
+                 combined_partitions["test_record_count"]
+             and train_only["heldout_plaintext_materialized"] is False
+             and train_only["training_corpus_authorized"] is False
+             and train_only["tokenizer_fit_authorized"] is False
+             and train_only["production_release_authorized"] is False,
+             "physical S10 train bytes or hash-only holdout custody drifted")
+    bpe_candidate = three_family_bpe.stage(
+        root, destination / "physical-three-family-bpe")
+    _require(bpe_candidate["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and bpe_candidate["source_s10_split_manifest_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and bpe_candidate["source_train_document_count"] ==
+             train_only["train_document_count"]
+             and bpe_candidate["heldout_payloads_fitted"] is False
+             and bpe_candidate["production_target_vocab_frozen"] is False
+             and bpe_candidate["tokenizer_fit_authorized"] is False
+             and bpe_candidate["production_release_authorized"] is False,
+             "real train-only tokenizer candidate or holdout boundary changed")
+    plan34 = model_compatibility.stage_from_fit(
+        bpe_candidate, destination / "plan34-compatibility")
+    _require(plan34["source_fit_manifest_sha256"] ==
+             bpe_candidate["manifest_sha256"]
+             and plan34["candidate_vocab_size"] == bpe_candidate["candidate_vocab_size"]
+             and plan34["required_production_vocab_size"] == 32768
+             and plan34["checkpoint_weight_reuse_approved"] is False
+             and plan34["production_32k_model_spec_compatible"] is False
+             and plan34["production_backend_binding_granted"] is False
+             and plan34["terminal_done"] is False,
+             "Plan3/4 migration compatibility cannot grant provisional tokenizer")
+    real_32k = real_32k_bpe.stage(
+        root, destination / "physical-real-32768-byte-bpe")
+    _require(real_32k["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and real_32k["source_s10_split_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and real_32k["actual_vocab_size"] == 32768
+             and real_32k["fitted_merge_count"] == 32508
+             and real_32k["heldout_payloads_fitted"] is False
+             and real_32k["production_train_source_admitted"] is False
+             and real_32k["training_corpus_authorized"] is False
+             and real_32k["production_release_authorized"] is False
+             and real_32k["terminal_done"] is False,
+             "physical 32768 candidate was not fully source-bound and nonrelease")
+    plan34_32k = model_compatibility.stage_fullsize_from_fit(
+        real_32k, destination / "plan34-real-32768-compatibility")
+    _require(plan34_32k["source_fit_manifest_sha256"] ==
+             real_32k["manifest_sha256"]
+             and plan34_32k["candidate_vocab_size"] == 32768
+             and plan34_32k["production_32k_model_spec_compatible"] is True
+             and plan34_32k["checkpoint_weight_reuse_approved"] is False
+             and plan34_32k["production_backend_binding_granted"] is False
+             and plan34_32k["plan9_optimizer_handoff_granted"] is False,
+             "Plan3/4 model binding overstated a non-release 32K source candidate")
+    real_three_targets = three_family_exposure.stage(
+        root, destination / "physical-three-family-s13-s14",
+        fitted=real_32k)
+    _require(real_three_targets["source_cohort_manifest_sha256"] ==
+             combined["manifest_sha256"]
+             and real_three_targets["source_train_partition_sha256"] ==
+             train_only["manifest_sha256"]
+             and real_three_targets["source_s10_split_sha256"] ==
+             train_only["s10_split_manifest_sha256"]
+             and real_three_targets["frozen_s12_candidate_sha256"] ==
+             real_32k["manifest_sha256"]
+             and real_three_targets["train_document_count"] ==
+             train_only["train_document_count"]
+             and real_three_targets["heldout_payloads_exposed"] is False
+             and real_three_targets["target_count"] > 0
+             and real_three_targets["production_release_authorized"] is False
+             and real_three_targets["plan9_optimizer_permission"] is False
+             and real_three_targets["terminal_done"] is False,
+             "physical 3-family 32K S13/S14 targets or holdout boundary drifted")
+    real_eval = real_final.stage(root, destination / "physical-real-final-custody")
+    _require(real_eval["physical_three_family_sha256"] ==
+             combined["manifest_sha256"]
+             and real_eval["real_final_test_record_count"] == 16
+             and real_eval["real_final_test_custody_verified"] is True
+             and real_eval["real_final_test_outcomes_read"] is False
+             and real_eval["selection_payload_scanned"] is False
+             and real_eval["training_corpus_authorized"] is False
+             and real_eval["production_release_authorized"] is False,
+             "real EVAL233 final-test decontamination cannot authorize training")
+    plan9 = plan9_handoff.stage_from_receipts(
+        five_rights, train_only, real_32k, real_three_targets,
+        real_eval, plan34_32k, destination / "plan9-handoff-preflight",
+    )
+    _require(plan9["source_family_count"] == 3
+             and plan9["frozen_candidate_vocab_size"] == 32768
+             and plan9["physical_train_targets"] == real_three_targets["target_count"]
+             and plan9["optimizer_effect_authorized"] is False
+             and plan9["production_plan9_bindable"] is False
+             and plan9["physical_s3_s9_release_admitted"] is False
+             and plan9["terminal_done"] is False,
+             "Plan9 data handoff cannot authorize prematurely released data")
+    probe = book_split_probe.stage(root, destination / "physical-book-split-probe")
+    _require(probe["production_release_authorized"] is False
+             and probe["physical_s9_admitted"] is False
+             and probe["canonical_source_families"] == 1
+             and probe["physical_document_clusters"] == 3,
+             "physical-book mechanics probe incorrectly promoted corpus")
+    heldout = physical_heldout.stage(root, destination / "physical-heldout")
+    _require(heldout["terminal_done"] is False
+             and heldout["physical_s9_admitted"] is False
+             and heldout["production_release_authorized"] is False,
+             "physical heldout audit cannot promote unreleased data")
+    real_fit = real_tokenizer.stage(root, destination / "physical-tokenizer-candidate")
+    _require(real_fit["production_release_authorized"] is False
+             and real_fit["tokenizer_fit_authorized"] is False
+             and real_fit["terminal_done"] is False,
+             "physical tokenizer candidate cannot grant production training")
+    real_shards = real_packing.stage(root, destination / "physical-shards-candidate")
+    _require(real_shards["terminal_done"] is False
+             and real_shards["production_release_authorized"] is False
+             and real_shards["physical_s9_admitted"] is False
+             and real_shards["tokenizer_manifest_sha256"] == real_fit["manifest_sha256"]
+             and real_shards["cluster_split_sha256"] ==
+             real_fit["physical_split_manifest_sha256"],
+             "physical shard/tokenizer/S10 split identity mismatch")
+    real_targets = real_exposure.stage(root, destination / "physical-exposures-candidate")
+    _require(real_targets["terminal_done"] is False
+             and real_targets["production_release_authorized"] is False
+             and real_targets["training_corpus_authorized"] is False
+             and real_targets["packing_manifest_sha256"] == real_shards["manifest_sha256"]
+             and real_targets["cluster_split_sha256"] == real_shards["cluster_split_sha256"]
+             and real_targets["tokenizer_manifest_sha256"] == real_fit["manifest_sha256"]
+             and real_targets["target_count"] == real_shards["target_count"],
+             "real physical packing-to-exposure identity mismatch")
+    witness = real_readback.verify(
+        destination / "physical-shards-candidate",
+        destination / "physical-exposures-candidate",
+        expected_packed_sha256=real_shards["manifest_sha256"],
+        expected_exposure_sha256=real_targets["manifest_sha256"],
+    )
+    _require(witness["terminal_done"] is False
+             and witness["production_release_authorized"] is False
+             and witness["readback_target_count"] == real_targets["target_count"]
+             and witness["last_chain_sha256"] == real_targets["chain_head_sha256"],
+             "independent physical S13/S14 publication readback mismatch")
     tokenizer = fit.stage(root, destination / "synthetic-tokenizer")
     packed = packing.stage(root, destination / "synthetic-shards")
     ledger = exposure.stage(root, destination / "synthetic-shards",
@@ -225,6 +455,75 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
              "target exposure mismatch")
 
     return {
+        "real_plan9_handoff_preflight_sha256": plan9["manifest_sha256"],
+        "real_plan9_handoff_bindable": plan9["production_plan9_bindable"],
+        "real_three_family_32768_s13_s14_sha256":
+            real_three_targets["manifest_sha256"],
+        "real_three_family_32768_exposure_count":
+            real_three_targets["target_count"],
+        "real_three_family_32768_exposure_chain_sha256":
+            real_three_targets["ordered_exposure_chain_sha256"],
+        "real_source_32768_byte_bpe_candidate_sha256":
+            real_32k["manifest_sha256"],
+        "real_source_32768_fitted_merge_count":
+            real_32k["fitted_merge_count"],
+        "plan34_real_32768_candidate_compatibility_sha256":
+            plan34_32k["manifest_sha256"],
+        "plan34_real_32768_model_vocab_compatible":
+            plan34_32k["production_32k_model_spec_compatible"],
+        "plan34_real_candidate_compatibility_manifest_sha256":
+            plan34["manifest_sha256"],
+        "plan34_production_vocab_compatible":
+            plan34["production_32k_model_spec_compatible"],
+        "real_three_family_train_only_bpe_manifest_sha256":
+            bpe_candidate["manifest_sha256"],
+        "real_three_family_bpe_candidate_vocab_size":
+            bpe_candidate["candidate_vocab_size"],
+        "real_three_family_bpe_target_vocab_size":
+            bpe_candidate["target_vocab_size"],
+        "real_three_family_train_partition_manifest_sha256":
+            train_only["manifest_sha256"],
+        "real_three_family_train_only_document_count":
+            train_only["train_document_count"],
+        "real_three_family_train_only_physical_bytes":
+            train_only["physical_train_bytes"],
+        "real_three_family_heldout_document_count":
+            train_only["heldout_document_count"],
+        "real_five_source_s1_s2_rights_manifest_sha256":
+            five_rights["manifest_sha256"],
+        "real_five_source_s1_inventory_sha256":
+            five_rights["source_inventory_sha256"],
+        "real_five_source_s2_catalog_sha256":
+            five_rights["source_rights_catalog_sha256"],
+        "real_three_family_s9_mixture_mechanics_sha256":
+            family_mixture["manifest_sha256"],
+        "real_three_family_s9_candidate_record_count":
+            family_mixture["selected_physical_document_count"],
+        "real_three_family_source_split_probe_sha256":
+            combined_partitions["manifest_sha256"],
+        "real_three_family_source_cluster_count":
+            combined_partitions["whole_source_cluster_count"],
+        "real_three_family_source_split_leakage_count":
+            combined_partitions["cluster_leakage_count"],
+        "real_eval233_final_custody_audit_sha256":
+            real_eval["manifest_sha256"],
+        "real_eval233_final_record_count": real_eval["real_final_test_record_count"],
+        "real_eval233_final_outcomes_read": real_eval["real_final_test_outcomes_read"],
+        "real_eval233_decontamination_clean":
+            real_eval["real_final_decontamination_clean"],
+        "real_three_family_candidate_sha256": combined["manifest_sha256"],
+        "real_three_family_document_count": combined["document_identity_count"],
+        "real_three_family_total_bytes": combined["total_physical_normalized_bytes"],
+        "real_three_family_fixture_eval_clean":
+            combined["physical_candidate_fixture_eval_clean"],
+        "d03_real_ua_normalized_physical_sha256":
+            normalized_ua["manifest_sha256"],
+        "d03_real_ua_source_candidate_sha256": d03_ua["manifest_sha256"],
+        "d03_real_ua_source_candidate_families": d03_ua["physical_family_count"],
+        "d03_real_ua_source_candidate_members": d03_ua["physical_record_count"],
+        "d03_real_ua_source_candidate_bytes": d03_ua["normalized_source_bytes"],
+        "real_multifamily_source_candidates_not_s3_s9_admitted":
+            d03_ua["physical_family_count"] + books_cohort["physical_source_families"],
         "real_books_manifest_sha256": books_cohort["manifest_sha256"],
         "real_books_distinct_document_families":
             books_cohort["physical_document_families"],
@@ -235,6 +534,20 @@ def _rebuild(root: Path, destination: Path) -> dict[str, Any]:
         "real_books_s10_probe_decision": probe["decision"],
         "real_books_s10_probe_document_clusters":
             probe["physical_document_clusters"],
+        "real_books_physical_heldout_manifest_sha256": heldout["manifest_sha256"],
+        "real_books_physical_heldout_clean":
+            heldout["physical_heldout_decontamination_clean"],
+        "physical_real_text_tokenizer_candidate_sha256": real_fit["manifest_sha256"],
+        "physical_real_text_tokenizer_training_bytes":
+            real_fit["train_document_bytes"],
+        "physical_real_text_shard_manifest_sha256": real_shards["manifest_sha256"],
+        "physical_real_text_packed_target_count": real_shards["target_count"],
+        "physical_real_text_exposure_manifest_sha256":
+            real_targets["manifest_sha256"],
+        "physical_real_text_exposure_chain_head_sha256":
+            real_targets["chain_head_sha256"],
+        "physical_s13_s14_independent_readback_sha256":
+            witness["readback_sha256"],
         "physical_source_manifest_sha256": cohort["manifest_sha256"],
         "physical_mixture_manifest_sha256": current["dataset_candidate_sha256"],
         "physical_gate_manifest_sha256": gates,

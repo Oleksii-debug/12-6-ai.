@@ -258,7 +258,9 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x: Tensor) -> Tensor:
-        variance = x.float().pow(2).mean(dim=-1, keepdim=True)
+        # Accumulate low precision in fp32, but never downcast a fp64 reference.
+        accumulation = x.float() if x.dtype in (torch.float16, torch.bfloat16) else x
+        variance = accumulation.pow(2).mean(dim=-1, keepdim=True)
         normalized = x * torch.rsqrt(variance + self.eps).to(dtype=x.dtype)
         return normalized * self.weight
 

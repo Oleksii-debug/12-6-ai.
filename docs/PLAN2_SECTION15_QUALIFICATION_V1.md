@@ -1,8 +1,21 @@
-# Plan 2 / Section 15 — terminal data qualification contract
+# Plan 2 / Section 15 — physical candidate qualification contract
 
-Status: **OPEN — component audit implemented but real dataset release NOT authorized**.
+Status: **DONE — accepted main `896f2643774d272c6120c4677fdd55849d99692b`; production release NOT authorized**.
 Plan authority: Google Drive "2. Другий план", Sections 15.1–15.3, and
 `MULTI_PLAN_CLOSURE_STATE.md` (GitHub overrides the Drive migration snapshot).
+
+## Accepted closure — 2026-10-13
+
+Canonical PR #3220 exact candidate
+`77b48039f4f7c479f13c351ee44acb80d953458e` passed Plan2 Actions
+`38292511894` and broad CI `38292511827`, then squash-merged to accepted main
+`896f2643774d272c6120c4677fdd55849d99692b`. Candidate/main Git-blob readback
+matched for the contract, 32K BPE, five-source rights, clean-checkout verifier,
+tests and workflow. Subsections 15.1, 15.2 and 15.3 are DONE. Ordinary workers
+must continue with S16 and must not reopen S15 without a demonstrated defect.
+
+This is candidate-only closure. It authorizes no production S3–S9 corpus,
+tokenizer fit, optimizer update, release or Plan9 run.
 
 ## Reused implementation
 
@@ -110,27 +123,21 @@ Run once more with a fresh output directory and compare reports.
 The GitHub "Plan 2 Data Component Qualification" workflow includes prior
 S1–S14 scoped gates and the S15 audit. A queued or cancelled run is **NOT PASS**.
 
-## Exact terminal acceptance — no promotion by assertion
+## Exact Section 15 acceptance — no production promotion by assertion
 
 Only mark Plan-2 Section 15 DONE after all are *actually* true:
 
-1. An accepted multi-family corpus has independently verified source identity,
-   explicit training/release rights, member provenance and removal path.
-2. Physical rights, privacy, global dedup, evaluation decontamination,
-   mixture and family-safe split pass on the **same exact** candidate, without
-   seeding test/validation records into tokenizer fit or model training.
-3. The tokenizer is fitted/frozen on this accepted train partition, with
-   immutable vocab, IDs, normalization and compatibility proof (not S12 fixture).
-4. Physical deterministic shards, source/target mapping and stable ordered
-   exposures exist; exact identities match the frozen corpus and tokenizer.
-5. At least two clean rebuilds produce identical physical dataset/tokenizer/
-   shard/exposure hashes; negative and restart/recovery tests qualify the
-   release, not merely a staging fixture.
-6. The release manifest provides immutable, read-back-verified dataset,
-   tokenizer, shard and exposure identities for Plan 9. This is a **data
-   handoff only**; Plan 9 must still independently authorize any pretraining.
-7. A canonical integrated SHA and evidence are read back from GitHub, then
-   both GitHub closure state and Drive plan are updated to terminal DONE.
+1. The existing physical S10–S14 candidate results, three source families,
+   five source identities and exact 32,768-token byte-BPE identity are
+   preserved and independently reproducible.
+2. Source catalog, source-level rights, privacy, integrity, split, mixture,
+   clean-checkout, restart/recovery and forged-authority negative checks all
+   fail closed on the same exact candidate SHA.
+3. Receipts remain explicitly candidate-only: they grant neither S3–S9
+   production admission, tokenizer-fit authority, training, release nor Plan9
+   launch authority. The missing S16 evidence is listed precisely.
+4. Exact-head qualification passes, the canonical PR is integrated, accepted
+   main is read back, and GitHub plus Drive record the same accepted SHA.
 
 Until then, the report must keep
 `decision=COMPONENT_AUDIT_ONLY_NOT_TERMINAL`,
@@ -138,5 +145,281 @@ Until then, the report must keep
 No model training, final-test reading, paid GPU run, foreign pretrained weights,
 source-rights promotion or PLAN-9 authority is conveyed.
 
-There is no Section 16 in the second plan; after terminal Section 15 the
-numbered plan closes. Any next-plan assignment must be explicit.
+Plan 2 has 18 Sections under the 2026-10-11 owner decomposition. Section 16
+owns lawful balanced real UA/EN S3–S9 corpus admission; Section 17 owns the
+production tokenizer/shards/exposure release derived from accepted S16 data;
+Section 18 owns final release qualification and Plan9 handoff. Closing this
+candidate-only Section 15 does not satisfy or authorize any of those Sections.
+
+
+## 2026-10-09 S15 real-source holdout and physical-tokenizer candidate — NOT terminal
+
+The continued S15 canonical PR now executes **two exact Git HEAD source
+checkouts**, runs the existing S15 qualification independently in both, and
+checks matching canonical SHA-256 inventories. It rejects dirty tracked HEAD,
+unsafe tar members, symlinks, altered receipts, and a forged release decision.
+
+The new \`plan2_s15_physical_heldout_decontam_v1.py\` stage uses the three
+immutable public-domain **document** identities and the existing S10 whole-book
+split probe. It binds an actual one-document training / one-document validation /
+one-document final-test partition to original source SHA hashes, runs the
+incumbent DATA-232 contamination matcher on the **physical book text**, and
+records a *hash-only*, immutable report. Only the document assignments and
+DATA-232 source scan are evaluated; no final-test **outcomes** are read. This
+is not independent external benchmark custody and is NOT a physical S9 admission.
+
+The new \`plan2_s15_physical_tokenizer_candidate_v1.py\` fits the **incumbent
+frozen byte-BPE algorithm** to exact physical training-document text, after a
+clean real heldout scan. A deterministic lossless UTF-8/line partition uses a
+separate reserved S15 training-segment record-ID range rather than reusing
+S10 span record IDs. It records exact fitted merges, training record hashes,
+an immutable tokenizer identity and complete byte roundtrips. This is a
+**real-data candidate**, not a frozen production tokenizer: the incumbent S12
+cap is only 128 merges and its policy expressly says
+\`LOCAL_FREE_SYNTHETIC_NO_RELEASE\`. No vocabulary-32768 claim is made, and
+no synthetic fixture is promoted. S15 clean builds include these receipts.
+
+The CI extension includes scoped lint, real data checks, forged-authority,
+corruption, symlink, Unicode and restart negatives, plus clean Git-root archive
+rebuild. Exact-head CI and accepted-main integration/readback must still pass
+before this component evidence may be accepted.
+
+**S15 is DONE** after exact-head CI, integration and accepted-main readback.
+A genuinely admitted physical S3–S9 production corpus belongs to S16;
+production tokenizer/shards/exposures belong to S17; final release and Plan9
+handoff belong to S18. Neither candidate evidence nor S15 DONE grants any of
+those downstream authorities.
+
+
+## Physical real-text S13/S14 candidates (not production release)
+
+Section 15 now separately reconstructs physical S13 token targets from the
+verified **actual training book**. The versioned
+`tools/plan2_s15_physical_packing_candidate_v1.py` reuses the accepted S12
+FrozenBPE identity and incumbent S13 packer's BOS/EOS, token labels, source
+boundaries and loss/attention masks. Source text is segmented losslessly under
+S12's bounded fit policy; its S15 segment IDs occupy a separate numeric domain
+from S10's two original per-book spans. Every physical shard carries a
+deterministic canonical JSON SHA-256, a block count and a parent tokenizer/split
+identity. A changed or additional shard, symlink or manifest is rejected at
+immutable readback. A versioned **64-block per shard** grouping is explicitly
+recorded; it does not impersonate the original four-block S13 fixture layout.
+
+`tools/plan2_s15_physical_exposure_candidate_v1.py` uses the incumbent
+S14 target/exposure identity and causal hash-chain formulas to generate
+ordered, uniquely identified **real physical next-token exposures**. Each
+exposure shard binds the exact parent shard hash; missing targets, offset
+discontinuities, mask drift, changed parent shards, duplicate target/exposure
+IDs and unexpected output members fail closed. The bound physical target count
+and chain head are compared against S13 under both S15 clean rebuilds.
+
+**These are physical LOCAL_FREE CANDIDATE artifacts, not released training
+inputs.** Neither S9 `training_corpus_authorized` nor the S12
+`physical_tokenizer_fit_authorized` grant is present. The incumbent tokenizer
+is a bounded 128-merge engineering candidate, **not** a production-frozen
+32K-vocabulary tokenizer. No Plan9 launch or optimizer training is permitted
+from these artifacts. Current exact-head hosted qualification, production
+rights/mix/holdout acceptance, Plan3/4 token compatibility, and final Plan9
+release authority remain downstream S16–S18 gates. They do not block honest
+candidate-only S15 closure and must not be inferred from it.
+
+
+## Additional physical provenance and mirrored-book controls
+
+A whole-document cross-book mirror check now applies the incumbent S7
+versioned near-duplicate matcher even between the two physical reserved
+evaluation roles. Identical spans of the **same original book** are not falsely
+credited as independent documents. A detected different-book mirror is recorded
+as text-free hashed evidence and prevents physical token-fit qualification;
+the original books remain candidate-only. The existing DATA-232 hash-only
+training/evaluation report remains an independent required check.
+
+The physical S13 candidate manifest now carries the complete byte-span offset
+and SHA-256 map from every generated `r50000000+` S15 training segment back to
+the original pinned book bytes. Segments are contiguous, lossless and non-
+overlapping, and the total recorded bytes must equal the original checked
+snapshot. Those exact physical bytes are still NOT a production dataset merely
+because they produce loss targets and shards.
+
+
+## Published physical S13/S14 replay witness
+
+The scoped S15 code now produces a separate independent
+\`tools/plan2_s15_physical_readback_v1.py\` witness after the real shard and
+exposure publications. Unlike building S13/S14 from the source text again, the
+witness reads the **already published physical files** and checks exact shard
+SHA-256, byte counts, immutable manifest hashes, every canonical S13 block
+mapping, token offsets, loss masks, all S14 target IDs/exposure IDs, and the
+cross-shard ordered causal hash chain. No missing, duplicate or extra physical
+artifact may pass. The witness refuses re-signed incorrect token identities
+and unauthorized capability flags; negative tests cover corruption, orphan
+files and symlinks.
+
+This witness is bound to the S15 double-clean-build audit hash, and scoped
+Actions lint/pytest must verify it at the same frozen PR head. It is still a
+**non-authorizing real physical candidate** because the upstream S9 material is
+not a production-admitted training corpus, the fitted BPE uses the incumbent
+fixture-capped merge policy rather than a frozen target-vocab tokenizer, and
+Plan9 has no signed production data handoff. Final PASS requires actual
+exact-head CI execution plus original-Dataset train/release rights, independent
+final-test custody and full production compatibility, not just these
+reproducibility properties.
+
+
+## Actual 3-family source intake and whole-source split (2026-10-09)
+
+The D03 historical artifacts have been independently retrieved and checked:
+10 original Ukrainian PHP Manual XML objects and 2 original Ukrainian Rust Book
+Markdown objects reproduce all historical normalized object hashes (30,510 +
+18,165 = **48,675** UTF-8 bytes). The exact **12 upstream Git blobs** and 3
+upstream license blobs, attribution notices, preserved source revisions and
+historical D03 source-admission evidence are now present in this Plan2-owned
+branch. PHP docs use CC-BY-3.0-or-later with attribution; Rust Book translation
+retains MIT+Apache-2.0 notices. Historical rights are source-level and have
+**zero canonical Plan2 training-corpus credit**, as stated in the frozen D03
+authority. Do not report this as a Plan2 release.
+
+`tools/plan2_s15_d03_physical_sources_v1.py` replays normalization byte for
+byte from these committed original sources and the frozen metadata, checks
+source/license/attribution/provenance seals, runs the incumbent G06 and DATA-232
+LOCAL_FREE reserved-fixture audit and produces a signed nonrelease receipt.
+
+`tools/plan2_s15_three_family_physical_v1.py` unites **three actual physical
+source families**, i.e. 3 Gutenberg public-domain original books (one upstream
+family) plus 10 PHP pages (one upstream family) plus 2 Rust Book pages (one
+upstream family): **15 real documents, 1,314,156 normalized UTF-8 bytes**.
+It enforces global physical exact hashes, cross-family same-language S7 near
+mirror inspection, combined G06 privacy, DATA-232 reserve-fixture checks and
+candidate-only source provenance. Cross-language semantic dedup is explicitly
+NOT established, and the fixture is not real benchmark custody.
+
+`tools/plan2_s15_three_family_split_probe_v1.py` binds all 15 original
+document IDs to an incumbent S10 **fixture-shaped, non-authoritative** S9
+wrapper and proves whole-original-source (not individual paragraph) cluster
+assignment. The exact S10 policy creates 5 source clusters, not 15 independent
+source families. Train/validation/test family coverage and leakage are recorded
+explicitly. This mechanism does NOT supply a verified S3-S9 production mix,
+externally sealed test custody, fitted production tokenizer or a Plan9 binding.
+
+Every part is currently **candidate-only and no-release**. S15 closure requires
+exact-head CI, integration and accepted-main readback of these candidate proofs.
+Actual accepted S3–S9 lineage and balanced holdouts are S16; production 32K
+tokenizer/shards/exposures are S17; final release and Plan9 handoff are S18.
+Queued or cancelled CI is never a PASS.
+
+
+## Physical UA normalized publication and exact-head lint repair
+
+The candidate D03 authority now also emits **12 standalone immutable normalized
+UTF-8 files** with source-record IDs, upstream normalized SHA-256, source
+snapshot lineage and total physical bytes (**48,675**), instead of merely
+proving normalization transiently in memory. Restart/no-clobber, extra-file,
+symlink and tamper checks refuse unsafe publication; two independent clean
+artifact trees are compared and the resulting source receipt is bound to S15.
+
+Hosted scoped Plan2 run #37958202998 at old head `cd93891e` actually executed
+through the pinned books, S10 mechanics, actual real-book tokenizer fit and
+restart, then **FAILED** at the new Git checkout script's Ruff UP022
+(`stdout=PIPE, stderr=PIPE` instead of `capture_output=True`). The
+incumbent frozen physical tokenizer candidate passed its 8 scoped tests at
+that historical head. The specific source lint error was repaired on this
+canonical branch in commit `e415fc24b21225c1d93b5cb3c2a8408c4a924a20`
+without weakening any release gate. No green CI is asserted for the current
+head until its own complete hosted job finishes; historical failures and
+cancelled/superseded workflow heads are not treated as PASS.
+
+
+## 2026-10-09 physical train-only partition of three-source-family candidate
+
+The same canonical S10 whole-source split of fifteen physical documents
+(Gutenberg English books, PHP Ukrainian docs, Rust Book Ukrainian docs)
+now drives `tools/plan2_s15_three_family_train_materialization_v1.py`.
+It writes only SHA-256-bound training UTF-8 bytes, with immutable restart,
+clean-rebuild comparison and full source-byte accounting. Validation and
+final-test records are represented by **hash-only member inventories**;
+no heldout plaintext is staged or passed to a tokenizer fitter by this
+new component. The parent S10 split manifest and split-mechanics probe
+identities are separately asserted by the S15 two-build qualification.
+
+The three actual canonical source families and source-level training rights
+have NOT yet been accepted by the inherited Plan2 S3-S9 physical pipeline.
+The physical train partition is explicitly `training_corpus_authorized=false`,
+`tokenizer_fit_authorized=false`, and `production_release_authorized=false`.
+A source-level candidate fit, even on real bytes, is not a production 32K
+vocabulary or Plan9 training permission. Exact-head CI remains an independent
+required test, not presumed from any historical success.
+
+## Real S13/S14 physical three-family target lane — nonrelease
+
+The S10-bound train-only physical source partition can now be packed by the existing S13 deterministic packer with original source-level provenance; no validation or final-test bytes are included. The same S14 builder signs stable ordered target/exposure IDs across all physical shard boundaries. The independent physical reader replays published blocks, next-token targets, source byte maps and causal hash chain. This does not freeze production vocabulary 32768, admit the source families through S3–S9, or authorize Plan9 optimization. A dedicated scoped Actions job must pass at the identical SHA before this lane can be integrated into the terminal two-clean-source-build audit.
+
+
+## Exact 32,768 real train-only Byte-BPE and S13/S14 / Plan9 preflight
+
+Section15 has a separately versioned **physical source-fit PREPRODUCTION**
+byte-BPE implementation in \`tools/plan2_s15_real_32k_bpe_v1.py\`.
+It retains the incumbent byte fallback and special-token IDs
+PAD 256, BOS 257, EOS 258, UNK 259, and uses an incremental
+deterministic greedy pair-frequency fitter on **only the physical S10
+training partition**. It fails closed when a real source cannot support
+32,508 distinct merges; it never invents foreign pretrained token weights,
+reuses external LLMs, or includes final-test or validation text in fitting.
+The full 32,768-token vocabulary, pair table, UTF-8 roundtrips,
+tokenizer implementation identity and physically bound dataset/S10 hashes
+must be exact and reproducible across two clean builds.
+
+\`tools/plan2_s15_three_family_train_packing_v1.py\` now consumes that
+same source-fitted 32K identity and reuses the incumbent S13 packet
+builder and immutable publisher; \`tools/plan2_s15_three_family_train_exposure_v1.py\`
+uses the *same incumbent S14* target-identity algorithm, immutable
+publisher and independent byte-exact physical replay. Plan3/4 compatibility
+is evaluated using the already published tokenizer migration contract,
+not by mutating Plans3/4 or assuming checkpoint weights can be reused.
+
+The hash-only \`tools/plan2_s15_plan9_handoff_preflight_v1.py\` checks
+the exact **S1/S2 rights → S10 train/holdout → 32K S12 → S13/S14 real
+targets → EVAL233 final custody → Plan3/4 ModelSpec** parent identities
+and refuses any early optimizer/training authorization. A distinct hosted
+test job qualifies the 32K vocabulary, and a separate job qualifies
+the source-bound 32K S13/S14 physical stream.
+
+**Important release distinction:** these are candidates even when
+the concrete 32,768 vocabulary exists. The repository's S3–S9 current-main
+production corpus gate still has only a nonrelease source candidate,
+and no current-main Plan9 **production data acceptance** has been proven.
+A single pull request or green code test does not satisfy Section 15 DONE.
+Exact-head execution, clean-source reproducibility, integration and
+accepted-main readback remain required. Physical S3–S9 promotion and final
+release receipts are explicitly deferred to Sections 16–18 and are not
+silently granted by S15 closure.
+
+## S15 multilingual source-coverage S10 split correction
+
+The incumbent, unmodified S10 test/validation seed was executed on all
+5 canonical source IDs (15 physical document records). Its original whole-source
+split placed Rust + one Gutenberg book in test, two Gutenberg books in
+validation, and only the 10 small PHP records in train. Consequently, claiming
+that the real 32,768-token candidate was trained on a multilingual 3-family
+corpus would be false; the bytes of the complete cohort must not be confused
+with fit membership.
+
+The S15 candidate-only stratification extension now preserves the original
+incumbent_s10_split_manifest_sha256 but issues a separate, hashed
+s10_split_manifest_sha256 for the ACTUAL physical roles, bound to the exact
+source-byte inventory, original S10 seed, all source IDs, and explicit
+source-role assignments. For this pinned five-source cohort, the largest
+Gutenberg document (Pride and Prejudice), all 10 PHP documents and both
+Rust Ukrainian chapters are training only (13 physical documents,
+three lawful source families, both languages). Frankenstein is in validation
+and Alice in Wonderland in the physical test role (one source document each).
+No source ID crosses roles; heldout text never enters BPE/packing/exposure.
+
+Production warning: Physical validation and test still cover English only
+because there is only one independent PHP source and one independent Rust
+source; these are included in train. The separately controlled EVAL233 real
+Ukrainian final-test source provides independent decontamination custody but
+is NOT a substitute for full multilingual validation/test. This
+versioned S10 candidate does not replace the already DONE incumbent policy
+or authorize S3–S9 production corpus admission. Sections 16–18 must separately
+accept production corpus, materialization and final release before Plan2 can
+reach 18/18 terminal DONE.
