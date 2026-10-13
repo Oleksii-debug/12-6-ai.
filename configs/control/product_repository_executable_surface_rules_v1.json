@@ -362,6 +362,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_s16_physical_split_gate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_s16_source_rights_privacy_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
