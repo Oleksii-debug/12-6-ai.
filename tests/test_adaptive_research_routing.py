@@ -52,7 +52,7 @@ def test_non_linear_adaptive_handoff_with_host_attested_evidence():
         choice = select_next(state, members, policy(), capacity())
         assert (choice.status, choice.node_id, choice.revision) == ("SELECTED", ident, i - 1)
         state = accept_outcome(state, choice, result(ident, i, next_cap),
-                               members, policy(), lambda receipt: receipt.receipt_id.startswith("proof"))
+                               members, policy(), capacity(), lambda receipt: receipt.receipt_id.startswith("proof"))
     assert state.history == ("a", "c", "d", "a")
     assert state.revision == 4 and state.no_progress == 0
     assert state.spent_microunits == 0
@@ -71,7 +71,7 @@ def test_no_progress_stops_even_if_cycle_is_possible():
     for seq in range(1, 3):
         choice = select_next(state, members, policy(max_no_progress=2), capacity())
         state = accept_outcome(state, choice, result("a", seq, "logic", improved=False),
-                               members, policy(max_no_progress=2), lambda _: True)
+                               members, policy(max_no_progress=2), capacity(), lambda _: True)
     assert select_next(state, members, policy(max_no_progress=2), capacity()).status == "STOP_NO_PROGRESS"
 
 
@@ -93,7 +93,7 @@ def test_no_unbounded_model_cycles_or_cost_overrun():
     for i in range(1, 3):
         decision = select_next(state, members, p, capacity())
         assert decision.node_id == "a"
-        state = accept_outcome(state, decision, result("a", i, "logic", charge=7), members, p, lambda _: True)
+        state = accept_outcome(state, decision, result("a", i, "logic", charge=7), members, p, capacity(), lambda _: True)
     assert state.spent_microunits == 14
     assert select_next(state, members, p, capacity()).status == "BUDGET_EXHAUSTED"
 
@@ -105,17 +105,17 @@ def test_stale_and_forged_receipts_fail_closed():
     chosen = select_next(before, members, p, capacity())
     assert chosen.node_id == "a"
     with pytest.raises(RouteError, match="host evidence"):
-        accept_outcome(before, chosen, result("a"), members, p, lambda _: False)
+        accept_outcome(before, chosen, result("a"), members, p, capacity(), lambda _: False)
     with pytest.raises(RouteError, match="identity mismatch"):
-        accept_outcome(before, chosen, result("wrong"), members, p, lambda _: True)
+        accept_outcome(before, chosen, result("wrong"), members, p, capacity(), lambda _: True)
     with pytest.raises(RouteError, match="digest"):
-        accept_outcome(before, chosen, replace(result("a"), evidence_sha256="x"), members, p, lambda _: True)
-    after = accept_outcome(before, chosen, result("a"), members, p, lambda _: True)
+        accept_outcome(before, chosen, replace(result("a"), evidence_sha256="x"), members, p, capacity(), lambda _: True)
+    after = accept_outcome(before, chosen, result("a"), members, p, capacity(), lambda _: True)
     with pytest.raises(RouteError, match="stale"):
-        accept_outcome(after, chosen, result("a", 2), members, p, lambda _: True)
+        accept_outcome(after, chosen, result("a", 2), members, p, capacity(), lambda _: True)
     next_choice = select_next(after, members, p, capacity())
     with pytest.raises(RouteError, match="replayed"):
-        accept_outcome(after, next_choice, result("a"), members, p, lambda _: True)
+        accept_outcome(after, next_choice, result("a"), members, p, capacity(), lambda _: True)
     assert after == RouteState("task1", "logic", ("a",), ("proof1",), 0, 0, 1)
 
 
@@ -160,7 +160,7 @@ def test_exact_capability_and_constrained_successors():
     state = RouteState("task1", "sense")
     d = select_next(state, members, policy(), capacity())
     state = accept_outcome(state, d, result("start", cap="verify"), members,
-                           policy(), lambda _: True)
+                           policy(), capacity(), lambda _: True)
     assert select_next(state, members, policy(), capacity()).status == "NO_ELIGIBLE_ROUTE"
 
 
