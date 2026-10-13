@@ -20,6 +20,7 @@ from twelve_six.model import load_stage_config
 from twelve_six.physical_qualification import (
     ExecutionMode,
     ExternalResourceVerifier,
+    HostInventory,
     ResourceKind,
     SignatureVerifier,
     VerifiedSignedPacket,
@@ -244,6 +245,64 @@ def require_signed_scale_profile(
         "model_identity_sha256": config.model.identity_sha256(),
         "expected_parameters": config.expected_parameters,
         "qualification": "CONFIG_DEFINED",
+        "resource_evidence_class": "ARITHMETIC_ONLY_NOT_MEASURED",
+    }
+
+
+def scale_resource_preflight(
+    profile: dict[str, str | int], inventory: HostInventory,
+    *, measured_vram_free_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Conservative arithmetic screening, never a host/training qualification.
+
+    This fp32 Adam baseline excludes activations, allocator and checkpoint
+    copies. A small host is denied; a large host is only *not ruled out*.
+    """
+    if type(profile) is not dict or profile.get("profile_id") not in _SCALE_PROFILE_FILES:
+        raise ValueError("unknown bound scale profile")
+    count = profile.get("expected_parameters")
+    if type(count) is not int or count <= 0 or profile.get(
+        "resource_evidence_class"
+    ) != "ARITHMETIC_ONLY_NOT_MEASURED":
+        raise ValueError("scale resource estimate must come from exact config binding")
+    if type(inventory) is not HostInventory:
+        raise ValueError("host inventory must have exact type")
+    HostInventory.__post_init__(inventory)
+    if measured_vram_free_bytes is not None and (
+        type(measured_vram_free_bytes) is not int or measured_vram_free_bytes < 0
+    ):
+        raise ValueError("measured VRAM must be non-negative exact bytes")
+    weight_bytes = count * 4
+    memory_floor = count * 16
+    disk_floor = count * 12
+    denials = []
+    if inventory.cpu_logical_count is None:
+        denials.append("CPU_UNOBSERVED")
+    if inventory.ram_total_bytes is None:
+        denials.append("RAM_UNOBSERVED")
+    elif inventory.ram_total_bytes < memory_floor:
+        denials.append("RAM_BELOW_FP32_ADAM_FLOOR")
+    if inventory.disk_free_bytes < disk_floor:
+        denials.append("DISK_BELOW_CHECKPOINT_FLOOR")
+    if inventory.cuda_available and measured_vram_free_bytes is None:
+        denials.append("VRAM_UNMEASURED")
+    if measured_vram_free_bytes is not None and measured_vram_free_bytes < weight_bytes:
+        denials.append("VRAM_BELOW_FP32_WEIGHT_FLOOR")
+    return {
+        "profile_id": profile["profile_id"],
+        "parameter_count": count,
+        "fp32_weight_bytes": weight_bytes,
+        "fp32_adam_memory_floor_bytes": memory_floor,
+        "checkpoint_floor_bytes": disk_floor,
+        "cpu_logical_count": inventory.cpu_logical_count,
+        "ram_total_bytes": inventory.ram_total_bytes,
+        "disk_free_bytes": inventory.disk_free_bytes,
+        "cuda_device_names": list(inventory.cuda_device_names),
+        "measured_vram_free_bytes": measured_vram_free_bytes,
+        "denials": denials,
+        "training_authorized": False,
+        "host_verified": False,
+        "evidence_class": "LOCAL_UNTRUSTED_ARITHMETIC_PREFLIGHT",
     }
 @dataclass(frozen=True, slots=True)
 class PhysicalExecutionReceipt:

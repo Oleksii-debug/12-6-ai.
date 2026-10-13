@@ -22,10 +22,12 @@ from twelve_six.evidence_control_bridge import (
     build_requalification_requirement,
     physical_failure_observation,
     require_signed_scale_profile,
+    scale_resource_preflight,
     write_canonical_evidence_record,
 )
 from twelve_six.physical_qualification import (
     ExecutionMode,
+    HostInventory,
     QualificationAction,
     QualificationPacket,
     VerifiedSignedPacket,
@@ -93,6 +95,18 @@ def test_signed_scale_profile_exact_config_and_negative_recovery(
         verified, repo_root=tmp_path, profile_id=profile_id,
         dispatch_id=signed_id,
     ) == binding
+    inventory = HostInventory(
+        os_family="LINUX", platform_system="Linux", platform_release="fixture",
+        machine="x86_64", python_version="3.11", python_executable="python",
+        cpu_logical_count=4, ram_total_bytes=128 * 1024**3,
+        disk_total_bytes=256 * 1024**3, disk_free_bytes=128 * 1024**3,
+        torch_version=None, cuda_available=False, cuda_device_names=(),
+    )
+    floor = scale_resource_preflight(binding, inventory)
+    assert floor["profile_id"] == profile_id
+    assert floor["fp32_weight_bytes"] == 4 * binding["expected_parameters"]
+    assert floor["checkpoint_floor_bytes"] == 12 * binding["expected_parameters"]
+    assert floor["host_verified"] is False
 
 
 def test_signed_scale_profile_rejects_unknown_or_simulated_packet(tmp_path: Path) -> None:
@@ -105,6 +119,50 @@ def test_signed_scale_profile_rejects_unknown_or_simulated_packet(tmp_path: Path
         require_signed_scale_profile(
             verified, repo_root=tmp_path, profile_id="SCALE-500M", dispatch_id="x",
         )
+
+
+def test_scale_resource_preflight_reports_oom_space_and_unknown_vram(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "configs/stages/scale_500m.json"
+    target = tmp_path / "configs/stages/scale_500m.json"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source.read_bytes())
+    signed_id = "scale-500m." + hashlib.sha256(target.read_bytes()).hexdigest()
+    verified = _verified_packet(_git("a"), mode=ExecutionMode.REAL_HOST)
+    verified = replace(verified, packet=replace(verified.packet, packet_id=signed_id))
+    monkeypatch.setattr(bridge_module, "require_exact_clean_git_state", lambda *_: None)
+    profile = require_signed_scale_profile(
+        verified, repo_root=tmp_path, profile_id="SCALE-500M", dispatch_id=signed_id,
+    )
+    inventory = HostInventory(
+        os_family="LINUX", platform_system="Linux", platform_release="fixture",
+        machine="x86_64", python_version="3.11", python_executable="python",
+        cpu_logical_count=4, ram_total_bytes=4 * 1024**3,
+        disk_total_bytes=20 * 1024**3, disk_free_bytes=2 * 1024**3,
+        torch_version=None, cuda_available=True, cuda_device_names=("fixture-gpu",),
+    )
+    report = scale_resource_preflight(profile, inventory)
+    assert report["denials"] == [
+        "RAM_BELOW_FP32_ADAM_FLOOR", "DISK_BELOW_CHECKPOINT_FLOOR",
+        "VRAM_UNMEASURED",
+    ]
+    assert report["training_authorized"] is False
+    assert report["host_verified"] is False
+    assert report["fp32_adam_memory_floor_bytes"] == 16 * profile["expected_parameters"]
+    with pytest.raises(ValueError, match="measured VRAM"):
+        scale_resource_preflight(profile, inventory, measured_vram_free_bytes=True)
+    low_vram = scale_resource_preflight(profile, inventory, measured_vram_free_bytes=0)
+    assert "VRAM_BELOW_FP32_WEIGHT_FLOOR" in low_vram["denials"]
+    assert "VRAM_UNMEASURED" not in low_vram["denials"]
+    enough_arithmetic = replace(
+        inventory, ram_total_bytes=128 * 1024**3, disk_free_bytes=128 * 1024**3,
+        cuda_available=False, cuda_device_names=(),
+    )
+    report = scale_resource_preflight(profile, enough_arithmetic)
+    assert report["denials"] == []
+    assert report["host_verified"] is False
+    assert report["training_authorized"] is False
 
 
 def _sha(label: str) -> str:

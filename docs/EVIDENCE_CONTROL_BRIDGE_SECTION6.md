@@ -14,6 +14,14 @@ evidence path. `CONFIG_DEFINED` is the only qualification claimed here; arithmet
 resource estimates do not assert a measured host, available VRAM or training
 authorization. The older Section 6 label below is historical to this reused PR.
 
+`scale_resource_preflight` calculates an explicitly untrusted fp32/Adam memory
+and checkpoint-space floor from the bound ModelSpec count. It reports typed
+RAM, disk and VRAM denial reasons and the actual inventory fields supplied to
+it. Even when no arithmetic floor is violated, its `host_verified` and
+`training_authorized` values remain false. It cannot infer free VRAM from a
+CUDA device name or substitute for a signed physical benchmark, OOM receipt,
+provider proof, resume run or final model campaign.
+
 ## Scope
 
 This candidate implements the software-side control contract for canonical Section 6 of the
