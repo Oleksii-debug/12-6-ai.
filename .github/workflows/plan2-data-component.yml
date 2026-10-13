@@ -301,7 +301,7 @@ jobs:
                   + UPSTREAM_COMMIT + "/" + source_path, 25000
               )
               git_blob = hashlib.sha1(
-                  b"blob " + str(len(raw)).encode() + b"\\0" + raw
+                  b"blob " + str(len(raw)).encode() + b"\0" + raw
               ).hexdigest()
               assert git_blob == pinned_blob, "source terms or README Git blob drift"
           report = inspect_metadata_tree(metadata, tree)
