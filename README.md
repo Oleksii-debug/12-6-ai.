@@ -8,6 +8,8 @@ Current stage: **PRE-LEARNED-20M terminal qualification**. The ~20.6M-parameter 
 
 Important: infrastructure libraries are reused; foreign pretrained weights are not the canonical Base. Paid compute requires explicit authorization.
 
+Owner's **2026-10-13 agent-first research product priorities and acceptance boundaries** are tracked in [the owner requirements addendum](docs/OWNER_AGENT_FIRST_RESEARCH_REQUIREMENTS_2026-10-13.md) (tracking issue #3230). This documents intended capabilities; it does not certify that the end-to-end agent is already deployed.
+
 ## Binding accessibility architecture
 
 Accessibility is a product constraint, not a reason to interrupt the current model-research/training critical path.
