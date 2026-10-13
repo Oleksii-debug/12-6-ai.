@@ -102,7 +102,13 @@ def inspect_structure(
         _hash(row["privacy_receipt_sha256"], "privacy receipt identity")
         _need(rid not in unique_records, "duplicate record identity")
         unique_records.add(rid)
-        _need(payload not in seen_payloads and normalized not in seen_normalized,
+        # Raw and normalized digests are hashes of bytes in one namespace.
+        # A later raw payload cannot alias an earlier normalized member, or
+        # vice versa, even when the same-format duplicate sets are disjoint.
+        # Comparing against *prior* records permits a legitimate record whose
+        # own raw bytes already equal its normalized bytes.
+        _need(payload not in seen_payloads and normalized not in seen_normalized
+              and payload not in seen_normalized and normalized not in seen_payloads,
               "exact or normalized corpus duplicate")
         seen_payloads.add(payload)
         seen_normalized.add(normalized)
@@ -129,7 +135,22 @@ def inspect_structure(
             # approved scientific production mixture policy or release gate.
             _need(5 * counts[split][lang] >= count,
                   f"out-of-bound {lang} {split} distribution")
+    # Bind the candidate receipt to the exact validated membership, not only
+    # to aggregate counters. Canonical ordering prevents input permutation from
+    # changing the receipt; no corpus text or authorizing grant is included.
+    physical_membership_sha256 = hashlib.sha256(
+        _canonical(sorted((dict(row) for row in records), key=lambda row: row["record_id"]))
+    ).hexdigest()
+    reserved_membership_sha256 = hashlib.sha256(
+        _canonical(sorted(reserved))
+    ).hexdigest()
+    revoked_membership_sha256 = hashlib.sha256(
+        _canonical(sorted(revoked))
+    ).hexdigest()
     summary = {
+        "physical_membership_sha256": physical_membership_sha256,
+        "reserved_membership_sha256": reserved_membership_sha256,
+        "revoked_membership_sha256": revoked_membership_sha256,
         "schema_version": SCHEMA,
         "status": "STRUCTURAL_CANDIDATE_ONLY_NO_PRODUCTION_ADMISSION",
         "physical_record_count": len(records),
