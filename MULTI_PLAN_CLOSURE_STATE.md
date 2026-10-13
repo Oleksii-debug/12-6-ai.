@@ -1,3 +1,9 @@
+# 2026-10-13 WORK 1 LIVE CHECKPOINT — completed subtasks, parent sections OPEN
+
+- Plan2 S15 terminal DONE remains unchanged; 15/18 aggregate. S16 UA-GEC source triage DONE at upstream 4757f72f192c4a41e4c8fb1d9690a948f87cf6d6. No native validation, no independently admitted EN corpus; rights/privacy, five phone-like flags, within-split duplicates, balance and holdout gates remain. S16–S18 OPEN. Evidence and narrow probe limits in PR #3220 discussion comments 6138079015–6138385040.
+- Plan8 S5 signed seven-profile binding and untrusted resource-screening subtasks DONE in canonical draft PR #3085 head 995f6a6cd136feba0244f6ac70073789d85a8843. Exact-head scoped Actions #38347519304 SUCCESS; broad CI still running. No HOST_VERIFIED, training grant, measured VRAM/provider, actual scale benchmark or terminal S5 DONE. Previous broad run #38345461455 had 5,455 PASS and four inventory-count assertions repaired at later head.
+- Plan8 S6 versioned Q0 fixture journeys/coverage subtask DONE in draft PR #3226 head aea264f9a03886121b63325727c6c8b7f789833e; local 7/7 pytest and Ruff PASS. Q2 physical evidence, exact-head hosted CI, dependency integration and main readback pending; section OPEN.
+- Plan8 S7 eight-fault Q0 campaign and durable readback subtask DONE in draft PR #3227 head 045717b276ddd1a867e578fb160a9d97def75bac; local 7/7 pytest and Ruff PASS. External node/provider HIL, hosted CI, dependency integration and main readback pending; section OPEN. Work2 S8–S11 not unlocked.
 # 2026-10-13 WORK 3 TERMINAL CHECKPOINT — PLAN 2 SECTION 15 DONE
 
 - **Plan2 S15 terminal DONE; do not re-enter without a demonstrated regression.** Canonical [PR #3220](https://github.com/Oleksii-debug/12-6-ai./pull/3220) frozen candidate `77b48039f4f7c479f13c351ee44acb80d953458e` squash-merged to accepted main `896f2643774d272c6120c4677fdd55849d99692b`.
