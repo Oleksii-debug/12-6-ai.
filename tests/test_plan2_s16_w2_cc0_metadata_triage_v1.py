@@ -21,6 +21,55 @@ GATES = {
 }
 
 
+# Immutable candidate scope: a CC0 catalog grant must never silently expand
+# into third-party fulltext, a self-issued permission, or private data.
+ROOT_FIELDS = {
+    "schema_version", "decision", "as_of_utc_date", "sources",
+    "required_before_admission", "physical_corpus_materialized",
+    "corpus_training_authorized", "production_release_authorized",
+    "plan9_binding_authorized", "terminal_done",
+}
+SOURCE_FIELDS = {
+    "source_identity", "publisher", "license_claim", "official_license_url",
+    "official_access_url", "permitted_candidate_scope", "excluded_scope",
+    "upstream_revision", "physical_source_sha256",
+    "original_license_bytes_sha256", "source_family_credit",
+    "observed_ua_en_science_coverage", "rights_status", "acquired_records",
+    "training_authorized", "release_authorized",
+}
+SOURCE_CONTRACT = {
+    "wikidata-structured-cc0-candidate": {
+        "publisher": "Wikidata contributors / Wikimedia",
+        "license_claim": "CC0 for structured data in Main, Property, Lexeme, EntitySchema namespaces only",
+        "official_license_url": "https://www.wikidata.org/wiki/Wikidata:Copyright",
+        "official_access_url": "https://www.wikidata.org/wiki/Wikidata:Data_access",
+        "permitted_candidate_scope": [
+            "structured_entity_identifiers", "structured_labels",
+            "structured_descriptions", "structured_scientific_statements",
+        ],
+        "excluded_scope": [
+            "other_wiki_namespaces", "images", "external_linked_fulltext",
+            "external_website_content", "personal_data_without_review",
+        ],
+    },
+    "openalex-catalog-metadata-cc0-candidate": {
+        "publisher": "OpenAlex",
+        "license_claim": "CC0 for OpenAlex catalog data, not third-party linked content",
+        "official_license_url": "https://explore.openalex.org/",
+        "official_access_url": "https://help.openalex.org/api/",
+        "permitted_candidate_scope": [
+            "work_identifiers", "publication_years", "topic_identifiers",
+            "bibliographic_relationships",
+        ],
+        "excluded_scope": [
+            "third_party_fulltext", "linked_pdfs", "external_websites",
+            "abstract_text_without_independent_review",
+            "personal_data_without_review",
+        ],
+    },
+}
+
+
 def _unique(pairs):
     result = {}
     for key, value in pairs:
@@ -39,6 +88,8 @@ def _read(raw):
         raise ValueError("invalid JSON") from exc
     if type(obj) is not dict or obj.get("decision") != "CANDIDATE_METADATA_ONLY_NOT_ADMITTED":
         raise ValueError("not a candidate")
+    if set(obj) != ROOT_FIELDS:
+        raise ValueError("unexpected root fields")
     if obj.get("schema_version") != "12-6.plan2-s16-w2-cc0-metadata-triage.v1":
         raise ValueError("schema drift")
     if obj.get("as_of_utc_date") != "2026-10-13":
@@ -57,6 +108,11 @@ def _read(raw):
     if {x.get("source_identity") for x in sources} != IDS:
         raise ValueError("source identity drift")
     for source in sources:
+        if set(source) != SOURCE_FIELDS:
+            raise ValueError("unexpected source fields")
+        expected = SOURCE_CONTRACT[source["source_identity"]]
+        if any(source.get(key) != value for key, value in expected.items()):
+            raise ValueError("source license, URL or scope drift")
         if source.get("rights_status") != "SOURCE_LEVEL_CC0_ONLY":
             raise ValueError("rights promotion")
         if source.get("training_authorized") is not False or source.get("release_authorized") is not False:
@@ -154,3 +210,47 @@ def test_restart_and_unpublished_failure(tmp_path):
     with pytest.raises(ValueError):
         _read(staged.read_bytes())
     assert published.read_bytes() == raw
+
+@pytest.mark.parametrize("field", [
+    "publisher", "license_claim", "official_license_url", "official_access_url",
+    "permitted_candidate_scope", "excluded_scope",
+])
+def test_forged_source_license_or_scope_denied(field):
+    obj = copy.deepcopy(_read(PATH.read_bytes()))
+    obj["sources"][0][field] = "TRAINING_GRANT" if field not in (
+        "permitted_candidate_scope", "excluded_scope"
+    ) else ["third_party_fulltext", "personal_data_permitted"]
+    with pytest.raises(ValueError, match="source license, URL or scope drift"):
+        _read(json.dumps(obj).encode())
+
+
+@pytest.mark.parametrize("field", ["official_license_url", "license_claim", "excluded_scope"])
+def test_openalex_third_party_grant_forgery_denied(field):
+    obj = copy.deepcopy(_read(PATH.read_bytes()))
+    obj["sources"][1][field] = "CC0_ALL_PDF" if field != "excluded_scope" else []
+    with pytest.raises(ValueError, match="source license, URL or scope drift"):
+        _read(json.dumps(obj).encode())
+
+
+@pytest.mark.parametrize("scope", ["root", "source"])
+def test_unknown_authority_field_denied(scope):
+    obj = copy.deepcopy(_read(PATH.read_bytes()))
+    target = obj if scope == "root" else obj["sources"][0]
+    target["owner_grant_approved"] = True
+    with pytest.raises(ValueError, match="unexpected .* fields"):
+        _read(json.dumps(obj).encode())
+
+
+def test_no_training_promotion_after_restart(tmp_path):
+    raw = PATH.read_bytes()
+    accepted = tmp_path / "accepted.json"
+    accepted.write_bytes(raw)
+    staged = tmp_path / "accepted.json.tmp"
+    obj = copy.deepcopy(_read(raw))
+    obj["sources"][0]["permitted_candidate_scope"].append("private_fulltext")
+    staged.write_text(json.dumps(obj), encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read(staged.read_bytes())
+    assert accepted.read_bytes() == raw
+    assert _read(accepted.read_bytes()) == _read(raw)
+
