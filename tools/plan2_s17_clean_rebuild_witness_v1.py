@@ -13,6 +13,7 @@ import json
 import os
 import re
 import stat
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -58,12 +59,16 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
                   and (before.st_dev, before.st_ino) ==
                   (observed.st_dev, observed.st_ino),
                   "artifact member replaced before read")
+            _need(before.st_nlink == 1,
+                  "artifact member hardlinked before read")
             hasher = hashlib.sha256()
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 hasher.update(chunk)
             after = os.fstat(stream.fileno())
     except OSError as exc:
         raise RebuildDenied("artifact member unreadable") from exc
+    _need(after.st_nlink == 1,
+          "artifact member hardlinked during read")
     _need((before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
           (after.st_size, after.st_mtime_ns, after.st_ctime_ns),
           "artifact member changed during read")
@@ -71,6 +76,8 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
         latest = path.lstat()
     except OSError as exc:
         raise RebuildDenied("artifact member disappeared") from exc
+    _need(stat.S_ISREG(latest.st_mode) and latest.st_nlink == 1,
+          "artifact member hardlinked after read")
     _need((latest.st_dev, latest.st_ino, latest.st_size,
            latest.st_mtime_ns, latest.st_ctime_ns) ==
           (after.st_dev, after.st_ino, after.st_size,
@@ -79,12 +86,40 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
     return hasher.hexdigest()
 
 
+_WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{index}" for prefix in ("COM", "LPT")
+    for index in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³")
+}
+_WINDOWS_UNSAFE = set('<>:"/\\|?*')
+
+
+def _portable_key(relative: str, seen: set[str]) -> None:
+    """Reject Linux-only aliases and invalid Windows member names before hashing."""
+    parts = relative.split("/")
+    for part in parts:
+        _need(part == unicodedata.normalize("NFC", part),
+              "nonportable Unicode normalization in artifact path")
+        _need(bool(part) and part not in (".", "..") and
+              not part.endswith((" ", ".")) and
+              not any(ord(char) < 32 or char in _WINDOWS_UNSAFE for char in part) and
+              part.split(".", 1)[0].upper() not in _WINDOWS_RESERVED,
+              "nonportable Windows artifact path")
+    key = relative.casefold()
+    _need(key not in seen, "portable artifact path collision")
+    seen.add(key)
+
+
 def inventory(root: Path) -> tuple[dict[str, str], int]:
     """Exact physical file bytes, rejecting links and unusual filesystem members."""
     base = _root(root)
     files: dict[str, str] = {}
+    portable_seen: set[str] = set()
     total_bytes = 0
-    for current, dirs, members in os.walk(base, followlinks=False):
+    def deny_walk_error(exc: OSError) -> None:
+        raise RebuildDenied("artifact directory traversal failed") from exc
+
+    for current, dirs, members in os.walk(base, followlinks=False,
+                                          onerror=deny_walk_error):
         directory = Path(current)
         for name in sorted(dirs):
             child = directory / name
@@ -93,6 +128,7 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
             except OSError as exc:
                 raise RebuildDenied("artifact directory disappeared") from exc
             _need(stat.S_ISDIR(info.st_mode), "linked or unusual artifact directory")
+            _portable_key(child.relative_to(base).as_posix(), portable_seen)
         for name in sorted(members):
             child = directory / name
             try:
@@ -101,6 +137,7 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
                 raise RebuildDenied("artifact member disappeared") from exc
             relative = child.relative_to(base).as_posix()
             _need(relative not in files, "duplicate artifact path")
+            _portable_key(relative, portable_seen)
             files[relative] = _hash_regular_file(child, info)
             total_bytes += info.st_size
     _need(bool(files), "empty rebuild tree")
