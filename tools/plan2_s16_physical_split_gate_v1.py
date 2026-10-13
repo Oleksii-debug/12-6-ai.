@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_three_family_physical_v1 as physical

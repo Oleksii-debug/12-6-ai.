@@ -8,7 +8,11 @@ import pytest
 
 from tools import plan2_s15_three_family_split_probe_v1 as splits
 from tools.plan2_s16_physical_split_gate_v1 import (
-    OUTPUT, PhysicalSplitDenied, analyze_members, inspect, stage,
+    OUTPUT,
+    PhysicalSplitDenied,
+    analyze_members,
+    inspect,
+    stage,
 )
 
 ROOT = Path(__file__).resolve().parents[1]

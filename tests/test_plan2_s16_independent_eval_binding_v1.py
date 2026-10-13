@@ -9,8 +9,13 @@ import pytest
 
 from tools import plan2_public_domain_books_v1 as books
 from tools.plan2_s16_independent_eval_binding_v1 import (
-    OUTPUT, SELECTION_CONFIG, SELECTION_MEMBERS, IndependentEvalDenied,
-    inspect, inspect_selection_rows, stage,
+    OUTPUT,
+    SELECTION_CONFIG,
+    SELECTION_MEMBERS,
+    IndependentEvalDenied,
+    inspect,
+    inspect_selection_rows,
+    stage,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
