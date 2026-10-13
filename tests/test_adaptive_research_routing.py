@@ -171,3 +171,28 @@ def test_no_implicit_tool_or_provider_calls():
         decision = select_next(RouteState("task1", "logic"), members, policy(), capacity())
         assert decision.status == "SELECTED"
     assert touched == []  # pure planner; host must separately admit and execute effects
+
+
+def test_route_state_checkpoint_binds_existing_plan5_taskstore(tmp_path):
+    """Durable TaskStore owns the authority; route snapshot stays separately hashed."""
+    from twelve_six_agent_runtime.task_state import TaskStore
+
+    db_path = tmp_path / "task.db"
+    store = TaskStore(db_path)
+    task = store.create(task_id="task1", plan_id="research", step_id="select")
+    members = (node("a", "logic", ("a",)),)
+    route = RouteState("task1", "logic")
+    decision = select_next(route, members, policy(), capacity())
+    route = accept_outcome(route, decision, result("a"), members,
+                           policy(), capacity(), lambda _: True)
+    raw, digest = route.snapshot()
+    ticket = store.checkpoint(task.task_id, expected_epoch=task.control_epoch,
+                              expected_revision=task.revision, step_id="route1",
+                              checkpoint_id=digest, pending_effects=())
+    restored_task = TaskStore(db_path).load("task1")
+    restored_route = RouteState.from_snapshot(raw, restored_task.checkpoint_id)
+    assert restored_task == ticket
+    assert restored_route == route
+    assert select_next(restored_route, members, policy(), capacity()).node_id == "a"
+    with pytest.raises(RouteError, match="checksum"):
+        RouteState.from_snapshot(raw + " ", restored_task.checkpoint_id)
