@@ -1,7 +1,6 @@
 """W2 exact pinned UA-GEC metadata contract; deliberately not a rights grant."""
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import subprocess
