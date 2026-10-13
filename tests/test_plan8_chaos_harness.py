@@ -1,4 +1,5 @@
 import json
+import socket
 import subprocess
 import sys
 import tempfile
@@ -135,6 +136,22 @@ class ChaosHarnessTests(unittest.TestCase):
             receipt.write_bytes(b'{"forged":true}\n')
             with self.assertRaisesRegex(ValueError, "receipt was corrupted"):
                 campaign_readback(root, campaign)
+
+    def test_network_loss_closes_real_local_transport_without_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receiver, sender = socket.socketpair()
+            self.addCleanup(receiver.close)
+            self.addCleanup(sender.close)
+            campaign, case = self.case("network_loss", {"transport_closed": True})
+            receipt = run_fault(
+                Path(directory), campaign, case, inject=sender.close,
+                recover=lambda: {"transport_closed": receiver.recv(1) == b""},
+            )
+            self.assertEqual(receipt["effect_replayed"], False)
+            with self.assertRaisesRegex(ValueError, "never replay"):
+                run_fault(Path(directory), campaign, case,
+                          inject=lambda: self.fail("network effect replayed"),
+                          recover=lambda: {"transport_closed": True})
 
 
 if __name__ == "__main__":
