@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _LEVELS = ("Q0", "Q1", "Q2", "Q3", "Q4")
@@ -213,3 +214,42 @@ def coverage_map(
         current["q0_scenarios"].sort()
         current["missing_level"] = None if current["required_level"] == "Q0" and current["q0_scenarios"] else current["required_level"]
     return dict(sorted(result.items()))
+
+
+_FIXTURE_JOURNEYS = {
+    "agent-goal": ("tests/fixtures/plan5_agent_runtime_scenario_v1.json", "12-6.plan5-agent-fixture.v1"),
+    "reserved-eval": ("configs/data/plan2_reserved_eval_fixture_v1.json", "12-6.plan2-reserved-eval-fixture.v1"),
+    "sil-journey": ("configs/control/sil_scenario_v1.json", 1),
+}
+
+
+def fixture_journey_adapters(repo_root: str | Path) -> dict[str, Callable[[], object]]:
+    """Q0 adapters for accepted component fixtures; no physical PASS claim."""
+    root = Path(repo_root)
+    adapters: dict[str, Callable[[], object]] = {}
+    for adapter_id, (relative_path, schema) in _FIXTURE_JOURNEYS.items():
+        def observe(path: str = relative_path, expected: str | int = schema,
+                    adapter: str = adapter_id) -> object:
+            target = root / path
+            if target.is_symlink() or not target.is_file():
+                raise ValueError("fixture is missing or a symlink")
+            raw = target.read_bytes()
+            if not raw or len(raw) > 65_536:
+                raise ValueError("fixture size invalid")
+            value = json.loads(
+                raw.decode("utf-8", errors="strict"), object_pairs_hook=_unique_pairs,
+                parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")),
+            )
+            key = "schema" if path.startswith("tests/") else "schema_version"
+            if type(value) is not dict or value.get(key) != expected:
+                raise ValueError("fixture schema mismatch")
+            if adapter == "reserved-eval" and (
+                value.get("training_allowed") is not False
+                or value.get("tokenizer_fit_allowed") is not False
+            ):
+                raise ValueError("reserved evaluation fixture lost its firewall")
+            return {"fixture": path, "raw_sha256": hashlib.sha256(raw).hexdigest(),
+                    "schema": expected}
+
+        adapters[adapter_id] = observe
+    return adapters
