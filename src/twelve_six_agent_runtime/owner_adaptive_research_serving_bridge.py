@@ -1,4 +1,4 @@
-"""Reference LOCAL_FREE adapter: adaptive research route -> incumbent Plan-4 serving.
+"""Reference LOCAL_FREE runtime adapter: adaptive research route -> incumbent Plan-4 serving.
 
 Host-facing composition only. No provider registration, paid/external calls,
 network, auto-retry, factual certification or untrusted permission grants.

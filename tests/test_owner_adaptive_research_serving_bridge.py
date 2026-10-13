@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from tools.owner_adaptive_research_serving_bridge import (
+from twelve_six_agent_runtime.owner_adaptive_research_serving_bridge import (
     VerifiedNextStep,
     route_local_generation,
 )
