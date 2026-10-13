@@ -1,3 +1,7 @@
+## Нова система окремих розділів — 2026-10-13
+
+Незакриті розділи Google Docs перетворено на самостійні NА, NБ, NВ. Повна карта: [ATOMIC_OPEN_SECTIONS_2026-10-13.md](ATOMIC_OPEN_SECTIONS_2026-10-13.md). Старе N у PR, CI, issue та реєстрі є агрегатом NА+NБ+NВ; повне DONE старого N лише після незалежного DONE кожного та спільної інтеграції. Не відкривати старі DONE й не починати існуючі PR заново. Статуси WAITING, resource limits, paid compute і physical acceptance збережено.
+
 # 2026-10-13 WORK 1 LIVE CHECKPOINT — completed subtasks, parent sections OPEN
 
 - Plan2 S15 terminal DONE remains unchanged; 15/18 aggregate. S16 UA-GEC source triage DONE at upstream 4757f72f192c4a41e4c8fb1d9690a948f87cf6d6. No native validation, no independently admitted EN corpus; rights/privacy, five phone-like flags, within-split duplicates, balance and holdout gates remain. S16–S18 OPEN. Evidence and narrow probe limits in PR #3220 discussion comments 6138079015–6138385040.
