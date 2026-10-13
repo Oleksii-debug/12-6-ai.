@@ -458,6 +458,13 @@ jobs:
           name: plan2-s15-clean-checkout-evidence
           path: ${{ runner.temp }}/plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json
           if-no-files-found: error
+      - name: Lint Section 16 candidate source and structural evidence
+        run: |
+          ruff check tools/plan2_s16_ua_gec_candidate_contract_v1.py tests/test_plan2_s16_ua_gec_candidate_contract_v1.py
+          ruff check tools/plan2_s16_structural_preflight_v1.py tests/test_plan2_s16_structural_preflight_v1.py
+      - name: Qualify Section 16 fail-closed candidate evidence (NOT corpus admission)
+        run: |
+          PYTHONPATH=src:. pytest -q tests/test_plan2_s16_ua_gec_candidate_contract_v1.py tests/test_plan2_s16_structural_preflight_v1.py
 
   qualify-three-family-s13-s14:
     name: real-three-family-s13-s14
