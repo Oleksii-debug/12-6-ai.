@@ -81,6 +81,8 @@ def inspect_selection_rows(raw: bytes, config: dict[str, Any]) -> list[dict[str,
         need(line.endswith(b"\n"), "selection member lacks line terminator")
         try:
             row = json.loads(line.decode("utf-8", "strict"), object_pairs_hook=_pairs)
+        except IndependentEvalDenied:
+            raise  # Preserve precise duplicate-member refusal, not a generic parse error.
         except (UnicodeError, ValueError) as exc:
             raise IndependentEvalDenied("malformed selection row") from exc
         need(type(row) is dict, "invalid membership row")
