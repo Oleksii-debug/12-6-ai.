@@ -1,0 +1,47 @@
+{
+  "campaign_id": "component-recovery-fixtures-v1",
+  "cases": [
+    {
+      "case_id": "checkpoint_interruption",
+      "expected_recovery_sha256": "4e692fc6d64ddd4b22f28e85901e71d5ea26c0ebe8541c273c465be36b31f478",
+      "fault": "checkpoint_interruption"
+    },
+    {
+      "case_id": "disk_corruption",
+      "expected_recovery_sha256": "9cb65dcb0de2db1d5815c574de1b94e1d62bdd24874d287abc45cd62767425ba",
+      "fault": "disk_corruption"
+    },
+    {
+      "case_id": "interrupted_publication",
+      "expected_recovery_sha256": "4e692fc6d64ddd4b22f28e85901e71d5ea26c0ebe8541c273c465be36b31f478",
+      "fault": "interrupted_publication"
+    },
+    {
+      "case_id": "network_loss",
+      "expected_recovery_sha256": "68aec8220f2097fc53351bd80d5e0b9333859294fc1091a0a9eb406360f3bd58",
+      "fault": "network_loss"
+    },
+    {
+      "case_id": "node_failure",
+      "expected_recovery_sha256": "5329fcdb00bf8b22edc808690d27e0e6dbd8729ed0cba298385c740a7f3325f4",
+      "fault": "node_failure"
+    },
+    {
+      "case_id": "process_kill",
+      "expected_recovery_sha256": "93e9352bd87e76e98246e1289bc60c053c57736a46437645a1530e219b2c146b",
+      "fault": "process_kill"
+    },
+    {
+      "case_id": "provider_failure",
+      "expected_recovery_sha256": "95d56315ec632030416ec703411ef635fc95c56e72cf1d79ebafb1cbe319755c",
+      "fault": "provider_failure"
+    },
+    {
+      "case_id": "stale_state",
+      "expected_recovery_sha256": "15bdbb22eff5f1116f85971a89cca7ec6897280816e65f4d6f9c4cc1c0dfd275",
+      "fault": "stale_state"
+    }
+  ],
+  "schema_version": "12-6.plan8-chaos-campaign.v1",
+  "source_sha": "010d0a5c8b83909297093a145cb28cc633f615da"
+}

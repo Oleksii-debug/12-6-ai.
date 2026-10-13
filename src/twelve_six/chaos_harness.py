@@ -20,6 +20,37 @@ _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 
 
+def parse_campaign_bytes(raw: bytes) -> FaultCampaign:
+    """Load a bounded versioned fault matrix without duplicate JSON fields."""
+    if type(raw) is not bytes or not 0 < len(raw) <= 65_536:
+        raise ValueError("campaign bytes exceed bound")
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate campaign JSON field")
+            value[key] = item
+        return value
+    try:
+        value = json.loads(raw.decode("utf-8", errors="strict"), object_pairs_hook=unique,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError("invalid campaign JSON") from exc
+    if type(value) is not dict or set(value) != {
+        "schema_version", "campaign_id", "source_sha", "cases"
+    } or type(value["cases"]) is not list or not 0 < len(value["cases"]) <= 32:
+        raise ValueError("noncanonical campaign manifest")
+    cases = []
+    for row in value["cases"]:
+        if type(row) is not dict or set(row) != {
+            "case_id", "fault", "expected_recovery_sha256"
+        }:
+            raise ValueError("noncanonical campaign case")
+        cases.append(FaultCase(**row))
+    return FaultCampaign(value["campaign_id"], value["source_sha"], tuple(cases),
+                         value["schema_version"])
+
+
 def _bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
@@ -190,3 +221,48 @@ def recover_fault(
             if _read_exact(receipt) != raw:
                 raise
     return payload
+
+
+def campaign_readback(root: Path, campaign: FaultCampaign) -> dict[str, object]:
+    """Verify durable Q0 receipts and expose missing/failing fault cases."""
+    campaign.__post_init__()
+    if not isinstance(root, Path) or root.is_symlink():
+        raise ValueError("unsafe campaign root")
+    identity = campaign.identity_sha256()
+    directory = root / identity
+    if directory.is_symlink():
+        raise ValueError("unsafe campaign journal path")
+    passed: list[str] = []
+    missing: list[str] = []
+    failed: list[str] = []
+    for case in campaign.cases:
+        receipt = directory / (case.case_id + ".receipt")
+        failure = directory / (case.case_id + ".failure")
+        claim = directory / (case.case_id + ".claim")
+        if failure.exists():
+            _read_exact(failure)
+            failed.append(case.case_id)
+            continue
+        if not receipt.exists():
+            if claim.exists():
+                _read_exact(claim)
+            missing.append(case.case_id)
+            continue
+        if _read_exact(claim) != _bytes({"campaign": identity, "case": case.case_id}):
+            raise ValueError("claim was corrupted")
+        expected = {
+            "schema_version": "12-6.plan8-chaos-receipt.v1",
+            "campaign_sha256": identity,
+            "source_sha": campaign.source_sha,
+            "case_id": case.case_id,
+            "fault": case.fault,
+            "recovery_sha256": case.expected_recovery_sha256,
+            "effect_replayed": False,
+            "evidence_level": "Q0",
+        }
+        if _read_exact(receipt) != _bytes(expected) + b"\n":
+            raise ValueError("campaign receipt was corrupted")
+        passed.append(case.case_id)
+    return {"campaign_sha256": identity, "evidence_level": "Q0",
+            "passed": passed, "missing": missing, "failed": failed,
+            "complete": len(passed) == len(campaign.cases) and not failed}

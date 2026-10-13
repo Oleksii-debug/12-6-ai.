@@ -10,6 +10,8 @@ from twelve_six.chaos_harness import (
     FaultCase,
     _bytes,
     _digest,
+    campaign_readback,
+    parse_campaign_bytes,
     recover_fault,
     run_fault,
 )
@@ -97,6 +99,42 @@ class ChaosHarnessTests(unittest.TestCase):
             run_fault(root, campaign, case,
                       inject=lambda: publication.write_bytes(b"partial"),
                       recover=rollback_publication)
+
+    def test_versioned_fault_matrix_readback_and_corruption(self):
+        path = Path(__file__).resolve().parents[1] / (
+            "configs/plan8/chaos/component-recovery-fixtures-v1.json"
+        )
+        raw = path.read_bytes()
+        campaign = parse_campaign_bytes(raw)
+        self.assertEqual(len(campaign.cases), 8)
+        self.assertEqual({case.fault for case in campaign.cases}, {
+            "process_kill", "network_loss", "disk_corruption", "stale_state",
+            "checkpoint_interruption", "provider_failure", "node_failure",
+            "interrupted_publication",
+        })
+        with self.assertRaisesRegex(ValueError, "duplicate campaign JSON field"):
+            parse_campaign_bytes(raw.replace(b'"campaign_id":',
+                                             b'"campaign_id":"duplicate", "campaign_id":'))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = campaign_readback(root, campaign)
+            self.assertFalse(report["complete"])
+            self.assertEqual(len(report["missing"]), 8)
+            process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+            case = next(item for item in campaign.cases if item.fault == "process_kill")
+            def inject():
+                process.kill()
+                process.wait(timeout=5)
+            run_fault(root, campaign, case, inject=inject,
+                      recover=lambda: {"terminated": process.poll() is not None})
+            report = campaign_readback(root, campaign)
+            self.assertEqual(report["passed"], ["process_kill"])
+            self.assertEqual(len(report["missing"]), 7)
+            receipt = root / campaign.identity_sha256() / "process_kill.receipt"
+            receipt.write_bytes(b'{"forged":true}\n')
+            with self.assertRaisesRegex(ValueError, "receipt was corrupted"):
+                campaign_readback(root, campaign)
 
 
 if __name__ == "__main__":
