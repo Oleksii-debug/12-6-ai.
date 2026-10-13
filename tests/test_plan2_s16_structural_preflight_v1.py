@@ -137,3 +137,56 @@ def test_corpus_family_cannot_impersonate_two_languages():
     rows[1]["source_family"] = rows[0]["source_family"]
     with pytest.raises(Section16PreflightDenied, match="family language drift"):
         inspect_structure(rows)
+
+
+@pytest.mark.parametrize("field", [
+    "record_id", "source_id", "source_family", "document_family",
+    "source_revision", "payload_sha256", "normalized_sha256",
+    "rights_receipt_sha256", "privacy_receipt_sha256",
+])
+def test_receipt_binds_exact_validated_record_membership(field):
+    original = cohort()
+    changed = copy.deepcopy(original)
+    if field.endswith("sha256"):
+        changed[0][field] = digest("different and still well-formed " + field)
+    else:
+        changed[0][field] += ".revision2"
+    before = inspect_structure(original)
+    after = inspect_structure(changed)
+    assert before["structural_candidate_sha256"] != after["structural_candidate_sha256"]
+
+
+def test_receipt_binds_reserved_holdout_index_membership_not_just_count():
+    original = cohort()
+    before = inspect_structure(original, reserved_payload_sha256=[digest("holdout A")])
+    after = inspect_structure(original, reserved_payload_sha256=[digest("holdout B")])
+    assert before["structural_candidate_sha256"] != after["structural_candidate_sha256"]
+
+
+def test_receipt_binds_revocation_index_membership_not_just_count():
+    original = cohort()
+    before = inspect_structure(original, revoked_source_ids=["source.unused.A"])
+    after = inspect_structure(original, revoked_source_ids=["source.unused.B"])
+    assert before["structural_candidate_sha256"] != after["structural_candidate_sha256"]
+
+
+def test_membership_binding_is_order_independent_for_all_three_inputs():
+    rows = cohort()
+    reserved = [digest("holdout A"), digest("holdout B")]
+    revoked = ["source.unused.A", "source.unused.B"]
+    a = inspect_structure(rows, reserved_payload_sha256=reserved, revoked_source_ids=revoked)
+    b = inspect_structure(list(reversed(rows)), reserved_payload_sha256=list(reversed(reserved)),
+                          revoked_source_ids=list(reversed(revoked)))
+    assert a == b
+
+
+def test_membership_digest_does_not_promote_candidate_to_training_or_release():
+    receipt = inspect_structure(cohort())
+    for field in ("rights_independently_verified", "privacy_independently_verified",
+                  "decontamination_independently_verified", "training_corpus_authorized",
+                  "evaluation_authorized", "tokenizer_fit_authorized",
+                  "production_release_authorized"):
+        assert receipt[field] is False
+    assert len(receipt["physical_membership_sha256"]) == 64
+    assert len(receipt["reserved_membership_sha256"]) == 64
+    assert len(receipt["revoked_membership_sha256"]) == 64
