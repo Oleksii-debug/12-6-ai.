@@ -1,0 +1,59 @@
+{
+  "schema_version": "12-6.plan2-s16-cpython-psf-documentation-triage.v1",
+  "decision": "PINNED_EN_TECHNICAL_SOURCE_CANDIDATE_NOT_ADMITTED",
+  "as_of_utc_date": "2026-10-13",
+  "source": {
+    "repository": "python/cpython",
+    "upstream_commit": "fe7735f03ecd720e717daf221511f74c23cd90dc",
+    "path": "Doc/tutorial/introduction.rst",
+    "git_blob_sha1": "465c32d0b72431cc446aae7edeb6b829c657b243",
+    "license_path": "LICENSE",
+    "license_git_blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044",
+    "license_id": "PSF-2.0",
+    "license_text_observation": "The LICENSE explicitly states Python software and documentation are licensed under Python Software Foundation License Version 2; documentation examples/recipes/code have additional Zero-Clause BSD terms starting with Python 3.8.6.",
+    "language": "en",
+    "domain": "technical_programming",
+    "candidate_source_family": "python.cpython.documentation"
+  },
+  "rights_boundary": {
+    "license_byte_readback_at_exact_commit": true,
+    "document_git_blob_readback_at_exact_commit": true,
+    "third_party_inclusions_and_illustrations_reviewed": false,
+    "document_level_attribution_bundle_complete": false,
+    "license_notice_retention_required": true,
+    "record_level_privacy_pii_review_complete": false,
+    "training_purpose_corpus_approval": false,
+    "source_family_credit": 0,
+    "physical_member_sha256": null
+  },
+  "independence_boundary": {
+    "eval303_reserved_families": [
+      "kubernetes.website.docs",
+      "lang-uk.perestoroha-ocr",
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "eval233_reserved_families": [
+      "ua.rada.open-data.laws-texts",
+      "en.standardebooks.manual"
+    ],
+    "cross_eval_exact_near_decontamination_verified": false,
+    "role": "UNASSIGNED_CANDIDATE_NOT_TRAIN",
+    "language_balance_approved": false
+  },
+  "required_before_admission": [
+    "INDEPENDENT_DOCUMENT_LEVEL_RIGHTS_AND_ATTRIBUTION",
+    "PINNED_FULL_BYTES_SHA256_AND_MEMBER_PROVENANCE",
+    "PHYSICAL_NORMALIZATION_AND_G06_PII_REVIEW",
+    "CROSS_FAMILY_EXACT_NEAR_DECONTAMINATION_WITH_EVAL303_EVAL233",
+    "S3_S9_MULTISOURCE_ADMISSION_AND_APPROVED_LANGUAGE_BALANCE",
+    "EXACT_SHA_CI_AND_ACCEPTED_MAIN_READBACK"
+  ],
+  "physical_corpus_materialized": false,
+  "training_authorized": false,
+  "tokenizer_fit_authorized": false,
+  "evaluation_authorized": false,
+  "production_release_authorized": false,
+  "plan9_binding_authorized": false,
+  "terminal_done": false
+}
