@@ -117,6 +117,19 @@ class ScenarioHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "adapter failed"):
                 run_scenario(scenario, **args)
 
+    def test_sil_fixture_bool_schema_cannot_alias_version_one(self):
+        from tempfile import TemporaryDirectory
+        root = Path(__file__).resolve().parents[1]
+        source = root / "configs/control/sil_scenario_v1.json"
+        with TemporaryDirectory() as directory:
+            target = Path(directory) / "configs/control/sil_scenario_v1.json"
+            target.parent.mkdir(parents=True)
+            fixture = json.loads(source.read_text(encoding="utf-8"))
+            fixture["schema_version"] = True
+            target.write_text(json.dumps(fixture), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "schema mismatch"):
+                fixture_journey_adapters(directory)["sil-journey"]()
+
 
 if __name__ == "__main__":
     unittest.main()

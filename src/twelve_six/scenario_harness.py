@@ -241,7 +241,8 @@ def fixture_journey_adapters(repo_root: str | Path) -> dict[str, Callable[[], ob
                 parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")),
             )
             key = "schema" if path.startswith("tests/") else "schema_version"
-            if type(value) is not dict or value.get(key) != expected:
+            if (type(value) is not dict or type(value.get(key)) is not type(expected)
+                    or value.get(key) != expected):
                 raise ValueError("fixture schema mismatch")
             if adapter == "reserved-eval" and (
                 value.get("training_allowed") is not False
