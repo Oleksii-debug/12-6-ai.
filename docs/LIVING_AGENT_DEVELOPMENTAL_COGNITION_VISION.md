@@ -272,3 +272,9 @@ Do not delay learned-20M critical path for the entire living-agent vision. Build
 9. candidate experience-to-training-data pipeline;
 10. first safe continual-learning experiment;
 11. persistent developmental identity across model upgrades.
+
+## Owner-priority addendum 2026-10-13
+
+The owner explicitly prioritized long-running technical research, transferable reasoning and causal verification, dynamic internal/external model routing under live resource budgets, autonomous tool use, editable/deletable personal and task memory, controlled post-Base continual learning, optional multimodal/device adapters and authorized specialized descendants. The **versioned acceptance and boundary details** are recorded in [`OWNER_AGENT_FIRST_RESEARCH_REQUIREMENTS_2026-10-13.md`](OWNER_AGENT_FIRST_RESEARCH_REQUIREMENTS_2026-10-13.md).
+
+This clarification is a product **requirement**, not evidence of implementation, a change to canonical Base ancestry or license/compute authorization, or permission to reopen terminal sections. Existing Plan 4/5/6/9/10 implementation owners must map gaps to their active acceptance scope, then qualify exact code and physical end-to-end behavior before any readiness claim.
