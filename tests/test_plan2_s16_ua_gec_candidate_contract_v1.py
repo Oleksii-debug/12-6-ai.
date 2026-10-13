@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 
 from tools.plan2_s16_ua_gec_candidate_contract_v1 import (
-    CandidateEvidenceDenied,
     DECISION,
     EXTERNAL_EVIDENCE,
     FALSE_FLAGS,
     SOURCE,
+    CandidateEvidenceDenied,
     inspect_bytes,
 )
 
@@ -131,7 +131,7 @@ def test_authority_shape_drift_denied(mutation: str) -> None:
     b'[]',
     b'',
     b'{}' * 40000,
-])
+], ids=["duplicate-key", "nonfinite", "invalid-utf8", "array", "empty", "oversize"])
 def test_invalid_json_or_unbounded_authority_denied(raw: bytes) -> None:
     with pytest.raises(CandidateEvidenceDenied):
         inspect_bytes(raw)
@@ -145,6 +145,6 @@ def test_cli_denies_symlinked_candidate(tmp_path: Path) -> None:
         pytest.skip("symlink unavailable")
     script = ROOT / "tools/plan2_s16_ua_gec_candidate_contract_v1.py"
     result = subprocess.run([sys.executable, str(script), "--candidate", str(link)],
-                            capture_output=True, text=True)
+                            check=False, capture_output=True, text=True)
     assert result.returncode == 2
     assert json.loads(result.stdout)["decision"] == "DENIED"
