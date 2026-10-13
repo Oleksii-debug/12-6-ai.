@@ -171,6 +171,69 @@ class ChaosHarnessTests(unittest.TestCase):
             )
             self.assertEqual(receipt["effect_replayed"], False)
 
+    def test_complete_versioned_q0_campaign_with_real_local_effects(self):
+        path = Path(__file__).resolve().parents[1] / (
+            "configs/plan8/chaos/component-recovery-fixtures-v1.json"
+        )
+        campaign = parse_campaign_bytes(path.read_bytes())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint, corrupted, publication = (
+                root / "checkpoint", root / "artifact", root / "publication"
+            )
+            corrupted.write_bytes(b"intact")
+            stale = root / "generation"
+            stale.write_text("old", encoding="utf-8")
+            primary = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            replica = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            receiver, sender = socket.socketpair()
+            for child in (primary, replica, process):
+                self.addCleanup(lambda item=child: item.kill() if item.poll() is None else None)
+            self.addCleanup(receiver.close)
+            self.addCleanup(sender.close)
+
+            def interrupt_checkpoint():
+                checkpoint.write_bytes(b"partial")
+                raise RuntimeError("checkpoint interrupted")
+            def rollback_checkpoint():
+                checkpoint.unlink(missing_ok=True)
+                return {"rollback": not checkpoint.exists()}
+            def rollback_publication():
+                publication.unlink(missing_ok=True)
+                return {"rollback": not publication.exists()}
+            def kill(child):
+                child.kill()
+                child.wait(timeout=5)
+            def unavailable():
+                raise ConnectionError("fixture provider unavailable")
+
+            actions = {
+                "checkpoint_interruption": (interrupt_checkpoint, rollback_checkpoint),
+                "disk_corruption": (lambda: corrupted.write_bytes(b"broken"),
+                                    lambda: {"corrupt": corrupted.read_bytes() != b"intact"}),
+                "interrupted_publication": (lambda: publication.write_bytes(b"partial"),
+                                            rollback_publication),
+                "network_loss": (sender.close,
+                                 lambda: {"unreachable": receiver.recv(1) == b""}),
+                "node_failure": (lambda: kill(primary),
+                                 lambda: {"replica_required": primary.poll() is not None
+                                          and replica.poll() is None}),
+                "process_kill": (lambda: kill(process),
+                                 lambda: {"terminated": process.poll() is not None}),
+                "provider_failure": (unavailable, lambda: {"denied": True}),
+                "stale_state": (lambda: None,
+                                lambda: {"stale_denied": stale.read_text() != "current"}),
+            }
+            for case in campaign.cases:
+                inject, recover = actions[case.fault]
+                run_fault(root, campaign, case, inject=inject, recover=recover)
+            report = campaign_readback(root, campaign)
+            self.assertTrue(report["complete"])
+            self.assertEqual(len(report["passed"]), 8)
+            self.assertEqual(report["missing"], [])
+            self.assertEqual(report["failed"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
