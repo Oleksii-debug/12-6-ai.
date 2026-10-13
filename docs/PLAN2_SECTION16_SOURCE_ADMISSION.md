@@ -30,3 +30,7 @@ validation and test sources for both languages; approve and measure the
 production language balance; then pass the native S3–S9 admission, negative
 tests and exact-head CI on the canonical PR. Candidate-only receipts must
 never be renamed or re-signed as production admission.
+
+## Independently reserved real UA/EN evaluation is already available
+
+Existing EVAL-303 selection-validation contains **8 Ukrainian and 2 English** immutable, separately rights-approved records. Existing EVAL-233 final-test custody has **8 Ukrainian and 8 English** records with publisher-specific evaluation grants, training prohibition and final-test outcome isolation. Their source families are independent of the five real S15 training candidates, when those five are used as training-only. The older S15 document-split candidate has no UA heldouts and divides one Gutenberg family across roles; that candidate split is not the production membership definition. Reuse independent EVAL-303/EVAL-233 instead; do not expose heldout content or train the tokenizer on these. This fixes independent evaluation **availability** but does not admit S15 training candidates into S3–S9, prove production mixture balance or authorize final release.

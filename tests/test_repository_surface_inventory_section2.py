@@ -44,8 +44,8 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["accepted_main_surface_count"] == 120
     # The protected packaging surface belongs to accepted-main authority and
     # must never be counted as an unqualified candidate override.
-    assert result["candidate_overlay_surface_count"] == 86
-    assert result["checkout_surface_count"] == 204
+    assert result["candidate_overlay_surface_count"] == 87
+    assert result["checkout_surface_count"] == 205
 
 
 def test_repository_executable_surface_distribution_is_pinned() -> None:
@@ -72,8 +72,8 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     capabilities = _load_strict_json(_CAPABILITIES)
 
     overrides = payload["candidate_overrides"]
-    assert len(overrides) == 86
-    assert len({entry["path"] for entry in overrides}) == 86
+    assert len(overrides) == 87
+    assert len({entry["path"] for entry in overrides}) == 87
     assert {
         "path": "tools/plan2_s16_source_rights_privacy_v1.py",
         "capability_id": "peer-source-qualification-pending",
