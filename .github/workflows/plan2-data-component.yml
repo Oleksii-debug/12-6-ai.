@@ -261,6 +261,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PYTHONPATH=src:. python - <<'PY'
+          import hashlib
           import json
           import os
           import urllib.request
@@ -290,6 +291,19 @@ jobs:
           )
           metadata = fetch_bounded(metadata_url, 400000)
           tree = json.loads(fetch_bounded(tree_url, 10000000))
+          # License/readme are source-level evidence, NEVER individual contributor grants.
+          for source_path, pinned_blob in (
+              ("LICENSE", "10fabd90118f7ce38bb2e4753e105e744442a429"),
+              ("README.md", "efa28e3ab384f5e97c8f9e66657243aa20c30b64"),
+          ):
+              raw = fetch_bounded(
+                  "https://raw.githubusercontent.com/grammarly/ua-gec/"
+                  + UPSTREAM_COMMIT + "/" + source_path, 25000
+              )
+              git_blob = hashlib.sha1(
+                  b"blob " + str(len(raw)).encode() + b"\\0" + raw
+              ).hexdigest()
+              assert git_blob == pinned_blob, "source terms or README Git blob drift"
           report = inspect_metadata_tree(metadata, tree)
           assert report["metadata_git_blob"] == METADATA_GIT_BLOB
           assert report["upstream_tree"] == UPSTREAM_TREE
