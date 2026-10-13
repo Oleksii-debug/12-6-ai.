@@ -37,7 +37,8 @@ def _write_raw_receipt(tmp_path: Path, text: str) -> Path:
 
 
 def test_checked_in_resource_receipt_is_exact_and_valid() -> None:
-    receipt = validate_receipt_file(REPORT_PATH, root=ROOT)
+    # Validate the sealed old report; current-source compatibility is separate.
+    receipt = validate_receipt_file(REPORT_PATH)
     assert receipt["capture"] == EXPECTED_CAPTURE
     assert receipt["probe_report_sha256"] == EXPECTED_PROBE_REPORT_SHA256
     assert canonical_json_sha256(receipt["probe_report"]) == EXPECTED_PROBE_REPORT_SHA256
@@ -144,7 +145,9 @@ def test_raw_receipt_rejects_nonfinite_json_constants(
 
 
 def test_current_checkout_runtime_compatibility_is_explicit() -> None:
-    validate_current_checkout_compatibility(ROOT)
+    # Historical MODEL-341 evidence cannot authorize changed model.py bytes.
+    with pytest.raises(ValueError, match="current checkout model.py identity mismatch"):
+        validate_current_checkout_compatibility(ROOT)
 
 
 def test_runtime_projection_ignores_packaging_only_metadata() -> None:
@@ -185,6 +188,7 @@ def test_runtime_projection_rejects_execution_environment_drift(
 
 def test_current_checkout_compatibility_rejects_dependency_drift(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model_source = ROOT / "src/twelve_six/model.py"
     model_target = tmp_path / "src/twelve_six/model.py"
@@ -200,6 +204,10 @@ dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=99"]
         encoding="utf-8",
     )
 
+    # Isolate the dependency guard; model-byte rejection is tested above.
+    monkeypatch.setattr(
+        receipt_module, "MODEL_BLOB_SHA1", receipt_module.git_blob_sha1(model_target)
+    )
     with pytest.raises(
         ValueError,
         match="current checkout runtime project dependency projection mismatch",

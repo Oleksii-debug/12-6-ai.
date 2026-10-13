@@ -1,5 +1,19 @@
 # Section 6 — PC ↔ GitHub ↔ AI evidence/control bridge
 
+## Plan 8 Section 5 scale packet binding (2026-10-13 candidate)
+
+The operator requires `--profile-id` for one of the seven accepted Plan 3
+`configs/stages/scale_*.json` profiles. The authority must sign a physical
+packet whose `packet_id` is `<profile_id lowercased>.<SHA-256 of exact raw config
+bytes>`; pass the same value as `--dispatch-id`. The bridge checks a clean exact
+Git checkout, the config's ModelSpec/InitSpec identities and parameter count,
+and returns the profile/config digest in the stage status. Changed config bytes,
+another profile, a stale packet, or a mismatched dispatch fail closed and require
+a new signed packet. Each profile produces a separate dispatch identity and
+evidence path. `CONFIG_DEFINED` is the only qualification claimed here; arithmetic
+resource estimates do not assert a measured host, available VRAM or training
+authorization. The older Section 6 label below is historical to this reused PR.
+
 ## Scope
 
 This candidate implements the software-side control contract for canonical Section 6 of the

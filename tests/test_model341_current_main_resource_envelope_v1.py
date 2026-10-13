@@ -27,12 +27,16 @@ def _bind_historical_probe_to_current_checkout(
     """Run synthetic mechanics against current packaging without resealing history."""
     current_pyproject_blob = git_blob_sha1(ROOT / "pyproject.toml")
     monkeypatch.setattr(probe, "PYPROJECT_BLOB_SHA1", current_pyproject_blob)
+    # Synthetic compatibility against changed code, not a historical reseal.
+    monkeypatch.setattr(
+        probe, "MODEL_BLOB_SHA1", git_blob_sha1(ROOT / "src/twelve_six/model.py")
+    )
 
 
 def test_captured_resource_probe_source_root_remains_historical() -> None:
-    assert git_blob_sha1(ROOT / "src/twelve_six/model.py") == MODEL_BLOB_SHA1
+    assert git_blob_sha1(ROOT / "src/twelve_six/model.py") != MODEL_BLOB_SHA1
     assert git_blob_sha1(ROOT / "pyproject.toml") != PYPROJECT_BLOB_SHA1
-    with pytest.raises(ValueError, match="current-main pyproject.toml identity mismatch"):
+    with pytest.raises(ValueError, match="current-main model.py identity mismatch"):
         validate_source_root(ROOT)
 
 

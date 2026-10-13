@@ -274,7 +274,87 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_s15_d03_normalized_materialization_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_d03_physical_sources_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_five_source_rights_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_git_clean_checkout_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_s15_physical_book_split_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_exposure_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_heldout_decontam_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_packing_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_readback_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_tokenizer_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_plan34_compatibility_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_plan9_handoff_preflight_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_real_32k_bpe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_real_eval233_decontamination_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_mixture_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_physical_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_split_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_bpe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_exposure_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_materialization_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_packing_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
     {

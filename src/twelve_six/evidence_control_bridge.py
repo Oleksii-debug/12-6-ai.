@@ -16,6 +16,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from twelve_six.ai_qa_control import ExternalObservation, FailureSource
 from twelve_six.capability_map import CapabilityRegistry
+from twelve_six.model import load_stage_config
 from twelve_six.physical_qualification import (
     ExecutionMode,
     ExternalResourceVerifier,
@@ -37,6 +38,15 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
 _VERIFIED_PHYSICAL_RECEIPT = object()
 _VERIFIED_REQUALIFICATION_RECEIPT = object()
+_SCALE_PROFILE_FILES = {
+    "SCALE-500M": "scale_500m.json",
+    "SCALE-750M": "scale_750m.json",
+    "SCALE-1B": "scale_1b.json",
+    "SCALE-2B": "scale_2b.json",
+    "SCALE-3B": "scale_3b.json",
+    "SCALE-4B": "scale_4b.json",
+    "SCALE-5B": "scale_5b.json",
+}
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -172,6 +182,69 @@ def build_host_dispatch(
     )
 
 
+def require_signed_scale_profile(
+    verified_packet: VerifiedSignedPacket,
+    *,
+    repo_root: str | Path,
+    profile_id: str,
+    dispatch_id: str,
+) -> dict[str, str | int]:
+    """Bind a signed host packet to one exact checked-out Plan 3 scale config.
+
+    The packet_id is inside the authority signature. Its canonical value includes
+    the raw config SHA-256, so a changed profile requires a newly signed packet.
+    This proves configuration identity only; it never asserts measured resources.
+    """
+    if type(verified_packet) is not VerifiedSignedPacket:
+        raise ValueError("scale profile requires an exact verified signed packet")
+    VerifiedSignedPacket.__post_init__(verified_packet)
+    if profile_id not in _SCALE_PROFILE_FILES:
+        raise ValueError("unknown scale profile")
+    packet = verified_packet.packet
+    if packet.execution_mode is not ExecutionMode.REAL_HOST:
+        raise ValueError("scale profile requires REAL_HOST packet")
+    require_exact_clean_git_state(repo_root, packet.target_git_sha)
+    path = Path(repo_root) / "configs" / "stages" / _SCALE_PROFILE_FILES[profile_id]
+    raw = path.read_bytes()
+    if len(raw) > 65536:
+        raise ValueError("scale profile config exceeds size bound")
+    try:
+        def unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            value: dict[str, Any] = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError("duplicate scale profile config field")
+                value[key] = item
+            return value
+
+        metadata = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=unique_fields,
+            parse_constant=lambda item: (_ for _ in ()).throw(
+                ValueError(f"invalid scale profile number: {item}")
+            ),
+        )
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("scale profile config is invalid UTF-8 JSON") from exc
+    if type(metadata) is not dict or metadata.get("profile_id") != profile_id:
+        raise ValueError("scale profile identity mismatch")
+    if metadata.get("qualification") != "CONFIG_DEFINED" or metadata.get(
+        "resource_evidence_class"
+    ) != "ARITHMETIC_ONLY_NOT_MEASURED":
+        raise ValueError("scale profile has unexpected qualification authority")
+    config = load_stage_config(path)
+    if config.stage != profile_id:
+        raise ValueError("scale stage identity mismatch")
+    config_sha256 = _sha256_bytes(raw)
+    signed_id = f"{profile_id.lower()}.{config_sha256}"
+    if packet.packet_id != signed_id or dispatch_id != signed_id:
+        raise ValueError("signed packet/dispatch do not bind exact scale profile")
+    return {
+        "profile_id": profile_id,
+        "config_sha256": config_sha256,
+        "model_identity_sha256": config.model.identity_sha256(),
+        "expected_parameters": config.expected_parameters,
+        "qualification": "CONFIG_DEFINED",
+    }
 @dataclass(frozen=True, slots=True)
 class PhysicalExecutionReceipt:
     schema_version: str

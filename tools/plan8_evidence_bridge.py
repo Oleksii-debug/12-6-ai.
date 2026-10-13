@@ -21,6 +21,7 @@ from twelve_six.evidence_control_bridge import (
     claim_bridge_dispatch,
     publish_bridge_return_github,
     record_bridge_return,
+    require_signed_scale_profile,
     stage_bridge_dispatch,
     stop_bridge_dispatch,
 )
@@ -35,13 +36,17 @@ def _load_dispatch(args):
     verified = load_verified_signed_packet(
         args.packet, signature_verifier=_public_key_verifier(args.authority_keys)
     )
+    profile = require_signed_scale_profile(
+        verified, repo_root=args.repo_root,
+        profile_id=args.profile_id, dispatch_id=args.dispatch_id,
+    )
     dispatch = build_host_dispatch(
         verified, repo_root=args.repo_root,
         dispatch_id=args.dispatch_id,
         scenario_id=args.scenario_id,
         physical_gate_id=args.physical_gate_id,
     )
-    return dispatch, verified
+    return dispatch, verified, profile
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,6 +65,10 @@ def main(argv: list[str] | None = None) -> int:
         cmd.add_argument("--authority-keys", type=Path, required=True)
         cmd.add_argument("--repo-root", type=Path, required=True)
         cmd.add_argument("--dispatch-id", required=True)
+        cmd.add_argument("--profile-id", required=True, choices=(
+            "SCALE-500M", "SCALE-750M", "SCALE-1B", "SCALE-2B",
+            "SCALE-3B", "SCALE-4B", "SCALE-5B",
+        ))
         cmd.add_argument("--scenario-id", required=True)
         cmd.add_argument("--physical-gate-id", required=True)
         if name != "stage":
@@ -80,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         _emit({"state": "STOP_REQUESTED", "stop_running_action": "Ctrl+C"})
         return 0
 
-    dispatch, verified = _load_dispatch(args)
+    dispatch, verified, profile = _load_dispatch(args)
     identity = dispatch.identity_sha256()
     if args.action == "stage":
         manifest = stage_bridge_dispatch(
@@ -89,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         _emit({
             "state": "STAGED", "dispatch_sha256": identity,
+            "scale_profile": profile,
             "candidate_sha": manifest["dispatch"]["target_git_sha"],
             "next": "execute only on trusted host; never auto-retry unknown effects",
         })

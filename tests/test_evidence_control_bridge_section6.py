@@ -5,6 +5,8 @@ import hashlib
 import inspect
 import json
 import subprocess
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +21,7 @@ from twelve_six.evidence_control_bridge import (
     build_host_dispatch,
     build_requalification_requirement,
     physical_failure_observation,
+    require_signed_scale_profile,
     write_canonical_evidence_record,
 )
 from twelve_six.physical_qualification import (
@@ -28,6 +31,80 @@ from twelve_six.physical_qualification import (
     VerifiedSignedPacket,
 )
 from twelve_six.sil_qualification import build_package_manifest_bytes
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "filename"),
+    [
+        ("SCALE-500M", "scale_500m.json"),
+        ("SCALE-750M", "scale_750m.json"),
+        ("SCALE-1B", "scale_1b.json"),
+        ("SCALE-2B", "scale_2b.json"),
+        ("SCALE-3B", "scale_3b.json"),
+        ("SCALE-4B", "scale_4b.json"),
+        ("SCALE-5B", "scale_5b.json"),
+    ],
+)
+def test_signed_scale_profile_exact_config_and_negative_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    profile_id: str, filename: str,
+) -> None:
+    source = Path(__file__).resolve().parents[1] / "configs" / "stages" / filename
+    target = tmp_path / "configs" / "stages" / filename
+    target.parent.mkdir(parents=True)
+    raw = source.read_bytes()
+    target.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    signed_id = f"{profile_id.lower()}.{digest}"
+    verified = _verified_packet(_git("a"), mode=ExecutionMode.REAL_HOST)
+    verified = replace(verified, packet=replace(verified.packet, packet_id=signed_id))
+    clean = []
+    monkeypatch.setattr(
+        bridge_module, "require_exact_clean_git_state",
+        lambda root, sha: clean.append((root, sha)),
+    )
+    binding = require_signed_scale_profile(
+        verified, repo_root=tmp_path, profile_id=profile_id,
+        dispatch_id=signed_id,
+    )
+    assert binding["profile_id"] == profile_id
+    assert binding["config_sha256"] == digest
+    assert binding["qualification"] == "CONFIG_DEFINED"
+    assert binding["expected_parameters"] > 0
+    assert clean == [(tmp_path, _git("a"))]
+    with pytest.raises(ValueError, match="bind exact scale profile"):
+        require_signed_scale_profile(
+            verified, repo_root=tmp_path, profile_id=profile_id,
+            dispatch_id="different-dispatch",
+        )
+    with pytest.raises(ValueError, match="bind exact scale profile"):
+        require_signed_scale_profile(
+            replace(verified, packet=replace(verified.packet, packet_id="other")),
+            repo_root=tmp_path, profile_id=profile_id, dispatch_id=signed_id,
+        )
+    target.write_bytes(raw + b" ")
+    with pytest.raises(ValueError, match="bind exact scale profile"):
+        require_signed_scale_profile(
+            verified, repo_root=tmp_path, profile_id=profile_id,
+            dispatch_id=signed_id,
+        )
+    target.write_bytes(raw)
+    assert require_signed_scale_profile(
+        verified, repo_root=tmp_path, profile_id=profile_id,
+        dispatch_id=signed_id,
+    ) == binding
+
+
+def test_signed_scale_profile_rejects_unknown_or_simulated_packet(tmp_path: Path) -> None:
+    verified = _verified_packet(_git("a"), mode=ExecutionMode.SIMULATION)
+    with pytest.raises(ValueError, match="unknown scale profile"):
+        require_signed_scale_profile(
+            verified, repo_root=tmp_path, profile_id="SCALE-9B", dispatch_id="x",
+        )
+    with pytest.raises(ValueError, match="REAL_HOST"):
+        require_signed_scale_profile(
+            verified, repo_root=tmp_path, profile_id="SCALE-500M", dispatch_id="x",
+        )
 
 
 def _sha(label: str) -> str:

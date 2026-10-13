@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EN-Revision: a1e3d629b4f01ee41bd38391cd5c6ae5ee894cb3 Maintainer: mproshchuk Status: ready -->
+<sect1 xml:id="language.types.float" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <title>Десятковий дріб (float)</title>
+
+ <para>
+  Десятковий дріб - число з рухомою крапкою (також відоме як "float", "double"
+  чи "real") може записуватись одним зі способів:
+ </para>
+
+ <informalexample>
+  <programlisting role="php">
+<![CDATA[
+<?php
+$a = 1.234; 
+$b = 1.2e3; 
+$c = 7E-10;
+$d = 1_234.567; // починаючи з PHP 7.4.0
+?>
+]]>
+  </programlisting>
+ </informalexample>
+
+ <para>
+  Формально, починаючи з PHP 7.4.0 (до того знак підкреслення не був дозволений):
+ </para>
+
+ <informalexample>
+  <programlisting>
+<![CDATA[
+LNUM          [0-9]+(_[0-9]+)*
+DNUM          ([0-9]*[\.]{LNUM}) | ({LNUM}[\.][0-9]*)
+EXPONENT_DNUM [+-]?(({LNUM} | {DNUM}) [eE][+-]? {LNUM})
+]]>
+  </programlisting>
+ </informalexample>
+
+ <para>
+  Розмір десяткового дробу залежить від платформи, хоча зазвичай, максимальне
+  значення дорівнює приблизно 1.8e308 з точністю заокругленою до 14 десяткових
+  цифр (на 64-бітних системах використовується формат IEEE).
+ </para>
+
+ <warning xml:id="warn.float-precision">
+  <title>Точність десяткового дробу</title>
+
+  <para>
+   Числа з рухомою точкою мають обмежену точність. Хоча це залежить від
+   операційної системи, зазвичай PHP використовує формат подвійної точності IEEE
+   754, який дає максимальну відносну похибку заокруглення 1.11e-16. Не
+   елементарні арифметичні операції можуть давати більшу похибку, що необхідно
+   враховувати, бо збільшення кількості операцій при обрахунку підсилює цей
+   ефект.
+  </para>
+  
+  <para>
+   Окрім того, раціональні числа, які представлені саме як числа з рухомою
+   крапкою з основою 10, такі як <literal>0.1</literal> чи
+   <literal>0.7</literal>, не мають точного представлення у вигляді чисел з
+   рухомою крапкою з основою 2, незалежно від розміру мантиси (для довідки: PHP
+   використовує основу 2 для внутрішніх обрахунків). Отже, вони не можуть бути
+   конвертовані в їхні внутрішні відповідники з основою 2, без невеликих втрат
+   точності. Ця особливість може призводити до заплутаних результатів:
+   наприклад, <literal>floor((0.1+0.7)*10)</literal> за звичай буде повертати
+   <literal>7</literal>, а не очікуване <literal>8</literal>, оскільки
+   внутрішнє представлення буде приблизно таким
+   <literal>7.9999999999999991118...</literal>.
+  </para>
+
+  <para>
+   Не можна довіряти десятковим дробам до останньої цифри та порівнювати їх
+   безпосередньо. Якщо необхідна висока точність, можна скористатись <link
+   linkend="ref.bc">функціями з довільною математичною
+   точністю</link> та функціями <link linkend="ref.gmp">gmp</link>.
+  </para>
+  
+  <para>
+   "Просте" пояснення можна продивитись тут:
+   <link xlink:href="&url.floating.point.guide;">Довідка щодо чисел з рухомою
+   крапкою</link>.
+  </para>
+ </warning>
+
+ <sect2 xml:id="language.types.float.casting">
+  <title>Перетворення в десятковий дріб</title>
+  
+  <sect3 xml:id="language.types.float.casting.from-string">
+   <title>Рядки</title>
+
+   <simpara>
+    Якщо рядок є
+    <link linkend="language.types.numeric-strings">числовим</link>
+    або починається з числа, то його можна перетворити в відповідний десятковий
+    дріб, а інакше в нуль (<literal>0</literal>).
+   </simpara>
+  </sect3>
+
+  <sect3 xml:id="language.types.float.casting.from-other">
+   <title>Інші типи</title>
+
+   <para>
+    Для значень інших типів перетворення виконується спершу в <type>int</type>,
+    а потім з цілого в <type>float</type>. Докладніше:
+    <link linkend="language.types.integer.casting">Перетворення в ціле
+    число</link>.
+   </para>
+
+   <note>
+    <para>
+     Оскільки деякі типи мають невизначену поведінку під час перетворення на
+     <type>int</type>, це також стосується перетворення на <type>float</type>.
+    </para>
+   </note>
+  </sect3>
+ </sect2>
+
+ <sect2 xml:id="language.types.float.comparison">
+  <title>Порівняння десяткових дробів</title>
+
+  <para>
+   Як записано вгорі в застережені, перевірка на рівність десяткових дробів є
+   проблематичною в зв'язку зі специфікою їхньої будови. Тим не менш, існують
+   способи здійснювати порівняння десяткових дробів, обходячи згадані обмеження.
+  </para>
+
+  <para>
+   Для порівняння десяткових дробів використовується верхня межа відносної
+   похибки для заокруглення. Це значення відоме як машинний нуль (чи машинний
+   епсилон, або ж міра заокруглення), та є найменшою різницею, що приймається
+   при розрахунках.
+  </para>
+  
+  <informalexample>
+   <simpara>
+    <varname>$a</varname> та <varname>$b</varname> є рівними з точністю до 5-ти
+    цифр після крапки.
+   </simpara>
+   <programlisting role="php">
+<![CDATA[
+<?php
+$a = 1.23456789;
+$b = 1.23456780;
+$машинний_нуль = 0.00001;
+
+if(abs($a-$b) < $машинний_нуль) {
+    echo "$a не дорівнює $b";
+}
+?>
+]]>
+   </programlisting>
+  </informalexample>
+ </sect2>
+ 
+ <sect2 xml:id="language.types.float.nan">
+  <title>NaN</title>
+  <para>
+   Деякі числові операції можуть мати результат зі значенням костанти
+   <constant>NAN</constant>. Такі результати представляють невизначені або
+   невідображувані значення чисел з рухомою крапкою. Будь-які м'які чи строгі
+   порівняння цих значень з іншими значеннями, включаючи їх самих, окрім &true;,
+   будуть мати в результаті хибне значення (&false;).
+  </para>
+  <para>
+   Оскільки <constant>NAN</constant> представляє собою число з будь-якими
+   значеннями, <constant>NAN</constant> не можна порівнювати з іншими
+   значеннями, включаючи їх самих. Визначити наявність в результаті значення
+   NAN можна за допомогою функції <function>is_nan</function>.
+  </para>
+ </sect2>
+</sect1>
+
+<!-- Keep this comment at the end of the file
+Local variables:
+mode: sgml
+sgml-omittag:t
+sgml-shorttag:t
+sgml-minimize-attributes:nil
+sgml-always-quote-attributes:t
+sgml-indent-step:1
+sgml-indent-data:t
+indent-tabs-mode:nil
+sgml-parent-document:nil
+sgml-default-dtd-file:"~/.phpdoc/manual.ced"
+sgml-exposed-tags:nil
+sgml-local-catalogs:nil
+sgml-local-ecat-files:nil
+End:
+vim600: syn=xml fen fdm=syntax fdl=2 si
+vim: et tw=78 syn=sgml
+vi: ts=1 sw=1
+-->

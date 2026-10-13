@@ -1,0 +1,52 @@
+{
+  "stage": "SCALE-2B",
+  "profile_id": "SCALE-2B",
+  "profile_schema_version": 1,
+  "target_parameters": 2000000000,
+  "expected_parameters": 1996654592,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "c6fa1293a173960cc09e1b8e84dfbfa0fce35f7f0ba14089de83322d4746feda",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "base_init_manifest": {
+    "schema_version": 1,
+    "model_spec_sha256": "c6fa1293a173960cc09e1b8e84dfbfa0fce35f7f0ba14089de83322d4746feda",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "seed": 20261015,
+    "weights_origin": "random_init",
+    "ancestor_checkpoint_sha256": null
+  },
+  "qualification": "CONFIG_DEFINED",
+  "tokenizer_contract": "32K_VERSIONED_MANIFEST_REQUIRED_AT_RUN_BINDING",
+  "resource_evidence_class": "ARITHMETIC_ONLY_NOT_MEASURED",
+  "paid_training_authorized": false,
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 32768,
+    "max_seq_len": 2048,
+    "d_model": 2048,
+    "n_layers": 40,
+    "n_heads": 32,
+    "n_kv_heads": 8,
+    "head_dim": 64,
+    "d_ff": 6144,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

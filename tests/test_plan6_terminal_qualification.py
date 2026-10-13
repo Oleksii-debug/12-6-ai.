@@ -132,12 +132,21 @@ def test_source_manifest_pins_all_fourteen_exact_engine_blobs():
     assert manifest["limits"]["paid_model_or_teacher_compute"] is False
     blobs = manifest["engine_git_blobs"]
     assert set(blobs) == {f"src/twelve_six/{name}.py" for name in ENGINES}
+    # Report all independently invalid engine pins in one fast check so
+    # concurrent owner PRs do not need one full-CI cycle per mismatch.
+    mismatches = []
     for relative, expected in blobs.items():
-        content = (root / relative).read_bytes()
+        path = root / relative
+        if not path.is_file():
+            mismatches.append(f"{relative}: source file missing")
+            continue
+        content = path.read_bytes()
         observed = hashlib.sha1(
             ("blob " + str(len(content))).encode("ascii") + bytes([0]) + content,
         ).hexdigest()
-        assert observed == expected, relative
+        if observed != expected:
+            mismatches.append(f"{relative}: expected {expected}, got {observed}")
+    assert not mismatches, "Sealed Plan6 engine mismatches:\n" + "\n".join(mismatches)
 
 
 def test_fourteen_incumbent_engines_keep_importable_entrypoints():
