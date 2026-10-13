@@ -358,6 +358,14 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_s16_structural_preflight_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_ua_gec_candidate_contract_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_source_admissibility_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },

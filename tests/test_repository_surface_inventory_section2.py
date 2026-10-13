@@ -44,8 +44,8 @@ def test_repository_executable_surface_coverage_is_exact_and_complete() -> None:
     assert result["accepted_main_surface_count"] == 120
     # The protected packaging surface belongs to accepted-main authority and
     # must never be counted as an unqualified candidate override.
-    assert result["candidate_overlay_surface_count"] == 81
-    assert result["checkout_surface_count"] == 199
+    assert result["candidate_overlay_surface_count"] == 83
+    assert result["checkout_surface_count"] == 201
 
 
 def test_repository_executable_surface_distribution_is_pinned() -> None:
@@ -72,8 +72,8 @@ def test_unqualified_peer_executables_are_explicitly_quarantined() -> None:
     capabilities = _load_strict_json(_CAPABILITIES)
 
     overrides = payload["candidate_overrides"]
-    assert len(overrides) == 81
-    assert len({entry["path"] for entry in overrides}) == 81
+    assert len(overrides) == 83
+    assert len({entry["path"] for entry in overrides}) == 83
     assert {
         "path": ".github/workflows/ci.yml",
         "capability_id": "peer-source-qualification-pending",
