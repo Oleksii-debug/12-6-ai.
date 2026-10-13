@@ -1,3 +1,12 @@
+# 2026-10-13 WORK 3 TERMINAL CHECKPOINT — PLAN 2 SECTION 15 DONE
+
+- **Plan2 S15 terminal DONE; do not re-enter without a demonstrated regression.** Canonical [PR #3220](https://github.com/Oleksii-debug/12-6-ai./pull/3220) frozen candidate `77b48039f4f7c479f13c351ee44acb80d953458e` squash-merged to accepted main `896f2643774d272c6120c4677fdd55849d99692b`.
+- **15.1 DONE:** preserved and independently requalified three physical source families, five source identities, exact 32,768-token byte-BPE and physical S10–S14 candidate receipts. Local exact executable tree: **446/446 Plan2 pytest PASS**.
+- **15.2 DONE:** source rights/catalog, privacy, license, integrity, split/mixture, immutable restart/recovery, clean-checkout and forged-authority negatives pass. Exact-head Plan2 Actions [#38292511894](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38292511894) SUCCESS for all three jobs; broad CI [#38292511827](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38292511827) SUCCESS.
+- **15.3 DONE:** receipts remain candidate-only and explicitly grant no S3–S9 production admission, tokenizer-fit/training/release or Plan9 authority. Production corpus is S16; production tokenizer/shards/exposure is S17; final release/Plan9 handoff is S18.
+- **Accepted-main readback PASS:** candidate and `main@896f2643` Git blobs match for S15 contract `fd7d7944b42088b56813e0d9f56e515977aed89d`, 32K BPE `61ca0a446344fb0aae85c5c55d57372d932eed3c`, five-source rights `bf88cdb1330c96146d1255f309db10402703a15e`, clean-checkout verifier `de58fafc2ae49e5010765af83c41cf0e2a4c3594`, 32K test `abc8fe63769fbd9a80f3ca772914d0d13ff1f13f`, workflow `1236b29f868c2dd47ee14f6fc3ba79390c4b3e5f`.
+- **Current Plan2 aggregate: 15/18 DONE.** Earliest unfinished Section is S16. S16 source-triage checkpoint below remains DONE, but S16 itself is OPEN / WAITING_INDEPENDENT_SOURCE_EVIDENCE; S17–S18 remain OPEN and dependent. No production corpus, training, paid compute or release is claimed by S15 closure.
+
 # 2026-10-12 WORK 1 DURABLE SUBTASK CHECKPOINT — sections remain OPEN
 
 - **Plan2 S15 component DONE, section OPEN:** canonical PR #3220 head `7081f5254e25118b8fe16e12d4c9c16eeec56806`; Actions #38283130684 exact-head `real-source-32768-byte-bpe` and `real-three-family-s13-s14` SUCCESS. Full `qualify-plan2` and CI #38283130577 remain in progress. 32K BPE/S13/S14 are physical candidates, not S3–S9 production admission, UA validation/test or release.
@@ -18,8 +27,8 @@
 - Canonical plan docs: https://drive.google.com/drive/folders/1dltwOgSMBmc39c35bwPkxkB5AWaZbxdX
 
 
-- Plan 2 `2. Другий план` has **18** terminal sections now; 1–14 DONE carried forward without reopen, S15–18 OPEN with exact scope in Google Drive. **Terminal 14/18**, not 14/15. Existing #3220 and every previous S15 physical/corpus/rights/32K-BPE candidate proof are carried to S15, not invalidated.
-- S15 current existing owner PR #3220 (last personally authored SHA at 2026-10-11: `074c5bdeeb5f1db32a0729f0f1359a0b2931dfe0`) has passed narrow BPE/three-family probes in previous commits; revised rights-negative CI and broad bootstrap must be rerun for the *new exact head*. Do not treat old job successes as current full CI.
+- Plan 2 `2. Другий план` has **18** terminal sections now; S1–S15 are DONE and S16–S18 are OPEN with exact scope in Google Drive. **Terminal 15/18**, not the historical 14/15 or migration-time 14/18. S15 accepted-main evidence is pinned in the 2026-10-13 terminal checkpoint above and must not be routinely reopened.
+- S15 canonical PR #3220 is merged and terminal DONE at accepted main `896f2643774d272c6120c4677fdd55849d99692b`; exact-head Plan2 Actions #38292511894 and broad CI #38292511827 are both SUCCESS. Candidate-only S15 closure grants no S16–S18 production authority.
 - S16 independently licensed multilingual UA/EN S3–S9 physical corpus, balanced holdouts/privacy; S17 deterministic clean frozen tokenizer/shards/splits/exposure; S18 release/Plan9 consumer. Do not silently deem any of these passed, and do not multiply PRs.
 - Plan 3 remains 12 sections; Section1 = 1A source model schema, 1B scratch-init reproducibility, 1C trusted seal/negative/integration; only all 3 yields Section1 DONE. Existing PR #3098. Prior exact bootstrap 5237 PASS/1 FAIL: Plan6 `teacher_council.py` expected sealed blob vs changed callable contract. Qualify dependent provenance rather than forge receipt.
 - Binding short-loop for existing workers without prompt replacement: REUSE/PIN → REPAIR EXACT FAIL → TEST → INTEGRATE → SHA READBACK → milestone+section registry/Drive. Preserve all earlier history below; older 14/15 totals below are not live after 2026-10-11.

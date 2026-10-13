@@ -1,8 +1,21 @@
 # Plan 2 / Section 15 — physical candidate qualification contract
 
-Status: **QUALIFYING — candidate evidence complete; production release NOT authorized**.
+Status: **DONE — accepted main `896f2643774d272c6120c4677fdd55849d99692b`; production release NOT authorized**.
 Plan authority: Google Drive "2. Другий план", Sections 15.1–15.3, and
 `MULTI_PLAN_CLOSURE_STATE.md` (GitHub overrides the Drive migration snapshot).
+
+## Accepted closure — 2026-10-13
+
+Canonical PR #3220 exact candidate
+`77b48039f4f7c479f13c351ee44acb80d953458e` passed Plan2 Actions
+`38292511894` and broad CI `38292511827`, then squash-merged to accepted main
+`896f2643774d272c6120c4677fdd55849d99692b`. Candidate/main Git-blob readback
+matched for the contract, 32K BPE, five-source rights, clean-checkout verifier,
+tests and workflow. Subsections 15.1, 15.2 and 15.3 are DONE. Ordinary workers
+must continue with S16 and must not reopen S15 without a demonstrated defect.
+
+This is candidate-only closure. It authorizes no production S3–S9 corpus,
+tokenizer fit, optimizer update, release or Plan9 run.
 
 ## Reused implementation
 
@@ -171,11 +184,11 @@ corruption, symlink, Unicode and restart negatives, plus clean Git-root archive
 rebuild. Exact-head CI and accepted-main integration/readback must still pass
 before this component evidence may be accepted.
 
-**S15 remains QUALIFYING** until this exact candidate passes scoped CI, is
-integrated, and is read back from accepted main. A genuinely admitted physical
-S3–S9 production corpus belongs to S16; production tokenizer/shards/exposures
-belong to S17; final release and Plan9 handoff belong to S18. Neither candidate
-evidence nor S15 DONE grants any of those downstream authorities.
+**S15 is DONE** after exact-head CI, integration and accepted-main readback.
+A genuinely admitted physical S3–S9 production corpus belongs to S16;
+production tokenizer/shards/exposures belong to S17; final release and Plan9
+handoff belong to S18. Neither candidate evidence nor S15 DONE grants any of
+those downstream authorities.
 
 
 ## Physical real-text S13/S14 candidates (not production release)
