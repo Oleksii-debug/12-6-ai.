@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -233,6 +234,17 @@ class ChaosHarnessTests(unittest.TestCase):
             self.assertEqual(len(report["passed"]), 8)
             self.assertEqual(report["missing"], [])
             self.assertEqual(report["failed"], [])
+            reader = subprocess.run(
+                [sys.executable, "-c",
+                 ("import json,sys; from pathlib import Path; "
+                 "from twelve_six.chaos_harness import parse_campaign_bytes,campaign_readback; "
+                 "c=parse_campaign_bytes(Path(sys.argv[2]).read_bytes()); "
+                 "print(json.dumps(campaign_readback(Path(sys.argv[1]),c),sort_keys=True))"),
+                 str(root), str(path)],
+                env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
+                check=True, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(json.loads(reader.stdout), report)
 
 
 if __name__ == "__main__":
