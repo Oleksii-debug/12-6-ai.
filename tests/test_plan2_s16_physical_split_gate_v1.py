@@ -74,7 +74,10 @@ def test_source_role_forgery_denied(monkeypatch: pytest.MonkeyPatch):
     original = splits.inspect(ROOT)
     forged = copy.deepcopy(original)
     source = next(iter(forged["physical_source_cluster_assignments"]))
-    forged["physical_source_cluster_assignments"][source] = "test"
+    previous = forged["physical_source_cluster_assignments"][source]
+    forged["physical_source_cluster_assignments"][source] = (
+        "test" if previous != "test" else "train"
+    )
     monkeypatch.setattr(splits, "inspect", lambda _root: forged)
     with pytest.raises(PhysicalSplitDenied, match="split lineage checksum drift"):
         inspect(ROOT)
