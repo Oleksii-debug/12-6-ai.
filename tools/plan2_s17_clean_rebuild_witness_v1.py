@@ -61,6 +61,9 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
                   "artifact member replaced before read")
             _need(before.st_nlink == 1,
                   "artifact member hardlinked before read")
+            _need((before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+                  (observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns),
+                  "artifact member changed before read")
             hasher = hashlib.sha256()
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 hasher.update(chunk)
