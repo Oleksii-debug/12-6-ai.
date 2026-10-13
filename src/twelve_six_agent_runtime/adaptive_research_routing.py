@@ -236,13 +236,15 @@ def select_next(state: RouteState, members: tuple[Specialist, ...],
 
 def accept_outcome(state: RouteState, decision: RouteDecision, outcome: ModelOutcome,
                    members: tuple[Specialist, ...], policy: RoutePolicy,
+                   resources: ResourceReading,
                    verifier: Callable[[ModelOutcome], bool]) -> RouteState:
     """Host-only evidence admission; not a transport or claim-truth verifier."""
     state.validate()
     policy.validate()
     nodes = _catalog(members)
-    if decision.status != "SELECTED" or decision.node_id not in nodes or decision.task_id != state.task_id or decision.revision != state.revision:
-        raise RouteError("selection is stale or not selected")
+    expected = select_next(state, members, policy, resources)
+    if decision.status != "SELECTED" or decision != expected or decision.node_id not in nodes:
+        raise RouteError("selection is stale, forged, or no longer eligible")
     outcome.validate()
     if outcome.task_id != state.task_id or outcome.node_id != decision.node_id:
         raise RouteError("result/decision identity mismatch")
