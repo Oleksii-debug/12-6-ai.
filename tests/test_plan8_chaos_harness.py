@@ -153,6 +153,24 @@ class ChaosHarnessTests(unittest.TestCase):
                           inject=lambda: self.fail("network effect replayed"),
                           recover=lambda: {"transport_closed": True})
 
+    def test_node_failure_local_replica_proxy_keeps_survivor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            primary = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            replica = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+            self.addCleanup(lambda: primary.kill() if primary.poll() is None else None)
+            self.addCleanup(lambda: replica.kill() if replica.poll() is None else None)
+            campaign, case = self.case("node_failure", {"primary_down": True,
+                                                       "replica_alive": True})
+            def inject():
+                primary.kill()
+                primary.wait(timeout=5)
+            receipt = run_fault(
+                Path(directory), campaign, case, inject=inject,
+                recover=lambda: {"primary_down": primary.poll() is not None,
+                                 "replica_alive": replica.poll() is None},
+            )
+            self.assertEqual(receipt["effect_replayed"], False)
+
 
 if __name__ == "__main__":
     unittest.main()
