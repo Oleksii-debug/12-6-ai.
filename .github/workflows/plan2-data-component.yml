@@ -466,6 +466,77 @@ jobs:
         run: |
           PYTHONPATH=src:. pytest -q tests/test_plan2_s16_ua_gec_candidate_contract_v1.py tests/test_plan2_s16_structural_preflight_v1.py
 
+      - name: Lint Section 16 UA-GEC metadata/tree candidate QA
+        run: ruff check tools/plan2_s16_ua_gec_tree_probe_v1.py tests/test_plan2_s16_ua_gec_tree_probe_v1.py
+      - name: Run Section 16 tree/rights fail-closed negative tests
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_ua_gec_tree_probe_v1.py
+      - name: Replay actual pinned UA-GEC metadata/tree without corpus promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PYTHONPATH=src:. python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import urllib.request
+          from tools.plan2_s16_ua_gec_tree_probe_v1 import (
+              METADATA_GIT_BLOB, UPSTREAM_COMMIT, UPSTREAM_TREE,
+              inspect_metadata_tree,
+          )
+
+          def fetch_bounded(url, size_limit):
+              headers = {"User-Agent": "12-6-ai-plan2-s16-source-triage"}
+              if "api.github.com" in url and os.environ.get("GH_TOKEN"):
+                  headers["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  payload = response.read(size_limit + 1)
+              if not payload or len(payload) > size_limit:
+                  raise ValueError("missing or oversized pinned source metadata")
+              return payload
+
+          metadata_url = (
+              "https://raw.githubusercontent.com/grammarly/ua-gec/"
+              + UPSTREAM_COMMIT + "/data/metadata.csv"
+          )
+          tree_url = (
+              "https://api.github.com/repos/grammarly/ua-gec/git/trees/"
+              + UPSTREAM_TREE + "?recursive=1"
+          )
+          metadata = fetch_bounded(metadata_url, 400000)
+          tree = json.loads(fetch_bounded(tree_url, 10000000))
+          # License/readme are source-level evidence, NEVER individual contributor grants.
+          for source_path, pinned_blob in (
+              ("LICENSE", "10fabd90118f7ce38bb2e4753e105e744442a429"),
+              ("README.md", "efa28e3ab384f5e97c8f9e66657243aa20c30b64"),
+          ):
+              raw = fetch_bounded(
+                  "https://raw.githubusercontent.com/grammarly/ua-gec/"
+                  + UPSTREAM_COMMIT + "/" + source_path, 25000
+              )
+              git_blob = hashlib.sha1(
+                  b"blob " + str(len(raw)).encode() + b"\0" + raw
+              ).hexdigest()
+              assert git_blob == pinned_blob, "source terms or README Git blob drift"
+          report = inspect_metadata_tree(metadata, tree)
+          assert report["metadata_git_blob"] == METADATA_GIT_BLOB
+          assert report["upstream_tree"] == UPSTREAM_TREE
+          assert report["split_document_counts"] == {"train": 1706, "test": 166}
+          assert report["metadata_records"] == 1872
+          assert report["variant_source_blob_memberships_identical"] is True
+          assert report["training_corpus_authorized"] is False
+          assert report["record_level_privacy_cleared"] is False
+          assert report["independent_validation_present"] is False
+          print(json.dumps({
+              "decision": report["decision"],
+              "source_tree_sha": report["upstream_tree"],
+              "metadata_sha256": report["metadata_sha256"],
+              "report_sha256": report["receipt_sha256"],
+              "record_counts": report["split_document_counts"],
+              "training_authorized": False,
+          }, sort_keys=True))
+          PY
+
   qualify-three-family-s13-s14:
     name: real-three-family-s13-s14
     runs-on: ubuntu-latest
