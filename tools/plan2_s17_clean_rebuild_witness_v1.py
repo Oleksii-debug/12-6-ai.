@@ -147,6 +147,37 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
     return dict(sorted(files.items())), total_bytes
 
 
+
+def _physical_tree_pin(root: Path) -> tuple[tuple[str, int, int, int, int, int], ...]:
+    """Bounded identity witness; not an atomic filesystem snapshot."""
+    pinned: list[tuple[str, int, int, int, int, int]] = []
+
+    def on_error(exc: OSError) -> None:
+        raise RebuildDenied("physical tree traversal failed") from exc
+
+    for current, dirs, members in os.walk(root, followlinks=False,
+                                          onerror=on_error):
+        directory = Path(current)
+        entries = [(directory, "d")]
+        entries += [(directory / name, "d") for name in sorted(dirs)]
+        entries += [(directory / name, "f") for name in sorted(members)]
+        for path, kind in entries:
+            try:
+                info = path.lstat()
+            except OSError as exc:
+                raise RebuildDenied("physical member unavailable") from exc
+            if kind == "d":
+                _need(stat.S_ISDIR(info.st_mode), "linked or unusual directory")
+            else:
+                _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
+                      "linked or unusual file")
+            pinned.append((kind + ":" + path.relative_to(root).as_posix(),
+                           info.st_dev, info.st_ino, info.st_size,
+                           info.st_mtime_ns, info.st_ctime_ns))
+    return tuple(sorted(pinned))
+
+
+
 def compare_rebuilds(first: Path, second: Path, *,
                      expected_inventory_sha256: str) -> dict[str, Any]:
     """Return a non-release byte-equality receipt; deny unpinned equality."""
@@ -157,8 +188,16 @@ def compare_rebuilds(first: Path, second: Path, *,
     b = _root(second)
     _need(a != b and a not in b.parents and b not in a.parents,
           "two rebuilds must use separate non-nested directories")
+    a_pin = _physical_tree_pin(a)
+    b_pin = _physical_tree_pin(b)
     a_members, a_bytes = inventory(a)
     b_members, b_bytes = inventory(b)
+    _need(inventory(a) == (a_members, a_bytes)
+          and inventory(b) == (b_members, b_bytes),
+          "member bytes changed across scans")
+    _need(_physical_tree_pin(a) == a_pin
+          and _physical_tree_pin(b) == b_pin,
+          "physical member identity changed across scans")
     a_hash = digest(canonical(a_members))
     b_hash = digest(canonical(b_members))
     _need(a_members == b_members and a_bytes == b_bytes,
