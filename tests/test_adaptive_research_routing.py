@@ -88,7 +88,8 @@ def test_external_and_paid_require_host_policy_both_explicit():
 
 def test_no_unbounded_model_cycles_or_cost_overrun():
     members = (node("a", "logic", ("a",), charge=7),)
-    p = policy(max_calls=2, max_visits_per_node=2, cost_limit_microunits=14, allow_paid=True)
+    p = policy(max_calls=2, max_visits_per_node=2, max_no_progress=2,
+               cost_limit_microunits=14, allow_paid=True)
     state = RouteState("task1", "logic")
     for i in range(1, 3):
         decision = select_next(state, members, p, capacity())
