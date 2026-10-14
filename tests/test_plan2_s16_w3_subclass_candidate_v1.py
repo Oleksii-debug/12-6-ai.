@@ -11,7 +11,8 @@ def _cohort():
     for split in ("train", "validation", "test"):
         for lang in ("uk", "en"):
             key = f"{lang}.{split}"
-            h = lambda suffix: hashlib.sha256((key + suffix).encode()).hexdigest()
+            def h(suffix: str) -> str:
+                return hashlib.sha256((key + suffix).encode()).hexdigest()
             rows.append({
                 "record_id": key, "source_id": "source." + key,
                 "source_family": "family." + key,
