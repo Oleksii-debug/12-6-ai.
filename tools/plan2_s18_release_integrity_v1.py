@@ -168,27 +168,30 @@ def verify(root: Path, expected_manifest_sha256: str) -> dict[str, Any]:
         _require(key != MANIFEST and type(value) is str
                  and SHA256.fullmatch(value) is not None,
                  "invalid member digest")
-    observed: set[str] = set()
-    visited_directories = 0
-    permitted_directories = {"/".join(name.split("/")[:i])
-                             for name in members
-                             for i in range(1, len(name.split("/")))}
-    for directory, dirs, files in os.walk(root, topdown=True, followlinks=False):
-        visited_directories += 1
-        _require(visited_directories <= MAX_MEMBERS + 1, "oversized directory inventory")
-        parent = Path(directory)
-        for name in dirs:
-            path = parent / name
-            _require(stat.S_ISDIR(path.lstat().st_mode),
-                     "symlink or non-directory member parent")
-            _require(path.relative_to(root).as_posix() in permitted_directories,
-                     "unlisted directory")
-        for name in files:
-            path = parent / name
-            _regular_file(path)
-            observed.add(path.relative_to(root).as_posix())
-        _require(len(observed) <= MAX_MEMBERS + 1, "oversized actual inventory")
-    _require(observed == set(members) | {MANIFEST}, "unlisted or missing member")
+    def _check_inventory() -> None:
+        observed: set[str] = set()
+        visited_directories = 0
+        permitted_directories = {"/".join(name.split("/")[:i])
+                                 for name in members
+                                 for i in range(1, len(name.split("/")))}
+        for directory, dirs, files in os.walk(root, topdown=True, followlinks=False):
+            visited_directories += 1
+            _require(visited_directories <= MAX_MEMBERS + 1, "oversized directory inventory")
+            parent = Path(directory)
+            for name in dirs:
+                path = parent / name
+                _require(stat.S_ISDIR(path.lstat().st_mode),
+                         "symlink or non-directory member parent")
+                _require(path.relative_to(root).as_posix() in permitted_directories,
+                         "unlisted directory")
+            for name in files:
+                path = parent / name
+                _regular_file(path)
+                observed.add(path.relative_to(root).as_posix())
+            _require(len(observed) <= MAX_MEMBERS + 1, "oversized actual inventory")
+        _require(observed == set(members) | {MANIFEST}, "unlisted or missing member")
+
+    _check_inventory()
     for name, expected in members.items():
         _require(_sha256_file(_check_member(root, name)) == expected,
                  "member SHA-256 mismatch: " + name)
@@ -213,6 +216,9 @@ def verify(root: Path, expected_manifest_sha256: str) -> dict[str, Any]:
                  "member changed during verification: " + name)
     _require(_sha256_file(manifest_path) == expected_manifest_sha256,
              "manifest changed during verification")
+    # The initial inventory predates hashing and JSON parsing. Detect late
+    # unlisted files or directories without claiming an atomic filesystem view.
+    _check_inventory()
     return {
         "schema_version": SCHEMA,
         "decision": "BYTE_INTEGRITY_ONLY_NOT_RELEASE",
