@@ -104,8 +104,42 @@ def inspect_structure(
         _need(isinstance(raw, Mapping),
               "record envelope incomplete or contains unsupported grant")
         try:
-            row = dict(raw)
-        except Exception:
+            # Snapshot physical dict storage before any caller-defined mapping
+            # views can hide a grant or a revoked member. Reject non-exact str
+            # keys *before* rehashing or comparing them to schema strings:
+            # a str subclass may execute arbitrary code in __hash__/__eq__.
+            if isinstance(raw, dict):
+                physical_items = list(dict.items(raw))
+                _need(all(type(key) is str for key, _ in physical_items),
+                      "invalid record mapping keys")
+                row = dict(physical_items)
+            else:
+                # dict(mapping) silently collapses repeated keys. Snapshot the
+                # enumerated keys first, validate their exact type before any
+                # hashing, and reject duplicates before fetching each value.
+                # This is a structural candidate check, not a sandbox for
+                # arbitrary executable Mapping implementations.
+                # An arbitrary Mapping can yield an infinite key iterator or
+                # conceal a member while advertising a larger physical size.
+                # Enumerate no more than one key past the exact schema size;
+                # never materialize an unbounded untrusted iterator. This
+                # consistency check is a candidate guard, not a sandbox for
+                # caller-executable Mapping methods or concurrent mutation.
+                mapping_keys = [
+                    key for _, key in zip(range(len(RECORD_KEYS) + 1), iter(raw))
+                ]
+                _need(all(type(key) is str for key in mapping_keys),
+                      "invalid record mapping keys")
+                _need(len(mapping_keys) == len(set(mapping_keys)),
+                      "duplicate record mapping keys")
+                _need(len(mapping_keys) <= len(RECORD_KEYS),
+                      "record mapping key enumeration overflow")
+                _need(len(raw) == len(mapping_keys),
+                      "record mapping length mismatch")
+                row = {key: raw[key] for key in mapping_keys}
+        except Section16PreflightDenied:
+            raise
+        except Exception:  # noqa: BLE001
             # A caller-owned Mapping may raise or expose private material while
             # being enumerated. Fail closed with a payload-free public reason.
             raise Section16PreflightDenied("invalid record mapping") from None
