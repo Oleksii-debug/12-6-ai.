@@ -13,7 +13,7 @@ from tools.plan2_s16_structural_preflight_v1 import (
     Section16PreflightDenied,
     inspect_structure,
 )
-from test_plan2_s16_w3_snapshot_contract_v1 import _cohort
+from test_plan2_s16_structural_preflight_v1 import cohort as _cohort
 
 
 class OversizedIterator(Mapping):
