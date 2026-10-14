@@ -117,6 +117,7 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
     base = _root(root)
     files: dict[str, str] = {}
     portable_seen: set[str] = set()
+    directories: set[str] = set()
     total_bytes = 0
     def deny_walk_error(exc: OSError) -> None:
         raise RebuildDenied("artifact directory traversal failed") from exc
@@ -131,7 +132,9 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
             except OSError as exc:
                 raise RebuildDenied("artifact directory disappeared") from exc
             _need(stat.S_ISDIR(info.st_mode), "linked or unusual artifact directory")
-            _portable_key(child.relative_to(base).as_posix(), portable_seen)
+            relative_directory = child.relative_to(base).as_posix()
+            _portable_key(relative_directory, portable_seen)
+            directories.add(relative_directory)
         for name in sorted(members):
             child = directory / name
             try:
@@ -144,6 +147,9 @@ def inventory(root: Path) -> tuple[dict[str, str], int]:
             files[relative] = _hash_regular_file(child, info)
             total_bytes += info.st_size
     _need(bool(files), "empty rebuild tree")
+    for directory in directories:
+        _need(any(member.startswith(directory + "/") for member in files),
+              "unrepresented empty artifact directory")
     return dict(sorted(files.items())), total_bytes
 
 
