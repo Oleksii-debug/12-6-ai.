@@ -35,14 +35,27 @@ def _need(test: bool, reason: str) -> None:
 
 
 def _id(value: object, label: str) -> str:
-    _need(isinstance(value, str) and bool(SAFE_ID.fullmatch(value))
+    _need(type(value) is str and bool(SAFE_ID.fullmatch(value))
           and ".." not in value and value == value.strip(), f"invalid {label}")
     return value
 
 
 def _hash(value: object, label: str) -> str:
-    _need(isinstance(value, str) and bool(HEX.fullmatch(value)), f"invalid {label}")
+    _need(type(value) is str and bool(HEX.fullmatch(value)), f"invalid {label}")
     return value
+
+
+def _physical_snapshot(values: list | tuple) -> list:
+    """Snapshot built-in container storage, not an overrideable iterator.
+
+    A list/tuple subclass may override __iter__ and silently omit a revoked
+    source, reserved evaluation digest, or physical corpus record. Using the
+    builtin container iterator prevents that caller-controlled omission.
+    This is a candidate-only integrity check, not concurrent-write locking.
+    """
+    if isinstance(values, list):
+        return list(list.__iter__(values))
+    return list(tuple.__iter__(values))
 
 
 def _canonical(value: Any) -> bytes:
@@ -62,15 +75,20 @@ def inspect_structure(
     verified licenses, privacy decisions, near-duplicates, or decontamination.
     The output always refuses production corpus/training/release authority.
     """
-    _need(isinstance(records, (list, tuple)) and bool(records), "no physical records")
+    _need(isinstance(records, (list, tuple)), "no physical records")
+    physical_rows = _physical_snapshot(records)
+    _need(bool(physical_rows), "no physical records")
     _need(isinstance(reserved_payload_sha256, (list, tuple)), "invalid reserved index")
-    reserved = [_hash(v, "reserved payload SHA") for v in reserved_payload_sha256]
+    reserved = [_hash(v, "reserved payload SHA") for v in _physical_snapshot(reserved_payload_sha256)]
     _need(len(reserved) == len(set(reserved)), "duplicate reserved payload")
     heldout = set(reserved)
     _need(isinstance(revoked_source_ids, (list, tuple)), "invalid revoked source index")
-    revoked = [_id(value, "revoked source") for value in revoked_source_ids]
+    revoked = [_id(value, "revoked source") for value in _physical_snapshot(revoked_source_ids)]
     _need(len(revoked) == len(set(revoked)), "duplicate revoked source")
 
+    # Snapshot each Mapping once: receipt bytes must bind validated values,
+    # never a later reread of caller-owned or concurrently mutable records.
+    validated_rows: list[dict[str, object]] = []
     unique_records: set[str] = set()
     seen_payloads: set[str] = set()
     seen_normalized: set[str] = set()
@@ -82,10 +100,17 @@ def inspect_structure(
     families: dict[str, dict[str, set[str]]] = {
         s: defaultdict(set) for s in SPLITS
     }
-    for raw in records:
-        _need(isinstance(raw, Mapping) and set(raw) == RECORD_KEYS,
+    for raw in physical_rows:
+        _need(isinstance(raw, Mapping),
               "record envelope incomplete or contains unsupported grant")
-        row = dict(raw)
+        try:
+            row = dict(raw)
+        except Exception:
+            # A caller-owned Mapping may raise or expose private material while
+            # being enumerated. Fail closed with a payload-free public reason.
+            raise Section16PreflightDenied("invalid record mapping") from None
+        _need(set(row) == RECORD_KEYS,
+              "record envelope incomplete or contains unsupported grant")
         rid = _id(row["record_id"], "record identity")
         sid = _id(row["source_id"], "source identity")
         _need(sid not in revoked, "revoked source cannot enter corpus")
@@ -124,6 +149,7 @@ def inspect_structure(
         _need(prior_doc == split, "document family leaked across splits")
         counts[split][lang] += 1
         families[split][lang].add(fam)
+        validated_rows.append(row)
 
     for split in SPLITS:
         count = sum(counts[split].values())
@@ -139,7 +165,7 @@ def inspect_structure(
     # to aggregate counters. Canonical ordering prevents input permutation from
     # changing the receipt; no corpus text or authorizing grant is included.
     physical_membership_sha256 = hashlib.sha256(
-        _canonical(sorted((dict(row) for row in records), key=lambda row: row["record_id"]))
+        _canonical(sorted(validated_rows, key=lambda row: row["record_id"]))
     ).hexdigest()
     reserved_membership_sha256 = hashlib.sha256(
         _canonical(sorted(reserved))
@@ -153,7 +179,7 @@ def inspect_structure(
         "revoked_membership_sha256": revoked_membership_sha256,
         "schema_version": SCHEMA,
         "status": "STRUCTURAL_CANDIDATE_ONLY_NO_PRODUCTION_ADMISSION",
-        "physical_record_count": len(records),
+        "physical_record_count": len(validated_rows),
         "distinct_source_count": len(source_identity),
         "distinct_family_count": len(family_splits),
         "split_language_record_counts": {
