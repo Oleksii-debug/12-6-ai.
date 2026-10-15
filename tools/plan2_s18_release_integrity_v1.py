@@ -86,9 +86,14 @@ def _json(path: Path) -> dict[str, Any]:
                              IntegrityDenied("nonfinite JSON value")))
     except IntegrityDenied:
         raise
-    except (UnicodeError, ValueError) as exc:
+    except (UnicodeError, ValueError, RecursionError) as exc:
         raise IntegrityDenied("invalid JSON member") from exc
-    _require(type(doc) is dict and raw == _canonical(doc), "noncanonical JSON member")
+    _require(type(doc) is dict, "noncanonical JSON member")
+    try:
+        canonical = _canonical(doc)
+    except (ValueError, RecursionError) as exc:
+        raise IntegrityDenied("invalid JSON member") from exc
+    _require(raw == canonical, "noncanonical JSON member")
     return doc
 
 
