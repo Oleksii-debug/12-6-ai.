@@ -458,6 +458,136 @@ jobs:
           name: plan2-s15-clean-checkout-evidence
           path: ${{ runner.temp }}/plan2-s15-git-rebuild/plan2-s15-git-checkout-evidence.json
           if-no-files-found: error
+      - name: Lint Section 16 candidate source and structural evidence
+        run: |
+          ruff check tools/plan2_s16_ua_gec_candidate_contract_v1.py tests/test_plan2_s16_ua_gec_candidate_contract_v1.py
+          ruff check tools/plan2_s16_structural_preflight_v1.py tests/test_plan2_s16_structural_preflight_v1.py
+      - name: Qualify Section 16 fail-closed candidate evidence (NOT corpus admission)
+        run: |
+          PYTHONPATH=src:. pytest -q tests/test_plan2_s16_ua_gec_candidate_contract_v1.py tests/test_plan2_s16_structural_preflight_v1.py
+      - name: Lint physical S16 source-rights and privacy admission audit
+        run: ruff check tools/plan2_s16_source_rights_privacy_v1.py tests/test_plan2_s16_source_rights_privacy_v1.py
+      - name: Verify physical S16 source-rights, privacy and refusal negatives
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_source_rights_privacy_v1.py
+      - name: Replay immutable physical source audit without corpus promotion
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s16_source_rights_privacy_v1 --root . --out-dir "$RUNNER_TEMP/s16-source-audit" > "$RUNNER_TEMP/s16-source-first.json"
+          python -m tools.plan2_s16_source_rights_privacy_v1 --root . --out-dir "$RUNNER_TEMP/s16-source-audit" > "$RUNNER_TEMP/s16-source-restart.json"
+          cmp "$RUNNER_TEMP/s16-source-first.json" "$RUNNER_TEMP/s16-source-restart.json"
+          python -c "import json,os,pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'s16-source-audit/source-rights-privacy-candidate.json'; x=json.loads(p.read_bytes()); assert x['source_level_rights_verified'] is True and x['physical_privacy_executed'] is True and x['s3_s9_corpus_admitted'] is False and x['training_corpus_authorized'] is False and x['terminal_done'] is False"
+
+      - name: Lint physically independent EVAL303 and EVAL233 reuse for S16
+        run: ruff check tools/plan2_s16_independent_eval_binding_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py
+      - name: Qualify real bilingual independent selection/final reserved family witnesses
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_independent_eval_binding_v1.py
+      - name: Reproduce exact text-free S16 external evaluation custody receipt
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s16_independent_eval_binding_v1 --root . --out-dir "$RUNNER_TEMP/s16-real-reservations" > "$RUNNER_TEMP/s16-external-eval-a.json"
+          python -m tools.plan2_s16_independent_eval_binding_v1 --root . --out-dir "$RUNNER_TEMP/s16-real-reservations" > "$RUNNER_TEMP/s16-external-eval-b.json"
+          cmp "$RUNNER_TEMP/s16-external-eval-a.json" "$RUNNER_TEMP/s16-external-eval-b.json"
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "s16-real-reservations/independent-real-eval-binding.json"
+          x = json.loads(p.read_bytes())
+          assert x["role_language_records"]["validation"] == {"uk": 8, "en": 2}
+          assert x["role_language_records"]["test"] == {"uk": 8, "en": 8}
+          assert x["all_source_families_disjoint_across_roles"] is True
+          assert x["training_authorized"] is False and x["terminal_done"] is False
+          PY
+      - name: Lint S16 physically measured UA/EN language and family split gaps
+        run: ruff check tools/plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_physical_split_gate_v1.py
+      - name: Qualify real-source S16 split gap receipts and forged release negatives
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_physical_split_gate_v1.py
+      - name: Publish text-free fail-closed real split gap receipt (not production)
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s16_physical_split_gate_v1 --root . --out-dir "$RUNNER_TEMP/s16-physical-split-gaps" > "$RUNNER_TEMP/s16-split-gaps-a.json"
+          python -m tools.plan2_s16_physical_split_gate_v1 --root . --out-dir "$RUNNER_TEMP/s16-physical-split-gaps" > "$RUNNER_TEMP/s16-split-gaps-b.json"
+          cmp "$RUNNER_TEMP/s16-split-gaps-a.json" "$RUNNER_TEMP/s16-split-gaps-b.json"
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "s16-physical-split-gaps/physical-language-split-gaps.json"
+          x = json.loads(p.read_bytes())
+          assert x["record_counts_by_role_language"]["validation"]["uk"] == 0
+          assert x["record_counts_by_role_language"]["test"]["uk"] == 0
+          assert x["strict_source_family_isolation"] is False
+          assert x["training_authorized"] is False and x["terminal_done"] is False
+          PY
+      - name: Lint Section 16 UA-GEC metadata/tree candidate QA
+        run: ruff check tools/plan2_s16_ua_gec_tree_probe_v1.py tests/test_plan2_s16_ua_gec_tree_probe_v1.py
+      - name: Run Section 16 tree/rights fail-closed negative tests
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_ua_gec_tree_probe_v1.py
+      - name: Replay actual pinned UA-GEC metadata/tree without corpus promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PYTHONPATH=src:. python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import urllib.request
+          from tools.plan2_s16_ua_gec_tree_probe_v1 import (
+              METADATA_GIT_BLOB, UPSTREAM_COMMIT, UPSTREAM_TREE,
+              inspect_metadata_tree,
+          )
+
+          def fetch_bounded(url, size_limit):
+              headers = {"User-Agent": "12-6-ai-plan2-s16-source-triage"}
+              if "api.github.com" in url and os.environ.get("GH_TOKEN"):
+                  headers["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  payload = response.read(size_limit + 1)
+              if not payload or len(payload) > size_limit:
+                  raise ValueError("missing or oversized pinned source metadata")
+              return payload
+
+          metadata_url = (
+              "https://raw.githubusercontent.com/grammarly/ua-gec/"
+              + UPSTREAM_COMMIT + "/data/metadata.csv"
+          )
+          tree_url = (
+              "https://api.github.com/repos/grammarly/ua-gec/git/trees/"
+              + UPSTREAM_TREE + "?recursive=1"
+          )
+          metadata = fetch_bounded(metadata_url, 400000)
+          tree = json.loads(fetch_bounded(tree_url, 10000000))
+          # License/readme are source-level evidence, NEVER individual contributor grants.
+          for source_path, pinned_blob in (
+              ("LICENSE", "10fabd90118f7ce38bb2e4753e105e744442a429"),
+              ("README.md", "efa28e3ab384f5e97c8f9e66657243aa20c30b64"),
+          ):
+              raw = fetch_bounded(
+                  "https://raw.githubusercontent.com/grammarly/ua-gec/"
+                  + UPSTREAM_COMMIT + "/" + source_path, 25000
+              )
+              git_blob = hashlib.sha1(
+                  b"blob " + str(len(raw)).encode() + b"\0" + raw
+              ).hexdigest()
+              assert git_blob == pinned_blob, "source terms or README Git blob drift"
+          report = inspect_metadata_tree(metadata, tree)
+          assert report["metadata_git_blob"] == METADATA_GIT_BLOB
+          assert report["upstream_tree"] == UPSTREAM_TREE
+          assert report["split_document_counts"] == {"train": 1706, "test": 166}
+          assert report["metadata_records"] == 1872
+          assert report["variant_source_blob_memberships_identical"] is True
+          assert report["training_corpus_authorized"] is False
+          assert report["record_level_privacy_cleared"] is False
+          assert report["independent_validation_present"] is False
+          print(json.dumps({
+              "decision": report["decision"],
+              "source_tree_sha": report["upstream_tree"],
+              "metadata_sha256": report["metadata_sha256"],
+              "report_sha256": report["receipt_sha256"],
+              "record_counts": report["split_document_counts"],
+              "training_authorized": False,
+          }, sort_keys=True))
+          PY
 
   qualify-three-family-s13-s14:
     name: real-three-family-s13-s14
@@ -528,4 +658,47 @@ jobs:
         with:
           name: plan2-s15-actual-32768-bpe-nonrelease
           path: ${{ runner.temp }}/plan2-s15-real-bpe-1.json
+          if-no-files-found: error
+
+  qualify-section16-real-independent-evaluation:
+    name: s16-real-independent-reservations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LOCAL_FREE focused test dependencies
+        run: python -m pip install pytest ruff
+      - name: Lint physical S16 source role and EVAL303/EVAL233 authority adapters
+        run: |
+          ruff check tools/plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_physical_split_gate_v1.py
+          ruff check tools/plan2_s16_independent_eval_binding_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py
+      - name: Independently qualify S16 physical role negatives and true bilingual reserved evaluations
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py
+      - name: Emit hash-only source and reserved evaluation proof without release
+        shell: bash
+        run: |
+          export PYTHONPATH=src:.
+          python -m tools.plan2_s16_physical_split_gate_v1 --root . --out-dir "$RUNNER_TEMP/s16-actual-roles" > "$RUNNER_TEMP/s16-actual-roles-receipt.json"
+          python -m tools.plan2_s16_independent_eval_binding_v1 --root . --out-dir "$RUNNER_TEMP/s16-eval-authority" > "$RUNNER_TEMP/s16-reserved-receipt.json"
+          python - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          a = json.loads((root / "s16-actual-roles/physical-language-split-gaps.json").read_bytes())
+          b = json.loads((root / "s16-eval-authority/independent-real-eval-binding.json").read_bytes())
+          assert a["record_counts_by_role_language"]["test"]["uk"] == 0
+          assert b["role_language_records"]["validation"] == {"uk": 8, "en": 2}
+          assert b["role_language_records"]["test"] == {"uk": 8, "en": 8}
+          assert b["production_s3_s9_dataset_authorized"] is False
+          assert b["terminal_done"] is False
+          PY
+      - name: Retain exact-head S16 physical/nonrelease real evaluation receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan2-s16-physically-independent-evaluation-nonrelease
+          path: |
+            ${{ runner.temp }}/s16-actual-roles/physical-language-split-gaps.json
+            ${{ runner.temp }}/s16-eval-authority/independent-real-eval-binding.json
           if-no-files-found: error
