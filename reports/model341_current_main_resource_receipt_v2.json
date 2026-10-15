@@ -1,0 +1,90 @@
+{
+  "capture": {
+    "base_sha": "b8257d174d11bf1d61728229312659f5eb3305b8",
+    "capture_line_count": 1,
+    "focused_test_blob_sha1": "d3d1a34b1bdbd0f38b4f9304852591933c7d5758",
+    "head_sha": "fd70099fe8a9bf44501762fa8c612624b597b132",
+    "issue": 2280,
+    "job_conclusion": "success",
+    "job_id": 109342583358,
+    "probe_tool_blob_sha1": "f4476ea9bb7c9d400a133d56df5c311673bf3c85",
+    "pull_request": 2281,
+    "repository": "Oleksii-debug/12-6-ai.",
+    "tested_merge_sha": "09f55ddc488e79a9d40d8b14f8e6aefd9e459f10",
+    "workflow_conclusion": "success",
+    "workflow_name": "CI",
+    "workflow_run_id": 36549101208,
+    "workflow_run_number": 4618
+  },
+  "probe_report": {
+    "measurement": {
+      "elapsed_seconds": [0.12097919400000023, 0.12115459800000394, 0.12143206499999337],
+      "gradient_bytes": 82453760,
+      "measured_samples": 3,
+      "median_causal_targets_per_second": 1048.2474631296773,
+      "median_forward_loss_backward_seconds": 0.12115459800000394,
+      "model_updates": 0,
+      "optimizer_object_created": false,
+      "optimizer_updates": 0,
+      "parameter_bytes": 82453760,
+      "parameter_fingerprint_after_sha256": "409cac7815203172ca6f82ce8241fc862c8548af94717abaa8e62e13140450b6",
+      "parameter_fingerprint_before_sha256": "409cac7815203172ca6f82ce8241fc862c8548af94717abaa8e62e13140450b6",
+      "parameter_fingerprint_unchanged": true,
+      "process_hwm_mib_approx": 964.73828125,
+      "process_hwm_source": "ru_maxrss_kib",
+      "synthetic_loss_median": 5.607952117919922,
+      "synthetic_loss_samples": [5.607952117919922, 5.607952117919922, 5.607952117919922],
+      "warmup_samples": 1
+    },
+    "model": {
+      "causal_targets_per_microbatch": 127,
+      "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+      "micro_batch_size": 1,
+      "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+      "parameter_count": 20613440,
+      "precision": "fp32",
+      "seed": 341,
+      "sequence_length": 128,
+      "vocab_size": 256
+    },
+    "planning": {
+      "cross_host_extrapolation_allowed": false,
+      "excluded": ["optimizer.step", "checkpoint_io", "evaluation", "packing_data_io", "real_pilot_overhead"],
+      "mechanics_only_lower_bound_hours_example": 5.299851181102534,
+      "mechanics_only_lower_bound_seconds_example": 19079.464251969122,
+      "scope": "forward+causal_ce+backward_only",
+      "target_positions_example": 20000000
+    },
+    "runtime": {
+      "cpu": "x86_64",
+      "cuda_available": false,
+      "interop_threads": 2,
+      "intraop_threads": 2,
+      "platform": "linux",
+      "python": "3.11.16",
+      "torch": "2.14.0+cu130"
+    },
+    "schema": "12-6.model341.current-main-local-free-resource-probe.v2",
+    "source": {
+      "execution_root_main_sha": "7b3df41c10a826183fab0b04ae85a90cdf0ce351",
+      "model_blob_sha1": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+      "pyproject_blob_sha1": "5fabd477e49aff807b1553502e80308a13e7b3b3"
+    },
+    "truth_boundary": {
+      "authorized_optimized_target_exposure": 0,
+      "external_model_or_api_called_by_probe": false,
+      "final_test_outcomes_read": false,
+      "foreign_pretrained_weights": false,
+      "learned_weights_created": false,
+      "optimizer_updates_executed_on_real_targets": 0,
+      "paid_compute_used": false,
+      "probe_uses_deterministic_synthetic_token_ids_only": true,
+      "probe_uses_real_corpus_or_final_test_payload": false,
+      "tokenizer_fit_authorized": false,
+      "training_executed": false
+    }
+  },
+  "probe_report_sha256": "f0e2b7024abaac32976ffe2d38b6dd15aedf1a7e7608be142ee599e690f2dbe8",
+  "schema": "12-6.model341.current-main-local-free-resource-receipt.v2",
+  "status": "CAPTURED_SYNTHETIC_MECHANICS_ONLY"
+}
