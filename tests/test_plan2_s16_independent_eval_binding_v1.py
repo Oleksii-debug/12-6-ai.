@@ -80,6 +80,32 @@ def test_selection_membership_real_metadata_only():
     assert not any("text" in x for x in records)
 
 
+@pytest.mark.parametrize("row_index", [0, 2])  # Frozen EN and UA shapes.
+@pytest.mark.parametrize("field,value", [
+    ("text", "private heldout payload"),
+    ("model_score", 1.0),
+    ("training_authorized", True),
+    ("optimizer_target", [1, 2, 3]),
+])
+def test_unrecognized_heldout_or_authorization_field_denied(
+    row_index: int, field: str, value: object,
+):
+    config, raw = mutate_selection(
+        lambda _c, rows: rows[row_index].__setitem__(field, value)
+    )
+    with pytest.raises(IndependentEvalDenied, match="unknown or missing metadata"):
+        inspect_selection_rows(raw, config)
+
+
+@pytest.mark.parametrize("row_index", [0, 2])
+def test_missing_heldout_authority_field_denied(row_index: int):
+    config, raw = mutate_selection(
+        lambda _c, rows: rows[row_index].pop("rights_authority_ref")
+    )
+    with pytest.raises(IndependentEvalDenied, match="unknown or missing metadata"):
+        inspect_selection_rows(raw, config)
+
+
 @pytest.mark.parametrize("field,value", [
     ("training_eligible", True),
     ("future_training_prohibited", False),

@@ -32,6 +32,44 @@ ROLES = ("train", "validation", "test")
 LANGS = ("uk", "en")
 
 
+# EVAL-303 freezes different EN and UA metadata shapes. Reject extra
+# heldout payload, outcome or forged grant fields before returning rows.
+SELECTION_COMMON_MEMBER_KEYS = frozenset({
+    "component_head_sha",
+    "component_set_identity_sha256",
+    "component_worker_id",
+    "content_sha256",
+    "final_reporting_eligible",
+    "final_test_eligible",
+    "future_training_prohibited",
+    "hyperparameter_selection_eligible",
+    "language",
+    "license_id",
+    "modality",
+    "model_selection_eligible",
+    "purpose",
+    "record_id",
+    "reservation_authority_ref",
+    "rights_authority_ref",
+    "selection_eligible",
+    "selection_stratum",
+    "source_family",
+    "source_id",
+    "source_version",
+    "tokenizer_fit_eligible",
+    "tokenizer_selection_eligible",
+    "training_eligible",
+    "utf8_bytes",
+})
+SELECTION_MEMBER_KEYS_BY_LANG = {
+    "en": SELECTION_COMMON_MEMBER_KEYS | {"source_git_blob_sha1", "source_path"},
+    "uk": SELECTION_COMMON_MEMBER_KEYS | {
+        "candidate_locator", "reservation_commit_sha", "selector_rank_sha256",
+        "source_kind", "source_raw_bytes", "source_raw_sha256",
+    },
+}
+
+
 class IndependentEvalDenied(ValueError):
     """Physical selection/final membership or rights reservation drift."""
 
@@ -86,6 +124,10 @@ def inspect_selection_rows(raw: bytes, config: dict[str, Any]) -> list[dict[str,
         except (UnicodeError, ValueError) as exc:
             raise IndependentEvalDenied("malformed selection row") from exc
         need(type(row) is dict, "invalid membership row")
+        need(type(row.get("language")) is str
+             and row["language"] in SELECTION_MEMBER_KEYS_BY_LANG
+             and set(row) == SELECTION_MEMBER_KEYS_BY_LANG[row["language"]],
+             "selection member contains unknown or missing metadata fields")
         rid = row.get("record_id")
         fam = row.get("source_family")
         sid = row.get("source_id")
