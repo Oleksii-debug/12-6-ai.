@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "worker": "SWARM-773",
+  "component": "LANGGRAPH",
+  "upstream_requirement": "langgraph==1.2.11",
+  "upstream_commit": "644815f9e5bc52ad8f7a5227a456227e9c3e639b",
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "environment": {
+    "python": "3.13.5",
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "kernel": "Linux 6.18.35",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 7763",
+    "visible_cpu_count": 5,
+    "gpu": false,
+    "pip": "25.1.1",
+    "uv": "0.10.0",
+    "git": "2.47.3"
+  },
+  "package_presence_before_install": {
+    "langgraph": false,
+    "transformers": false,
+    "tokenizers": false,
+    "ruff": false,
+    "torch": "2.10.0+cpu",
+    "numpy": "2.3.5",
+    "pytest": "9.0.2",
+    "safetensors": "0.7.0"
+  },
+  "network": {
+    "pypi_dns": false,
+    "github_dns": false,
+    "package_index_access": false
+  },
+  "cache": {
+    "usable_local_package_cache": false,
+    "searched_paths": ["/home/oai/.cache/pip", "/home/oai/.cache/uv", "/root/.cache/pip", "/root/.cache/uv"]
+  },
+  "isolation": {
+    "venv_created": true,
+    "venv_path": "/tmp/swarm773-langgraph-venv",
+    "global_python_modified": false
+  },
+  "install_attempt": {
+    "command": "python -m pip install --only-binary=:all: --no-input langgraph==1.2.11",
+    "attempted": true,
+    "return_code": 1,
+    "result": "FAILED_NETWORK_NAME_RESOLUTION",
+    "error_class": "BOOTSTRAP_NETWORK_UNAVAILABLE",
+    "substitution": false,
+    "install_log_sha256": "39bb4cee2ec1f8867962f4174feb0b450817a552cc13b97bd914a51104e6b902"
+  },
+  "freeze": {
+    "captured": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "execution": {
+    "real_langgraph_import": false,
+    "real_langgraph_pipeline": false,
+    "benchmark": false,
+    "parity": false,
+    "reason": "EXACT_RUNTIME_NOT_OBTAINABLE_WITH_CURRENT_NETWORK_STATE"
+  },
+  "promotion": {
+    "state": "CANDIDATE",
+    "primary_verdict": "RETEST_RUNTIME_REQUIRED",
+    "adoptable": false,
+    "parity_proven": false
+  }
+}
