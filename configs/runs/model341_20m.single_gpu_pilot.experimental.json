@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "run_kind": "single_gpu_mechanics_pilot",
+  "state": "PREPARED_NOT_LAUNCHED",
+  "data_authority": "CONTROLLED_SYNTHETIC_MECHANICS_ONLY",
+  "stage_config": "configs/candidates/model341_20m_candidate_a.json",
+  "device": "cuda:0",
+  "output_root": "runs/model341-20m-single-gpu",
+  "authorization": {
+    "provision_compute": false,
+    "preprovisioned_accelerator_only": true,
+    "paid_compute_launch": false,
+    "notes": "This mechanics pilot may consume only an accelerator already attached to the process. It contains no cloud provisioning or paid-compute authorization."
+  },
+  "trainer": {
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "max_steps": 4,
+    "warmup_steps": 0,
+    "scheduler": "constant",
+    "gradient_accumulation_steps": 1,
+    "gradient_clip_norm": 1.0,
+    "precision": "fp16",
+    "seed": 34120,
+    "deterministic_algorithms": false,
+    "deterministic_warn_only": false
+  },
+  "pilot": {
+    "steps": 4,
+    "resume_after_step": 2,
+    "microbatch_size": 1,
+    "sequence_length": 256,
+    "data_seed": 341200,
+    "inference_new_tokens": 4
+  },
+  "truth_boundary": {
+    "purpose": "exercise the incumbent one-device Trainer, AMP, checkpoint save/verify/fresh restore and post-training inference path on the exact MODEL-341 20M candidate geometry",
+    "model_binding": "MODEL-341-20M-CANDIDATE-A / 20,613,440 parameters / vocab 256 / context 1024 / ModelSpec fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "not_evidence_for": [
+      "corpus quality",
+      "production tokenizer selection",
+      "learned language capability",
+      "stage promotion",
+      "100M readiness",
+      "paid-compute authorization"
+    ],
+    "data": "uniform synthetic integer token IDs only; this run must never be cited as learned-model evidence",
+    "bf16": "Use an explicit precision override only on CUDA hardware positively accepted by the incumbent D02 precision resolver.",
+    "fp16": "Default pilot mode uses CUDA autocast float16 plus GradScaler while model and AdamW master-weight storage remain fp32."
+  }
+}
