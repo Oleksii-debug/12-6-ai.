@@ -1,0 +1,133 @@
+name: HF Tokenizers 0.23.1 Runtime Retest
+
+on:
+  push:
+    branches:
+      - swarm/793-hf-tokenizers-bootstrap-stress
+  pull_request:
+    paths:
+      - "tools/retest_hf_tokenizers_runtime_v1.py"
+      - ".github/workflows/hf-tokenizers-runtime-retest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-tokenizers-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-retest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Set up CPython 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Verify immutable upstream tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolved="$(git ls-remote --tags --refs https://github.com/huggingface/tokenizers.git refs/tags/v0.23.1 | awk '{print $1}')"
+          test "${resolved}" = "7f1623b90b5adfb9bc327d4c3468d2f70bbce262"
+
+      - name: Download and verify exact wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p wheelhouse runtime-evidence
+          python -m pip download \
+            --disable-pip-version-check \
+            --no-deps \
+            --only-binary=:all: \
+            --dest wheelhouse \
+            tokenizers==0.23.1
+          wheel="$(find wheelhouse -maxdepth 1 -type f -name 'tokenizers-0.23.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl' -print -quit)"
+          test -n "${wheel}"
+          observed="$(sha256sum "${wheel}" | awk '{print $1}')"
+          expected="5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4"
+          test "${observed}" = "${expected}"
+          printf '%s  %s\n' "${observed}" "$(basename "${wheel}")" > runtime-evidence/wheel.sha256
+          python -m pip install --disable-pip-version-check --no-deps "${wheel}"
+          python -c 'import tokenizers; assert tokenizers.__version__ == "0.23.1"; print(tokenizers.__version__)'
+
+      - name: Compile runtime qualification
+        run: python -m py_compile tools/retest_hf_tokenizers_runtime_v1.py tools/verify_hf_tokenizers_bootstrap_stress_v1.py
+
+      - name: Run existing adversarial bootstrap tests
+        run: python tests/test_verify_hf_tokenizers_bootstrap_stress_v1.py -v
+
+      - name: Execute two independent runtime qualifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/retest_hf_tokenizers_runtime_v1.py --expected-head-sha "${GITHUB_SHA}" --output runtime-evidence/runtime-a.json
+          python tools/retest_hf_tokenizers_runtime_v1.py --expected-head-sha "${GITHUB_SHA}" --output runtime-evidence/runtime-b.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          a = json.loads(Path('runtime-evidence/runtime-a.json').read_text())
+          b = json.loads(Path('runtime-evidence/runtime-b.json').read_text())
+          allowed = {
+              'RUNTIME_QUALIFIED_BPE_AND_UNIGRAM',
+              'RUNTIME_QUALIFIED_BPE_ONLY_UNIGRAM_REJECTED',
+          }
+          assert a['status'] == b['status']
+          assert a['status'] in allowed
+          assert a['qualification_identity_sha256'] == b['qualification_identity_sha256']
+          assert a['runtime']['tokenizers_version'] == b['runtime']['tokenizers_version'] == '0.23.1'
+          for report in (a, b):
+              assert report['token_ids_changed'] is False
+              assert report['canonical_base_changed'] is False
+              assert report['training_executed'] is False
+              assert report['final_test_accessed'] is False
+              assert report['paid_compute_used'] is False
+              rows = {row['family']: row for row in report['family_metrics']}
+              assert set(rows) == {'BPE', 'UNIGRAM'}
+              bpe = rows['BPE']
+              assert bpe['qualified_deterministic'] is True
+              assert bpe['canonical_model_identity_equal'] is True
+              assert bpe['vocab_id_mapping_equal'] is True
+              assert bpe['probe_encodings_equal'] is True
+              assert bpe['encode_decode_roundtrip'] is True
+              assert bpe['oov_zero'] is True
+              assert bpe['total_probe_tokens'] > 0
+              assert bpe['bytes_per_token'] > 0
+              unigram = rows['UNIGRAM']
+              if unigram['qualified_deterministic']:
+                  assert unigram['qualification_status'] == 'QUALIFIED_DETERMINISTIC_SEMANTICS'
+                  assert unigram['canonical_model_identity_equal'] is True
+                  assert unigram['vocab_id_mapping_equal'] is True
+                  assert unigram['probe_encodings_equal'] is True
+              else:
+                  assert unigram['qualification_status'] == 'UNQUALIFIED_NONDETERMINISTIC'
+                  assert unigram['rejection_reasons']
+              assert unigram['encode_decode_roundtrip'] is True
+              assert unigram['oov_zero'] is True
+          print(a['status'])
+          print(a['qualification_identity_sha256'])
+          PY
+
+      - name: Publish LOCAL_FREE runtime evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-tokenizers-0.23.1-runtime-${{ github.sha }}
+          path: runtime-evidence/
+          if-no-files-found: error
+          retention-days: 14
