@@ -1,0 +1,49 @@
+{
+  "schema_version": "12-6.d03-wikisource-lesia1892-current-main.v1",
+  "execution_class": "LOCAL_FREE",
+  "incumbent_authority": {
+    "pr": 455,
+    "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
+    "authority_identity_sha256": "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6",
+    "verdict": "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT"
+  },
+  "edition": {
+    "author": "Леся Українка",
+    "title": "На крилах пісень",
+    "publication_year": 1892,
+    "publication_place": "Львів",
+    "index_revision_id": 729499,
+    "commons_pages": 112,
+    "source_family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+    "family_credit_added": false
+  },
+  "acquisition": {
+    "api_origin": "https://uk.wikisource.org",
+    "index_selection": "NUMERIC_PAGE_NAMESPACE_LINKS_FROM_EXACT_INDEX_REVISION",
+    "required_proofread_category": "Перевірені сторінки",
+    "page_revision_binding": "CURRENT_REVISION_ID_THEN_EXACT_OLDID_RENDER_FETCH",
+    "max_pages": 112,
+    "minimum_request_cadence_seconds": 0.5,
+    "normalization": "RENDERED_VISIBLE_TEXT_NFC_LF_STANZA_V1"
+  },
+  "truth_boundary": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "real_materialization_not_claimed_by_config": true,
+    "required_downstream_gates": [
+      "GLOBAL_CROSS_SOURCE_DEDUP",
+      "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+      "POST_COMPOSITION_QUALITY_PRIVACY",
+      "BALANCE_AND_FAMILY_CAPS",
+      "CLUSTER_SAFE_SPLIT",
+      "DETERMINISTIC_PACK_AND_TWO_CLEAN_BUILDS",
+      "POSITIVE_EXACT_UNIQUE_LOSS_LEDGER"
+    ]
+  }
+}
