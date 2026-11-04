@@ -136,3 +136,171 @@ def test_live_pinned_source_materialization_is_deterministic() -> None:
         "EVAL647_LIVE_SOURCE_DISCOVERY=" + json.dumps(discovered, sort_keys=True),
         stacklevel=1,
     )
+
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"value":NaN}',
+        '{"value":Infinity}',
+        '{"value":-Infinity}',
+        '{"value":1e400}',
+        '{"value":-1e400}',
+    ],
+)
+def test_strict_authority_loader_rejects_non_finite_numbers(
+    tmp_path: Path,
+    raw: str,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError):
+        validator._load_mapping(path)
+
+
+def test_strict_authority_loader_rejects_nested_duplicate_members(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(
+        '{"outer":{"training_allowed":false,"training_allowed":true}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate_json_key:training_allowed"):
+        validator._load_mapping(path)
+
+
+def test_strict_authority_loader_preserves_valid_finite_object(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(
+        '{"count":2,"ratio":1e-3,"nested":{"allowed":false}}',
+        encoding="utf-8",
+    )
+    assert validator._load_mapping(path) == {
+        "count": 2,
+        "ratio": 1e-3,
+        "nested": {"allowed": False},
+    }
+
+
+def test_strict_authority_loader_requires_object_root(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="must contain a JSON object"):
+        validator._load_mapping(path)
+
+
+
+def test_programmatic_reservation_rejects_nested_non_finite_float() -> None:
+    mutated = copy.deepcopy(_manifest())
+    mutated["truth_boundary"]["diagnostic"] = float("inf")
+    with pytest.raises(ValueError, match="contains non-finite float"):
+        validator.validate_document(mutated)
+
+
+def test_programmatic_evidence_rejects_nested_non_finite_float() -> None:
+    mutated = copy.deepcopy(_evidence())
+    mutated["truth_boundary"]["diagnostic"] = float("nan")
+    with pytest.raises(ValueError, match="contains non-finite float"):
+        validator.validate_materialization_evidence(_manifest(), mutated)
+
+
+@pytest.mark.parametrize("kind", ("array", "object"))
+def test_deep_external_authority_json_fails_closed(
+    tmp_path: Path, kind: str,
+) -> None:
+    depth = 10_000
+    nested = ("[" * depth + "0" + "]" * depth) if kind == "array" else (
+        '{"item":' * depth + "0" + "}" * depth
+    )
+    path = tmp_path / f"deep-{kind}.json"
+    path.write_text('{"authority":' + nested + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting exceeds decoder limit"):
+        validator._load_mapping(path)
+
+
+@pytest.mark.parametrize("kind", ("array", "object", "cycle"))
+def test_programmatic_authority_nesting_fails_closed_without_python_recursion(
+    kind: str,
+) -> None:
+    value: object = 0
+    if kind == "cycle":
+        loop: list[object] = []
+        loop.append(loop)
+        value = loop
+    else:
+        for _ in range(200):
+            value = [value] if kind == "array" else {"item": value}
+    doc = _manifest()
+    doc["untrusted_extra"] = value
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        validator.validate_document(doc)
+
+
+def test_programmatic_shallow_finite_authority_still_validates() -> None:
+    assert validator.validate_document(_manifest())["reserved_objects"] == 2
+    validator.validate_materialization_evidence(_manifest(), _evidence())
+
+
+@pytest.mark.parametrize("literal", ("1e-9999", "-1e-9999", "2.5e-9999"))
+def test_strict_authority_loader_rejects_nonzero_underflow(
+    tmp_path: Path, literal: str,
+) -> None:
+    path = tmp_path / "underflow.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="nonzero_json_number_underflowed_to_zero"):
+        validator._load_mapping(path)
+
+
+@pytest.mark.parametrize(
+    ("literal", "expected"),
+    [("0e-9999", 0.0), ("-0e-9999", -0.0), ("1e-3", 0.001)],
+)
+def test_strict_authority_loader_preserves_lexical_zero_and_finite_numbers(
+    tmp_path: Path, literal: str, expected: float,
+) -> None:
+    path = tmp_path / "finite.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert validator._load_mapping(path)["value"] == expected
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement", "message"),
+    [
+        ("root", "issue", 647.0, "issue binding drift"),
+        ("reservation", "minimum_independent_families", 2.0, "family minimum drift"),
+        ("reservation", "historical_training_exposure_required", False, "historical training boundary drift"),
+        ("reservation", "historical_tokenizer_fit_exposure_required", 0.0, "historical tokenizer boundary drift"),
+        ("reservation", "training_overlap_required", False, "overlap boundary drift"),
+        ("truth_boundary", "selection_validation_records_authorized", False, "selection records prematurely authorized"),
+        ("truth_boundary", "optimizer_updates_authorized", 0.0, "optimizer updates prematurely authorized"),
+    ],
+)
+def test_reservation_rejects_equal_value_numeric_type_aliases(
+    section: str, field: str, replacement: object, message: str,
+) -> None:
+    doc = _manifest()
+    target = doc if section == "root" else doc[section]
+    target[field] = replacement
+    with pytest.raises(ValueError, match=message):
+        validator.validate_document(doc)
+
+
+@pytest.mark.parametrize("replacement", (10438.0, "10438", False))
+def test_reserved_object_raw_byte_identity_rejects_numeric_aliases(
+    replacement: object,
+) -> None:
+    doc = _manifest()
+    doc["objects"][0]["expected_raw_bytes"] = replacement
+    with pytest.raises(ValueError, match="identity drift"):
+        validator.validate_document(doc)
+
+
+def test_reserved_object_requires_object_shape() -> None:
+    doc = _manifest()
+    doc["objects"][0] = 0
+    with pytest.raises(ValueError, match="reserved object must be an object"):
+        validator.validate_document(doc)
