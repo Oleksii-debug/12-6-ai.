@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "component": "LIGER_KERNEL",
+  "decision": "P1_MODULE_KERNEL_PARITY",
+  "upstream": {
+    "repository": "https://github.com/linkedin/Liger-Kernel",
+    "tag": "v0.8.2",
+    "commit": "000be60929938fd1358e03524c6ab398b6d421bd",
+    "release_date": "2026-08-18"
+  },
+  "package": {
+    "name": "liger-kernel",
+    "version": "0.8.2",
+    "source_distribution": "liger_kernel-0.8.2.tar.gz",
+    "source_distribution_sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8"
+  },
+  "license": "BSD-2-Clause",
+  "license_blob_sha": "d2fcc2b1c4384d0bcd1424b7f83db8e48fa753f6",
+  "allowed_operators": ["RMSNorm", "RoPE", "SwiGLU", "cross_entropy"],
+  "canonical_base_dependency": false,
+  "foreign_weights": "forbidden",
+  "tokenizer_mutation": false,
+  "training_authorization": "LOCAL_FREE_ONLY",
+  "benchmark_final_test_access": false,
+  "promotion_state": "CANDIDATE",
+  "backend_execution": "NOT_EXECUTED_DEPENDENCY_ABSENT",
+  "parity_proven": false,
+  "gpu_evidence": false,
+  "notes": [
+    "Upstream performance claims are not 12-6 evidence.",
+    "Real kernel parity requires exact dependency installation plus compatible accelerator evidence.",
+    "No canonical model, checkpoint, tokenizer, dataset, or training recipe is modified by this package."
+  ],
+  "artifact": {
+    "name": "liger_kernel-0.8.2.tar.gz",
+    "sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8",
+    "kind": "source_distribution"
+  }
+}
