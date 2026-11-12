@@ -31,6 +31,8 @@ def causal_lm_loss(logits: Tensor, labels: Tensor, *, ignore_index: int = -100) 
 
     shifted_logits = logits[:, :-1, :].contiguous()
     shifted_labels = labels[:, 1:].contiguous()
+    if not shifted_labels.ne(ignore_index).any().item():
+        raise ValueError("causal_lm_loss requires at least one unmasked valid target")
     return F.cross_entropy(
         shifted_logits.view(-1, shifted_logits.shape[-1]),
         shifted_labels.view(-1),
