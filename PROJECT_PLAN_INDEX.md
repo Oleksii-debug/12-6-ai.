@@ -4,7 +4,7 @@
 
 **Plan 3 has 12 Sections, 9/12 DONE (2026-11-13).** Section 9's portable packet is accepted. [#3245](https://github.com/Oleksii-debug/12-6-ai./pull/3245) accepted Sections 10B and 10C for resource admission and scientific identity. Section 10A still requires exact-profile physical measurements.
 
-**Plan 8 has 11 Sections, 8/11 DONE (2026-11-12).** [#3246](https://github.com/Oleksii-debug/12-6-ai./pull/3246) integrated the capability evidence and scale readiness policy. Section 9 is the next open section.
+**Plan 8 has 11 Sections, 9/11 DONE (2026-11-13).** [#3247](https://github.com/Oleksii-debug/12-6-ai./pull/3247) integrated the durable defect, candidate, retest, promotion and artifact lineage. Section 10 is the next open section.
 
 **Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
 
