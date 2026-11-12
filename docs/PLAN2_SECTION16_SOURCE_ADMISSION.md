@@ -110,3 +110,44 @@ candidate measurements; they do not satisfy a production balance gate.
 Native S3–S9 admission, with independently bound production composition and
 release terms for the exact surviving cohort, is still missing. Section 16
 is **OPEN**, and Sections 17 and 18 remain dependent on it.
+
+## Reproduce the larger candidate with a second Ukrainian source and code
+
+Use the exact anonymized LangUK Supreme Court file. Rebuild it with
+`tools/retest_d03_languk_supreme_court.py` using the pinned PyArrow runtime.
+The source materializer emits 256 records; the shared privacy pass excludes
+four. The source authority covers this anonymized file only. Fetch the
+pinned rights and repaired execution commits specified by
+`src/twelve_six/d03_languk_postexecution_rights.py` if a shallow checkout
+does not have them.
+
+Rebuild the six Python source families with
+`tools/materialize_data_bulk_code1_permissive_python_bundle.py --workspace "$CHECKOUTS" --output "$CODE_REPORT"`.
+Keep the worktree line endings identical to the historical evidence. On
+Windows, set Git's `core.autocrlf=false` and `core.eol=lf` for that execution.
+The materializer must reproduce the terminal 229-file, 3,880,009-byte
+report. The combined verifier reads source and license bytes from the exact
+Git objects and excludes 24 files at the additional privacy pass.
+
+```bash
+PYTHONPATH=src python -m tools.plan2_s16_multimodal_candidate_v1 --root . \
+  --out-dir "$EVIDENCE" \
+  --selection-reconstructed "$UA_JSONL" "$UA_MANIFEST" "$EN_JSONL" "$EN_AUTHORITY" \
+  --franko "$FRANKO_JSONL" --arxiv "$ARXIV_JSONL" --languk "$LANGUK_JSONL" \
+  --code-report "$CODE_REPORT" --code-checkouts "$CHECKOUTS"
+```
+
+The full scan compared 32,170 candidates against the same 26 reserved
+records. No candidate matched a reserve. After removing 26 training
+duplicates, 32,144 records from 13 families remain: 4,567,995 Ukrainian
+bytes, 2,420,573 English bytes, and 3,004,924 code bytes. DATA-232 report
+SHA-256 `09321ffed816990348202b52bf6c9b527f15c2ee653e9dd5402ca73442939328`.
+The [text-free receipt](../evidence/plan2_s16/multimodal_candidate_v1.json)
+has SHA-256 `027f815795a3f6d8374bfbc95a41ca813d469faf6fc877178cb6edcc69b05650`.
+
+For comparison only, the existing historical 20M policy permits at most
+6,915,900 of those bytes at its required ratios and family caps, before
+selecting whole documents. That is below its 20,000,000-byte target. The
+preview does not create a Plan 2 production policy, allocate training
+examples, or admit a corpus. Independent release terms and native S3–S9
+admission still need to bind the actual production mixture.
