@@ -14,6 +14,16 @@ evidence path. `CONFIG_DEFINED` is the only qualification claimed here; arithmet
 resource estimates do not assert a measured host, available VRAM or training
 authorization. The older Section 6 label below is historical to this reused PR.
 
+The stage response reports the local host's CPU, RAM and disk inventory with
+the arithmetic resource screen for that profile. It reports whether CUDA
+is available and leaves unmeasured VRAM unknown. The screen does not grant
+execution or training authority.
+
+A claimed execution with a verified signed FAIL is recorded immediately.
+The bridge writes its typed defect and returns exit code 1. An interrupted
+attempt without verifiable host evidence remains outcome-unknown and cannot
+be replayed automatically.
+
 `scale_resource_preflight` calculates an explicitly untrusted fp32/Adam memory
 and checkpoint-space floor from the bound ModelSpec count. It reports typed
 RAM, disk and VRAM denial reasons and the actual inventory fields supplied to

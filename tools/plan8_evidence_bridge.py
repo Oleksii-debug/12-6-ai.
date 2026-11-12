@@ -22,10 +22,11 @@ from twelve_six.evidence_control_bridge import (
     publish_bridge_return_github,
     record_bridge_return,
     require_signed_scale_profile,
+    scale_resource_preflight,
     stage_bridge_dispatch,
     stop_bridge_dispatch,
 )
-from twelve_six.physical_qualification import load_verified_signed_packet
+from twelve_six.physical_qualification import inventory_host, load_verified_signed_packet
 
 
 def _emit(payload: dict[str, object]) -> None:
@@ -92,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     dispatch, verified, profile = _load_dispatch(args)
     identity = dispatch.identity_sha256()
     if args.action == "stage":
+        host = inventory_host(args.repo_root)
+        resource_screen = scale_resource_preflight(profile, host)
         manifest = stage_bridge_dispatch(
             args.spool, dispatch=dispatch, verified_packet=verified,
             signed_packet_bytes=args.packet.read_bytes(),
@@ -99,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
         _emit({
             "state": "STAGED", "dispatch_sha256": identity,
             "scale_profile": profile,
+            "local_host_screen": {
+                **resource_screen,
+                "os_family": host.os_family,
+                "machine": host.machine,
+                "cuda_available": host.cuda_available,
+            },
             "candidate_sha": manifest["dispatch"]["target_git_sha"],
             "next": "execute only on trusted host; never auto-retry unknown effects",
         })
@@ -114,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             "--host-key-id", args.host_key_id,
             "--repo-root", str(args.repo_root),
             "--receipt", str(args.receipt), "--log", str(args.log),
-        ])
+        ], return_verified_failure=True)
         if rc:
             _emit({"state": "CLAIMED_OUTCOME_UNKNOWN", "return_code": rc})
             return rc
@@ -160,8 +169,9 @@ def main(argv: list[str] | None = None) -> int:
         "verdict": report["verdict"],
         "outbound": str(args.spool / "outbound" / identity),
         "physical_verified": True,
+        "defect": report.get("defect"),
     })
-    return 0
+    return int(args.action == "execute" and report["verdict"] == "FAIL")
 
 
 if __name__ == "__main__":

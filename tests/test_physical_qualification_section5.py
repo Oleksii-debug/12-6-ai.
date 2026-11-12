@@ -527,10 +527,12 @@ def test_process_tree_policy_uses_isolated_posix_group(monkeypatch: pytest.Monke
             raise AssertionError("direct-process fallback must not be used")
 
     monkeypatch.setattr(physical_qualification.sys, "platform", "linux")
+    monkeypatch.setattr(physical_qualification.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(
         physical_qualification.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
 
     assert physical_qualification._popen_process_group_kwargs() == {"start_new_session": True}
@@ -555,10 +557,12 @@ def test_posix_process_group_is_killed_after_parent_exit(
             raise AssertionError("direct-process fallback must not be used")
 
     monkeypatch.setattr(physical_qualification.sys, "platform", "linux")
+    monkeypatch.setattr(physical_qualification.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(
         physical_qualification.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
 
     physical_qualification._terminate_process_tree(ExitedParent())

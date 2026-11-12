@@ -2,6 +2,26 @@
 
 Незакриті розділи Google Docs перетворено на самостійні NА, NБ, NВ. Повна карта: [ATOMIC_OPEN_SECTIONS_2026-10-13.md](ATOMIC_OPEN_SECTIONS_2026-10-13.md). Старе N у PR, CI, issue та реєстрі є агрегатом NА+NБ+NВ; повне DONE старого N лише після незалежного DONE кожного та спільної інтеграції. Не відкривати старі DONE й не починати існуючі PR заново. Статуси WAITING, resource limits, paid compute і physical acceptance збережено.
 
+# 2026-11-12 — План 3 / Розділ 2
+
+- **2А DONE:** причинна маска, зсув міток, нормалізація за дійсними цілями, межі пакування та заборона витоку з майбутніх позицій. Повністю маскований батч відхиляється до обчислення середньої втрати.
+- **2Б DONE:** незалежний еталон cross-entropy і градієнтів, скінченні різниці, великі логіти та FP64/FP32/BF16/FP16 контракти RMSNorm.
+- **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
+- **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
+
+# 2026-11-12 PLAN 2 SECTION 17 DONE
+
+- Plan 2 is **17/18 DONE**. Section 17A–C were integrated by [PR #3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) on main `613fede87d0da2fa051e51cd7041aacc796f7c9b`. The complete tree matches tested head `33b95a482266f9ed44afb39a209a700ae1ba83d3`.
+- The exact Section 15 tokenizer was recovered against the hosted manifest identity. Section 17 reused its 32,768-token vocabulary and built 1,114 training shards with 1,985,122 causal targets. The [qualification receipt](evidence/plan2_s17/physical_bundle_receipt_v1.json) binds the Section 16 corpus, independent reservations, and byte-identical 2,237-file inventory across two processes including a clean checkout.
+- Local qualification passed 19 tests and Ruff. Windows skipped one symlink test. Hosted jobs remained queued without a runner. Section 18 owns the qualified release and Plan 9 handoff.
+
+# 2026-11-12 PLAN 2 SECTION 16 DONE
+
+- Plan 2 is **16/18 DONE**. Section 16A–C were integrated by [PR #3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229) on main `3aed42cbb9234783ef7b72a6cb6b082d6f709a28`. The seven changed files match tested head `62528fce34eeedb1b285e0937238695c016cbb32` after merge.
+- Two independent processes reproduced the [physical S3–S9 corpus manifest](evidence/plan2_s16/physical_corpus_manifest_v1.json) `d24a9b3733b90a109f69f1f0ef2db1818babc3c452c10b4ae764fc1a60141966` and training payload SHA-256 `97b8dd4ae253a27110e265ae893591824911fd8a31c710a2fd4c36e67d858a21`. The admitted partition contains 22,852 records from seven families and 6,912,594 unique UTF-8 source bytes. EVAL-303 and EVAL-233 remain under their independent evaluation authorities.
+- Local checks passed 49 focused and 107 existing component tests. One focused test was skipped. Windows denied fixture creation for eight existing symlink tests before project code ran. The hosted workflows remained queued without a runner. Local qualification used the external infrastructure rule in `AGENTS.md`.
+- Section 17 is the next open section. It consumes this exact admitted partition and the existing frozen 32K tokenizer. Section 18 owns the release and Plan 9 handoff.
+
 # 2026-10-13 WORK 1 LIVE CHECKPOINT — completed subtasks, parent sections OPEN
 
 - **Plan2 S16 source-level rights/privacy checkpoint VERIFIED, Section 16 OPEN (2026-10-13):** Existing draft [PR #3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229) exact head `6efdf32149c0728c73d6205cc75852b5beb48863` rechecks five pinned S15 physical sources and license bytes through incumbent S1/S2/S15, executes G06 privacy and DATA232 fixture decontamination, verifies intermediate self-hashes, and publishes an immutable text-free nonrelease receipt. New changed-source/license, missing-source, tampered-proof, no-publication-on-error, restart and clean-build negatives: local 9/9 PASS; repository surface 24/24 PASS; changed-file Ruff PASS. Exact-head [Plan2 Actions #38355082623](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38355082623) SUCCESS (including new S16 gate and UA-GEC negatives); [broad CI #38355082607](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38355082607) SUCCESS. This is source-candidate evidence ONLY: three physical source families, no independent UA/EN train/validation/test source families, no approved balance, no real holdout custody, no native S3–S9 corpus admission, no tokenizer/training/release/Plan9 grant. UA-GEC still has unresolved contributor/translation/PII rights and missing independent validation. **S16–S18 OPEN; Plan2 stays 15/18 DONE.**

@@ -160,7 +160,7 @@ class ByteBPE32k:
 
     def decode(self, ids: list[int], *,
                skip_special_tokens: bool = True, errors: str = "strict") -> str:
-        need(errors == "strict" and type(skip_special_tokens) is bool,
+        need(errors in ("strict", "replace") and type(skip_special_tokens) is bool,
              "unsupported BPE decoder options")
         raw = bytearray()
         for item in ids:
@@ -171,7 +171,7 @@ class ByteBPE32k:
                 continue
             raw.extend(self.tokens[item])
         try:
-            return raw.decode("utf-8", "strict")
+            return raw.decode("utf-8", errors)
         except UnicodeError as exc:
             raise Real32kBpeDenied("invalid token byte sequence") from exc
 

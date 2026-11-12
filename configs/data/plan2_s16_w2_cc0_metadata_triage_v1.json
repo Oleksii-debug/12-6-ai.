@@ -1,0 +1,80 @@
+{
+  "schema_version": "12-6.plan2-s16-w2-cc0-metadata-triage.v1",
+  "decision": "CANDIDATE_METADATA_ONLY_NOT_ADMITTED",
+  "as_of_utc_date": "2026-10-13",
+  "sources": [
+    {
+      "source_identity": "wikidata-structured-cc0-candidate",
+      "publisher": "Wikidata contributors / Wikimedia",
+      "license_claim": "CC0 for structured data in Main, Property, Lexeme, EntitySchema namespaces only",
+      "official_license_url": "https://www.wikidata.org/wiki/Wikidata:Copyright",
+      "official_access_url": "https://www.wikidata.org/wiki/Wikidata:Data_access",
+      "permitted_candidate_scope": [
+        "structured_entity_identifiers",
+        "structured_labels",
+        "structured_descriptions",
+        "structured_scientific_statements"
+      ],
+      "excluded_scope": [
+        "other_wiki_namespaces",
+        "images",
+        "external_linked_fulltext",
+        "external_website_content",
+        "personal_data_without_review"
+      ],
+      "upstream_revision": null,
+      "physical_source_sha256": null,
+      "original_license_bytes_sha256": null,
+      "source_family_credit": 0,
+      "observed_ua_en_science_coverage": "UNKNOWN",
+      "rights_status": "SOURCE_LEVEL_CC0_ONLY",
+      "acquired_records": 0,
+      "training_authorized": false,
+      "release_authorized": false
+    },
+    {
+      "source_identity": "openalex-catalog-metadata-cc0-candidate",
+      "publisher": "OpenAlex",
+      "license_claim": "CC0 for OpenAlex catalog data, not third-party linked content",
+      "official_license_url": "https://explore.openalex.org/",
+      "official_access_url": "https://help.openalex.org/api/",
+      "permitted_candidate_scope": [
+        "work_identifiers",
+        "publication_years",
+        "topic_identifiers",
+        "bibliographic_relationships"
+      ],
+      "excluded_scope": [
+        "third_party_fulltext",
+        "linked_pdfs",
+        "external_websites",
+        "abstract_text_without_independent_review",
+        "personal_data_without_review"
+      ],
+      "upstream_revision": null,
+      "physical_source_sha256": null,
+      "original_license_bytes_sha256": null,
+      "source_family_credit": 0,
+      "observed_ua_en_science_coverage": "UNKNOWN",
+      "rights_status": "SOURCE_LEVEL_CC0_ONLY",
+      "acquired_records": 0,
+      "training_authorized": false,
+      "release_authorized": false
+    }
+  ],
+  "required_before_admission": [
+    "OWNER_APPROVAL_OF_SPECIFIC_SOURCE_AND_PURPOSE",
+    "IMMUTABLE_SOURCE_REVISION_AND_ORIGINAL_LICENSE_BYTES",
+    "PHYSICAL_MEMBER_PROVENANCE_AND_SHA256",
+    "THIRD_PARTY_CONTENT_BOUNDARY_REVIEW",
+    "RECORD_LEVEL_PRIVACY_PII_AND_REMOVAL_REVIEW",
+    "CROSS_FAMILY_EXACT_NEAR_DEDUP_AND_EVAL_DECONTAMINATION",
+    "INDEPENDENT_UA_EN_TRAIN_VALIDATION_TEST_FAMILIES",
+    "APPROVED_LANGUAGE_SCIENCE_BALANCE_AND_S3_S9_ADMISSION"
+  ],
+  "physical_corpus_materialized": false,
+  "corpus_training_authorized": false,
+  "production_release_authorized": false,
+  "plan9_binding_authorized": false,
+  "terminal_done": false
+}

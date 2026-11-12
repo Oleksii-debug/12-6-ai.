@@ -4,6 +4,7 @@ import base64
 import hashlib
 import inspect
 import json
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -800,7 +801,7 @@ def test_bridge_different_packet_replay_and_corrupt_handoff_fail_closed(tmp_path
         bridge_module.bridge_status(tmp_path, dispatch.identity_sha256())
 
 
-def test_bridge_forged_signed_packet_and_symlink_denied(tmp_path) -> None:
+def test_bridge_forged_signed_packet_denied(tmp_path) -> None:
     dispatch, verified, signed = _signed_bridge_fixture()
     with pytest.raises(ValueError, match="malformed"):
         bridge_module.stage_bridge_dispatch(
@@ -812,13 +813,27 @@ def test_bridge_forged_signed_packet_and_symlink_denied(tmp_path) -> None:
             tmp_path, dispatch=dispatch, verified_packet=verified,
             signed_packet_bytes=signed.replace(b"packet-a", b"packet-b"),
         )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_bridge_redirected_spool_denied(tmp_path, nested: bool) -> None:
+    dispatch, verified, signed = _signed_bridge_fixture()
+    real_spool = tmp_path / "real-spool"
+    real_spool.mkdir()
     spool_link = tmp_path / "spool-link"
-    spool_link.symlink_to(tmp_path, target_is_directory=True)
-    with pytest.raises(ValueError, match="symlink"):
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(real_spool), str(spool_link))
+    else:
+        spool_link.symlink_to(real_spool, target_is_directory=True)
+    spool = spool_link / "nested" if nested else spool_link
+    with pytest.raises(ValueError, match="symlink|reparse"):
         bridge_module.stage_bridge_dispatch(
-            spool_link, dispatch=dispatch, verified_packet=verified,
+            spool, dispatch=dispatch, verified_packet=verified,
             signed_packet_bytes=signed,
         )
+    assert not list(real_spool.iterdir())
 
 
 def test_bridge_missing_claim_cannot_publish_unverified_host_result(tmp_path) -> None:

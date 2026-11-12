@@ -358,6 +358,86 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_s16_structural_preflight_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_independent_eval_binding_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_physical_split_gate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_source_rights_privacy_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_ua_gec_candidate_contract_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_ua_gec_tree_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/materialize_next100_037_python_docs_accepted_chunks.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_corpus_admission_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_multimodal_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_clean_rebuild_witness_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_exposure_stream_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_frozen_tokenizer_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_physical_bundle_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_reserved_roles_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_train_packing_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_physical_release_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_plan9_consumer_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_release_integrity_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_release_readback_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_source_notices_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_source_admissibility_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
@@ -402,10 +482,6 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
-      "path": "tools/plan8_evidence_bridge.py",
-      "capability_id": "peer-source-qualification-pending"
-    },
-    {
       "path": "tools/plan8_physical_operator.py",
       "capability_id": "physical-qualification-fabric"
     },
@@ -419,6 +495,10 @@
     },
     {
       "path": "tools/verify_locked_environment.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan8_evidence_bridge.py",
       "capability_id": "peer-source-qualification-pending"
     }
   ]

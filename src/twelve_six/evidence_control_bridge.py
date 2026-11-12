@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -948,8 +949,21 @@ _BRIDGE_MAX_RECEIPT_BYTES = 4 * 1024 * 1024
 _BRIDGE_MAX_LOG_BYTES = 32 * 1024 * 1024
 
 
+def _reject_bridge_redirects(path: Path) -> None:
+    for component in (path, *path.absolute().parents):
+        try:
+            info = component.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or (
+            getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+        ):
+            raise ValueError("bridge path contains a symlink or Windows reparse point")
+
+
 def _bridge_regular_bytes(path: Path, max_bytes: int) -> bytes:
-    if path.is_symlink() or not path.is_file():
+    _reject_bridge_redirects(path)
+    if not path.is_file():
         raise ValueError("bridge input must be a regular non-symlink file")
     with path.open("rb") as stream:
         payload = stream.read(max_bytes + 1)
@@ -962,11 +976,9 @@ def _bridge_write_once(path: Path, payload: bytes) -> bool:
     """Atomic exclusive claim/publication; replay is safe only for identical bytes."""
     if type(payload) is not bytes:
         raise ValueError("bridge publication must contain bytes")
-    if path.parent.is_symlink() or path.is_symlink():
-        raise ValueError("bridge publication refuses symlink paths")
+    _reject_bridge_redirects(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.parent.is_symlink():
-        raise ValueError("bridge publication parent is a symlink")
+    _reject_bridge_redirects(path)
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError:
@@ -982,10 +994,10 @@ def _bridge_write_once(path: Path, payload: bytes) -> bool:
 
 def _bridge_spool(root: str | Path) -> Path:
     path = Path(root)
-    if path.is_symlink():
-        raise ValueError("bridge spool cannot be a symlink")
+    _reject_bridge_redirects(path)
     path.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink() or not path.is_dir():
+    _reject_bridge_redirects(path)
+    if not path.is_dir():
         raise ValueError("bridge spool is not a directory")
     return path
 
