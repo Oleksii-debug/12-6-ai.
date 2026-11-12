@@ -5,6 +5,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from .transaction import _parse_transaction
+
 _MANIFEST_KEYS = frozenset(
     {
         "format",
@@ -207,6 +209,7 @@ def install(core_module: Any) -> None:
             error_type=core_module.CheckpointIntegrityError,
         )
         original_validate_identity(identity)
+        _parse_transaction(value["training_config"], step=value["step"])
 
     core_module._parse_manifest_bytes = parse_manifest_bytes
     core_module._validate_manifest_identity = validate_manifest_identity

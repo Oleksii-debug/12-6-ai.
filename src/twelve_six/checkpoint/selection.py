@@ -8,11 +8,12 @@ checkpoint directory, and refuses ambiguous or cross-lineage comparisons.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 from typing import Any
 
 from .core import CheckpointCompatibilityError
+from .transaction import checkpoint_transaction
 
 _HEX = frozenset("0123456789abcdef")
 
@@ -74,6 +75,10 @@ class CheckpointCandidate:
     completed: bool = False
     metric_name: str | None = None
     metric_value: float | None = None
+    generation: int | None = None
+    parent_generation: int | None = None
+    parent_checkpoint_id: str | None = None
+    lineage_training_config_hash: str | None = None
 
     @classmethod
     def from_manifest(
@@ -87,6 +92,7 @@ class CheckpointCandidate:
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
             raise CheckpointCompatibilityError("checkpoint manifest identity must be a mapping")
+        transaction = checkpoint_transaction(manifest)
         candidate = cls(
             checkpoint_id=manifest.get("checkpoint_id"),
             run_manifest_hash=identity.get("run_manifest_hash"),
@@ -99,24 +105,19 @@ class CheckpointCandidate:
             completed=completed,
             metric_name=metric_name,
             metric_value=metric_value,
+            generation=None if transaction is None else transaction.generation,
+            parent_generation=None if transaction is None else transaction.parent_generation,
+            parent_checkpoint_id=None if transaction is None else transaction.parent_checkpoint_id,
+            lineage_training_config_hash=(
+                None if transaction is None else transaction.training_config_sha256
+            ),
         )
         _validate_candidate(candidate)
-        return cls(
-            checkpoint_id=candidate.checkpoint_id,
-            run_manifest_hash=candidate.run_manifest_hash,
-            model_spec_hash=candidate.model_spec_hash,
-            tokenizer_hash=candidate.tokenizer_hash,
-            dataset_manifest_hash=candidate.dataset_manifest_hash,
-            training_config_hash=candidate.training_config_hash,
-            step=candidate.step,
-            tokens_seen=candidate.tokens_seen,
-            completed=candidate.completed,
-            metric_name=candidate.metric_name,
-            metric_value=(
-                None
-                if candidate.metric_value is None
-                else _require_finite_metric_value(candidate.metric_value)
-            ),
+        return replace(
+            candidate,
+            metric_value=None
+            if metric_value is None
+            else _require_finite_metric_value(metric_value),
         )
 
     @property
@@ -126,7 +127,7 @@ class CheckpointCandidate:
             self.model_spec_hash,
             self.tokenizer_hash,
             self.dataset_manifest_hash,
-            self.training_config_hash,
+            self.lineage_training_config_hash or self.training_config_hash,
         )
 
     @property
@@ -163,6 +164,23 @@ def _validate_candidate(item: CheckpointCandidate) -> None:
     if item.metric_name is not None:
         _require_metric_name(item.metric_name)
         _require_finite_metric_value(item.metric_value)
+    if item.generation is not None:
+        if type(item.generation) is not int or item.generation < 0:
+            raise CheckpointCompatibilityError("invalid checkpoint candidate generation")
+        _require_sha256(item.lineage_training_config_hash, field="lineage_training_config_hash")
+    elif item.lineage_training_config_hash is not None:
+        raise CheckpointCompatibilityError("legacy checkpoint cannot claim transaction lineage")
+    if item.generation in (None, 0):
+        if item.parent_generation is not None or item.parent_checkpoint_id is not None:
+            raise CheckpointCompatibilityError(
+                "checkpoint without a predecessor cannot claim a parent"
+            )
+    else:
+        if type(item.parent_generation) is not int or item.parent_generation != item.generation - 1:
+            raise CheckpointCompatibilityError("invalid checkpoint candidate generation")
+        _require_sha256(item.parent_checkpoint_id, field="parent_checkpoint_id")
+        if item.parent_checkpoint_id == item.checkpoint_id:
+            raise CheckpointCompatibilityError("checkpoint cannot be its own parent")
 
 
 def _materialize(candidates: Iterable[CheckpointCandidate]) -> list[CheckpointCandidate]:
