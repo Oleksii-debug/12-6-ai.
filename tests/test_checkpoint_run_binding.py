@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 from dataclasses import replace
 
 import pytest
@@ -183,7 +182,6 @@ def test_bound_recipe_is_independent_of_mutable_run_input() -> None:
     assert identity.training_config["training"]["recipe"] == recipe.to_dict()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="checkpoint publication requires POSIX directory fsync")
 def test_recipe_digest_survives_checkpoint_write_and_readback(tmp_path) -> None:
     recipe = frozen_recipe()
     manifest = run_manifest()
