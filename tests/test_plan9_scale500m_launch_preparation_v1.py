@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def verified_boundary(tmp_path, monkeypatch):
     # Unit boundary only. The deployed path always calls the Plan 2 verifier.
     model, _ = preparation._load_profile(ROOT)
-    dataset = {"manifest_sha256": "1" * 64, "records": 4}
+    dataset = {"manifest_sha256": "1" * 64, "records": 4, "selected_source_terms": {"test-family": {}}}
     split = {
         "manifest_sha256": "2" * 64,
         "s16_admission_manifest_sha256": dataset["manifest_sha256"],
@@ -62,12 +62,26 @@ def verified_boundary(tmp_path, monkeypatch):
         },
     }
     members = {}
+    notice_path = tmp_path / "notices" / "NOTICE.txt"
+    notice_path.parent.mkdir()
+    notice_path.write_bytes(b"unit boundary notice\n")
+    notice_key = "notices/NOTICE.txt"
+    members[notice_key] = preparation._sha(notice_path.read_bytes())
+    rights = {
+        "dataset_sha256": preparation._sha(preparation._canonical(dataset)),
+        "scope": "LOCAL_PLAN9_TRAINING_DATA_HANDOFF",
+        "evaluation_payloads_included": False,
+        "public_redistribution_authorized": False,
+        "selected_source_terms": dataset["selected_source_terms"],
+        "notice_sha256": {notice_key: members[notice_key]},
+    }
     for name, payload in (
         ("plan9-binding.json", {"campaign_authorized": False, "physical_consumer": consumer}),
         ("dataset-manifest.json", dataset),
         ("tokenizer-manifest.json", tokenizer),
         ("split-manifest.json", split),
         ("packing-manifest.json", packing),
+        ("rights-attribution.json", rights),
     ):
         raw = preparation._canonical(payload)
         (tmp_path / name).write_bytes(raw)
@@ -253,3 +267,30 @@ def test_cli_candidate_checkout_rejects_runtime_drift(monkeypatch):
     monkeypatch.setattr(preparation, "_read", read_changed)
     with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
         preparation._candidate_checkout_sha(ROOT)
+
+
+def test_exact_one_pass_budget_checks_real_mask_counts_and_rights(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    batch = {"loss_mask": torch.tensor([[1] * 5 + [0] * 27] * 2)}
+    monkeypatch.setattr(physical_release, "iter_release_batches", lambda *_, **__: iter([batch, batch]))
+
+    def assess(recipe=candidate_recipe):
+        return preparation.check_one_pass_data_budget(ROOT, directory, recipe=recipe)
+
+    result = assess()
+    assert result["nominal_optimizer_steps"] == result["planned_microbatches"] == 2
+    assert result["exact_one_pass_unique_loss_positions"] == result["exact_one_pass_total_exposures"] == 20
+    assert result["notice_count"] == result["source_family_count"] == 1
+    assert result["campaign_authorized"] is result["target_environment_qualified"] is False
+
+    early_stop = replace(candidate_recipe, trainer=replace(candidate_recipe.trainer, max_steps=1))
+    with pytest.raises(preparation.LaunchPreparationDenied, match="cannot meet the unique target"):
+        assess(early_stop)
+    cap = replace(candidate_recipe, target_unique_loss_positions=19, maximum_total_exposures=19)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="exceeds the candidate recipe exposure"):
+        assess(cap)
+    (directory / "notices" / "NOTICE.txt").write_bytes(b"changed after release verification\n")
+    with pytest.raises(preparation.LaunchPreparationDenied, match="pinned notice changed"):
+        assess()

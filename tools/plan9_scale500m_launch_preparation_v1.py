@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 SCHEMA = "12-6.plan9-scale500m-launch-preparation.v1"
 CURSOR_SCHEMA = "12-6.plan9-s18-physical-resume-cursor.v1"
 PACKET_SCHEMA = "12-6.plan9-scale500m-candidate-packet.v1"
+DATA_BUDGET_SCHEMA = "12-6.plan9-scale500m-one-pass-data-budget.v1"
 PROFILE = "SCALE-500M"
 PROFILE_FILE = "configs/stages/scale_500m.json"
 PACKET_TOOL_FILE = "tools/plan9_scale500m_launch_preparation_v1.py"
@@ -466,6 +467,67 @@ def verify_candidate_packet(
     return actual
 
 
+def check_one_pass_data_budget(
+    root: Path, release: Path, *, recipe: TrainingRecipe,
+) -> dict[str, Any]:
+    """Check a nominal optimizer horizon against actual unique training positions."""
+    trainer = recipe.trainer
+    planned_batches = trainer.max_steps * trainer.gradient_accumulation_steps
+    preparation, cursor, _ = _open_batch_stream(root, release, recipe, planned_batches)
+    unique_positions = cursor["consumed_loss_positions"]
+    _require(unique_positions >= recipe.target_unique_loss_positions,
+             "sealed masks cannot meet the unique target within the candidate optimizer horizon")
+
+    data = preparation["data"]
+    manifest = _read_pinned_json(release / "release-manifest.json", data["release_manifest_sha256"])
+    members = manifest["members"]
+    dataset = _read_pinned_json(release / "dataset-manifest.json", members["dataset-manifest.json"])
+    rights_pin = members["rights-attribution.json"]
+    rights = _read_pinned_json(release / "rights-attribution.json", rights_pin)
+    notices = rights["notice_sha256"]
+    _require(
+        rights["scope"] == "LOCAL_PLAN9_TRAINING_DATA_HANDOFF"
+        and rights["evaluation_payloads_included"] is False
+        and rights["public_redistribution_authorized"] is False
+        and rights["dataset_sha256"] == members["dataset-manifest.json"]
+        and bool(rights["selected_source_terms"])
+        and rights["selected_source_terms"] == dataset["selected_source_terms"]
+        and type(notices) is dict
+        and bool(notices)
+        and all(name.startswith("notices/") and members.get(name) == digest for name, digest in notices.items()),
+        "rights and notice scope differs from the accepted local training data handoff",
+    )
+    for name, digest in notices.items():
+        _require(_sha(_read(release / name)) == digest, f"pinned notice changed: {name}")
+    core = {
+        "schema": DATA_BUDGET_SCHEMA,
+        "decision": "ONE_PASS_DATA_BUDGET_VERIFIED_CAMPAIGN_PENDING",
+        "release_manifest_sha256": data["release_manifest_sha256"],
+        "release_authority_sha256": data["release_authority_sha256"],
+        "rights_attribution_sha256": rights_pin,
+        "source_family_count": len(rights["selected_source_terms"]),
+        "notice_count": len(notices),
+        "data_scope": rights["scope"],
+        "evaluation_payloads_included": False,
+        "public_redistribution_authorized": False,
+        "recipe_sha256": preparation["recipe_sha256"],
+        "physical_cursor_sha256": cursor["cursor_sha256"],
+        "target_unique_loss_positions": recipe.target_unique_loss_positions,
+        "maximum_total_exposures": recipe.maximum_total_exposures,
+        "nominal_optimizer_steps": trainer.max_steps,
+        "planned_microbatches": planned_batches,
+        "exact_one_pass_unique_loss_positions": unique_positions,
+        "exact_one_pass_total_exposures": unique_positions,
+        "requires_no_skipped_updates_to_reach_nominal_optimizer_steps": True,
+        "target_environment_qualified": False,
+        "campaign_stop_policy_accepted": False,
+        "campaign_authorized": False,
+        "training_executed": False,
+        "paid_compute_used": False,
+    }
+    return {**core, "data_budget_sha256": _sha(_canonical(core))}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("."))
@@ -475,6 +537,7 @@ def main() -> int:
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--build-packet", action="store_true", help="Emit a canonical candidate packet")
     modes.add_argument("--verify-packet", type=Path, help="Reopen a pinned candidate packet")
+    modes.add_argument("--check-one-pass-budget", action="store_true", help="Check rights and exact data budget")
     parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
     parser.add_argument("--environment-lock", type=Path, help="Environment lock bytes to pin without host qualification")
     parser.add_argument("--run-id", help="Candidate run identity for packet construction")
@@ -483,6 +546,11 @@ def main() -> int:
     try:
         root = args.root.resolve(strict=True)
         recipe = None if args.recipe is None else TrainingRecipe.from_dict(json.loads(_read(args.recipe)))
+        if args.check_one_pass_budget:
+            if recipe is None:
+                raise LaunchPreparationDenied("--check-one-pass-budget requires --recipe")
+            sys.stdout.buffer.write(_canonical(check_one_pass_data_budget(root, args.release, recipe=recipe)))
+            return 0
         if args.build_packet or args.verify_packet is not None:
             if args.environment_lock is None:
                 raise LaunchPreparationDenied("an explicit --environment-lock is required")
