@@ -50,3 +50,21 @@ native checkpoint publication and verified reload. It reports separate
 optimizer-only and optimizer-plus-checkpoint time projections for the same
 fixture. Checkpoint throughput includes serialization, verification and durable
 publication.
+
+## Launcher lifecycle
+
+`TrainingLauncher` sends the same typed prepare, run, status and artifact
+requests over local, fresh runner process and server transports.
+`NativeTrainingEndpoint` runs those requests through the portable packet's
+single-writer controller. A run request names the last durable receipt.
+Artifact requests name the current receipt and return verified checkpoint
+payload identities and the exposure cursor digest. The receiver recomputes the
+checkpoint ID from the returned manifest identity and payload hashes.
+
+The runner opens the same packet and authoritative checkpoint namespace in a
+fresh process. After a transport failure, read status through an available
+adapter and resume from that receipt. The launcher performs no automatic
+retry. An interrupted wire pause or stop replays only the original committed
+control policy. Server dispatch requires a caller-supplied authorization
+check before contacting the configured trusted transport. The packet remains
+independent of these settings.

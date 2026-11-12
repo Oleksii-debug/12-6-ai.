@@ -12,8 +12,9 @@ from typing import Any, Literal
 import torch
 from torch import Tensor
 
-from ..checkpoint import CheckpointIdentity, bind_checkpoint_identity, hash_json
+from ..checkpoint import CheckpointIdentity, bind_checkpoint_identity, hash_json, verify_checkpoint
 from ..checkpoint.core import _require_exact_hex, _strict_json_object
+from ..checkpoint.transaction import checkpoint_transaction
 from ..model import BaseInitManifest, InitSpec, ModelSpec, build_canonical_base
 from .config import TrainingRecipe
 from .exposure_accounting import OrderedExposureRuntime
@@ -309,6 +310,10 @@ class PortableTrainingRun:
     def run_manifest_sha256(self) -> str:
         return self._identity.run_manifest_hash
 
+    @property
+    def packet_sha256(self) -> str:
+        return self._packet.identity_sha256()
+
     def _resource_report(
         self,
         *,
@@ -380,6 +385,7 @@ class PortableTrainingRun:
         expected_receipt_sha256: str,
         recover: bool = False,
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
+        control_policy_sha256: str | None = None,
     ) -> RunReceipt:
         with _exclusive_trainer():
             current = self._controller.status()
@@ -402,7 +408,36 @@ class PortableTrainingRun:
                 recover=recover,
                 control=control,
                 admit_progress=self._admit_recovered_storage if pending_recovery else None,
+                control_policy_sha256=control_policy_sha256,
             )
 
     def status(self) -> RunReceipt:
         return self._controller.status()
+
+    def checkpoint_artifacts(self, receipt: RunReceipt) -> dict[str, Any]:
+        """Verify the immutable checkpoint named by the current durable receipt."""
+        if self.status() != receipt:
+            raise RunControlError("stale run receipt")
+        path = self._controller._checkpoint_path(
+            self._controller.namespace,
+            receipt.checkpoint_epoch,
+            receipt.committed_step,
+        )
+        manifest = verify_checkpoint(path)
+        identity = manifest["identity"]
+        if (
+            manifest["checkpoint_id"] != receipt.checkpoint_id
+            or identity["run_manifest_hash"] != self.run_manifest_sha256
+            or identity["step"] != receipt.committed_step
+            or identity["tokens_seen"] != receipt.tokens_seen
+        ):
+            raise RunControlError("artifact checkpoint differs from the committed run receipt")
+        transaction = checkpoint_transaction(manifest)
+        return {
+            "checkpoint_id": receipt.checkpoint_id,
+            "checkpoint_manifest_identity_sha256": hash_json(manifest),
+            "exposure_cursor_sha256": None
+            if transaction is None
+            else transaction.exposure_cursor_sha256,
+            "manifest": manifest,
+        }

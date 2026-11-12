@@ -251,6 +251,7 @@ def test_existing_s5_journal_and_checkpoint_remain_resumable(tmp_path: Path) -> 
         payload = json.loads(row[0])
         payload.pop("exposure_cursor_schema")
         payload.pop("pending_cursor_sha256")
+        payload.pop("control_policy_sha256")
         connection.execute(
             "UPDATE events SET payload = ?, digest = ? WHERE generation = 0",
             (json.dumps(payload, sort_keys=True), hash_json(payload)),
