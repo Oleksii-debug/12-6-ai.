@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import asdict, dataclass, fields
+from typing import Any, Literal
 
 PrecisionMode = Literal["fp32", "bf16", "fp16"]
 SchedulerKind = Literal["constant", "linear_warmup", "cosine"]
@@ -88,3 +90,80 @@ class TrainerConfig:
             raise TypeError("deterministic_algorithms must be bool")
         if not isinstance(self.deterministic_warn_only, bool):
             raise TypeError("deterministic_warn_only must be bool")
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingRecipe:
+    """Versioned scientific inputs, independent of device and provider settings."""
+
+    trainer: TrainerConfig
+    microbatch_size: int
+    sequence_length: int
+    target_unique_loss_positions: int
+    maximum_total_exposures: int
+    max_exposures_per_unique_position: int
+
+    def __post_init__(self) -> None:
+        if type(self.trainer) is not TrainerConfig:
+            raise TypeError("trainer must be a TrainerConfig")
+        _require_int("microbatch_size", self.microbatch_size, minimum=1)
+        _require_int("sequence_length", self.sequence_length, minimum=2)
+        _require_int("target_unique_loss_positions", self.target_unique_loss_positions, minimum=1)
+        _require_int("maximum_total_exposures", self.maximum_total_exposures, minimum=1)
+        _require_int(
+            "max_exposures_per_unique_position", self.max_exposures_per_unique_position, minimum=1
+        )
+        if not (
+            self.target_unique_loss_positions <= self.maximum_total_exposures
+            <= self.target_unique_loss_positions * self.max_exposures_per_unique_position
+        ):
+            raise ValueError("recipe exposure budget disagrees with unique positions and replay cap")
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["trainer"]["betas"] = list(self.trainer.betas)
+        return {"schema_version": 1, "optimizer": "AdamW", **payload}
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> TrainingRecipe:
+        recipe_keys = {field.name for field in fields(cls)}
+        if type(value) is not dict or value.keys() != recipe_keys | {"schema_version", "optimizer"}:
+            raise ValueError("recipe fields must match schema v1 exactly")
+        version = value["schema_version"]
+        if type(version) is not int or version != 1 or value["optimizer"] != "AdamW":
+            raise ValueError("unsupported recipe version or optimizer")
+        trainer = value["trainer"]
+        if type(trainer) is not dict or trainer.keys() != {f.name for f in fields(TrainerConfig)}:
+            raise ValueError("recipe trainer settings must specify every TrainerConfig field")
+        if type(trainer["betas"]) is not list:
+            raise ValueError("recipe trainer betas must be a JSON array")
+        config = TrainerConfig(**{**trainer, "betas": tuple(trainer["betas"])})
+        return cls(**{**{key: value[key] for key in recipe_keys}, "trainer": config})
+
+    def identity_sha256(self) -> str:
+        payload = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def run_training_fields(self) -> dict[str, Any]:
+        """Build the scientific portion of the incumbent run manifest's training block."""
+        config = self.trainer
+        return {
+            "recipe": self.to_dict(),
+            "recipe_sha256": self.identity_sha256(),
+            "seed": config.seed,
+            "precision": config.precision,
+            "optimizer": {
+                "name": "AdamW",
+                "lr": config.learning_rate,
+                "weight_decay": config.weight_decay,
+                "betas": list(config.betas),
+                "eps": config.eps,
+            },
+            "scheduler": {"name": config.scheduler, "warmup_steps": config.warmup_steps},
+            "context_length": self.sequence_length,
+            "global_batch_tokens": (
+                self.microbatch_size * self.sequence_length * config.gradient_accumulation_steps
+            ),
+            "target_steps": config.max_steps,
+            "target_tokens": self.maximum_total_exposures,
+        }
