@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 3 SECTION 9 DONE
+
+- **Plan 3 Section 9A–C DONE. 9/12 sections complete.** [PR #3244](https://github.com/Oleksii-debug/12-6-ai./pull/3244) accepted at main `fb46f2e91d253361517759eb4dbcca419f3be151`. Complete tree `1494bb326bab7c44f2a28065745b7f7e987e51f5` matches frozen head `78d683a8f8b9c090d57da1a7e203d48735802443`. All five GitHub source blobs matched.
+- **9A DONE.** The versioned packet binds ModelSpec, initialization seed, scientific recipe, data and tokenizer references, exposure budget, checkpoint policy, commands and expected evidence.
+- **9B DONE.** Three local fixture adapter roles exercised the same controller and authoritative journal. After an injected adapter disconnect, the recovered run matched the uninterrupted final checkpoint, cursor and native artifact hashes.
+- **9C DONE.** Device, provider and host paths are in a separate execution envelope. Changing that envelope does not change the scientific run identity. A changed lock or data contract fails preflight.
+- The detached candidate passed 205 scoped tests and Ruff. Accepted main passed 22 additional checks. Hosted Actions remained queued. Section 10 is next.
+
 # 2026-11-12 PLAN 8 SECTION 7 DONE
 
 - **Plan 8 Section 7A–C DONE. 7/11 sections complete.** [PR #3227](https://github.com/Oleksii-debug/12-6-ai./pull/3227) accepted at main `272595b6c034e66aec2c33f51265675b78269801`. Complete tree `f298e1937bd9980cf1011517cb6cc55659653c79` matches the exact frozen candidate `5279ffc481cf15ecdf3736bf30a627c1492347ff`.
