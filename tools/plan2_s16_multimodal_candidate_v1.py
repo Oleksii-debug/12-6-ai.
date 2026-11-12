@@ -129,6 +129,15 @@ def inspect(
     root: Path, selection: tuple[Path, Path, Path, Path], franko: Path, arxiv: Path,
     languk: Path, code_report: Path, code_checkouts: Path,
 ) -> dict[str, Any]:
+    receipt, _, _ = replay(root, selection, franko, arxiv, languk, code_report, code_checkouts)
+    return receipt
+
+
+def replay(
+    root: Path, selection: tuple[Path, Path, Path, Path], franko: Path, arxiv: Path,
+    languk: Path, code_report: Path, code_checkouts: Path,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, str]]]:
+    """Replay source evidence and keep the verified training survivors in memory."""
     root = root.resolve(strict=True)
     prior = base.inspect(root)
     sources = base.physical.inspect(root)
@@ -141,7 +150,9 @@ def inspect(
     languk_rows, languk_receipt = _languk(root, languk)
     code_rows, code_receipt = _code(root, code_report, code_checkouts)
     combined = python_rows + franko_rows + arxiv_rows + languk_rows + code_rows
-    scan = base._scan_selection(root, sources, selection, extra_rows=combined, final_rows=final_rows)
+    scan, survivors = base._scan_selection_with_survivors(
+        root, sources, selection, extra_rows=combined, final_rows=final_rows,
+    )
     core = {
         "schema": "12-6.plan2-s16-multimodal-candidate.v1",
         "base_authority_sha256": prior["manifest_sha256"],
@@ -160,7 +171,8 @@ def inspect(
         "production_release_authorized": False,
         "terminal_done": False,
     }
-    return {**core, "manifest_sha256": base.books.sha(base.books.canonical(core))}
+    receipt = {**core, "manifest_sha256": base.books.sha(base.books.canonical(core))}
+    return receipt, prior, survivors
 
 
 def main() -> int:

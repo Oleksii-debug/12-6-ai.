@@ -675,8 +675,9 @@ jobs:
         run: |
           ruff check tools/plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_physical_split_gate_v1.py
           ruff check tools/plan2_s16_independent_eval_binding_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py
+          ruff check tools/plan2_s16_corpus_admission_v1.py tests/test_plan2_s16_corpus_admission_v1.py
       - name: Independently qualify S16 physical role negatives and true bilingual reserved evaluations
-        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py
+        run: PYTHONPATH=src:. pytest -q tests/test_plan2_s16_physical_split_gate_v1.py tests/test_plan2_s16_independent_eval_binding_v1.py tests/test_plan2_s16_corpus_admission_v1.py
       - name: Emit hash-only source and reserved evaluation proof without release
         shell: bash
         run: |

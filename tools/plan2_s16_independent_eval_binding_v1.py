@@ -198,10 +198,9 @@ def _training_rows(root: Path, sources: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-def _candidate_projection(
+def _surviving_rows(
     training: list[dict[str, str]], report: dict[str, Any],
-) -> dict[str, Any]:
-    """Project verified DATA-232 evidence onto this exact, candidate-only cohort."""
+) -> tuple[list[dict[str, str]], int]:
     rows = {_sha_text(row["record_id"]): row for row in training}
     excluded = {row["record_id_sha256"] for row in report["excluded_records"]}
     need(len(rows) == len(training) and excluded <= rows.keys(),
@@ -227,24 +226,29 @@ def _candidate_projection(
     representatives: dict[str, str] = {}
     for key in sorted(parents, key=lambda value: (-sizes[value], value)):
         representatives.setdefault(root(key), key)
+    return [rows[key] for key in sorted(representatives.values())], len(excluded)
 
+
+def _summarize_survivors(
+    survivors: list[dict[str, str]], training_count: int, excluded_count: int,
+) -> dict[str, Any]:
     families: dict[str, Counter[str]] = {}
     modalities: Counter[str] = Counter()
     inventory = []
-    for key in sorted(representatives.values()):
-        row = rows[key]
-        families.setdefault(row["source_family"], Counter())[row["modality"]] += sizes[key]
-        modalities[row["modality"]] += sizes[key]
+    for row in survivors:
+        size = len(row["text"].encode("utf-8"))
+        families.setdefault(row["source_family"], Counter())[row["modality"]] += size
+        modalities[row["modality"]] += size
         inventory.append({
-            "record_id_sha256": key, "source_id": row["source_id"],
+            "record_id_sha256": _sha_text(row["record_id"]), "source_id": row["source_id"],
             "source_family": row["source_family"], "modality": row["modality"],
-            "content_sha256": _sha_text(row["text"]), "utf8_bytes": sizes[key],
+            "content_sha256": _sha_text(row["text"]), "utf8_bytes": size,
         })
     return {
         "policy": "remove-reserved-exclusions-then-longest-per-peer-component-v1",
         "surviving_records": len(inventory),
-        "excluded_for_reserved_sets": len(excluded),
-        "removed_as_training_duplicates": len(parents) - len(inventory),
+        "excluded_for_reserved_sets": excluded_count,
+        "removed_as_training_duplicates": training_count - excluded_count - len(inventory),
         "surviving_utf8_bytes_by_family_and_modality": {
             family: dict(sorted(counts.items())) for family, counts in sorted(families.items())
         },
@@ -252,6 +256,14 @@ def _candidate_projection(
         "survivor_inventory_sha256": books.sha(books.canonical(inventory)),
         "production_admission": False,
     }
+
+
+def _candidate_projection(
+    training: list[dict[str, str]], report: dict[str, Any],
+) -> dict[str, Any]:
+    """Project verified DATA-232 evidence onto this exact, candidate-only cohort."""
+    survivors, excluded_count = _surviving_rows(training, report)
+    return _summarize_survivors(survivors, len(training), excluded_count)
 
 
 def _scan_selection(
@@ -262,6 +274,20 @@ def _scan_selection(
     extra_rows: list[dict[str, str]] | None = None,
     final_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
+    receipt, _ = _scan_selection_with_survivors(
+        root, sources, inputs, extra_rows=extra_rows, final_rows=final_rows,
+    )
+    return receipt
+
+
+def _scan_selection_with_survivors(
+    root: Path,
+    sources: dict[str, Any],
+    inputs: tuple[Path, Path, Path, Path],
+    *,
+    extra_rows: list[dict[str, str]] | None = None,
+    final_rows: list[dict[str, str]] | None = None,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
     ua_data, ua_manifest, en_data, en_authority = inputs
     try:
         evaluation, authority, evidence = eval303.resolve_eval303_selection_payloads_from_reconstructed(
@@ -325,8 +351,12 @@ def _scan_selection(
         "clean": not (counts["excluded_training_records"] or counts["quarantined_source_families"]),
     }
     if extra_rows is not None:
-        receipt["candidate_dedup_projection"] = _candidate_projection(training, report)
-    return receipt
+        survivors, excluded_count = _surviving_rows(training, report)
+        receipt["candidate_dedup_projection"] = _summarize_survivors(
+            survivors, len(training), excluded_count,
+        )
+        return receipt, survivors
+    return receipt, []
 
 
 def _load_cpython_rows(root: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:

@@ -1,9 +1,43 @@
 # Plan 2 Section 16 source admission checkpoint
 
-Section 16 remains **OPEN**. This checkpoint verifies only the five physical
-S15 source identities, their source-level license evidence, G06 privacy
-execution and DATA232 comparison with the pinned synthetic evaluation fixture.
-It does not admit a production S3–S9 corpus.
+The physical corpus builder replays the verified sources and the two reserved
+evaluation sets, applies the S3–S9 gates, and writes an immutable training
+partition and manifest. The earlier source and reservation checkpoints are
+preserved below for reproducibility.
+
+## Build the physical training partition
+
+Use the input paths in the candidate replay command below, replacing the
+module with `tools.plan2_s16_corpus_admission_v1` and selecting a new local
+`--out-dir`. The builder verifies source bytes and terms, uses the pinned
+source-specific normalized derivatives, applies the canonical privacy filter,
+and retains only the global exact and near duplicate representatives. It
+compares the resulting source pool against both reserved evaluation sets
+before allocating any training records.
+
+The physical mixture adopts 45% Ukrainian, 35% English and 20% code by UTF-8
+bytes, with up to two percentage points of whole-record deviation. Each
+stratum requires at least two independent families. A source family may
+contribute up to 25% of the corpus and 60% of its stratum. The allocation
+leaves headroom for whole-record rounding, then verifies the actual bytes
+against those caps. The size follows the measured source supply.
+
+The manifest binds the train partition's bytes and selected source terms.
+It records only metadata for evaluation custody. Separate Slovak, Czech,
+math and science evaluation coverage and executable code evaluation remain
+unknown. Section 17 measures tokenizer tokens and builds deterministic
+shards. Section 18 controls redistribution and the Plan 9 handoff.
+
+Two independent processes reproduced the same physical partition and
+[manifest](../evidence/plan2_s16/physical_corpus_manifest_v1.json). The partition
+contains 22,852 unique records across seven source families. It includes
+3,111,294 Ukrainian bytes, 2,419,445 English bytes, and 1,381,855 code bytes.
+The manifest identity is
+`d24a9b3733b90a109f69f1f0ef2db1818babc3c452c10b4ae764fc1a60141966`.
+The training JSONL SHA-256 is
+`97b8dd4ae253a27110e265ae893591824911fd8a31c710a2fd4c36e67d858a21`.
+
+## Earlier source evidence
 
 `tools/plan2_s16_source_rights_privacy_v1.py` rereads the committed source
 bytes and existing S1/S2/S15/G06/DATA232 authorities. It binds their source,
@@ -19,14 +53,6 @@ Ukrainian documentation families. Its original DATA-232 comparison uses a
 synthetic fixture. The checkpoints below add real evaluation custody and
 separately verified source candidates. UA-GEC remains outside the cohort:
 contributor, translation, privacy and evaluation rights are unresolved.
-
-To close Section 16, independently verify actual source-specific copyright,
-license and attribution terms; execute privacy and exact/near decontamination
-over the proposed physical UA/EN cohorts; reserve non-overlapping family-safe
-validation and test sources for both languages; approve and measure the
-production language balance; then pass the native S3–S9 admission, negative
-tests and exact-head CI on the canonical PR. Candidate-only receipts must
-never be renamed or re-signed as production admission.
 
 ## Independently reserved real UA/EN evaluation is already available
 
@@ -107,9 +133,7 @@ The measured language shares are about 42% Ukrainian and 58% English by
 UTF-8 bytes. About 97% of the Ukrainian bytes come from a single source
 family. This cohort has no separately measured code stratum. These are
 candidate measurements; they do not satisfy a production balance gate.
-Native S3–S9 admission, with independently bound production composition and
-release terms for the exact surviving cohort, is still missing. Section 16
-is **OPEN**, and Sections 17 and 18 remain dependent on it.
+This comparison predates the physical admission builder above.
 
 ## Reproduce the larger candidate with a second Ukrainian source and code
 
@@ -148,6 +172,6 @@ has SHA-256 `027f815795a3f6d8374bfbc95a41ca813d469faf6fc877178cb6edcc69b05650`.
 For comparison only, the existing historical 20M policy permits at most
 6,915,900 of those bytes at its required ratios and family caps, before
 selecting whole documents. That is below its 20,000,000-byte target. The
-preview does not create a Plan 2 production policy, allocate training
-examples, or admit a corpus. Independent release terms and native S3–S9
-admission still need to bind the actual production mixture.
+preview measures source capacity for the earlier experiment. The physical
+builder applies the ratios and caps to whole records and checks the resulting
+mixture against the actual selected bytes.
