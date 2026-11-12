@@ -11,9 +11,10 @@ import json
 import re
 import secrets
 import threading
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -309,7 +310,7 @@ class ModelService:
                 return {"schema": SCHEMA, "ok": False,
                         "error": {"code": "INFERENCE_REJECTED",
                                   "message": "canonical inference admission rejected"}}
-            except Exception:
+            except Exception:  # noqa: BLE001 - unhandled backend failures invalidate the service
                 self._status = "FAULTED"
                 self._sessions.clear()
                 return {"schema": SCHEMA, "ok": False,
@@ -345,6 +346,19 @@ def serve_loopback(service: ModelService, *, bearer_token: str) -> ThreadingHTTP
     """Return an unstarted loopback HTTP server; caller controls its lifecycle."""
     if not isinstance(service, ModelService):
         raise ServiceError("INVALID_REQUEST", "service required")
+    return _serve_json_loopback(
+        "/v1/dispatch", lambda request: (200, service.dispatch(request)),
+        bearer_token=bearer_token,
+    )
+
+
+def _serve_json_loopback(
+    path: str,
+    dispatch: Callable[[object], tuple[int, object]],
+    *,
+    bearer_token: str,
+) -> ThreadingHTTPServer:
+    """Reuse the exact local JSON transport for a separate protocol endpoint."""
     if type(bearer_token) is not str or len(bearer_token) < 16:
         raise ServiceError("INVALID_REQUEST", "strong bearer token required")
 
@@ -363,7 +377,7 @@ def serve_loopback(service: ModelService, *, bearer_token: str) -> ThreadingHTTP
             self.wfile.write(blob)
 
         def do_POST(self) -> None:
-            if self.path != "/v1/dispatch":
+            if self.path != path:
                 self._send(404, {"error": "unknown endpoint"})
                 return
             if not hmac.compare_digest(
@@ -384,7 +398,7 @@ def serve_loopback(service: ModelService, *, bearer_token: str) -> ThreadingHTTP
             except (UnicodeError, ValueError, json.JSONDecodeError):
                 self._send(400, {"error": "invalid JSON request"})
                 return
-            self._send(200, service.dispatch(request))
+            self._send(*dispatch(request))
 
     return ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 
