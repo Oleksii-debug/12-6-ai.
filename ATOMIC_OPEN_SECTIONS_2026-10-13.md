@@ -140,9 +140,9 @@
 | 8А | Q0 component/contract, Q1 SIL, Q2 HIL, Q3 supervised physical operator/NVDA, Q4 field/canary evidence. | Статус: DONE — accepted main, PR #3246 |
 | 8Б | Кожна capability декларує потрібний evidence level; simulation не підміняє physical requirement. | Статус: DONE — accepted main, PR #3246 |
 | 8В | Promotion policy invalidates stale evidence після behavior-changing mutation. | Статус: DONE — accepted main, PR #3246 |
-| 9А | Стандартизувати defect packet, test receipt, candidate freeze, repair parent, retest і promotion records. | Статус: OPEN |
-| 9Б | Deduplicate repeated same defect і зберігати causality across retries/workers. | Статус: OPEN |
-| 9В | Evidence artifacts мають hashes/retention/provenance. | Статус: OPEN |
+| 9А | Стандартизувати defect packet, test receipt, candidate freeze, repair parent, retest і promotion records. | Статус: DONE — accepted main, PR #3247 |
+| 9Б | Deduplicate repeated same defect і зберігати causality across retries/workers. | Статус: DONE — accepted main, PR #3247 |
+| 9В | Evidence artifacts мають hashes/retention/provenance. | Статус: DONE — accepted main, PR #3247 |
 | 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: OPEN |
 | 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: OPEN |
 | 10В | DONE тільки після post-merge exact readback. | Статус: OPEN |
