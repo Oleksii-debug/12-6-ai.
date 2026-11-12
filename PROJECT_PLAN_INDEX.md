@@ -2,7 +2,7 @@
 
 **Plan 2 is terminal DONE, 18/18 Sections (2026-11-12).** Sections 16, 17 and 18 were integrated through [#3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229), [#3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) and [#3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236). The accepted local Plan 9 data release is pinned in [the release authority](evidence/plan2_s18/release_authority_v1.json) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Google Docs remains the plan specification. Its status mirror is read-only through the connected account. Earlier counts remain historical snapshots.
 
-**Plan 3 has 12 Sections, 3/12 DONE (2026-11-12).** Section 1 closed through [#3098](https://github.com/Oleksii-debug/12-6-ai./pull/3098), Section 2 through [#3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), and Section 3 through [#3234](https://github.com/Oleksii-debug/12-6-ai./pull/3234). Section 4 is the next open section. The numbered Drive plan continues to define acceptance.
+**Plan 3 has 12 Sections, 4/12 DONE (2026-11-12).** Section 1 closed through [#3098](https://github.com/Oleksii-debug/12-6-ai./pull/3098), Section 2 through [#3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), Section 3 through [#3234](https://github.com/Oleksii-debug/12-6-ai./pull/3234), and Section 4 through [#3238](https://github.com/Oleksii-debug/12-6-ai./pull/3238). Section 5 is the next open section. The numbered Drive plan continues to define acceptance.
 
 # 12-6 AI — Canonical Multi-Plan Index
 

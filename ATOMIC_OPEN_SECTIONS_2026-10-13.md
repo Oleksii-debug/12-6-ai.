@@ -82,9 +82,9 @@
 | 3А | Визначити versioned optimizer/scheduler/batch/accumulation/precision/clipping/regularization/budget semantics. | Статус: DONE — accepted main, PR #3234 |
 | 3Б | Recipe не залежить від конкретного compute provider; provider може змінити execution, але не scientific meaning. | Статус: DONE — accepted main, PR #3234 |
 | 3В | Зберігати exact recipe hash у run/checkpoint manifests. | Статус: DONE — accepted main, PR #3234 |
-| 4А | Реалізувати optimizer/scheduler із deterministic step semantics і warmup/decay policy. | Статус: OPEN |
-| 4Б | Виявляти NaN/Inf/overflow/divergence, bounded recovery і fail-closed corruption handling. | Статус: OPEN |
-| 4В | Кваліфікувати mixed precision/gradient scaling там, де підтримується. | Статус: OPEN |
+| 4А | Реалізувати optimizer/scheduler із deterministic step semantics і warmup/decay policy. | Статус: DONE — accepted main, PR #3238 |
+| 4Б | Виявляти NaN/Inf/overflow/divergence, bounded recovery і fail-closed corruption handling. | Статус: DONE — accepted main, PR #3238 |
+| 4В | Кваліфікувати mixed precision/gradient scaling там, де підтримується. | Статус: DONE — accepted main, PR #3238 |
 | 5А | Визначити PREPARED/RUNNING/PAUSED/STOPPED/FAILED/COMPLETED та control epochs. | Статус: OPEN |
 | 5Б | Заборонити одночасні writers одного run identity або duplicate optimizer advancement. | Статус: OPEN |
 | 5В | Pause/Stop/restart мають deterministic durable receipts. | Статус: OPEN |
