@@ -682,6 +682,10 @@ jobs:
         run: |
           ruff check tools/plan2_s17_*.py tests/test_plan2_s17_*.py
           PYTHONPATH=src:. pytest -q tests/test_plan2_s17_*.py
+      - name: Check S18 release authority and integrity safeguards
+        run: |
+          ruff check tools/plan2_s18_*.py tests/test_plan2_s18_physical_release_v1.py tests/test_w5_s18_final_inventory_recheck.py
+          PYTHONPATH=src:. pytest -q tests/test_plan2_s18_physical_release_v1.py tests/test_w5_s18_final_inventory_recheck.py
       - name: Emit hash-only source and reserved evaluation proof without release
         shell: bash
         run: |
