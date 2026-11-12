@@ -143,9 +143,9 @@
 | 9А | Стандартизувати defect packet, test receipt, candidate freeze, repair parent, retest і promotion records. | Статус: DONE — accepted main, PR #3247 |
 | 9Б | Deduplicate repeated same defect і зберігати causality across retries/workers. | Статус: DONE — accepted main, PR #3247 |
 | 9В | Evidence artifacts мають hashes/retention/provenance. | Статус: DONE — accepted main, PR #3247 |
-| 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: OPEN |
-| 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: OPEN |
-| 10В | DONE тільки після post-merge exact readback. | Статус: OPEN |
+| 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: DONE — accepted main, PR #3249 |
+| 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: DONE — accepted main, PR #3249 |
+| 10В | DONE тільки після post-merge exact readback. | Статус: DONE — accepted main, PR #3249 |
 | 11А | Пройти SIL→defect→repair→retest, physical agent simulation/proxy, chaos та evidence-lifecycle campaigns. | Статус: OPEN |
 | 11Б | Підтвердити integration із repositories/artifacts без залежності від actual production champion. | Статус: OPEN |
 | 11В | Зафіксувати terminal Qualification Fabric release. | Статус: OPEN |
