@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-13 PLAN 8 SECTION 10 DONE
+
+- **Plan 8 Section 10A–C DONE. 10/11 complete sections.** [PR #3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) accepted at main `65986e78989d13430dbc32590919d014ad0a9372`. Complete tree `93a72aa8497a8bf4f2eccdfd559a51f086550a29` matches frozen head `6479b2081a5b4b27d29d5b9a8086cc1ca5a4d81a`, GitHub preview and all five changed blobs.
+- **10A DONE.** The verifier freezes the clean checkout, exact commit, tree, ownership scope and dependencies. Git settings cannot hide changed submodule entries.
+- **10B DONE.** It validates the expected head and the predicted merge topology and tree against current main before a guarded integration.
+- **10C DONE.** The verifier read the actual accepted main ref and checked exact ancestry and tree. The new API independently verified its own PR integration. Accepted receipt SHA-256 `f6df4ca0d58c4f6a82cbac3d4a99b10872e12e4392d0af9c0904c2e806403d25`.
+- The exact local suite passed 172 tests, Ruff and both inventories. Three unchanged Windows SIL fixture failures reproduced at the accepted base and were excluded from the platform selection. Accepted main passed 15 focused tests. Hosted Actions remained queued. Section 11 is next.
+
 # 2026-11-13 PLAN 3 SECTION 11 DONE
 
 - **Plan 3 Section 11A–C DONE. 10/12 complete sections.** [PR #3248](https://github.com/Oleksii-debug/12-6-ai./pull/3248) accepted at main `31a32b44940ba12205278b01c0c9f3c41d9c45da`. Complete tree `159a9d80508061ba62df64cadbebe5dbb3d56641` matches frozen head `a7ff3592ecb134f10755880f505828a2bb347947`.
