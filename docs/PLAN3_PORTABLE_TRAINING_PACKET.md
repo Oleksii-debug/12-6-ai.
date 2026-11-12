@@ -32,3 +32,21 @@ measurements are separate acceptance requirements.
 Portable training operations in the same process are exclusive because the
 trainer configures process-wide random generators. Use separate processes for
 concurrent independent runs.
+
+Before allocating model weights, the native runner checks observed available
+memory and free space on the actual checkpoint volume. It uses the current
+FP32-parameter AdamW and native save path to calculate lower bounds. The save
+holds live weights and optimizer moments while making two moment copies. The
+serialized checkpoint stores both names of a tied embedding. The runner
+retains its checkpoints and checks space for the remaining publications and
+any initial checkpoint. During recovery the writer verifies a pending
+checkpoint before counting it as published. These are admission floors. Peak
+RAM, sustained throughput, SSD wear and long-run feasibility require separate
+measurements.
+
+The resource observations and admission result sit outside the scientific
+packet. `benchmark_optimizer_boundary` measures one bounded optimizer update,
+native checkpoint publication and verified reload. It reports separate
+optimizer-only and optimizer-plus-checkpoint time projections for the same
+fixture. Checkpoint throughput includes serialization, verification and durable
+publication.
