@@ -86,6 +86,111 @@ def test_selection_scan_refuses_missing_resolver_inputs(tmp_path):
         _scan_selection(ROOT, {}, (tmp_path / "missing",) * 4)
 
 
+def test_cpython_extension_requires_selection_evidence():
+    with pytest.raises(IndependentEvalDenied, match="requires the frozen selection inputs"):
+        inspect(ROOT, include_cpython=True)
+
+
+def test_cpython_extension_denies_changed_license_before_loading_text(monkeypatch):
+    monkeypatch.setattr(binding.cpython, "fetch_exact", lambda _url: b"changed license")
+
+    def should_not_load(_authority):
+        pytest.fail("source text loaded before the license was verified")
+
+    monkeypatch.setattr(binding.cpython, "verified_accepted_texts", should_not_load)
+    with pytest.raises(IndependentEvalDenied, match="license bytes differ"):
+        binding._load_cpython_rows(ROOT)
+
+
+def test_franko_extension_requires_verified_cpython(tmp_path):
+    candidate = tmp_path / "unread-candidate.jsonl"
+    out = tmp_path / "no-receipt"
+    with pytest.raises(IndependentEvalDenied, match="requires.*CPython"):
+        stage(ROOT, out, franko_candidate=candidate)
+    assert not out.exists()
+
+
+def test_arxiv_extension_denies_unbound_payload(tmp_path, monkeypatch):
+    candidate = tmp_path / "arxiv-candidate.jsonl"
+    candidate.write_bytes(b'{"text":"changed candidate"}\n')
+    monkeypatch.setattr(binding.arxiv_rights, "validate_repository_bindings", lambda *_: None)
+
+    def should_not_screen(*_):
+        pytest.fail("candidate accepted for privacy scan without matching its rights-bound digest")
+
+    monkeypatch.setattr(binding, "_privacy_screen", should_not_screen)
+    with pytest.raises(IndependentEvalDenied, match="arXiv source or rights verification denied") as error:
+        binding._load_arxiv_rows(ROOT, candidate)
+    assert "candidate SHA drift" in str(error.value.__cause__)
+
+
+@pytest.mark.parametrize("sidecar", ["LICENSE.cc0.txt", "ATTRIBUTION.txt"])
+def test_franko_denies_invalid_rights_sidecar_before_candidate_read(tmp_path, monkeypatch, sidecar):
+    (tmp_path / "LICENSE.cc0.txt").write_bytes(b"invalid license")
+    (tmp_path / "ATTRIBUTION.txt").write_bytes(b"invalid attribution")
+    if sidecar == "ATTRIBUTION.txt":
+        monkeypatch.setattr(binding.franko_materializer, "validate_license_bytes", lambda *_: {})
+
+    def should_not_project(*_):
+        pytest.fail("candidate loaded before rights sidecars were verified")
+
+    monkeypatch.setattr(binding.franko, "validate_and_project_franko", should_not_project)
+    with pytest.raises(IndependentEvalDenied, match="source or rights verification denied"):
+        binding._load_franko_rows(ROOT, tmp_path / "unread-candidate.jsonl")
+
+
+def test_candidate_projection_removes_transitive_duplicates_and_reserved_exclusions():
+    rows = [
+        {"record_id": label, "source_id": label, "source_family": family,
+         "modality": "en", "text": "x" * size}
+        for label, family, size in [
+            ("a", "short", 11), ("b", "long", 40), ("c", "medium", 20), ("d", "reserved", 80),
+        ]
+    ]
+    matches = [
+        {"train_record_id_sha256": binding._sha_text(a),
+         "peer_record_id_sha256": binding._sha_text(b)}
+        for a, b in [("a", "c"), ("c", "b")]
+    ]
+    excluded = [{"record_id_sha256": binding._sha_text("d")}]
+    report = {"match_evidence": matches, "excluded_records": excluded}
+    result = binding._candidate_projection(rows, report)
+    assert result["surviving_utf8_bytes_by_family_and_modality"] == {"long": {"en": 40}}
+    assert result["surviving_records"] == result["excluded_for_reserved_sets"] == 1
+    assert result["removed_as_training_duplicates"] == 2
+    assert not result["production_admission"]
+    assert result == binding._candidate_projection(rows[::-1], {**report, "match_evidence": matches[::-1]})
+
+
+def test_extended_training_corpus_checks_final_reserve(monkeypatch):
+    text = "one two three four five six seven eight nine ten eleven twelve"
+    copied = {
+        "record_id": "extra", "source_id": "extra-source", "source_family": "extra-family",
+        "modality": "en", "text": text,
+    }
+    validation = dict(copied, record_id="val", source_id="val-source", source_family="val-family",
+                      text="red orange blue yellow violet crimson gold green")
+    final = dict(copied, record_id="final", source_id="final-source", source_family="final-family")
+    authority = {
+        "authority_id": "eval303-selection-validation", "role": "selection_validation",
+        "source_sha": binding.eval303.EVAL303_TERMINAL_SOURCE_SHA,
+        "identity_sha256": binding.SELECTION_IDENTITY,
+    }
+    monkeypatch.setattr(binding, "_training_rows", lambda *_: [])
+    monkeypatch.setattr(
+        binding.eval303, "resolve_eval303_selection_payloads_from_reconstructed",
+        lambda **_: ([validation], authority, {"resolver_identity_sha256": "2" * 64}),
+    )
+    result = _scan_selection(
+        ROOT, {"source_members_sha256": "1" * 64}, (Path("unused"),) * 4,
+        extra_rows=[copied], final_rows=[final],
+    )
+    assert result["clean"] is False
+    assert result["excluded_training_documents"] == 1
+    assert result["quarantined_training_families"] == 1
+    assert text not in json.dumps(result)
+
+
 def test_exact_real_ua_en_independent_heldout_family_authorities(evidence: dict):
     assert evidence["role_language_records"] == {
         "train": {"uk": 12, "en": 3},
