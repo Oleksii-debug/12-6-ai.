@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-13 PLAN 3 SECTIONS 10B AND 10C DONE
+
+- **Plan 3 Section 10B–C DONE. Section 10A remains OPEN. 9/12 complete sections.** [PR #3245](https://github.com/Oleksii-debug/12-6-ai./pull/3245) accepted at main `cabd9b0a1de4f01480823dd13f1096436a2abd92`. Complete tree `4b7895842ebe8dc75fb093ba0d3b8d14a68fb446` matches frozen candidate `4f6068e71f74d25b693f7ebf90fbd0814e08797a`.
+- **10B DONE.** Native admission checks available memory and the actual checkpoint volume before allocating model weights. The current unpruned publication policy accounts for both copies of tied weights written by the serializer and verifies pending recovery under the writer lock before discounting a durable update.
+- **10C DONE.** Host measurements and resource verdicts remain outside the canonical scientific packet. The local tests verify invariant recipe and run identity across resource observations.
+- **10A OPEN.** The exact seven-profile capacity receipt `e95c48008dc49fd8d09d6c36255497db60d411bcfabdfa527e48f139e3ee325c` sampled 4,311,736,320 available RAM bytes and 10,686,054,400 free checkpoint-volume bytes. Available RAM ruled out 500M, and available RAM plus disk ruled out 750M through 5B. A separate 920-parameter synthetic fixture measured one native optimizer boundary and checkpoint write/reload. Full-profile peak RAM, sustained throughput/throttling, SSD wear and full-profile restart still require a capable selected host.
+- Broad local qualification recorded 216 passes and four platform skips. The one Plan 8 package integrity failure on the Windows CRLF checkout passed on a Git-byte checkout. Exact candidate and accepted main passed 31 and 17 targeted tests respectively. Ruff passed and hosted Actions remained queued.
+
 # 2026-11-12 PLAN 8 SECTION 8 DONE
 
 - **Plan 8 Section 8A–C DONE. 8/11 sections complete.** [PR #3246](https://github.com/Oleksii-debug/12-6-ai./pull/3246) accepted at main `4f70e91615913dfc8ce4cb4b39faea27e752a8a9`. Complete tree `05177f367e56423c39c0ce746d8a4ce6b6576a5a` matches frozen head `233a37336daf1cbffd7438ff75b3cd1ed848fa6e`, including all six changed blobs.
