@@ -175,12 +175,12 @@ def verify(root: Path, expected_manifest_sha256: str) -> dict[str, Any]:
                  "invalid member digest")
     def _check_inventory() -> None:
         observed: set[str] = set()
-        visited_directories = 0
         permitted_directories = {"/".join(name.split("/")[:i])
                                  for name in members
                                  for i in range(1, len(name.split("/")))}
-        for directory, dirs, files in os.walk(root, topdown=True, followlinks=False):
-            visited_directories += 1
+        for visited_directories, (directory, dirs, files) in enumerate(
+            os.walk(root, topdown=True, followlinks=False), start=1,
+        ):
             _require(visited_directories <= MAX_MEMBERS + 1, "oversized directory inventory")
             parent = Path(directory)
             for name in dirs:

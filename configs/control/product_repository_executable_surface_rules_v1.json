@@ -274,7 +274,167 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan2_s15_d03_normalized_materialization_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_d03_physical_sources_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_five_source_rights_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_git_clean_checkout_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_s15_physical_book_split_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_exposure_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_heldout_decontam_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_packing_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_readback_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_physical_tokenizer_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_plan34_compatibility_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_plan9_handoff_preflight_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_real_32k_bpe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_real_eval233_decontamination_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_mixture_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_physical_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_split_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_bpe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_exposure_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_materialization_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s15_three_family_train_packing_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_structural_preflight_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_independent_eval_binding_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_physical_split_gate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_source_rights_privacy_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_ua_gec_candidate_contract_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_ua_gec_tree_probe_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/materialize_next100_037_python_docs_accepted_chunks.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_corpus_admission_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s16_multimodal_candidate_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_clean_rebuild_witness_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_exposure_stream_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_frozen_tokenizer_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_physical_bundle_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_reserved_roles_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s17_train_packing_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_physical_release_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_plan9_consumer_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_release_integrity_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_release_readback_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
+      "path": "tools/plan2_s18_source_notices_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
     {
