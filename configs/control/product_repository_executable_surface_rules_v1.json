@@ -438,6 +438,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan9_scale500m_launch_preparation_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan2_source_admissibility_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
