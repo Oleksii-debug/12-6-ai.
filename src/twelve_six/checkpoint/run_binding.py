@@ -104,6 +104,9 @@ def bind_checkpoint_identity(
         bound_training.update(recipe_fields)
         if recipe.sequence_length != packing_identity.get("sequence_length"):
             raise CheckpointCompatibilityError("training recipe disagrees with packing sequence length")
+        model_context = model_spec.get("max_seq_len")
+        if type(model_context) is not int or model_context < recipe.sequence_length:
+            raise CheckpointCompatibilityError("training recipe exceeds ModelSpec sequence length")
         if step > recipe.trainer.max_steps or tokens_seen > recipe.maximum_total_exposures:
             raise CheckpointCompatibilityError("checkpoint exceeds the frozen training recipe budget")
 

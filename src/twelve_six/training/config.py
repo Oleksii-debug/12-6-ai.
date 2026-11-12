@@ -161,6 +161,9 @@ class TrainingRecipe:
             },
             "scheduler": {"name": config.scheduler, "warmup_steps": config.warmup_steps},
             "context_length": self.sequence_length,
+            "global_batch_tokens": (
+                self.microbatch_size * self.sequence_length * config.gradient_accumulation_steps
+            ),
             "target_steps": config.max_steps,
             "target_tokens": self.maximum_total_exposures,
         }

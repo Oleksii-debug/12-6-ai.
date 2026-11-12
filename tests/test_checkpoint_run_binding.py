@@ -196,7 +196,9 @@ def test_recipe_digest_survives_checkpoint_write_and_readback(tmp_path) -> None:
     assert saved["recipe_sha256"] == recipe.identity_sha256()
 
 
-@pytest.mark.parametrize("key", ["recipe", "recipe_sha256", "optimizer", "precision"])
+@pytest.mark.parametrize(
+    "key", ["recipe", "recipe_sha256", "optimizer", "precision", "global_batch_tokens"]
+)
 def test_missing_or_replaced_recipe_binding_is_rejected(key) -> None:
     manifest = run_manifest()
     manifest["training"].update(frozen_recipe().run_training_fields())
@@ -217,6 +219,22 @@ def test_recipe_rejects_over_budget_checkpoint_and_packing_drift() -> None:
     manifest["training"].update(smaller_budget.run_training_fields())
     with pytest.raises(CheckpointCompatibilityError, match="recipe budget"):
         bind(manifest)
+
+
+def test_recipe_context_cannot_exceed_the_model() -> None:
+    manifest = run_manifest()
+    recipe = replace(frozen_recipe(), sequence_length=256)
+    manifest["training"].update(recipe.run_training_fields())
+    with pytest.raises(CheckpointCompatibilityError, match="ModelSpec sequence length"):
+        bind_checkpoint_identity(
+            run_manifest=manifest,
+            model_spec=model_spec(),
+            init_spec=init_spec(),
+            tokenizer_identity=tokenizer_identity(),
+            packing_identity={**packing_identity(), "sequence_length": 256},
+            step=0,
+            tokens_seen=0,
+        )
 
 
 def test_recipe_wire_schema_rejects_provider_fields_and_invalid_budget() -> None:
