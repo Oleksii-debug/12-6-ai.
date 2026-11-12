@@ -18,6 +18,7 @@ _CLI = _ROOT / "tools" / "plan8_evidence_bridge.py"
 def _invoke(*args: str) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_ROOT / "src")
+    env["PYTHONSAFEPATH"] = "1"
     return subprocess.run(
         [sys.executable, str(_CLI), *args],
         cwd=_ROOT, env=env, text=True,

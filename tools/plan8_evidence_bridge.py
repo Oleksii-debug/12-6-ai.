@@ -11,9 +11,7 @@ import json
 import os
 import sys
 from pathlib import Path
-
-from plan8_physical_operator import _public_key_verifier
-from plan8_physical_operator import main as physical_operator
+from runpy import run_path
 
 from twelve_six.evidence_control_bridge import (
     bridge_status,
@@ -27,6 +25,11 @@ from twelve_six.evidence_control_bridge import (
     stop_bridge_dispatch,
 )
 from twelve_six.physical_qualification import inventory_host, load_verified_signed_packet
+
+# Load the companion from this checkout without broadening the safe import path.
+_physical_tool = run_path(str(Path(__file__).resolve().with_name("plan8_physical_operator.py")))
+_public_key_verifier = _physical_tool["_public_key_verifier"]
+physical_operator = _physical_tool["main"]
 
 
 def _emit(payload: dict[str, object]) -> None:
