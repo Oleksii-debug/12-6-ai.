@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..checkpoint import (
+    CheckpointError,
     CheckpointIdentity,
     hash_json,
     load_trainer_checkpoint,
@@ -210,7 +211,7 @@ class RunController:
             fsync_parent_directory(self.namespace)
             fsync_parent_directory(path.parent)
             if path.exists() or path.is_symlink():
-                manifest = verify_checkpoint(path)
+                manifest = self._verify_recovery_checkpoint(path)
                 if exposure_cursor is None and checkpoint_transaction(manifest) is None:
                     initial = identity
                     schema = None
@@ -321,6 +322,13 @@ class RunController:
         fsync_parent_directory(path)
         return manifest["checkpoint_id"]
 
+    def _verify_recovery_checkpoint(self, path: Path) -> dict[str, Any]:
+        try:
+            return verify_checkpoint(path)
+        except CheckpointError as exc:
+            exc.add_note(f"Run {self.run_sha256} cannot verify recovery checkpoint {path}.")
+            raise
+
     def _pending_checkpoint(
         self,
         root: Path,
@@ -333,7 +341,7 @@ class RunController:
         if not path.exists() and not path.is_symlink():
             return None
         expected = replace(identity, step=current.pending_step, tokens_seen=current.pending_tokens)
-        manifest = verify_checkpoint(path)
+        manifest = self._verify_recovery_checkpoint(path)
         transaction = checkpoint_transaction(manifest)
         if current.pending_cursor_sha256 is not None:
             _need(
@@ -362,15 +370,22 @@ class RunController:
         step: int,
         tokens: int,
     ) -> CheckpointTransaction | None:
-        loaded = load_trainer_checkpoint(
-            path,
-            model=trainer.model,
-            trainer=trainer,
-            expected_checkpoint_id=checkpoint_id,
-            expected_run_manifest_hash=self.run_sha256,
-            expected_step=step,
-            expected_tokens_seen=tokens,
-        )
+        try:
+            loaded = load_trainer_checkpoint(
+                path,
+                model=trainer.model,
+                trainer=trainer,
+                expected_checkpoint_id=checkpoint_id,
+                expected_run_manifest_hash=self.run_sha256,
+                expected_step=step,
+                expected_tokens_seen=tokens,
+            )
+        except CheckpointError as exc:
+            exc.add_note(
+                f"Run {self.run_sha256} requires checkpoint {checkpoint_id} at {path} "
+                f"for step {step}. Restore the exact verified checkpoint before retrying."
+            )
+            raise
         return checkpoint_transaction(loaded.manifest)
 
     def _settle_boundary(
@@ -504,7 +519,16 @@ class RunController:
                 ):
                     _need(restored is not None, "verified checkpoint has no exposure cursor")
                     assert restored is not None
-                    restore_exposure_cursor(restored.exposure_cursor)
+                    try:
+                        restore_exposure_cursor(restored.exposure_cursor)
+                    except Exception as exc:
+                        exc.add_note(
+                            f"Run {self.run_sha256} could not restore exposure cursor "
+                            f"{restored.exposure_cursor_sha256} from checkpoint "
+                            f"{current.checkpoint_id} at step {current.committed_step}. "
+                            "Restore the source data bound to this cursor before retrying."
+                        )
+                        raise
                 return self._advance(
                     root,
                     connection,
