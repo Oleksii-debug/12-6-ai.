@@ -9,6 +9,13 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 2 TERMINAL DONE
+
+- **Plan 2: 18/18 DONE.** Section 18A–C integrated through [PR #3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Accepted tree `9a907f3944c9b79c77108b6a2bd5b19d56e0160a` matches tested head `e3b5a3f5bcc50adcd5e4f27e1af6d56f9363ceb3`.
+- The [local Plan 9 data release](evidence/plan2_s18/release_authority_v1.json) was reproduced twice and reopened from accepted main. SHA-256 `883f0e3949b7a64a07bcc1236bf7aaf86ed5d84deba4c5aa60d2bfcb83c21ad2` pins 2,264 files, including the original tokenizer, the training shards, exposure ledger and source notices. The real Plan 9 consumer read the shard stream and passed the aligned loss check. A fresh Plan 4 reference inference probe passed with the same vocabulary.
+- Local qualification passed 54 focused tests and Ruff. Hosted Actions remained queued without a runner. Google Docs denied the status mirror update with HTTP 403. This GitHub registry, index and section map carry the accepted status.
+- The release is scoped to the local Plan 9 data handoff. Campaign authorization and learned checkpoint acceptance belong to Plan 9.
+
 # 2026-11-12 PLAN 2 SECTION 17 DONE
 
 - Plan 2 is **17/18 DONE**. Section 17A–C were integrated by [PR #3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) on main `613fede87d0da2fa051e51cd7041aacc796f7c9b`. The complete tree matches tested head `33b95a482266f9ed44afb39a209a700ae1ba83d3`.
