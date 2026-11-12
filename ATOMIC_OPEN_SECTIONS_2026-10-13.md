@@ -85,9 +85,9 @@
 | 4А | Реалізувати optimizer/scheduler із deterministic step semantics і warmup/decay policy. | Статус: DONE — accepted main, PR #3238 |
 | 4Б | Виявляти NaN/Inf/overflow/divergence, bounded recovery і fail-closed corruption handling. | Статус: DONE — accepted main, PR #3238 |
 | 4В | Кваліфікувати mixed precision/gradient scaling там, де підтримується. | Статус: DONE — accepted main, PR #3238 |
-| 5А | Визначити PREPARED/RUNNING/PAUSED/STOPPED/FAILED/COMPLETED та control epochs. | Статус: OPEN |
-| 5Б | Заборонити одночасні writers одного run identity або duplicate optimizer advancement. | Статус: OPEN |
-| 5В | Pause/Stop/restart мають deterministic durable receipts. | Статус: OPEN |
+| 5А | Визначити PREPARED/RUNNING/PAUSED/STOPPED/FAILED/COMPLETED та control epochs. | Статус: DONE — accepted main, PR #3239 |
+| 5Б | Заборонити одночасні writers одного run identity або duplicate optimizer advancement. | Статус: DONE — accepted main, PR #3239 |
+| 5В | Pause/Stop/restart мають deterministic durable receipts. | Статус: DONE — accepted main, PR #3239 |
 | 6А | Checkpoint містить model/optimizer/scheduler/RNG/exposure cursor/config/manifests із hashes і parent generation. | Статус: OPEN |
 | 6Б | Публікація create-only/atomic; partial/corrupt checkpoint не стає resumable authority. | Статус: OPEN |
 | 6В | Retention/GC не видаляє потрібний rollback parent. | Статус: OPEN |
