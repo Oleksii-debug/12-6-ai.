@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-13 PLAN 8 SECTION 9 DONE
+
+- **Plan 8 Section 9A–C DONE. 9/11 sections complete.** [PR #3247](https://github.com/Oleksii-debug/12-6-ai./pull/3247) accepted at main `986f33b063cd081e48c77e5dec9fb4de63a8af12`. Complete tree `c2021eeb8963a89baaad8fff1144995ff6e050ea` matches frozen head `2fe188bd0d772145d4c8681efcbd78706cfd28a9`. All five accepted path blobs matched.
+- **9A DONE.** The durable ledger links the exact observation, candidate freeze, retests and an independently evaluated promotion decision.
+- **9B DONE.** Stable defect identity deduplicates repeated observations while preserving worker and retry provenance. Two actual Windows processes converged on one durable record. Wrong causal parents and forged promotion readback were rejected.
+- **9C DONE.** Logical and raw artifact digests distinguish locally retained bytes from external references. Reopen verifies bytes, transaction rollback and an independent snapshot pin.
+- Exact remote-head qualification passed 245 tests, Ruff, whitespace and both inventories. Three Windows symlink cases were unavailable. Accepted main passed 11 focused tests. Hosted Actions remained queued. Section 10 is next.
+
 # 2026-11-13 PLAN 3 SECTIONS 10B AND 10C DONE
 
 - **Plan 3 Section 10B–C DONE. Section 10A remains OPEN. 9/12 complete sections.** [PR #3245](https://github.com/Oleksii-debug/12-6-ai./pull/3245) accepted at main `cabd9b0a1de4f01480823dd13f1096436a2abd92`. Complete tree `4b7895842ebe8dc75fb093ba0d3b8d14a68fb446` matches frozen candidate `4f6068e71f74d25b693f7ebf90fbd0814e08797a`.
