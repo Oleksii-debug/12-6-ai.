@@ -34,3 +34,22 @@ never be renamed or re-signed as production admission.
 ## Independently reserved real UA/EN evaluation is already available
 
 Existing EVAL-303 selection-validation contains **8 Ukrainian and 2 English** immutable, separately rights-approved records. Existing EVAL-233 final-test custody has **8 Ukrainian and 8 English** records with publisher-specific evaluation grants, training prohibition and final-test outcome isolation. Their source families are independent of the five real S15 training candidates, when those five are used as training-only. The older S15 document-split candidate has no UA heldouts and divides one Gutenberg family across roles; that candidate split is not the production membership definition. Reuse independent EVAL-303/EVAL-233 instead; do not expose heldout content or train the tokenizer on these. This fixes independent evaluation **availability** but does not admit S15 training candidates into S3–S9, prove production mixture balance or authorize final release.
+
+## Compare the candidate cohort with EVAL-303
+
+With the two byte-verified EVAL-290 reconstruction files and the two pinned
+EVAL-291 files, run the optional comparison from a repository checkout.
+
+```bash
+PYTHONPATH=src python -m tools.plan2_s16_independent_eval_binding_v1 --root . \
+  --out-dir /path/to/evidence \
+  --selection-reconstructed "$UA_JSONL" "$UA_MANIFEST" "$EN_JSONL" "$EN_AUTHORITY"
+```
+
+The command uses the incumbent EVAL-303 resolver and DATA-232 matcher. It
+emits the resolver/report hashes and aggregate counts in a separate immutable
+receipt. A changed reconstruction fails before publication. The observed scan
+compared 15 candidate documents with all 10 selection documents. It excluded
+zero candidates and quarantined zero source families. DATA-232 report SHA-256
+`168ccdca70a8d7a521108877d275be71289cdac1115a5120296583526fafe427`.
+The approved production balance and native S3–S9 admission are still required.

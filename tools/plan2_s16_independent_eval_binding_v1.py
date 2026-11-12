@@ -16,12 +16,16 @@ from typing import Any
 from tools import plan2_public_domain_books_v1 as books
 from tools import plan2_s15_real_eval233_decontamination_v1 as final_audit
 from tools import plan2_s15_three_family_physical_v1 as physical
+from tools import plan2_s15_three_family_split_probe_v1 as split_probe
 from tools import plan2_s16_source_rights_privacy_v1 as rights
 from tools.plan2_physical_materialization_v1 import _atomic_write, _read_destination
+from twelve_six.data import decontamination_authority_v2 as data232
 from twelve_six.data import eval233_final_test_resolver_v1 as eval233
+from twelve_six.data import eval303_selection_payload_resolver_v1 as eval303
 
 SCHEMA = "12-6.plan2-s16-independent-real-eval-binding.v1"
 OUTPUT = "independent-real-eval-binding.json"
+OUTPUT_WITH_SELECTION = "independent-real-eval-binding-with-selection-scan.json"
 SELECTION_CONFIG = "configs/evaluation/eval303_selection_validation_composite_v1.json"
 SELECTION_MEMBERS = "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
 SELECTION_GIT_BLOB = "c2e5b27bac541e55be2c807ea65b0e2ed77b7019"
@@ -167,7 +171,69 @@ def inspect_selection_rows(raw: bytes, config: dict[str, Any]) -> list[dict[str,
     return rows
 
 
-def inspect(root: Path) -> dict[str, Any]:
+def _scan_selection(
+    root: Path,
+    sources: dict[str, Any],
+    inputs: tuple[Path, Path, Path, Path],
+) -> dict[str, Any]:
+    ua_data, ua_manifest, en_data, en_authority = inputs
+    try:
+        evaluation, authority, evidence = eval303.resolve_eval303_selection_payloads_from_reconstructed(
+            eval290_data_jsonl=ua_data,
+            eval290_manifest_json=ua_manifest,
+            eval291_data_jsonl=en_data,
+            eval291_authority_json=en_authority,
+            eval303_membership_jsonl=root / SELECTION_MEMBERS,
+        )
+        by_id = {row["record_id"]: row for row in sources["source_members"]}
+        rejected = set(sources["g06_rejected_record_ids"])
+        training = [
+            {
+                **row,
+                "source_family": by_id[row["record_id"]]["source_family"],
+                "lineage_family": by_id[row["record_id"]]["document_family"],
+                "modality": by_id[row["record_id"]]["modality"],
+            }
+            for row in split_probe.physical_rows(root, sources)
+            if row["record_id"] not in rejected
+        ]
+        report = data232.build_report(
+            training,
+            evaluation,
+            training_corpus_identity=sources["source_members_sha256"],
+            selection_validation_identity=SELECTION_IDENTITY,
+            final_test_identity=eval233.DATA232_FINAL_TEST_ID,
+            authorities={
+                "schema": "12-6.data232-reserved-authorities.v1",
+                "authorities": [{key: authority[key] for key in (
+                    "authority_id", "identity_sha256", "role", "source_sha"
+                )}, {
+                    "authority_id": "eval233-final-test",
+                    "identity_sha256": eval233.DATA232_FINAL_TEST_ID,
+                    "role": "final_test",
+                    "source_sha": eval233.EVAL233_HEAD,
+                }],
+            },
+            quarantine_cross_source_families=True,
+        )
+        data232.verify_report(report)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise IndependentEvalDenied("EVAL-303 payload decontamination denied") from exc
+    counts = report["counts"]
+    return {
+        "selection_resolver_sha256": evidence["resolver_identity_sha256"],
+        "data232_report_sha256": report["report_sha256"],
+        "training_documents_compared": len(training),
+        "selection_documents_compared": len(evaluation),
+        "excluded_training_documents": counts["excluded_training_records"],
+        "quarantined_training_families": counts["quarantined_source_families"],
+        "clean": not (counts["excluded_training_records"] or counts["quarantined_source_families"]),
+    }
+
+
+def inspect(
+    root: Path, *, selection_inputs: tuple[Path, Path, Path, Path] | None = None
+) -> dict[str, Any]:
     root = root.resolve(strict=True)
     try:
         permissions = rights.inspect(root)
@@ -298,15 +364,24 @@ def inspect(root: Path) -> dict[str, Any]:
         "plan9_binding_authorized": False,
         "terminal_done": False,
     }
+    if selection_inputs is not None:
+        scan = _scan_selection(root, sources, selection_inputs)
+        core["train_selection_cross_source_near_decontamination_verified"] = scan["clean"]
+        core["selection_decontamination"] = scan
     return {**core, "manifest_sha256": books.sha(books.canonical(core))}
 
 
-def stage(root: Path, destination: Path) -> dict[str, Any]:
+def stage(
+    root: Path,
+    destination: Path,
+    *,
+    selection_inputs: tuple[Path, Path, Path, Path] | None = None,
+) -> dict[str, Any]:
     need(not any(p.is_symlink() for p in (destination, *destination.parents)),
          "unsafe independent evaluation destination")
-    report = inspect(root)
+    report = inspect(root, selection_inputs=selection_inputs)
     destination.mkdir(parents=True, exist_ok=True)
-    target = destination / OUTPUT
+    target = destination / (OUTPUT_WITH_SELECTION if selection_inputs is not None else OUTPUT)
     raw = books.canonical(report)
     if target.exists() or target.is_symlink():
         need(target.is_file() and not target.is_symlink()
@@ -322,9 +397,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--selection-reconstructed", type=Path, nargs=4,
+        metavar=("UA_JSONL", "UA_MANIFEST", "EN_JSONL", "EN_AUTHORITY"),
+        help="compare the original frozen selection documents in memory via DATA-232",
+    )
     args = parser.parse_args()
     try:
-        report = stage(args.root, args.out_dir)
+        inputs = tuple(args.selection_reconstructed) if args.selection_reconstructed else None
+        report = stage(args.root, args.out_dir, selection_inputs=inputs)
     except (OSError, ValueError) as exc:
         print(json.dumps({"decision": "DENIED", "reason": str(exc)}, sort_keys=True))
         return 2

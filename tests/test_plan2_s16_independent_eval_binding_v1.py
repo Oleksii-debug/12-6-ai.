@@ -8,11 +8,13 @@ from pathlib import Path
 import pytest
 
 from tools import plan2_public_domain_books_v1 as books
+from tools import plan2_s16_independent_eval_binding_v1 as binding
 from tools.plan2_s16_independent_eval_binding_v1 import (
     OUTPUT,
     SELECTION_CONFIG,
     SELECTION_MEMBERS,
     IndependentEvalDenied,
+    _scan_selection,
     inspect,
     inspect_selection_rows,
     stage,
@@ -42,6 +44,46 @@ def mutate_selection(mutator):
         for row in rows
     )
     return config, result
+
+
+@pytest.mark.parametrize("copied", [False, True])
+def test_selection_scan_reuses_matcher_and_retains_only_evidence(monkeypatch, copied):
+    source_text = "one two three four five six seven eight nine ten eleven twelve"
+    heldout_text = source_text if copied else "red orange blue yellow violet crimson gold green"
+    training = {"record_id": "train", "source_id": "train-src", "text": source_text}
+    evaluation = {
+        "record_id": "val", "source_id": "val-src", "source_family": "val-family",
+        "modality": "en", "text": heldout_text,
+    }
+    sources = {
+        "source_members": [{
+            "record_id": "train", "source_family": "train-family", "document_family": "train-doc",
+            "modality": "en",
+        }],
+        "source_members_sha256": "1" * 64,
+        "g06_rejected_record_ids": [],
+    }
+    authority = {
+        "authority_id": "eval303-selection-validation", "role": "selection_validation",
+        "source_sha": binding.eval303.EVAL303_TERMINAL_SOURCE_SHA,
+        "identity_sha256": binding.SELECTION_IDENTITY,
+    }
+    monkeypatch.setattr(binding.split_probe, "physical_rows", lambda *_: [training])
+    monkeypatch.setattr(
+        binding.eval303, "resolve_eval303_selection_payloads_from_reconstructed",
+        lambda **_: ([evaluation], authority, {"resolver_identity_sha256": "2" * 64}),
+    )
+    result = _scan_selection(ROOT, sources, (Path("unused"),) * 4)
+    assert result["clean"] is not copied
+    assert result["excluded_training_documents"] == int(copied)
+    assert result["training_documents_compared"] == result["selection_documents_compared"] == 1
+    assert "text" not in result
+    assert source_text not in json.dumps(result)
+
+
+def test_selection_scan_refuses_missing_resolver_inputs(tmp_path):
+    with pytest.raises(IndependentEvalDenied, match="EVAL-303 payload decontamination denied"):
+        _scan_selection(ROOT, {}, (tmp_path / "missing",) * 4)
 
 
 def test_exact_real_ua_en_independent_heldout_family_authorities(evidence: dict):
