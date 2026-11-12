@@ -94,9 +94,9 @@
 | 7А | Відновлення в новому process/machine має продовжувати exact next exposure та training state. | Статус: DONE — accepted main, PR #3242 |
 | 7Б | Порівняти uninterrupted vs stop/resume trajectories в deterministic режимі. | Статус: DONE — accepted main, PR #3242 |
 | 7В | Corrupt/missing dependency fail-closed із actionable diagnostics. | Статус: DONE — accepted main, PR #3242 |
-| 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: OPEN |
-| 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: OPEN |
-| 8В | Вести unique-loss ledger і audit counters. | Статус: OPEN |
+| 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: DONE — accepted main, PR #3243 |
+| 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: DONE — accepted main, PR #3243 |
+| 8В | Вести unique-loss ledger і audit counters. | Статус: DONE — accepted main, PR #3243 |
 | 9А | Пакетувати ModelSpec, recipe, tokenizer/shard contract refs, budget, checkpoint policy, commands та expected evidence в portable run packet; для qualification цього плану refs можуть бути fixture identities, а real tokenizer/shards підставляються в Плані 9. | Статус: OPEN |
 | 9Б | Один packet запускається local/free/server adapters без зміни scientific semantics. | Статус: OPEN |
 | 9В | Provider-specific settings зберігаються окремо від canonical run identity. | Статус: OPEN |
