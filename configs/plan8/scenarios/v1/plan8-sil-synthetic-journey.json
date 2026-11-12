@@ -1,0 +1,18 @@
+{
+  "capability_ids": [
+    "sil-synthetic-journey"
+  ],
+  "prerequisites": [
+    "sil-fixture-present"
+  ],
+  "required_level": "Q2",
+  "scenario_id": "plan8-sil-synthetic-journey",
+  "schema_version": "12-6.plan8-scenario.v1",
+  "steps": [
+    {
+      "adapter_id": "sil-journey",
+      "expected_sha256": "fa56aa0af95a5aa747c21950be9120a49b4ad1e51446a0895c8753c9d634e87d",
+      "step_id": "observe-fixture"
+    }
+  ]
+}
