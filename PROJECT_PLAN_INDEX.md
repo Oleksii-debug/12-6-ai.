@@ -2,7 +2,7 @@
 
 **Plan 2 is terminal DONE, 18/18 Sections (2026-11-12).** Sections 16, 17 and 18 were integrated through [#3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229), [#3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) and [#3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236). The accepted local Plan 9 data release is pinned in [the release authority](evidence/plan2_s18/release_authority_v1.json) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Google Docs remains the plan specification. Its status mirror is read-only through the connected account. Earlier counts remain historical snapshots.
 
-**Plan 3 has 12 Sections, 7/12 DONE (2026-11-12).** [#3242](https://github.com/Oleksii-debug/12-6-ai./pull/3242) integrated exact continuation after pause or process exit in relocated Windows runs. Section 8 is the next open section.
+**Plan 3 has 12 Sections, 8/12 DONE (2026-11-12).** [#3243](https://github.com/Oleksii-debug/12-6-ai./pull/3243) integrated ordered exposure accounting and atomic cursor and trainer state recovery. Section 9 is the next open section.
 
 **Plan 8 has 11 Sections, 6/11 DONE (2026-11-12).** [#3226](https://github.com/Oleksii-debug/12-6-ai./pull/3226) integrated the versioned scenario harness and evidence coverage map. Section 7 is the next open section.
 
