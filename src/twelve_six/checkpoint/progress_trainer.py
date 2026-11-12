@@ -108,6 +108,7 @@ def load_trainer_checkpoint(
     expected_training_config_hash: str | None = None,
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
+    expected_checkpoint_id: str | None = None,
     expected_step: int | None = None,
     expected_tokens_seen: int | None = None,
     expected_ledger_identity_sha256: str | None = None,
@@ -121,6 +122,7 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _require_expected_sha256(expected_checkpoint_id, field="expected_checkpoint_id")
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
@@ -133,6 +135,10 @@ def load_trainer_checkpoint(
 
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
+    if expected_checkpoint_id is not None and manifest["checkpoint_id"] != expected_checkpoint_id:
+        raise _core.CheckpointCompatibilityError(
+            "verified checkpoint ID differs from committed receipt"
+        )
     _assert_progress(
         _core,
         manifest,
