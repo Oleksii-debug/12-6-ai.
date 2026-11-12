@@ -6,6 +6,7 @@ import torch
 
 from tools import plan2_s18_physical_release_v1 as physical_release
 from tools import plan9_scale500m_launch_preparation_v1 as preparation
+from twelve_six.checkpoint import hash_json
 from twelve_six.training.config import TrainerConfig, TrainingRecipe
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,10 +26,16 @@ def verified_boundary(tmp_path, monkeypatch):
             "test": {"manifest_sha256": "4" * 64},
         },
     }
-    tokenizer = {"tokenizer_identity": {"vocab_size": 32768}, "source_manifest_sha256": "5" * 64}
+    tokenizer = {
+        "tokenizer_identity": {
+            "vocab_size": 32768, "config_sha256": "a" * 64, "vocab_sha256": "b" * 64, "version": "test-v1",
+        },
+        "source_manifest_sha256": "5" * 64,
+    }
     packing = {
         "block_size": 32,
         "block_count": 4,
+        "schema_version": "test-packing-v1",
         "manifest_sha256": "6" * 64,
         "split": "train",
         "cluster_split_sha256": split["manifest_sha256"],
@@ -172,3 +179,32 @@ def test_resume_revalidates_prefix_and_recipe_before_yield(verified_boundary, ca
     assert list(preparation.iter_resumed_release_batches(
         ROOT, directory, recipe=candidate_recipe, cursor=terminal, expected_cursor_sha256=terminal["cursor_sha256"],
     )) == []
+
+
+def test_binds_checkpoint_progress_without_changing_scientific_run_identity(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    batch = {"loss_mask": torch.tensor([[1] * 5 + [0] * 27] * 2)}
+    monkeypatch.setattr(physical_release, "iter_release_batches", lambda *_, **__: iter([batch, batch]))
+
+    def bind(index, step):
+        cursor = preparation.build_resume_cursor(
+            ROOT, directory, recipe=candidate_recipe, next_batch_index=index,
+        )
+        identity = preparation.bind_resume_checkpoint_identity(
+            ROOT, directory, recipe=candidate_recipe, cursor=cursor,
+            expected_cursor_sha256=cursor["cursor_sha256"],
+            candidate_git_sha="e" * 40, environment_lock_sha256="f" * 64,
+            run_id="test-checkpoint-binding", optimizer_step=step,
+        )
+        identity.validate()
+        assert identity.training_config["data"]["physical_resume_cursor_sha256"] == cursor["cursor_sha256"]
+        return identity
+
+    first, second = bind(1, 1), bind(2, 2)
+    assert first.run_manifest_hash == second.run_manifest_hash
+    assert first.tokens_seen == 10 and second.tokens_seen == 20
+    assert hash_json(first.training_config) != hash_json(second.training_config)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="optimizer checkpoint boundary"):
+        bind(1, 2)

@@ -10,9 +10,11 @@ import argparse
 import hashlib
 import json
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from twelve_six.checkpoint import CheckpointIdentity, bind_checkpoint_identity
 from twelve_six.checkpoint.d04_resume_binding import (
     D04_RESUME_BINDING_SCHEMA,
     D04_RESUME_SHA_FIELDS,
@@ -188,6 +190,7 @@ def build_preparation(
             "dataset_manifest_sha256": dataset["manifest_sha256"],
             "tokenizer_identity": tokenizer["tokenizer_identity"],
             "packing_manifest_sha256": consumer["packing_manifest_sha256"],
+            "packing_version": packing["schema_version"],
             "packed_block_size": block_size,
             "packed_block_count": block_count,
             "exposure_ledger_sha256": consumer["exposure_manifest_sha256"],
@@ -206,6 +209,8 @@ def build_preparation(
         "campaign_recipe_accepted": False,
         "checkpoint_resume_contract": {
             "plan3_entrypoint": "twelve_six.checkpoint.bind_checkpoint_identity",
+            "trainer_restore_entrypoint": "twelve_six.checkpoint.load_trainer_checkpoint",
+            "physical_cursor_checkpoint_expectation": "expected_training_config_hash",
             "d04_schema": D04_RESUME_BINDING_SCHEMA,
             "d04_required_data_fields": list(D04_RESUME_SHA_FIELDS),
             "d04_plan_and_checkpoint_bound": False,
@@ -228,7 +233,7 @@ def build_preparation(
 
 def _open_batch_stream(
     root: Path, release: Path, recipe: TrainingRecipe, next_batch_index: int | None,
-) -> tuple[dict[str, Any], Iterator[dict[str, Tensor]]]:
+) -> tuple[dict[str, Any], dict[str, Any], Iterator[dict[str, Tensor]]]:
     from tools.plan2_s18_physical_release_v1 import iter_release_batches
 
     preparation = build_preparation(root, release, recipe=recipe)
@@ -258,15 +263,28 @@ def _open_batch_stream(
         "consumed_loss_positions": active_targets,
         "complete": consumed_blocks == blocks,
     }
-    return {**core, "cursor_sha256": _sha(_canonical(core))}, batches
+    return preparation, {**core, "cursor_sha256": _sha(_canonical(core))}, batches
 
 
 def build_resume_cursor(
     root: Path, release: Path, *, recipe: TrainingRecipe, next_batch_index: int,
 ) -> dict[str, Any]:
     """Verify the ordered prefix and record its exact position in the sealed stream."""
-    cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
+    _, cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
     return cursor
+
+
+def _verify_resume_cursor(
+    root: Path, release: Path, recipe: TrainingRecipe, cursor: dict[str, Any],
+    expected_cursor_sha256: str,
+) -> tuple[dict[str, Any], Iterator[dict[str, Tensor]]]:
+    _require(type(cursor) is dict and cursor.get("cursor_sha256") == expected_cursor_sha256,
+             "resume cursor differs from the trusted identity")
+    core = {key: value for key, value in cursor.items() if key != "cursor_sha256"}
+    _require(_sha(_canonical(core)) == expected_cursor_sha256, "resume cursor digest mismatch")
+    preparation, verified, batches = _open_batch_stream(root, release, recipe, cursor.get("next_batch_index"))
+    _require(verified == cursor, "resume cursor differs from the verified physical prefix")
+    return preparation, batches
 
 
 def iter_resumed_release_batches(
@@ -274,13 +292,74 @@ def iter_resumed_release_batches(
     expected_cursor_sha256: str,
 ) -> Iterator[dict[str, Tensor]]:
     """Resume the physical stream after revalidating the trusted cursor's exact prefix."""
-    _require(type(cursor) is dict and cursor.get("cursor_sha256") == expected_cursor_sha256,
-             "resume cursor differs from the trusted identity")
-    core = {key: value for key, value in cursor.items() if key != "cursor_sha256"}
-    _require(_sha(_canonical(core)) == expected_cursor_sha256, "resume cursor digest mismatch")
-    verified, batches = _open_batch_stream(root, release, recipe, cursor.get("next_batch_index"))
-    _require(verified == cursor, "resume cursor differs from the verified physical prefix")
+    _, batches = _verify_resume_cursor(root, release, recipe, cursor, expected_cursor_sha256)
     yield from batches
+
+
+def bind_resume_checkpoint_identity(
+    root: Path, release: Path, *, recipe: TrainingRecipe, cursor: dict[str, Any],
+    expected_cursor_sha256: str, candidate_git_sha: str, environment_lock_sha256: str,
+    run_id: str, optimizer_step: int,
+) -> CheckpointIdentity:
+    """Prepare Plan 3 checkpoint identity without producing a checkpoint or launch grant."""
+    preparation, _ = _verify_resume_cursor(root, release, recipe, cursor, expected_cursor_sha256)
+    accumulation = recipe.trainer.gradient_accumulation_steps
+    windows, partial = divmod(cursor["next_batch_index"], accumulation)
+    _require(partial == 0 and type(optimizer_step) is int and 0 <= optimizer_step <= windows,
+             "physical cursor is not at the declared optimizer checkpoint boundary")
+
+    profile, seed = _load_profile(root)
+    data = preparation["data"]
+    tokenizer = data["tokenizer_identity"]
+    packing = {
+        "config_sha256": data["packing_manifest_sha256"],
+        "version": data["packing_version"],
+        "sequence_length": data["packed_block_size"],
+    }
+    run_manifest = {
+        "run_id": run_id,
+        "stage": PROFILE,
+        "run_kind": "plan9_pretraining_candidate",
+        "candidate": {
+            "git_sha": candidate_git_sha,
+            "modelspec_sha256": profile.model.identity_sha256(),
+            "initspec_sha256": profile.init.identity_sha256(),
+            "parameter_count": profile.model.parameter_count(),
+            "initialization": seed,
+        },
+        "data": {
+            "dataset_manifest_sha256": data["dataset_manifest_sha256"],
+            "split_identity": preparation["evaluation"]["split_manifest_sha256"],
+            "tokenizer_sha256": tokenizer["config_sha256"],
+            "tokenizer_vocab_sha256": tokenizer["vocab_sha256"],
+            "tokenizer_version": tokenizer["version"],
+            "packing_sha256": packing["config_sha256"],
+            "packing_version": packing["version"],
+            "release_manifest_sha256": data["release_manifest_sha256"],
+            "exposure_ledger_sha256": data["exposure_ledger_sha256"],
+            "physical_cursor_schema": CURSOR_SCHEMA,
+        },
+        "training": preparation["candidate_training_fields"],
+        "environment": {"lock_sha256": environment_lock_sha256},
+        "evaluation": preparation["evaluation"],
+        "runtime_source": preparation["runtime_source"],
+        "campaign_authorized": False,
+    }
+    identity = bind_checkpoint_identity(
+        run_manifest=run_manifest,
+        model_spec=profile.model.to_dict(),
+        init_spec=profile.init.to_dict(),
+        tokenizer_identity=tokenizer,
+        packing_identity=packing,
+        step=optimizer_step,
+        tokens_seen=cursor["consumed_loss_positions"],
+        environment_lock_hash=environment_lock_sha256,
+    )
+    # The scientific run manifest stays stable as the cursor advances. Plan 3
+    # verifies this progress-bound digest via expected_training_config_hash.
+    bound = dict(identity.training_config)
+    bound["data"] = {**bound["data"], "physical_resume_cursor_sha256": expected_cursor_sha256}
+    return replace(identity, training_config=bound)
 
 
 def main() -> int:
