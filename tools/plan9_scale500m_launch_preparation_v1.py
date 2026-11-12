@@ -410,11 +410,12 @@ def _bind_checkpoint_preflight(
 
 
 def build_candidate_packet(
-    root: Path, release: Path, *, recipe: TrainingRecipe, candidate_git_sha: str,
+    root: Path, release: Path, *, recipe: TrainingRecipe,
     environment_lock_sha256: str, run_id: str, next_batch_index: int = 0,
     optimizer_step: int = 0,
 ) -> dict[str, Any]:
     """Assemble one portable candidate record from verified inputs and cursor evidence."""
+    candidate_git_sha = _candidate_checkout_sha(root)
     preparation, cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
     run_manifest, model, init, identity = _bind_checkpoint_preflight(
         root, preparation, recipe, cursor,
@@ -448,7 +449,7 @@ def build_candidate_packet(
 
 def verify_candidate_packet(
     root: Path, release: Path, *, packet: dict[str, Any], expected_packet_sha256: str,
-    candidate_git_sha: str, environment_lock_sha256: str,
+    environment_lock_sha256: str,
 ) -> dict[str, Any]:
     """Rebuild the pinned candidate against the exact current inputs before accepting it."""
     _require(type(packet) is dict and packet.get("packet_sha256") == expected_packet_sha256,
@@ -458,7 +459,7 @@ def verify_candidate_packet(
     run = packet["run_manifest"]
     actual = build_candidate_packet(
         root, release, recipe=TrainingRecipe.from_dict(run["training"]["recipe"]),
-        candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
+        environment_lock_sha256=environment_lock_sha256,
         run_id=run["run_id"], next_batch_index=packet["physical_cursor"]["next_batch_index"],
         optimizer_step=packet["checkpoint_preflight"]["optimizer_step"],
     )
@@ -554,13 +555,12 @@ def main() -> int:
         if args.build_packet or args.verify_packet is not None:
             if args.environment_lock is None:
                 raise LaunchPreparationDenied("an explicit --environment-lock is required")
-            candidate_git_sha = _candidate_checkout_sha(root)
             lock_sha = _sha(_read(args.environment_lock))
             if args.build_packet:
                 if recipe is None or args.run_id is None:
                     raise LaunchPreparationDenied("--build-packet requires --recipe and --run-id")
                 receipt = build_candidate_packet(
-                    root, args.release, recipe=recipe, candidate_git_sha=candidate_git_sha,
+                    root, args.release, recipe=recipe,
                     environment_lock_sha256=lock_sha, run_id=args.run_id,
                     next_batch_index=0 if args.next_batch_index is None else args.next_batch_index,
                     optimizer_step=args.optimizer_step,
@@ -574,7 +574,7 @@ def main() -> int:
                          "candidate packet must use canonical JSON bytes")
                 receipt = verify_candidate_packet(
                     root, args.release, packet=packet,
-                    expected_packet_sha256=args.packet_sha256, candidate_git_sha=candidate_git_sha,
+                    expected_packet_sha256=args.packet_sha256,
                     environment_lock_sha256=lock_sha,
                 )
             sys.stdout.buffer.write(_canonical(receipt))

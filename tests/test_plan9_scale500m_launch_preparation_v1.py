@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from tools import plan2_s18_physical_release_v1 as physical_release
+from tools import plan2_s18_release_integrity_v1 as release_integrity
 from tools import plan9_scale500m_launch_preparation_v1 as preparation
 from twelve_six.checkpoint import hash_json
 from twelve_six.training.config import TrainerConfig, TrainingRecipe
@@ -226,12 +227,13 @@ def test_binds_checkpoint_progress_without_changing_scientific_run_identity(
 
 def test_candidate_packet_rebuild_pins_run_and_rejects_tampering(verified_boundary, candidate_recipe):
     directory, _ = verified_boundary
-    inputs = {"candidate_git_sha": "c" * 40, "environment_lock_sha256": "d" * 64}
+    inputs = {"environment_lock_sha256": "d" * 64}
     packet = preparation.build_candidate_packet(
         ROOT, directory, recipe=candidate_recipe, run_id="test-candidate", **inputs,
     )
     assert packet["run_manifest_sha256"] == hash_json(packet["run_manifest"])
     assert packet["run_manifest"]["training"]["recipe_sha256"] == candidate_recipe.identity_sha256()
+    assert packet["run_manifest"]["candidate"]["git_sha"] == preparation.detect_git_sha(ROOT)
     assert packet["checkpoint_preflight"]["checkpoint_transaction_verified"] is False
     assert packet["checkpoint_preflight"]["checkpoint_artifact_verified"] is False
     assert packet["environment_lock_qualification"] == "PINNED_BYTES_ONLY"
@@ -267,6 +269,26 @@ def test_cli_candidate_checkout_rejects_runtime_drift(monkeypatch):
     monkeypatch.setattr(preparation, "_read", read_changed)
     with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
         preparation._candidate_checkout_sha(ROOT)
+
+
+def test_candidate_packet_rejects_fixture_sealed_under_its_own_manifest(tmp_path, candidate_recipe):
+    members = {}
+    for name in release_integrity.REQUIRED:
+        raw = preparation._canonical({"fixture": True, "document": name})
+        (tmp_path / name).write_bytes(raw)
+        members[name] = preparation._sha(raw)
+    manifest = {
+        "schema_version": release_integrity.SCHEMA,
+        "producer_commit_sha1": physical_release.S17_ACCEPTED_MAIN,
+        "producer_tree_sha1": physical_release.S17_ACCEPTED_TREE,
+        "members": members,
+    }
+    (tmp_path / release_integrity.MANIFEST).write_bytes(preparation._canonical(manifest))
+    with pytest.raises(release_integrity.IntegrityDenied, match="trusted manifest SHA-256 mismatch"):
+        preparation.build_candidate_packet(
+            ROOT, tmp_path, recipe=candidate_recipe, run_id="fixture-cannot-enter",
+            environment_lock_sha256="d" * 64,
+        )
 
 
 def test_exact_one_pass_budget_checks_real_mask_counts_and_rights(
