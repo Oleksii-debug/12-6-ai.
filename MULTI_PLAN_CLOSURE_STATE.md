@@ -9,6 +9,12 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 3 SECTION 5 DONE
+
+- **Plan 3: 5/12 DONE.** Section 5A–C integrated through [PR #3239](https://github.com/Oleksii-debug/12-6-ai./pull/3239) at main `ac17b7fc79635d26ee658013d4ef9d7c0c9f2d2c`. Accepted tree `547be824ca1174a6b4abad104457b4a82b7f273d` matches tested head `b677dd8b4ff7a43da0ded2e98b00f3dfdbff4c34`.
+- The run controller binds one writer to an immutable recipe and checkpoints. Verified process contention, stop and pause recovery, durable directory publication, and recovery after a published checkpoint without a duplicate optimizer advance.
+- Local Windows qualification passed 351 tests with nine platform skips. The detached remote head passed ten focused tests and accepted-main readback passed twelve. Ruff passed. Hosted Actions remained queued. Section 6 is the next open section.
+
 # 2026-11-12 PLAN 3 SECTION 4 DONE
 
 - **Plan 3: 4/12 DONE.** Section 4A–C integrated through [PR #3238](https://github.com/Oleksii-debug/12-6-ai./pull/3238) at accepted main `2024d3eb67f3b7cbac2c8404ff4bad3aa02e816e`. The accepted tree matches qualified head `12b1091d12b86b1c36b3f9bddd15eebf0ae2eddd`.
