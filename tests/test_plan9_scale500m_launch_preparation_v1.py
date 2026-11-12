@@ -208,3 +208,48 @@ def test_binds_checkpoint_progress_without_changing_scientific_run_identity(
     assert hash_json(first.training_config) != hash_json(second.training_config)
     with pytest.raises(preparation.LaunchPreparationDenied, match="optimizer checkpoint boundary"):
         bind(1, 2)
+
+
+def test_candidate_packet_rebuild_pins_run_and_rejects_tampering(verified_boundary, candidate_recipe):
+    directory, _ = verified_boundary
+    inputs = {"candidate_git_sha": "c" * 40, "environment_lock_sha256": "d" * 64}
+    packet = preparation.build_candidate_packet(
+        ROOT, directory, recipe=candidate_recipe, run_id="test-candidate", **inputs,
+    )
+    assert packet["run_manifest_sha256"] == hash_json(packet["run_manifest"])
+    assert packet["run_manifest"]["training"]["recipe_sha256"] == candidate_recipe.identity_sha256()
+    assert packet["checkpoint_preflight"]["checkpoint_transaction_verified"] is False
+    assert packet["checkpoint_preflight"]["checkpoint_artifact_verified"] is False
+    assert packet["environment_lock_qualification"] == "PINNED_BYTES_ONLY"
+    assert packet["run_manifest"]["campaign_authorized"] is packet["campaign_authorized"] is False
+
+    def verify(record, digest=packet["packet_sha256"], **changes):
+        return preparation.verify_candidate_packet(
+            ROOT, directory, packet=record, expected_packet_sha256=digest, **{**inputs, **changes},
+        )
+
+    assert verify(packet) == packet
+    with pytest.raises(preparation.LaunchPreparationDenied, match="trusted identity"):
+        verify(packet, "0" * 64)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="digest mismatch"):
+        verify({**packet, "campaign_authorized": True})
+    forged = {**packet, "campaign_authorized": True}
+    forged.pop("packet_sha256")
+    forged_digest = preparation._sha(preparation._canonical(forged))
+    with pytest.raises(preparation.LaunchPreparationDenied, match="verified release"):
+        verify({**forged, "packet_sha256": forged_digest}, forged_digest)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="verified release"):
+        verify(packet, environment_lock_sha256="e" * 64)
+
+
+def test_cli_candidate_checkout_rejects_runtime_drift(monkeypatch):
+    read = preparation._read
+    trainer = ROOT / preparation.RUNTIME_PATHS["trainer"]
+
+    def read_changed(path, limit=2_000_000):
+        raw = read(path, limit)
+        return raw + b"# runtime changed\n" if path == trainer else raw
+
+    monkeypatch.setattr(preparation, "_read", read_changed)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
+        preparation._candidate_checkout_sha(ROOT)

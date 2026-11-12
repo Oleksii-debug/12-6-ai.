@@ -9,12 +9,19 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from twelve_six.checkpoint import CheckpointIdentity, bind_checkpoint_identity
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    bind_checkpoint_identity,
+    detect_git_sha,
+    hash_json,
+)
 from twelve_six.checkpoint.d04_resume_binding import (
     D04_RESUME_BINDING_SCHEMA,
     D04_RESUME_SHA_FIELDS,
@@ -27,14 +34,21 @@ if TYPE_CHECKING:
 
 SCHEMA = "12-6.plan9-scale500m-launch-preparation.v1"
 CURSOR_SCHEMA = "12-6.plan9-s18-physical-resume-cursor.v1"
+PACKET_SCHEMA = "12-6.plan9-scale500m-candidate-packet.v1"
 PROFILE = "SCALE-500M"
 PROFILE_FILE = "configs/stages/scale_500m.json"
+PACKET_TOOL_FILE = "tools/plan9_scale500m_launch_preparation_v1.py"
 PROFILE_SHA256 = "1007a6b2519086a3e52fc06eb57a44a38ee38992bacbb922bb72b82b423b0339"
 RUNTIME_PATHS = {
     "trainer": "src/twelve_six/training/trainer.py",
     "trainer_config": "src/twelve_six/training/config.py",
+    "run_control": "src/twelve_six/training/run_control.py",
     "checkpoint_binding": "src/twelve_six/checkpoint/run_binding.py",
     "checkpoint_resume": "src/twelve_six/checkpoint/d04_resume_binding.py",
+    "model": "src/twelve_six/model.py",
+    "release_reader": "tools/plan2_s18_physical_release_v1.py",
+    "release_consumer": "tools/plan2_s18_plan9_consumer_v1.py",
+    "release_integrity": "tools/plan2_s18_release_integrity_v1.py",
     "reference_inference": "tools/inference_runtime.py",
 }
 
@@ -74,6 +88,25 @@ def _read_pinned_json(path: Path, expected: str, *, limit: int = 2_000_000) -> d
     value = json.loads(raw)
     _require(type(value) is dict and _canonical(value) == raw, f"noncanonical input: {path.name}")
     return value
+
+
+def _candidate_checkout_sha(root: Path) -> str:
+    sha = detect_git_sha(root)
+    if sha is None:
+        raise LaunchPreparationDenied("a Git checkout is required to bind the candidate source")
+    _require(Path(__file__).resolve() == (root / PACKET_TOOL_FILE).resolve(),
+             "run the packet tool from the candidate checkout")
+    for path in (PROFILE_FILE, PACKET_TOOL_FILE, *RUNTIME_PATHS.values()):
+        try:
+            committed = subprocess.check_output(
+                ["git", "show", f"{sha}:{path}"], cwd=root, stderr=subprocess.PIPE, timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise LaunchPreparationDenied(f"candidate source not present at Git HEAD: {path}") from exc
+        worktree = _read(root / path)
+        _require(committed.replace(b"\r\n", b"\n") == worktree.replace(b"\r\n", b"\n"),
+                 f"candidate source differs from Git HEAD: {path}")
+    return sha
 
 
 def _open_release(root: Path, release: Path) -> dict[str, Any]:
@@ -303,6 +336,18 @@ def bind_resume_checkpoint_identity(
 ) -> CheckpointIdentity:
     """Prepare Plan 3 checkpoint identity without producing a checkpoint or launch grant."""
     preparation, _ = _verify_resume_cursor(root, release, recipe, cursor, expected_cursor_sha256)
+    _, _, _, identity = _bind_checkpoint_preflight(
+        root, preparation, recipe, cursor,
+        candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
+        run_id=run_id, optimizer_step=optimizer_step,
+    )
+    return identity
+
+
+def _bind_checkpoint_preflight(
+    root: Path, preparation: dict[str, Any], recipe: TrainingRecipe, cursor: dict[str, Any],
+    *, candidate_git_sha: str, environment_lock_sha256: str, run_id: str, optimizer_step: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], CheckpointIdentity]:
     accumulation = recipe.trainer.gradient_accumulation_steps
     windows, partial = divmod(cursor["next_batch_index"], accumulation)
     _require(partial == 0 and type(optimizer_step) is int and 0 <= optimizer_step <= windows,
@@ -345,10 +390,11 @@ def bind_resume_checkpoint_identity(
         "runtime_source": preparation["runtime_source"],
         "campaign_authorized": False,
     }
+    model_spec, init_spec = profile.model.to_dict(), profile.init.to_dict()
     identity = bind_checkpoint_identity(
         run_manifest=run_manifest,
-        model_spec=profile.model.to_dict(),
-        init_spec=profile.init.to_dict(),
+        model_spec=model_spec,
+        init_spec=init_spec,
         tokenizer_identity=tokenizer,
         packing_identity=packing,
         step=optimizer_step,
@@ -358,8 +404,66 @@ def bind_resume_checkpoint_identity(
     # The scientific run manifest stays stable as the cursor advances. Plan 3
     # verifies this progress-bound digest via expected_training_config_hash.
     bound = dict(identity.training_config)
-    bound["data"] = {**bound["data"], "physical_resume_cursor_sha256": expected_cursor_sha256}
-    return replace(identity, training_config=bound)
+    bound["data"] = {**bound["data"], "physical_resume_cursor_sha256": cursor["cursor_sha256"]}
+    return run_manifest, model_spec, init_spec, replace(identity, training_config=bound)
+
+
+def build_candidate_packet(
+    root: Path, release: Path, *, recipe: TrainingRecipe, candidate_git_sha: str,
+    environment_lock_sha256: str, run_id: str, next_batch_index: int = 0,
+    optimizer_step: int = 0,
+) -> dict[str, Any]:
+    """Assemble one portable candidate record from verified inputs and cursor evidence."""
+    preparation, cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
+    run_manifest, model, init, identity = _bind_checkpoint_preflight(
+        root, preparation, recipe, cursor,
+        candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
+        run_id=run_id, optimizer_step=optimizer_step,
+    )
+    identity.validate()
+    core = {
+        "schema": PACKET_SCHEMA,
+        "decision": "CANDIDATE_PACKET_CAMPAIGN_PENDING",
+        "preparation": preparation,
+        "model_spec": model,
+        "init_spec": init,
+        "run_manifest": run_manifest,
+        "run_manifest_sha256": identity.run_manifest_hash,
+        "physical_cursor": cursor,
+        "checkpoint_preflight": {
+            "expected_training_config_hash": hash_json(identity.training_config),
+            "optimizer_step": identity.step,
+            "tokens_seen": identity.tokens_seen,
+            "checkpoint_artifact_verified": False,
+            "checkpoint_transaction_verified": False,
+        },
+        "environment_lock_qualification": "PINNED_BYTES_ONLY",
+        "campaign_authorized": False,
+        "training_executed": False,
+        "paid_compute_used": False,
+    }
+    return {**core, "packet_sha256": _sha(_canonical(core))}
+
+
+def verify_candidate_packet(
+    root: Path, release: Path, *, packet: dict[str, Any], expected_packet_sha256: str,
+    candidate_git_sha: str, environment_lock_sha256: str,
+) -> dict[str, Any]:
+    """Rebuild the pinned candidate against the exact current inputs before accepting it."""
+    _require(type(packet) is dict and packet.get("packet_sha256") == expected_packet_sha256,
+             "packet differs from the trusted identity")
+    core = {key: value for key, value in packet.items() if key != "packet_sha256"}
+    _require(_sha(_canonical(core)) == expected_packet_sha256, "candidate packet digest mismatch")
+    run = packet["run_manifest"]
+    actual = build_candidate_packet(
+        root, release, recipe=TrainingRecipe.from_dict(run["training"]["recipe"]),
+        candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
+        run_id=run["run_id"], next_batch_index=packet["physical_cursor"]["next_batch_index"],
+        optimizer_step=packet["checkpoint_preflight"]["optimizer_step"],
+    )
+    _require(actual["packet_sha256"] == expected_packet_sha256,
+             "candidate packet differs from the verified release, source, lock or physical prefix")
+    return actual
 
 
 def main() -> int:
@@ -368,10 +472,45 @@ def main() -> int:
     parser.add_argument("--release", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, help="Explicit candidate TrainingRecipe v1 JSON")
     parser.add_argument("--next-batch-index", type=int, help="Inspect the sealed stream cursor")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--build-packet", action="store_true", help="Emit a canonical candidate packet")
+    modes.add_argument("--verify-packet", type=Path, help="Reopen a pinned candidate packet")
+    parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
+    parser.add_argument("--environment-lock", type=Path, help="Environment lock bytes to pin without host qualification")
+    parser.add_argument("--run-id", help="Candidate run identity for packet construction")
+    parser.add_argument("--optimizer-step", type=int, default=0, help="Candidate checkpoint position")
     args = parser.parse_args()
     try:
         root = args.root.resolve(strict=True)
         recipe = None if args.recipe is None else TrainingRecipe.from_dict(json.loads(_read(args.recipe)))
+        if args.build_packet or args.verify_packet is not None:
+            if args.environment_lock is None:
+                raise LaunchPreparationDenied("an explicit --environment-lock is required")
+            candidate_git_sha = _candidate_checkout_sha(root)
+            lock_sha = _sha(_read(args.environment_lock))
+            if args.build_packet:
+                if recipe is None or args.run_id is None:
+                    raise LaunchPreparationDenied("--build-packet requires --recipe and --run-id")
+                receipt = build_candidate_packet(
+                    root, args.release, recipe=recipe, candidate_git_sha=candidate_git_sha,
+                    environment_lock_sha256=lock_sha, run_id=args.run_id,
+                    next_batch_index=0 if args.next_batch_index is None else args.next_batch_index,
+                    optimizer_step=args.optimizer_step,
+                )
+            else:
+                if args.packet_sha256 is None:
+                    raise LaunchPreparationDenied("--verify-packet requires a trusted --packet-sha256")
+                packet_bytes = _read(args.verify_packet)
+                packet = json.loads(packet_bytes)
+                _require(type(packet) is dict and _canonical(packet) == packet_bytes,
+                         "candidate packet must use canonical JSON bytes")
+                receipt = verify_candidate_packet(
+                    root, args.release, packet=packet,
+                    expected_packet_sha256=args.packet_sha256, candidate_git_sha=candidate_git_sha,
+                    environment_lock_sha256=lock_sha,
+                )
+            sys.stdout.buffer.write(_canonical(receipt))
+            return 0
         if args.next_batch_index is None:
             receipt = build_preparation(root, args.release, recipe=recipe)
         else:
