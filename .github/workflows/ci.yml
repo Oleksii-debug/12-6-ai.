@@ -32,6 +32,20 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Checkout frozen Plan 3 runtime PR head
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plan3/')
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify frozen Plan 3 runtime identity
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plan3/')
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --exit-code HEAD --
       - name: Checkout frozen Plan 8 Section 3 PR head
         if: github.event_name == 'pull_request' && (github.event.pull_request.number == 3096 || github.event.pull_request.number == 3207)
         uses: actions/checkout@v4

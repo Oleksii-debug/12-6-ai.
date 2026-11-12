@@ -733,7 +733,7 @@
     {
       "path": "src/twelve_six/training/loss.py",
       "capability_id": "training-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/training/trainer.py",
@@ -776,6 +776,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 114,
-  "candidate_overlay_surface_count": 40
+  "accepted_main_surface_count": 113,
+  "candidate_overlay_surface_count": 41
 }
