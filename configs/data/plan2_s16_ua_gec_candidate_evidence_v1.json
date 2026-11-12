@@ -1,0 +1,43 @@
+{
+  "schema_version": "12-6.plan2-s16-w2-upstream-candidate-evidence.v1",
+  "candidate_id": "ua-gec-2026-10-13-rights-and-privacy-triage",
+  "decision": "BLOCKED_CANDIDATE_ONLY",
+  "source": {
+    "repository": "grammarly/ua-gec",
+    "upstream_commit": "4757f72f192c4a41e4c8fb1d9690a948f87cf6d6",
+    "license_path": "LICENSE",
+    "license_git_blob_sha1": "10fabd90118f7ce38bb2e4753e105e744442a429",
+    "license_name": "CC-BY-4.0",
+    "readme_path": "README.md",
+    "readme_git_blob_sha1": "efa28e3ab384f5e97c8f9e66657243aa20c30b64",
+    "metadata_path": "data/metadata.csv",
+    "metadata_git_blob_sha1": "1d6f69c8f26c8db90a4f0502bba241363242fc18"
+  },
+  "scope": {
+    "language": "uk",
+    "family_count_credit": 1,
+    "train_test_separation_required": true,
+    "test_split_for_training": false,
+    "gec_only_and_gec_fluency_are_independent_families": false,
+    "annotated_source_target_are_independent_documents": false,
+    "metadata_sensitive_fields": ["author_id", "region", "gender", "occupation", "submission_type", "source_language", "annotator_id", "is_sensitive"]
+  },
+  "required_external_evidence": [
+    "ORIGINAL_CONTRIBUTOR_COPYRIGHT_AND_DONATION_SCOPE",
+    "TRANSLATION_RIGHTS_AND_THIRD_PARTY_ORIGINALS",
+    "EXPLICIT_OWNER_APPROVED_TRAINING_AND_RELEASE_SCOPE",
+    "ATTRIBUTION_AND_DERIVATIVE_DISTRIBUTION_PLAN",
+    "PII_REVIEW_AND_CORRECTION_REMOVAL_POLICY",
+    "PHYSICAL_MEMBER_SHA256_AND_PROVENANCE",
+    "INDEPENDENT_UKRAINIAN_EVALUATION_SOURCE",
+    "CROSS_FAMILY_DECONTAMINATION_AND_BALANCE"
+  ],
+  "physical_corpus_materialized": false,
+  "original_grants_independently_verified": false,
+  "privacy_gate_passed": false,
+  "source_training_authorized": false,
+  "corpus_training_authorized": false,
+  "production_release_authorized": false,
+  "plan9_binding_authorized": false,
+  "terminal_done": false
+}

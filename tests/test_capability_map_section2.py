@@ -697,9 +697,9 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     assert inventory.observed_main_sha == registry.observed_main_sha
     assert inventory.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
     assert inventory.observed_main_tree_sha == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
-    assert inventory.accepted_main_surface_count == 115
-    assert inventory.candidate_overlay_surface_count == 38
-    assert inventory.source_surface_count == 153
+    assert inventory.accepted_main_surface_count == 104
+    assert inventory.candidate_overlay_surface_count == 53
+    assert inventory.source_surface_count == 157
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -729,6 +729,53 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     )
     validate_source_surface_coverage(registry, inventory, repo_root=_ROOT)
 
+
+def test_plan3_model_s1_source_qualification_rejects_stale_accepted_origin(
+    tmp_path: Path,
+) -> None:
+    """Changed ModelSpec bytes require a Plan-8-owned modified predecessor."""
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    model = next(
+        surface for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/model.py"
+    )
+    assert model["capability_id"] == "model-spec-identity"
+    assert model["origin"] == "modified_candidate"
+    model["origin"] = "accepted_main"
+    payload["accepted_main_surface_count"] += 1
+    payload["candidate_overlay_surface_count"] -= 1
+    candidate = tmp_path / "stale-model-accepted.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unmapped_modified"):
+        validate_source_surface_coverage(
+            registry, load_source_surface_inventory(candidate), repo_root=_ROOT
+        )
+
+
+def test_plan3_loss_s2_source_qualification_rejects_stale_accepted_origin(
+    tmp_path: Path,
+) -> None:
+    """Changed causal-loss bytes require exact modified-predecessor admission."""
+    registry = _load()
+    payload = json.loads(_SURFACE_INVENTORY.read_text(encoding="utf-8"))
+    loss = next(
+        surface for surface in payload["surfaces"]
+        if surface["path"] == "src/twelve_six/training/loss.py"
+    )
+    assert loss["capability_id"] == "training-mechanics"
+    assert loss["origin"] == "modified_candidate"
+    loss["origin"] = "accepted_main"
+    payload["accepted_main_surface_count"] += 1
+    payload["candidate_overlay_surface_count"] -= 1
+    candidate = tmp_path / "stale-loss-accepted.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unmapped_modified"):
+        validate_source_surface_coverage(
+            registry, load_source_surface_inventory(candidate), repo_root=_ROOT
+        )
+
+
 def test_every_source_surface_maps_to_a_registered_capability_and_journey() -> None:
     registry = _load()
     inventory = load_source_surface_inventory(_SURFACE_INVENTORY)
@@ -748,8 +795,8 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 38
-    assert len(candidate) == 38
+    assert inventory.candidate_overlay_surface_count == 53
+    assert len(candidate) == 53
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
         for surface in candidate
@@ -759,8 +806,19 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     assert modified_paths == {
         "src/twelve_six/accelerated_scaling.py",
         "src/twelve_six/capability_map.py",
+        "src/twelve_six/checkpoint/durability.py",
+        "src/twelve_six/checkpoint/pinned_directory.py",
+        "src/twelve_six/checkpoint/progress_trainer.py",
+        "src/twelve_six/checkpoint/retention.py",
+        "src/twelve_six/checkpoint/run_binding.py",
+        "src/twelve_six/checkpoint/schema_validation.py",
+        "src/twelve_six/checkpoint/selection.py",
+        "src/twelve_six/model.py",
         "src/twelve_six/portable_run_packet.py",
         "src/twelve_six/sil_qualification.py",
+        "src/twelve_six/training/config.py",
+        "src/twelve_six/training/loss.py",
+        "src/twelve_six/training/trainer.py",
     }
     assert "src/twelve_six/ai_qa_control.py" not in {s.path for s in candidate}
     accepted_instruction = next(

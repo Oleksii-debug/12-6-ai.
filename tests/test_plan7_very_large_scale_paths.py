@@ -87,15 +87,15 @@ def test_topology_node_loss_reduces_admission_and_preserves_run():
     ("recovery_seconds", 500, "recovery_slo_denied"),
 ])
 def test_resource_economic_admission_negative(field, value, reason):
-    c, l, a, t, shards, manifest = fixtures()
+    c, limits, a, t, shards, manifest = fixtures()
     p = assess_very_large("30B", "DENSE", replace(c, **{field: value}),
-                          l, a, t, shards, manifest)
+                          limits, a, t, shards, manifest)
     assert reason in p["reasons"] and p["status"] == "NO_GO"
 
 
 def test_explicit_economic_budget_and_sparse_fail_closed():
-    c, l, a, t, shards, manifest = fixtures()
-    p = assess_very_large("30B", "DENSE", c, l, a,
+    c, limits, a, t, shards, manifest = fixtures()
+    p = assess_very_large("30B", "DENSE", c, limits, a,
                           replace(t, max_estimated_dollars=0), shards, manifest)
     assert "economic_budget_denied" in p["reasons"]
     for mode in ("SPARSE_CONTRACT_ONLY",):
@@ -106,13 +106,13 @@ def test_explicit_economic_budget_and_sparse_fail_closed():
 
 
 def test_topology_identity_checkpoint_transport_and_adversarial():
-    c, l, a, t, shards, manifest = fixtures()
+    c, limits, a, t, shards, manifest = fixtures()
     for bad in (shards[:1], shards[::-1],
                 (shards[0], ("part-01", b"tampered", shards[1][2]))):
         with pytest.raises(ValueError):
-            assess_very_large("30B", "DENSE", c, l, a, t, bad, manifest)
+            assess_very_large("30B", "DENSE", c, limits, a, t, bad, manifest)
     with pytest.raises(LargePathDenied, match="scientific recipe"):
-        assess_very_large("30B", "DENSE", c, l, a,
+        assess_very_large("30B", "DENSE", c, limits, a,
                           replace(t, scientific_recipe_sha256="0" * 64),
                           shards, manifest)
     for change in ({"dollars_per_node_hour": float("nan")},
@@ -123,7 +123,7 @@ def test_topology_identity_checkpoint_transport_and_adversarial():
             MultiNodeEvidence(**{**asdict(t), **change})
     object.__setattr__(t, "physical_multinode_executed", "true")
     with pytest.raises(ValueError):
-        assess_very_large("30B", "DENSE", c, l, a, t, shards, manifest)
+        assess_very_large("30B", "DENSE", c, limits, a, t, shards, manifest)
 
 
 def test_unsupported_input_denied():

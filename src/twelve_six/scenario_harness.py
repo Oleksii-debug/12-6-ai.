@@ -8,9 +8,22 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from twelve_six.sil_qualification import load_sil_scenario, require_exact_clean_git_state
+from twelve_six_agent_runtime.fixture_integration import (
+    EchoGatewayFixture,
+    FakeHostTool,
+    FixtureRuntime,
+)
+from twelve_six_agent_runtime.fixture_integration import (
+    Scenario as AgentFixtureScenario,
+)
 
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
+_GIT_SHA = re.compile(r"[0-9a-f]{40}")
 _LEVELS = ("Q0", "Q1", "Q2", "Q3", "Q4")
+ScenarioAdapter = Callable[[Path], object]
 
 
 def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -90,18 +103,20 @@ class Scenario:
     schema_version: str = "12-6.plan8-scenario.v1"
 
     def __post_init__(self) -> None:
-        if self.schema_version != "12-6.plan8-scenario.v1":
+        if type(self.schema_version) is not str or self.schema_version != "12-6.plan8-scenario.v1":
             raise ValueError("unsupported scenario version")
         _identifier(self.scenario_id)
-        if self.required_level not in _LEVELS:
+        if type(self.required_level) is not str or self.required_level not in _LEVELS:
             raise ValueError("unknown evidence level")
         for values in (self.capability_ids, self.prerequisites):
-            if type(values) is not tuple or not values or tuple(sorted(set(values))) != values:
-                raise ValueError("scenario lists must be nonempty, unique, sorted tuples")
+            if type(values) is not tuple or not 1 <= len(values) <= 64:
+                raise ValueError("scenario lists must contain 1..64 identifiers")
             for value in values:
                 _identifier(value)
-        if type(self.steps) is not tuple or not self.steps:
-            raise ValueError("scenario needs steps")
+            if tuple(sorted(set(values))) != values:
+                raise ValueError("scenario lists must be unique and sorted")
+        if type(self.steps) is not tuple or not 1 <= len(self.steps) <= 64:
+            raise ValueError("scenario must contain 1..64 steps")
         for step in self.steps:
             if type(step) is not ScenarioStep:
                 raise ValueError("scenario step must have exact type")
@@ -131,27 +146,35 @@ class Scenario:
 def run_scenario(
     scenario: Scenario,
     *,
+    repo_root: str | Path,
     source_sha: str,
     available_prerequisites: frozenset[str],
-    adapters: Mapping[str, Callable[[], object]],
+    adapters: Mapping[str, ScenarioAdapter] | None = None,
 ) -> dict[str, object]:
-    """Run bounded named adapters; failures never become passing observations."""
+    """Run named adapters against a clean, exact checkout and issue a Q0 receipt."""
+    if type(scenario) is not Scenario:
+        raise ValueError("scenario must have exact type")
     scenario.__post_init__()
-    if type(source_sha) is not str or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+    if type(source_sha) is not str or not _GIT_SHA.fullmatch(source_sha):
         raise ValueError("exact source SHA required")
     if type(available_prerequisites) is not frozenset:
         raise ValueError("prerequisites must be immutable")
     if not set(scenario.prerequisites).issubset(available_prerequisites):
         raise ValueError("scenario prerequisites missing")
+    root = Path(repo_root).resolve(strict=True)
+    require_exact_clean_git_state(root, source_sha)
+    if adapters is None:
+        adapters = fixture_journey_adapters()
     observations: list[dict[str, str]] = []
     for step in scenario.steps:
         adapter = adapters.get(step.adapter_id)
         if adapter is None or not callable(adapter):
             raise ValueError("scenario adapter unavailable")
         try:
-            actual = _digest(adapter())
+            actual = _digest(adapter(root))
         except Exception as exc:
             raise RuntimeError("scenario adapter failed: " + step.step_id) from exc
+        require_exact_clean_git_state(root, source_sha)
         if actual != step.expected_sha256:
             raise ValueError("scenario observation mismatch: " + step.step_id)
         observations.append({"step_id": step.step_id, "observation_sha256": actual})
@@ -168,12 +191,19 @@ def run_scenario(
 
 
 def coverage_map(
-    scenarios: tuple[Scenario, ...], receipts: tuple[dict[str, object], ...]
+    scenarios: tuple[Scenario, ...],
+    receipts: tuple[dict[str, object], ...],
+    *,
+    expected_source_sha: str,
 ) -> dict[str, dict[str, object]]:
-    """Report proven fixture coverage and explicit gaps, never promote Q0 to HIL."""
+    """Report Q0 observations and remaining scenario gaps for one exact candidate."""
+    if type(expected_source_sha) is not str or not _GIT_SHA.fullmatch(expected_source_sha):
+        raise ValueError("exact source SHA required")
+    if any(type(scenario) is not Scenario for scenario in scenarios):
+        raise ValueError("scenario must have exact type")
+    if len({scenario.scenario_id for scenario in scenarios}) != len(scenarios):
+        raise ValueError("duplicate scenario ID")
     scenario_by_sha = {scenario.identity_sha256(): scenario for scenario in scenarios}
-    if len(scenario_by_sha) != len(scenarios):
-        raise ValueError("duplicate scenario identity")
     receipt_ids: set[str] = set()
     for receipt in receipts:
         if type(receipt) is not dict or set(receipt) != {
@@ -190,8 +220,8 @@ def coverage_map(
         scenario = scenario_by_sha.get(receipt["scenario_sha256"])
         if scenario is None:
             raise ValueError("receipt references unknown scenario")
-        if type(receipt["source_sha"]) is not str or not re.fullmatch(r"[0-9a-f]{40}", receipt["source_sha"]):
-            raise ValueError("receipt source SHA is invalid")
+        if type(receipt["source_sha"]) is not str or receipt["source_sha"] != expected_source_sha:
+            raise ValueError("receipt source SHA differs from expected candidate")
         expected = [
             {"step_id": step.step_id, "observation_sha256": step.expected_sha256}
             for step in scenario.steps
@@ -202,17 +232,24 @@ def coverage_map(
             raise ValueError("duplicate scenario receipt")
         receipt_ids.add(receipt["scenario_sha256"])
     result: dict[str, dict[str, object]] = {}
-    for scenario in scenarios:
-        scenario.__post_init__()
+    for identity, scenario in scenario_by_sha.items():
+        observed = identity in receipt_ids
         for capability in scenario.capability_ids:
-            current = result.setdefault(capability, {"required_level": scenario.required_level, "q0_scenarios": []})
+            current = result.setdefault(capability, {
+                "required_level": scenario.required_level,
+                "q0_scenarios": [],
+                "missing_scenarios": [],
+            })
             if current["required_level"] != scenario.required_level:
                 raise ValueError("conflicting capability evidence requirements")
-            if scenario.identity_sha256() in receipt_ids:
+            if observed:
                 current["q0_scenarios"].append(scenario.scenario_id)
+            if not observed or scenario.required_level != "Q0":
+                current["missing_scenarios"].append(scenario.scenario_id)
     for current in result.values():
         current["q0_scenarios"].sort()
-        current["missing_level"] = None if current["required_level"] == "Q0" and current["q0_scenarios"] else current["required_level"]
+        current["missing_scenarios"].sort()
+        current["missing_level"] = current["required_level"] if current["missing_scenarios"] else None
     return dict(sorted(result.items()))
 
 
@@ -223,17 +260,44 @@ _FIXTURE_JOURNEYS = {
 }
 
 
-def fixture_journey_adapters(repo_root: str | Path) -> dict[str, Callable[[], object]]:
-    """Q0 adapters for accepted component fixtures; no physical PASS claim."""
-    root = Path(repo_root)
-    adapters: dict[str, Callable[[], object]] = {}
+def _run_agent_fixture(raw: bytes) -> dict[str, object]:
+    scenario = AgentFixtureScenario.from_json(raw.decode("utf-8").removesuffix("\n"))
+    gateway = EchoGatewayFixture(scenario.observed_value)
+    host = FakeHostTool()
+    with TemporaryDirectory(prefix="plan8-agent-fixture-") as directory:
+        runtime = FixtureRuntime(directory, scenario, gateway, host)
+        finished = runtime.run()
+        restarted = FixtureRuntime(directory, scenario, gateway, host)
+        replayed = restarted.run()
+        memory = restarted.memory.history()[0]
+        effect = finished.pending_effects[0]
+        return {
+            "task_id": finished.task_id,
+            "terminal_step_id": finished.step_id,
+            "effect_status": effect.status,
+            "receipt_id": effect.receipt_id,
+            "memory_evidence_id": memory.evidence_id,
+            "memory_content_sha256": _digest(memory.content),
+            "memory_revision": restarted.memory.revision(),
+            "host_dispatches": host.dispatches,
+            "gateway_proposals": gateway.calls,
+            "restart_same_snapshot": replayed == finished,
+        }
+
+
+def fixture_journey_adapters() -> dict[str, ScenarioAdapter]:
+    """Build named Q0 adapters that receive the runner's verified checkout."""
+    adapters: dict[str, ScenarioAdapter] = {}
     for adapter_id, (relative_path, schema) in _FIXTURE_JOURNEYS.items():
-        def observe(path: str = relative_path, expected: str | int = schema,
+        def observe(root: Path, path: str = relative_path, expected: str | int = schema,
                     adapter: str = adapter_id) -> object:
             target = root / path
             if target.is_symlink() or not target.is_file():
                 raise ValueError("fixture is missing or a symlink")
-            raw = target.read_bytes()
+            if not target.resolve(strict=True).is_relative_to(root.resolve(strict=True)):
+                raise ValueError("fixture escapes the checkout")
+            with target.open("rb") as stream:
+                raw = stream.read(65_537)
             if not raw or len(raw) > 65_536:
                 raise ValueError("fixture size invalid")
             value = json.loads(
@@ -249,8 +313,16 @@ def fixture_journey_adapters(repo_root: str | Path) -> dict[str, Callable[[], ob
                 or value.get("tokenizer_fit_allowed") is not False
             ):
                 raise ValueError("reserved evaluation fixture lost its firewall")
-            return {"fixture": path, "raw_sha256": hashlib.sha256(raw).hexdigest(),
-                    "schema": expected}
+            observation: dict[str, object] = {
+                "fixture": path,
+                "raw_sha256": hashlib.sha256(raw).hexdigest(),
+                "schema": expected,
+            }
+            if adapter == "agent-goal":
+                observation["runtime"] = _run_agent_fixture(raw)
+            if adapter == "sil-journey":
+                load_sil_scenario(target)
+            return observation
 
         adapters[adapter_id] = observe
     return adapters

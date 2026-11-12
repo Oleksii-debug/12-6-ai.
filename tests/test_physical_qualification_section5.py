@@ -527,10 +527,12 @@ def test_process_tree_policy_uses_isolated_posix_group(monkeypatch: pytest.Monke
             raise AssertionError("direct-process fallback must not be used")
 
     monkeypatch.setattr(physical_qualification.sys, "platform", "linux")
+    monkeypatch.setattr(physical_qualification.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(
         physical_qualification.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
 
     assert physical_qualification._popen_process_group_kwargs() == {"start_new_session": True}
@@ -555,10 +557,12 @@ def test_posix_process_group_is_killed_after_parent_exit(
             raise AssertionError("direct-process fallback must not be used")
 
     monkeypatch.setattr(physical_qualification.sys, "platform", "linux")
+    monkeypatch.setattr(physical_qualification.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(
         physical_qualification.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
 
     physical_qualification._terminate_process_tree(ExitedParent())
@@ -616,8 +620,16 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
         "def test_must_execute() -> None:\n    assert False\n",
         encoding="utf-8",
     )
+    (tmp_path / "pytest.py").write_text(
+        "print('shadowed pytest runner'); raise SystemExit(0)\n",
+        encoding="utf-8",
+    )
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "add", "--", "tests/test_must_execute.py"), cwd=tmp_path, check=True)
+    subprocess.run(
+        ("git", "add", "--", "tests/test_must_execute.py", "pytest.py"),
+        cwd=tmp_path,
+        check=True,
+    )
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
     monkeypatch.setenv("PYTEST_PLUGINS", "untrusted_host_plugin")
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "host-pythonpath"))
@@ -636,6 +648,7 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
     assert child_env["GIT_CONFIG_NOSYSTEM"] == "1"
     assert child_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
     assert child_env["PYTHONNOUSERSITE"] == "1"
+    assert child_env["PYTHONSAFEPATH"] == "1"
     assert child_env["PYTHONHASHSEED"] == "0"
     assert child_env["TWELVE_SIX_SAFE_SENTINEL"] == "preserved"
 
@@ -648,7 +661,9 @@ def test_bounded_pytest_rejects_host_python_pytest_env_overrides(
     )
     execution = run_bounded_pytest(action, tmp_path)
 
-    assert execution.return_code != 0
+    assert execution.return_code == 1
+    assert b"1 failed" in execution.stdout
+    assert b"shadowed pytest runner" not in execution.stdout
 
 
 def test_run_bounded_pytest_enforces_signed_capture_limit_in_flight(

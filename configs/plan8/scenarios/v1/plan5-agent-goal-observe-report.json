@@ -11,7 +11,7 @@
   "steps": [
     {
       "adapter_id": "agent-goal",
-      "expected_sha256": "bcd69a9b78d189003c4a6a13675924bdf13cea98698468f421ab48952eafc205",
+      "expected_sha256": "8aa77d51fe8c3405b72d5f116dd4d9b8c29ce907355e231bde49b9b0a4894c16",
       "step_id": "observe-fixture"
     }
   ]

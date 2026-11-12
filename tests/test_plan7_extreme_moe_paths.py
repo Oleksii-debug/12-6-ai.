@@ -28,7 +28,7 @@ def inputs(tier="300B", p=None):
                       100_000_000_000_000, 1000.0, 10_000_000_000.0,
                       1_000_000_000_000.0, 5.0, 100_000,
                       "c" * 64, "d" * 64)
-    l = LargeLimits(1, 4096, 128, 300_000_000_000_000, 200_000_000_000_000,
+    limits = LargeLimits(1, 4096, 128, 300_000_000_000_000, 200_000_000_000_000,
                     1000.0, 100.0, 20.0, 100.0, 1_000_000_000.0)
     a = LargeAdapter(1, "FSDP", "e" * 64, recipe["model_sha256"],
                      "f" * 64, True, True, True, True, True)
@@ -38,7 +38,7 @@ def inputs(tier="300B", p=None):
              b"tiny-expert-state-c")
     shards = tuple((f"part-{i:02d}", s, hashlib.sha256(s).hexdigest())
                    for i, s in enumerate(parts))
-    return c, l, a, n, shards, shard_manifest(parts)
+    return c, limits, a, n, shards, shard_manifest(parts)
 
 
 def assess(tier="300B", p=None, args=None, tokens=None, **kw):
@@ -113,20 +113,20 @@ def test_synthetic_expert_failover_same_run_binds_checkpoint():
 
 
 def test_lost_primary_and_replica_denies_checkpoint_and_expert():
-    c, l, a, n, shards, manifest = inputs("300B", policy())
+    c, limits, a, n, shards, manifest = inputs("300B", policy())
     with pytest.raises(ValueError):
-        assess(p=policy(), args=(c, l, a, n, shards, manifest),
+        assess(p=policy(), args=(c, limits, a, n, shards, manifest),
                lost_nodes=("node-0", "node-1"))
 
 
 def test_shard_corruption_partial_reorder_duplicate_and_run_identity_denied():
-    c, l, a, n, shards, manifest = inputs()
+    c, limits, a, n, shards, manifest = inputs()
     bad = (shards[0], ("part-01", b"mutated", shards[1][2]), shards[2])
     for invalid in (shards[:1], shards[::-1], shards + shards[-1:], bad):
         with pytest.raises(ValueError):
-            assess(args=(c, l, a, n, invalid, manifest))
+            assess(args=(c, limits, a, n, invalid, manifest))
     with pytest.raises(ValueError):
-        assess(args=(replace(c, run_sha256="b" * 64), l, a, n, shards, manifest))
+        assess(args=(replace(c, run_sha256="b" * 64), limits, a, n, shards, manifest))
 
 
 @pytest.mark.parametrize("field,value,reason", (
@@ -140,15 +140,15 @@ def test_shard_corruption_partial_reorder_duplicate_and_run_identity_denied():
     ("paid_compute_requested", True, "paid_compute_denied"),
 ))
 def test_insufficient_resources_or_unauthorized_paid_compute(field, value, reason):
-    c, l, a, n, shards, manifest = inputs()
-    report = assess(args=(replace(c, **{field: value}), l, a, n, shards, manifest))
+    c, limits, a, n, shards, manifest = inputs()
+    report = assess(args=(replace(c, **{field: value}), limits, a, n, shards, manifest))
     assert reason in report["reasons"]
     assert not report["launch_authorized"] and not report["paid_compute_authorized"]
 
 
 def test_economic_budget_denial_and_deterministic_packet():
-    c, l, a, n, shards, m = inputs()
-    record = assess_extreme("300B", None, None, c, l, a, n, shards, m,
+    c, limits, a, n, shards, m = inputs()
+    record = assess_extreme("300B", None, None, c, limits, a, n, shards, m,
                             evaluation_protocol_sha256="1" * 64,
                             serving_protocol_sha256="2" * 64,
                             cost_usd_per_hour=100.0, cost_budget_usd=1.0)

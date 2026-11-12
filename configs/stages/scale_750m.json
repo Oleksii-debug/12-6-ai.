@@ -1,0 +1,52 @@
+{
+  "stage": "SCALE-750M",
+  "profile_id": "SCALE-750M",
+  "profile_schema_version": 1,
+  "target_parameters": 750000000,
+  "expected_parameters": 755842560,
+  "canonical_base": "random_init",
+  "expected_model_identity_sha256": "1327070fb9e7b12a8693094837f5781880379b93dda778dffb75dab833e75067",
+  "expected_init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "base_init_manifest": {
+    "schema_version": 1,
+    "model_spec_sha256": "1327070fb9e7b12a8693094837f5781880379b93dda778dffb75dab833e75067",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "seed": 20261013,
+    "weights_origin": "random_init",
+    "ancestor_checkpoint_sha256": null
+  },
+  "qualification": "CONFIG_DEFINED",
+  "tokenizer_contract": "32K_VERSIONED_MANIFEST_REQUIRED_AT_RUN_BINDING",
+  "resource_evidence_class": "ARITHMETIC_ONLY_NOT_MEASURED",
+  "paid_training_authorized": false,
+  "model": {
+    "schema_version": 1,
+    "vocab_size": 32768,
+    "max_seq_len": 2048,
+    "d_model": 1536,
+    "n_layers": 26,
+    "n_heads": 24,
+    "n_kv_heads": 6,
+    "head_dim": 64,
+    "d_ff": 4608,
+    "activation": "swiglu",
+    "norm_kind": "rmsnorm",
+    "norm_placement": "pre",
+    "norm_eps": 1e-05,
+    "position_embedding": "rope",
+    "rope_theta": 10000.0,
+    "rope_rotary_dim": 64,
+    "attention_bias": false,
+    "mlp_bias": false,
+    "attention_dropout": 0.0,
+    "final_norm": true,
+    "tie_word_embeddings": true,
+    "lm_head_bias": false
+  },
+  "init": {
+    "schema_version": 1,
+    "family": "normal",
+    "std": 0.02,
+    "residual_branch_scale": "sqrt_2_layers"
+  }
+}

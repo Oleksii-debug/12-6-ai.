@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from .pinned_directory import PinnedDirectoryError, _open_windows_directory
+
 _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 _POSIX_FD_ALIAS_ROOTS = (Path("/proc/self/fd"), Path("/dev/fd"))
@@ -82,7 +84,8 @@ def _fsync_regular_file(path: Path) -> None:
     before = path.lstat()
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
         raise OSError(f"checkpoint durability requires regular file: {path.name}")
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    access = os.O_RDWR if os.name == "nt" else os.O_RDONLY
+    flags = access | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags)
     try:
         opened = os.fstat(fd)
@@ -93,6 +96,27 @@ def _fsync_regular_file(path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _open_directory_for_flush(path: Path, *, follow_fd_alias: bool = False) -> int:
+    if os.name == "nt":
+        import msvcrt
+
+        # The Windows CRT cannot open a directory by path. Give it ownership
+        # of a writable native handle so os.fsync can flush the same object.
+        try:
+            handle, _ = _open_windows_directory(path, writable=True)
+        except PinnedDirectoryError as exc:
+            raise OSError(str(exc)) from exc
+        try:
+            return msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
+        except BaseException:
+            ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(ctypes.c_void_p(handle))
+            raise
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    if not follow_fd_alias:
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    return os.open(path, flags)
 
 
 def fsync_checkpoint_tree(directory: str | Path, *, expected_names: frozenset[str]) -> None:
@@ -109,8 +133,7 @@ def fsync_checkpoint_tree(directory: str | Path, *, expected_names: frozenset[st
         )
     for name in sorted(expected_names):
         _fsync_regular_file(root / name)
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(root, flags)
+    fd = _open_directory_for_flush(root)
     try:
         opened = os.fstat(fd)
         if not stat.S_ISDIR(opened.st_mode):
@@ -127,10 +150,7 @@ def fsync_parent_directory(path: str | Path) -> None:
     parent = Path(path).parent
     process_fd_alias = _is_posix_process_fd_alias(parent)
     before = _require_existing_real_parent(Path(path))
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    if not process_fd_alias:
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(parent, flags)
+    fd = _open_directory_for_flush(parent, follow_fd_alias=process_fd_alias)
     try:
         opened = os.fstat(fd)
         if not stat.S_ISDIR(opened.st_mode):

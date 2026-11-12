@@ -113,11 +113,12 @@ def _pinned_posix(path: Path, *, create: bool) -> Iterator[PinnedDirectory]:
         os.close(fd)
 
 
-def _open_windows_directory(path: Path) -> tuple[int, tuple[int, int]]:
+def _open_windows_directory(path: Path, *, writable: bool = False) -> tuple[int, tuple[int, int]]:
     import ctypes
     from ctypes import wintypes
 
     file_read_attributes = 0x0080
+    generic_read_write = 0xC0000000
     file_share_read = 0x00000001
     file_share_write = 0x00000002
     open_existing = 3
@@ -154,10 +155,13 @@ def _open_windows_directory(path: Path) -> tuple[int, tuple[int, int]]:
     get_info = kernel32.GetFileInformationByHandle
     get_info.argtypes = [wintypes.HANDLE, ctypes.POINTER(ByHandleFileInformation)]
     get_info.restype = wintypes.BOOL
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
 
     handle = create_file(
         str(path),
-        file_read_attributes,
+        generic_read_write if writable else file_read_attributes,
         file_share_read | file_share_write,
         None,
         open_existing,
@@ -173,10 +177,10 @@ def _open_windows_directory(path: Path) -> tuple[int, tuple[int, int]]:
 
     info = ByHandleFileInformation()
     if not get_info(handle, ctypes.byref(info)):
-        kernel32.CloseHandle(handle)
+        close_handle(handle)
         raise PinnedDirectoryError(f"directory identity cannot be read: {path}")
     if info.dwFileAttributes & file_attribute_reparse_point:
-        kernel32.CloseHandle(handle)
+        close_handle(handle)
         raise PinnedDirectoryError(f"directory must not be a Windows reparse point: {path}")
 
     file_index = (int(info.nFileIndexHigh) << 32) | int(info.nFileIndexLow)

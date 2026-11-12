@@ -1,8 +1,10 @@
 ## CURRENT OWNER SECTION MAPPING — 2026-10-11
 
-**Plan 2 is now 18 Sections (previously 15),** source-of-truth Google Drive `2. Другий план`. Exactly original Sections 1–14 retain terminal DONE. Original Section 15's existing code, PR #3220 and evidence stay attached to new 15 (physical candidate/right-bound proof). New 16 = real balanced UA/EN S3–S9 corpus source approval; 17 = clean deterministic tokenization/split/packing/shard production; 18 = final production release and Plan9 handoff. Current verified aggregate = **14/18 DONE**, 15–18 OPEN. The former 14/15 state only describes an older historical audit. Do not renumber other plans or produce second PR for Section15.
+**Plan 2 is terminal DONE, 18/18 Sections (2026-11-12).** Sections 16, 17 and 18 were integrated through [#3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229), [#3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) and [#3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236). The accepted local Plan 9 data release is pinned in [the release authority](evidence/plan2_s18/release_authority_v1.json) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Google Docs remains the plan specification. Its status mirror is read-only through the connected account. Earlier counts remain historical snapshots.
 
-**Plan 3 retains 12 numbered Sections** but first Section now closes sequentially through micro-checkpoints 1A/1B/1C. These markers are evidence ledger items, not phantom completed Sections. Existing Plan3 PR #3098 stays owner. Keep source truth, negative/recovery/rights and independent plan-law.
+**Plan 3 has 12 Sections, 5/12 DONE (2026-11-12).** Sections 1–5 are accepted in main through [#3098](https://github.com/Oleksii-debug/12-6-ai./pull/3098), [#3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), [#3234](https://github.com/Oleksii-debug/12-6-ai./pull/3234), [#3238](https://github.com/Oleksii-debug/12-6-ai./pull/3238), and [#3239](https://github.com/Oleksii-debug/12-6-ai./pull/3239). Section 6 is the next open section. The numbered Drive plan defines acceptance.
+
+**Plan 8 has 11 Sections, 5/11 DONE (2026-11-12).** Section 5 is accepted through [#3085](https://github.com/Oleksii-debug/12-6-ai./pull/3085). The signed local Windows evidence covers all seven profiles. Section 6 is the next open section in [#3226](https://github.com/Oleksii-debug/12-6-ai./pull/3226).
 
 # 12-6 AI — Canonical Multi-Plan Index
 

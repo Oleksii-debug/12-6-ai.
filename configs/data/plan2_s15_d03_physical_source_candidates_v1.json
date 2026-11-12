@@ -1,0 +1,151 @@
+{
+  "schema_version": "12-6.plan2-s15-d03-physical-source-candidates.v1",
+  "purpose": "LOCAL_FREE_SOURCE_CANDIDATES_ONLY_NOT_PLAN2_S3_S9",
+  "d03_source_seals_git_blob_sha1": "e80e09e9b5de6eade9b579b64503e0dfab2a03c8",
+  "source_families": [
+    {
+      "id": "php.manual.documentation",
+      "source_repository": "php/doc-uk",
+      "revision": "c165db75cc6f81cfdabf754656e73a68940de46c",
+      "historical_artifact_id": 9623621921,
+      "historical_normalized_bundle_sha256": "8802e3aa3d608305f8612efa9d90fdef65a76cdf518596fb52e3e7e5201db2e1",
+      "source_rights": "CC-BY-3.0-or-later",
+      "training_rights": "ALLOWED_SOURCE_LEVEL_NOT_PLAN2_CORPUS",
+      "evaluation_admitted": false,
+      "raw_object_count": 10
+    },
+    {
+      "id": "rust-book.documentation.uk-translation",
+      "source_repository": "rust-lang-ua/rustbook_ukrainian",
+      "revision": "ca2d2e4f4434c661836926017af23bdd40ad4e3d",
+      "historical_artifact_id": 9623318910,
+      "historical_normalized_bundle_sha256": "f2c8c39c2edef995e90e8c0be6a8abc1b278ce98b534adf6e912c0c717a9cb1c",
+      "source_rights": "MIT_AND_APACHE-2.0_WITH_NOTICES",
+      "training_rights": "ALLOWED_SOURCE_LEVEL_NOT_PLAN2_CORPUS",
+      "evaluation_admitted": false,
+      "raw_object_count": 2
+    }
+  ],
+  "objects": [
+    {
+      "family": "php",
+      "raw_repo_path": "language/basic-syntax.xml",
+      "raw_repo_git_blob_sha1": "20140ee03022d1f4f0aeb301a1bfa3163900bb31",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/basic-syntax.xml",
+      "normalized_expected_sha256": "59dcad415b591565b3a8e8f5916b07a1cb3b6279395fb9023e93bd8cab764a21",
+      "normalized_expected_bytes": 7681
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/context.xml",
+      "raw_repo_git_blob_sha1": "33a682d6b32d81392213480da774b11f029f574d",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/context.xml",
+      "normalized_expected_sha256": "ec80357dcbf78a185545e7203e5a4922f931973fefa9940d9f2018936c26c665",
+      "normalized_expected_bytes": 512
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/errors.xml",
+      "raw_repo_git_blob_sha1": "7893e0759b8bef7f87dedd761616c9bf2bbebc6e",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/errors.xml",
+      "normalized_expected_sha256": "21e9064aaa6dd9b298cc7e32913ea9b1b2b3380c7b32a27ca382bd8db6dd427a",
+      "normalized_expected_bytes": 549
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/oop5.xml",
+      "raw_repo_git_blob_sha1": "e1a4fe501efc417acb6c05ead82202860132021f",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/oop5.xml",
+      "normalized_expected_sha256": "8adcd1c4c916b4c7635550a123bfd0b101083eeabb66521e075fcbf1b5ed089d",
+      "normalized_expected_bytes": 655
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/types.xml",
+      "raw_repo_git_blob_sha1": "1e0559a3fd615458f22898182589dbd3198c49ec",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/types.xml",
+      "normalized_expected_sha256": "0e5048f2d07184aa5a885c278821478b2b936dd71437abc498693cc1bad31326",
+      "normalized_expected_bytes": 2472
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/wrappers.xml",
+      "raw_repo_git_blob_sha1": "9572c335dbbf678863dcfc956177d36c14a5aa2c",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/wrappers.xml",
+      "normalized_expected_sha256": "dd9c86daf208e9ff8d672eb8e19928692a0ee55fb796c4b9bb9ff9c8133b9773",
+      "normalized_expected_bytes": 738
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/types/boolean.xml",
+      "raw_repo_git_blob_sha1": "6ef0946fefe14d539496e8db64046683729f7d68",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/types/boolean.xml",
+      "normalized_expected_sha256": "6952486cf2ab38aa67cbbc70e964c6911faf3d23e5240acbb6b07efcfb571ef7",
+      "normalized_expected_bytes": 2672
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/types/callable.xml",
+      "raw_repo_git_blob_sha1": "3c0b8a79d189da529a1be921fb89bb3170daeb1e",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/types/callable.xml",
+      "normalized_expected_sha256": "2110f444f65d29f3c81bc3d77cfc0d861ad14ac6b1348991894194f4d9c6ea14",
+      "normalized_expected_bytes": 2445
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/types/float.xml",
+      "raw_repo_git_blob_sha1": "b1670b28a04780c4c49ad8987bccbf1c71fe4c07",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/types/float.xml",
+      "normalized_expected_sha256": "6432790058ef8c0c7f26d00bce41df9ec7bfe2aa01d729ce638689df89f62042",
+      "normalized_expected_bytes": 5893
+    },
+    {
+      "family": "php",
+      "raw_repo_path": "language/types/integer.xml",
+      "raw_repo_git_blob_sha1": "b698a85e3a3e2bbbcbc27c73e122f846d2ca181c",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/php/language/types/integer.xml",
+      "normalized_expected_sha256": "ef0ce1f90fee25e087561e8fd1e2b47082c50badc1b099284b0b59739bd37c80",
+      "normalized_expected_bytes": 6893
+    },
+    {
+      "family": "rust",
+      "raw_repo_path": "second-edition/src/ch01-01-installation.md",
+      "raw_repo_git_blob_sha1": "bcd4034731e66a746e4c127809f9d02c7f793064",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/rust/ch01-01-installation.md",
+      "normalized_expected_sha256": "593341048e19553e4430beaa7c37e3dc80f6a42e2000b6e8e708735cdabafd87",
+      "normalized_expected_bytes": 7859
+    },
+    {
+      "family": "rust",
+      "raw_repo_path": "second-edition/src/ch01-02-hello-world.md",
+      "raw_repo_git_blob_sha1": "c6342ef39456499ee093020f00aa3576fc92d48e",
+      "physical_path": "data/external/snapshots/plan2-s15-d03-ua-v1/raw/rust/ch01-02-hello-world.md",
+      "normalized_expected_sha256": "61f7f5b40cb7ea54ed067eecf0eb2fda543add127d209c51ea0c9846e717254e",
+      "normalized_expected_bytes": 10306
+    }
+  ],
+  "source_license_files": [
+    {
+      "path": "data/external/snapshots/plan2-s15-d03-ua-v1/licenses/php/license.xml",
+      "git_blob_sha1": "d8b388c25c87a12208e173a0f8e9f10754884dda"
+    },
+    {
+      "path": "data/external/snapshots/plan2-s15-d03-ua-v1/licenses/rust/LICENSE-MIT",
+      "git_blob_sha1": "5a56e6e8ed1909b4e4800aa8d2a0e7033ab4babe"
+    },
+    {
+      "path": "data/external/snapshots/plan2-s15-d03-ua-v1/licenses/rust/LICENSE-APACHE",
+      "git_blob_sha1": "96e9f0458b55a4047927de5bf04ceda89d772b2b"
+    }
+  ],
+  "physical_source_family_count": 2,
+  "physical_document_count": 12,
+  "physical_normalized_expected_bytes": 48675,
+  "rights_evidence_state": "HISTORICAL_D03_TERMINAL_SOURCE_ADMIT_NOT_FRESH_PLAN2_S1_S9",
+  "source_candidate_only": true,
+  "external_eval_custody_authorized": false,
+  "training_corpus_authorized": false,
+  "tokenizer_fit_authorized": false,
+  "production_release_authorized": false,
+  "terminal_done": false
+}

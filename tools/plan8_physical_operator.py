@@ -107,7 +107,8 @@ def _emit(payload: dict[str, object]) -> None:
     print(json.dumps(payload, sort_keys=True, ensure_ascii=False), flush=True)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, return_verified_failure: bool = False) -> int:
+    """Run the operator. The evidence bridge can consume a signed FAIL result."""
     parser = argparse.ArgumentParser(
         description="Plan 8 physical qualification: keyboard and screen-reader friendly."
     )
@@ -183,7 +184,9 @@ def main(argv: list[str] | None = None) -> int:
             .read_bytes()
         ),
         artifact_root=repo_root,
-        require_real_pass=require_real,
+        require_real_pass=require_real and not (
+            args.command == "run" and return_verified_failure
+        ),
         evidence_signature_verifier=host_verify,
     )
     _emit({

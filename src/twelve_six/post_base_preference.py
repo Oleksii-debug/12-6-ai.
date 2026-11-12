@@ -14,12 +14,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from .post_base_instruction import (
-    canonical_digest,
-    model_logits,
-    sha_field,
-    state_sha256,
-    tokens,
-    validate_source,
+    canonical_digest, model_logits, sha_field, state_sha256, tokens, validate_source,
 )
 
 
@@ -162,9 +157,9 @@ def train_preference_descendant(
         edges = {}
         for winner, loser in directed:
             edges.setdefault(winner, set()).add(loser)
-        for root, children in edges.items():
+        for root in edges:
             visited = set()
-            pending = list(children)
+            pending = list(edges[root])
             while pending:
                 node = pending.pop()
                 if node == root:

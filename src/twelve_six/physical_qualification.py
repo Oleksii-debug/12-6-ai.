@@ -1029,6 +1029,7 @@ def _bounded_pytest_env() -> dict[str, str]:
             "GIT_CONFIG_GLOBAL": os.devnull,
             "PYTHONHASHSEED": "0",
             "PYTHONNOUSERSITE": "1",
+            "PYTHONSAFEPATH": "1",
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
         }
     )

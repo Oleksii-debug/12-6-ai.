@@ -205,7 +205,7 @@ def test_memory_correction_is_durable_and_not_world_observation(tmp_path):
 
 
 def test_deterministic_model_replacement_preserves_task_memory_semantics(tmp_path):
-    sample = scenario()
+    scenario()
     outcomes = []
     for label in ("gateway-a", "gateway-b"):
         root = tmp_path / label
