@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
 
+import torch
 from torch import Tensor
 
 from ..checkpoint import CheckpointIdentity, bind_checkpoint_identity, hash_json
@@ -17,6 +18,7 @@ from ..model import BaseInitManifest, InitSpec, ModelSpec, build_canonical_base
 from .config import TrainingRecipe
 from .exposure_accounting import OrderedExposureRuntime
 from .resource_envelope import (
+    DISK_FLOOR_DENIAL,
     ResourceAdmissionError,
     assess_resource_envelope,
     observe_host_resources,
@@ -307,24 +309,62 @@ class PortableTrainingRun:
     def run_manifest_sha256(self) -> str:
         return self._identity.run_manifest_hash
 
-    def _trainer(self, *, remaining_updates: int, initial_checkpoint_needed: bool) -> Trainer:
-        packet = self._packet
-        observed = observe_host_resources(self._settings.run_root, self._settings.device)
-        if packet.recipe.trainer.precision == "fp16" and not observed.device.startswith("cuda"):
-            raise ResourceAdmissionError("FP16 training requires a CUDA device")
-        resources = assess_resource_envelope(
-            self._identity.parameter_count,
+    def _resource_report(
+        self,
+        *,
+        remaining_updates: int,
+        initial_checkpoint_needed: bool,
+    ) -> dict[str, Any]:
+        checkpoint_root = self._controller.namespace / "checkpoints"
+        observed = observe_host_resources(checkpoint_root, self._settings.device)
+        return assess_resource_envelope(
+            self._packet.model_spec,
             observed,
             remaining_updates=remaining_updates,
             initial_checkpoint_needed=initial_checkpoint_needed,
         )
-        if resources["denials"]:
+
+    def _trainer(
+        self,
+        *,
+        remaining_updates: int,
+        initial_checkpoint_needed: bool,
+        defer_storage_check: bool = False,
+    ) -> Trainer:
+        packet = self._packet
+        if torch.get_default_dtype() != torch.float32 or torch.get_default_device().type != "cpu":
+            raise ResourceAdmissionError("native model allocation requires default FP32 on CPU")
+        resources = self._resource_report(
+            remaining_updates=remaining_updates,
+            initial_checkpoint_needed=initial_checkpoint_needed,
+        )
+        if packet.recipe.trainer.precision == "fp16" and not resources["resources"][
+            "device"
+        ].startswith("cuda"):
+            raise ResourceAdmissionError("FP16 training requires a CUDA device")
+        denials = [
+            reason
+            for reason in resources["denials"]
+            if not (defer_storage_check and reason == DISK_FLOOR_DENIAL)
+        ]
+        if denials:
             raise ResourceAdmissionError(
                 f"native training resource admission failed for {packet.stage}: "
-                + ", ".join(resources["denials"])
+                + ", ".join(denials)
             )
         model = build_canonical_base(packet.model_spec, packet.init_spec, packet.initialization)
         return Trainer(model, packet.recipe.trainer, device=self._settings.device)
+
+    def _admit_recovered_storage(self, current: RunReceipt) -> None:
+        resources = self._resource_report(
+            remaining_updates=self._packet.recipe.trainer.max_steps - current.committed_step,
+            initial_checkpoint_needed=False,
+        )
+        if DISK_FLOOR_DENIAL in resources["denials"]:
+            raise ResourceAdmissionError(
+                f"native training resource admission failed for {self._packet.stage}: "
+                f"{DISK_FLOOR_DENIAL}"
+            )
 
     def prepare(self) -> RunReceipt:
         with _exclusive_trainer():
@@ -346,22 +386,22 @@ class PortableTrainingRun:
             if current.receipt_sha256 != expected_receipt_sha256:
                 raise RunControlError("stale run receipt")
             remaining = self._packet.recipe.trainer.max_steps - current.committed_step
-            if recover and current.pending_step is not None and current.pending_tokens is not None:
-                pending = self._controller._checkpoint_path(
-                    self._controller.namespace,
-                    current.control_epoch,
-                    current.pending_step,
-                )
-                if pending.is_dir() and not pending.is_symlink():
-                    remaining -= 1
+            pending_recovery = (
+                recover and current.pending_step is not None and current.pending_tokens is not None
+            )
             return self._runtime.run(
                 self._controller,
-                self._trainer(remaining_updates=remaining, initial_checkpoint_needed=False),
+                self._trainer(
+                    remaining_updates=remaining,
+                    initial_checkpoint_needed=False,
+                    defer_storage_check=pending_recovery,
+                ),
                 self._identity,
                 self._batches,
                 expected_receipt_sha256=expected_receipt_sha256,
                 recover=recover,
                 control=control,
+                admit_progress=self._admit_recovered_storage if pending_recovery else None,
             )
 
     def status(self) -> RunReceipt:

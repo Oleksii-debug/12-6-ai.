@@ -4,7 +4,7 @@
 
 **Plan 3 has 12 Sections, 9/12 DONE (2026-11-12).** [#3244](https://github.com/Oleksii-debug/12-6-ai./pull/3244) integrated the portable training packet with separate execution settings and exact adapter recovery. Section 10 is the next open section.
 
-**Plan 8 has 11 Sections, 7/11 DONE (2026-11-12).** [#3227](https://github.com/Oleksii-debug/12-6-ai./pull/3227) integrated the eight-case fault campaign, process-exit recovery and stable journal readback. Section 8 is the next open section.
+**Plan 8 has 11 Sections, 8/11 DONE (2026-11-12).** [#3246](https://github.com/Oleksii-debug/12-6-ai./pull/3246) integrated the capability evidence and scale readiness policy. Section 9 is the next open section.
 
 **Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
 

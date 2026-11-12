@@ -6,6 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import torch
+from safetensors.numpy import load_file as load_tensor_arrays
 from test_plan3_section9_portable_packet import _batches, _settings
 from test_plan3_section9_portable_packet import training_inputs as _portable_training_inputs
 
@@ -46,24 +48,33 @@ def test_exact_scale_admission_uses_observed_capacity_without_model_allocation(
     config = load_stage_config(_ROOT / "configs" / "stages" / f"scale_{stage}.json")
     assert config.expected_parameters == config.model.parameter_count() == count
     result = assess_resource_envelope(
-        count,
+        config.model,
         HostResources("cpu", 5 * 2**30, 5 * 2**30, 10 * 2**30),
         remaining_updates=1,
         initial_checkpoint_needed=True,
     )
     assert result["fp32_adamw_device_bytes"] == 16 * count
     assert result["native_checkpoint_save_device_bytes"] == 28 * count
-    assert result["unpruned_checkpoint_volume_floor_bytes"] == 16 * count
+    tied = config.model.vocab_size * config.model.d_model if config.model.tie_embeddings else 0
+    assert result["serialized_model_weight_bytes"] == 4 * (count + tied)
+    assert result["unpruned_checkpoint_volume_floor_bytes"] == 16 * count + 8 * tied
     assert "DEVICE_MEMORY_BELOW_FP32_ADAMW_FLOOR" in result["denials"]
     assert ("DISK_BELOW_UNPRUNED_CHECKPOINT_FLOOR" in result["denials"]) is disk_denied
     assert result["evidence_class"] == "OBSERVED_CAPACITY_WITH_ARITHMETIC_FLOORS"
 
 
-def test_native_save_and_cuda_staging_can_rule_out_otherwise_fitting_optimizer():
-    count = 100
+def test_native_save_and_cuda_staging_can_rule_out_otherwise_fitting_optimizer(training_inputs):
+    packet, _ = training_inputs
+    model = packet.model_spec
+    count = model.parameter_count()
+    tied = model.vocab_size * model.d_model
+    weight_bytes = 4 * (count + tied)
+    payload_bytes = weight_bytes + 8 * count
     result = assess_resource_envelope(
-        count,
-        HostResources("cuda:0", 1_199, 1_600, 2_799),
+        model,
+        HostResources(
+            "cuda:0", payload_bytes - 1, 16 * count, weight_bytes + 2 * payload_bytes - 1
+        ),
         remaining_updates=2,
         initial_checkpoint_needed=True,
     )
@@ -88,11 +99,13 @@ def test_portable_prepare_denies_impossible_resources_before_weight_allocation(
         sources={"local": lambda _, index: _batches(index)},
         **refs,
     )
-    monkeypatch.setattr(
-        portable_packet,
-        "observe_host_resources",
-        lambda *_: HostResources("cpu", 1, 1, 1),
-    )
+
+    def observe(path, device):
+        assert path == root / run.run_manifest_sha256 / "checkpoints"
+        assert device == "cpu"
+        return HostResources("cpu", 1, 1, 1)
+
+    monkeypatch.setattr(portable_packet, "observe_host_resources", observe)
 
     def unexpected(*_args):
         pytest.fail("impossible resource envelope reached model allocation")
@@ -164,17 +177,54 @@ def test_cpu_fp16_is_denied_before_native_model_allocation(
     assert not root.exists()
 
 
-def test_disk_credit_for_pending_directory_cannot_publish_from_corrupt_checkpoint(
+def test_changed_ambient_dtype_is_rejected_before_native_model_allocation(
     training_inputs,
     tmp_path,
     monkeypatch,
 ):
     packet, refs = training_inputs
+    root = tmp_path / "float64"
+    run = PortableTrainingRun(
+        packet,
+        _settings(packet, root),
+        expected_packet_sha256=packet.identity_sha256(),
+        sources={"local": lambda _, index: _batches(index)},
+        **refs,
+    )
+
+    def unexpected(*_args):
+        pytest.fail("unsupported default dtype reached model allocation")
+
+    monkeypatch.setattr(portable_packet, "build_canonical_base", unexpected)
+    prior_dtype = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(torch.float64)
+        with pytest.raises(ResourceAdmissionError, match="requires default FP32 on CPU"):
+            run.prepare()
+    finally:
+        torch.set_default_dtype(prior_dtype)
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("pending_state", ["verified", "missing", "corrupt"])
+def test_pending_recovery_checks_storage_after_authoritative_checkpoint_validation(
+    training_inputs,
+    tmp_path,
+    monkeypatch,
+    pending_state,
+):
+    packet, refs = training_inputs
+    opened = []
+
+    def source(_, index):
+        opened.append(index)
+        return _batches(index)
+
     run = PortableTrainingRun(
         packet,
         _settings(packet, tmp_path),
         expected_packet_sha256=packet.identity_sha256(),
-        sources={"local": lambda _, index: _batches(index)},
+        sources={"local": source},
         **refs,
     )
     prepared = run.prepare()
@@ -192,21 +242,35 @@ def test_disk_credit_for_pending_directory_cannot_publish_from_corrupt_checkpoin
     assert (interrupted.committed_step, interrupted.pending_step) == (0, 1)
     checkpoints = tmp_path / run.run_manifest_sha256 / "checkpoints"
     pending = checkpoints / "00000001-00000001"
-    (pending / "weights.safetensors").write_bytes(b"corrupt")
+    if pending_state == "corrupt":
+        (pending / "weights.safetensors").write_bytes(b"corrupt")
+    elif pending_state == "missing":
+        pending.rename(tmp_path / "unavailable")
     names = {path.name for path in checkpoints.iterdir()}
-    remaining_after_pending = 2 * 12 * packet.model_spec.parameter_count()
+    model = packet.model_spec
+    remaining_after_pending = 2 * (
+        12 * model.parameter_count() + 4 * model.vocab_size * model.d_model
+    )
     monkeypatch.setattr(
         portable_packet,
         "observe_host_resources",
         lambda *_: HostResources("cpu", 2**30, 2**30, remaining_after_pending),
     )
 
+    if pending_state == "verified":
+        final = run.run(expected_receipt_sha256=interrupted.receipt_sha256, recover=True)
+        assert final.committed_step == 3
+        assert opened == [0, 1]
+        return
+
     def unexpected(*_args):
-        pytest.fail("corrupt pending checkpoint reached publication")
+        pytest.fail("unverified pending checkpoint reached publication")
 
     monkeypatch.setattr(RunController, "_save_checkpoint", staticmethod(unexpected))
-    with pytest.raises(CheckpointIntegrityError):
+    error = CheckpointIntegrityError if pending_state == "corrupt" else ResourceAdmissionError
+    with pytest.raises(error):
         run.run(expected_receipt_sha256=interrupted.receipt_sha256, recover=True)
+    assert opened == [0]
     assert run.status() == interrupted
     assert {path.name for path in checkpoints.iterdir()} == names
 
@@ -264,5 +328,16 @@ def test_native_optimizer_boundary_reports_actual_cpu_and_checkpoint_measurement
     assert measured["checkpoint_restore_ns"] > 0
     assert measured["checkpoint_payload_bytes"] > 0
     assert measured["checkpoint_id"] == verify_checkpoint(path)["checkpoint_id"]
+    weights = load_tensor_arrays(path / "weights.safetensors")
+    serialized = sum(tensor.nbytes for tensor in weights.values())
+    arithmetic = assess_resource_envelope(
+        packet.model_spec,
+        facts,
+        remaining_updates=1,
+        initial_checkpoint_needed=False,
+    )
+    assert packet.model_spec.tie_embeddings
+    assert serialized == arithmetic["serialized_model_weight_bytes"]
+    assert serialized > 4 * identity.parameter_count
     if os.name == "nt":
         assert measured["process_peak_working_set_bytes"] > 0

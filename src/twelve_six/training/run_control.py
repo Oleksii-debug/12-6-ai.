@@ -428,6 +428,7 @@ class RunController:
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
         read_exposure_cursor: Callable[[Trainer], Mapping[str, Any]] | None = None,
         restore_exposure_cursor: Callable[[Mapping[str, Any]], None] | None = None,
+        admit_progress: Callable[[RunReceipt], None] | None = None,
     ) -> RunReceipt:
         """Advance one writer from the durable position supplied to the batch factory.
 
@@ -435,6 +436,7 @@ class RunController:
         The factory must resume at the committed step and token position it receives.
         For an external cursor, restore receives the verified cursor before the
         iterator opens and read supplies the cursor after each optimizer step.
+        Optional admission runs under the writer lock after checkpoint recovery.
         """
         with (
             exclusive_recovery_lock(self.namespace) as root,
@@ -503,6 +505,8 @@ class RunController:
                     current = self._settle_boundary(connection, current, control)
                     if current.phase in {RunPhase.PAUSED, RunPhase.STOPPED}:
                         return current
+                if admit_progress is not None:
+                    admit_progress(current)
                 current = self._append(
                     connection,
                     current,

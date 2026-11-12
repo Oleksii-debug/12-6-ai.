@@ -218,6 +218,7 @@ class OrderedExposureRuntime:
         expected_receipt_sha256: str,
         recover: bool = False,
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
+        admit_progress: Callable[[RunReceipt], None] | None = None,
     ) -> RunReceipt:
         """Open the source at the exact next authorized batch after verified restore."""
         self._validate_config(trainer, identity)
@@ -276,4 +277,5 @@ class OrderedExposureRuntime:
             control=control,
             read_exposure_cursor=cursor,
             restore_exposure_cursor=remember_cursor,
+            admit_progress=admit_progress,
         )

@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 8 SECTION 8 DONE
+
+- **Plan 8 Section 8A–C DONE. 8/11 sections complete.** [PR #3246](https://github.com/Oleksii-debug/12-6-ai./pull/3246) accepted at main `4f70e91615913dfc8ce4cb4b39faea27e752a8a9`. Complete tree `05177f367e56423c39c0ce746d8a4ce6b6576a5a` matches frozen head `233a37336daf1cbffd7438ff75b3cd1ed848fa6e`, including all six changed blobs.
+- **8A DONE.** The policy distinguishes Q0 fixture scope, verified SIL, signed physical action evidence and separately scoped supervised and field evidence.
+- **8B DONE.** The trusted policy declares requirements for all 26 current capabilities. Seven versioned scale profiles distinguish config, proxy, host, training authority and learned qualification. Actual readback yielded config-defined for all seven profiles.
+- **8C DONE.** Candidate, package, registry, policy and signed role checks reject stale or relabeled evidence and keep the incumbent independent promotion decision. Policy SHA-256 is `170f601e1ba26624266d163aee17cc7bccfcc56d51add063e025acefc1d9b9a4`.
+- The exact local tree passed 135 tests, Ruff, the inventory validators and eight raw runtime blob checks. Windows lacked symlink privilege for two fixtures. Hosted Actions remained queued. Section 9 is next.
+
 # 2026-11-12 PLAN 3 SECTION 9 DONE
 
 - **Plan 3 Section 9A–C DONE. 9/12 sections complete.** [PR #3244](https://github.com/Oleksii-debug/12-6-ai./pull/3244) accepted at main `fb46f2e91d253361517759eb4dbcca419f3be151`. Complete tree `1494bb326bab7c44f2a28065745b7f7e987e51f5` matches frozen head `78d683a8f8b9c090d57da1a7e203d48735802443`. All five GitHub source blobs matched.

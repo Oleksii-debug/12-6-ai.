@@ -21,8 +21,10 @@ from ..checkpoint import (
     load_trainer_checkpoint,
     save_trainer_checkpoint,
 )
-from ..model import TwelveSixDecoder, count_trainable_parameters
+from ..model import ModelSpec, TwelveSixDecoder, count_trainable_parameters
 from .trainer import Batch, Trainer
+
+DISK_FLOOR_DENIAL = "DISK_BELOW_UNPRUNED_CHECKPOINT_FLOOR"
 
 
 class ResourceAdmissionError(RuntimeError):
@@ -97,15 +99,16 @@ def observe_host_resources(checkpoint_root: Path, device: str) -> HostResources:
 
 
 def assess_resource_envelope(
-    parameter_count: int,
+    model_spec: ModelSpec,
     resources: HostResources,
     *,
     remaining_updates: int,
     initial_checkpoint_needed: bool,
 ) -> dict[str, Any]:
     """Screen the native FP32-parameter AdamW path against arithmetic floors."""
-    if type(parameter_count) is not int or parameter_count < 1:
-        raise ValueError("parameter count must be a positive integer")
+    if type(model_spec) is not ModelSpec:
+        raise TypeError("resource admission requires an exact ModelSpec")
+    parameter_count = model_spec.parameter_count()
     if type(remaining_updates) is not int or remaining_updates < 0:
         raise ValueError("remaining updates must be a nonnegative integer")
     if type(initial_checkpoint_needed) is not bool:
@@ -119,13 +122,17 @@ def assess_resource_envelope(
     ):
         if amount is not None and (type(amount) is not int or amount < 0):
             raise ValueError("resource observations must be nonnegative byte counts")
-    weight_bytes = 4 * parameter_count
+    # Native state_dict writes both embedding names when weights are tied.
+    tied_weight_copy = (
+        model_spec.vocab_size * model_spec.d_model if model_spec.tie_embeddings else 0
+    )
+    weight_bytes = 4 * (parameter_count + tied_weight_copy)
     training_bytes = 16 * parameter_count
     # The current native save holds live weights/moments plus the two moment
     # copies made by Trainer.state_dict and dataclass serialization.
     save_device_bytes = 28 * parameter_count
-    host_staging_bytes = 12 * parameter_count
-    checkpoint_bytes = 12 * parameter_count
+    checkpoint_bytes = weight_bytes + 8 * parameter_count
+    host_staging_bytes = checkpoint_bytes
     unpruned_bytes = remaining_updates * checkpoint_bytes
     if initial_checkpoint_needed:
         unpruned_bytes += weight_bytes
@@ -142,7 +149,7 @@ def assess_resource_envelope(
         elif resources.host_available_bytes < host_staging_bytes:
             reasons.append("HOST_MEMORY_BELOW_CHECKPOINT_STAGING_FLOOR")
     if resources.checkpoint_volume_free_bytes < unpruned_bytes:
-        reasons.append("DISK_BELOW_UNPRUNED_CHECKPOINT_FLOOR")
+        reasons.append(DISK_FLOOR_DENIAL)
     return {
         "evidence_class": "OBSERVED_CAPACITY_WITH_ARITHMETIC_FLOORS",
         "parameter_count": parameter_count,
@@ -150,6 +157,7 @@ def assess_resource_envelope(
         "resources": asdict(resources),
         "fp32_adamw_device_bytes": training_bytes,
         "native_checkpoint_save_device_bytes": save_device_bytes,
+        "serialized_model_weight_bytes": weight_bytes,
         "checkpoint_payload_floor_bytes": checkpoint_bytes,
         "unpruned_checkpoint_volume_floor_bytes": unpruned_bytes,
         "denials": reasons,
@@ -217,6 +225,8 @@ def benchmark_optimizer_boundary(
         or count_trainable_parameters(trainer.model) != identity.parameter_count
     ):
         raise ValueError("boundary benchmark model differs from the declared ModelSpec")
+    if any(parameter.dtype != torch.float32 for parameter in trainer.model.parameters()):
+        raise ValueError("native boundary benchmark requires FP32 model parameters")
     if checkpoint.exists() or checkpoint.is_symlink():
         raise FileExistsError(f"benchmark checkpoint already exists: {checkpoint}")
     if not checkpoint.parent.is_dir():
@@ -265,6 +275,7 @@ def benchmark_optimizer_boundary(
         raise RuntimeError("benchmark restart did not restore the exact boundary")
     checkpoint_bytes = sum(record["bytes"] for record in saved["files"].values())
     tokens_per_second = trainer.tokens_seen * 1_000_000_000 / max(step_ns, 1)
+    projected_updates = (projection_tokens + trainer.tokens_seen - 1) // trainer.tokens_seen
     return {
         "evidence_class": "MEASURED_SINGLE_OPTIMIZER_BOUNDARY",
         "run_manifest_sha256": identity.run_manifest_hash,
@@ -275,7 +286,10 @@ def benchmark_optimizer_boundary(
         "tokens_seen": trainer.tokens_seen,
         "tokens_per_second": tokens_per_second,
         "same_fixture_projection_tokens": projection_tokens,
-        "same_fixture_projected_seconds": projection_tokens / tokens_per_second,
+        "same_fixture_projected_optimizer_seconds": projection_tokens / tokens_per_second,
+        "same_fixture_projected_update_and_checkpoint_seconds": (
+            projected_updates * (step_ns + write_ns) / 1_000_000_000
+        ),
         "checkpoint_id": saved["checkpoint_id"],
         "checkpoint_payload_bytes": checkpoint_bytes,
         "checkpoint_write_ns": write_ns,
