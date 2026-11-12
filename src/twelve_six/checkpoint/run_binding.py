@@ -88,6 +88,24 @@ def bind_checkpoint_identity(
     data = _require_mapping(run_manifest, "data")
     training = _require_mapping(run_manifest, "training")
     environment = _require_mapping(run_manifest, "environment")
+    bound_training = dict(training)
+
+    if "recipe" in training or "recipe_sha256" in training:
+        from ..training.config import TrainingRecipe
+
+        try:
+            recipe = TrainingRecipe.from_dict(training.get("recipe"))
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(f"invalid training recipe: {exc}") from exc
+        recipe_fields = recipe.run_training_fields()
+        for key, expected in recipe_fields.items():
+            if hash_json(training.get(key)) != hash_json(expected):
+                raise CheckpointCompatibilityError(f"training.{key} disagrees with frozen recipe")
+        bound_training.update(recipe_fields)
+        if recipe.sequence_length != packing_identity.get("sequence_length"):
+            raise CheckpointCompatibilityError("training recipe disagrees with packing sequence length")
+        if step > recipe.trainer.max_steps or tokens_seen > recipe.maximum_total_exposures:
+            raise CheckpointCompatibilityError("checkpoint exceeds the frozen training recipe budget")
 
     git_sha = _require_git_sha(candidate.get("git_sha"), field="candidate.git_sha")
 
@@ -227,7 +245,7 @@ def bind_checkpoint_identity(
         "stage": stage,
         "run_kind": run_kind,
         "init_spec_sha256": actual_init_hash,
-        "training": dict(training),
+        "training": bound_training,
         "data": {
             "dataset_manifest_sha256": dataset_hash,
             "split_identity": split_identity,
