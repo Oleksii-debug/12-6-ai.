@@ -4,7 +4,7 @@
 
 **Plan 3 has 12 Sections, 10/12 DONE (2026-11-13).** [#3248](https://github.com/Oleksii-debug/12-6-ai./pull/3248) integrated the provider-neutral launcher and checkpoint migration. Sections 10B and 10C are accepted. Section 10A still requires exact-profile physical measurements. Section 12 is the next independent engineering section.
 
-**Plan 8 has 11 Sections, 9/11 DONE (2026-11-13).** [#3247](https://github.com/Oleksii-debug/12-6-ai./pull/3247) integrated the durable defect, candidate, retest, promotion and artifact lineage. Section 10 is the next open section.
+**Plan 8 has 11 Sections, 10/11 DONE (2026-11-13).** [#3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) integrated the exact Git freeze, merge preview and accepted-main readback verifier. Section 11 is the next open section.
 
 **Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
 
