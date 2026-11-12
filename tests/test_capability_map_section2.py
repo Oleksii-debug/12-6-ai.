@@ -697,9 +697,9 @@ def test_source_surface_inventory_covers_accepted_aiqa() -> None:
     assert inventory.observed_main_sha == registry.observed_main_sha
     assert inventory.observed_main_sha == "a6c4c269babbac134679a70b719e86e3fbcd4932"
     assert inventory.observed_main_tree_sha == "9363c3cad0bdf8c58034a4a47a10d6d87421a123"
-    assert inventory.accepted_main_surface_count == 107
-    assert inventory.candidate_overlay_surface_count == 48
-    assert inventory.source_surface_count == 155
+    assert inventory.accepted_main_surface_count == 104
+    assert inventory.candidate_overlay_surface_count == 52
+    assert inventory.source_surface_count == 156
     integrated = next(
         surface
         for surface in inventory.surfaces
@@ -795,8 +795,8 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
     candidate = [
         surface for surface in inventory.surfaces if surface.origin != "accepted_main"
     ]
-    assert inventory.candidate_overlay_surface_count == 48
-    assert len(candidate) == 48
+    assert inventory.candidate_overlay_surface_count == 52
+    assert len(candidate) == 52
     assert all(
         registry.capability(surface.capability_id).status is CapabilityStatus.UNAVAILABLE
         for surface in candidate
@@ -809,7 +809,10 @@ def test_closed_aiqa_has_no_unqualified_peer_source_promotion() -> None:
         "src/twelve_six/checkpoint/durability.py",
         "src/twelve_six/checkpoint/pinned_directory.py",
         "src/twelve_six/checkpoint/progress_trainer.py",
+        "src/twelve_six/checkpoint/retention.py",
         "src/twelve_six/checkpoint/run_binding.py",
+        "src/twelve_six/checkpoint/schema_validation.py",
+        "src/twelve_six/checkpoint/selection.py",
         "src/twelve_six/model.py",
         "src/twelve_six/portable_run_packet.py",
         "src/twelve_six/sil_qualification.py",

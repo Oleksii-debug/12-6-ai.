@@ -17,6 +17,14 @@
 - **5C DONE.** New-process readback verified durable evidence and denied replay for all ten execution cases. STOP prevented an unstarted effect. All 20 new [hash-only evidence blobs](https://github.com/Oleksii-debug/12-6-ai./tree/fef95d593514711ee7110c6aa2d96dd6874fd6ed/evidence/plan8) matched their independent readback. The public-only audit SHA-256 is `9cf1644eb61b24dd591251c8176bb253a51d1c61105c64a6f526d124ef71f242`.
 - Local qualification passed 204 tests and Ruff. Three symlink cases were deselected because the Windows account lacks the required privilege. Hosted Actions remained queued and the pinned Linux SIL runtime was unavailable locally. The signed runs qualify the local bridge; scale-size GPU training, target-provider readiness and production signing are separate gates. [Section 6](https://github.com/Oleksii-debug/12-6-ai./pull/3226) is the next open section.
 
+# 2026-11-12 PLAN 3 SECTION 6 DONE
+
+- **Plan 3: 6/12 DONE.** Section 6A–C integrated through [PR #3240](https://github.com/Oleksii-debug/12-6-ai./pull/3240) at accepted main `054bb14810ab4111a7a419a32b0f0a7f9b254f92`, tree `53d4d9965abd4c28fd436de5c96412db09d57afc`. All nine changed files match the qualified head `75ea152b7f62d53b1657429c710cf5ecc0508454`. The other tree differences are three preexisting Plan 8 tracker documents.
+- **6A DONE.** The checkpoint transaction binds model, optimizer, scheduler, RNG, recipe and manifests to an authenticated exposure cursor and exact parent generation. A fresh process restored the cursor before reading the next batch.
+- **6B DONE.** The create-only publication path rejects partial and corrupt checkpoints. Recovery also rejects a physically readable checkpoint if its reserved cursor or parent disagrees with the run receipt. The existing journal compatibility case passed.
+- **6C DONE.** Retention protects the exact authoritative checkpoint and required rollback parent, including when a newer physical candidate is visible.
+- Local Windows qualification passed 413 tests with eight platform skips, eight tests on the exact remote head and nineteen tests on accepted main. Ruff passed. Hosted Actions remained queued. Section 7 is the next open section.
+
 # 2026-11-12 PLAN 3 SECTION 5 DONE
 
 - **Plan 3: 5/12 DONE.** Section 5A–C integrated through [PR #3239](https://github.com/Oleksii-debug/12-6-ai./pull/3239) at main `ac17b7fc79635d26ee658013d4ef9d7c0c9f2d2c`. Accepted tree `547be824ca1174a6b4abad104457b4a82b7f273d` matches tested head `b677dd8b4ff7a43da0ded2e98b00f3dfdbff4c34`.

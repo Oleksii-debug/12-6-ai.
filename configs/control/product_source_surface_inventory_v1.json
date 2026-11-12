@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 155,
+  "source_surface_count": 156,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -103,7 +103,7 @@
     {
       "path": "src/twelve_six/checkpoint/retention.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/root_snapshot.py",
@@ -118,12 +118,12 @@
     {
       "path": "src/twelve_six/checkpoint/schema_validation.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/selection.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/state_tree.py",
@@ -134,6 +134,11 @@
       "path": "src/twelve_six/checkpoint/trainer_adapter.py",
       "capability_id": "checkpoint-integrity-mechanics",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/transaction.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/transactional_rng.py",
@@ -781,6 +786,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 107,
-  "candidate_overlay_surface_count": 48
+  "accepted_main_surface_count": 104,
+  "candidate_overlay_surface_count": 52
 }
