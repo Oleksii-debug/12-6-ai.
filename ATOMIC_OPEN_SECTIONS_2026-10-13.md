@@ -128,9 +128,9 @@
 | 4А | Створити вузький agent/protocol і keyboard/NVDA-friendly operator harness для виконання exact package/test packet на реальному PC/server/accelerator; це qualification infrastructure, а не final product acceptance. | Статус: DONE |
 | 4Б | Receipt містить host/OS/driver/hardware/package hashes/scenario/results та повертається в canonical evidence surface. | Статус: DONE — успадковано з раніше прийнятого батьківського розділу 4; не відкривати. |
 | 4В | Physical agent не отримує unrestricted code/control authority. | Статус: DONE — успадковано з раніше прийнятого батьківського розділу 4; не відкривати. |
-| 5А | Доставляти exact candidate/test packet на host і повертати execution receipts/issues/artifacts; локальний operator path має давати доступні text status/verify/stop controls без миші. | Статус: OPENOWNER SCALE ADDENDUM 2026-10-11 (OPEN S5 only): Qualification/control packets мають приймати profi |
-| 5Б | Failure автоматично стає адресованим reproducible defect, не просто логом. | Статус: OPEN |
-| 5В | Bridge підтримує reconnect/idempotency і no duplicate test/effect. | Статус: OPEN |
+| 5А | Доставляти exact candidate/test packet на host і повертати execution receipts/issues/artifacts; локальний operator path має давати доступні text status/verify/stop controls без миші. | Статус: DONE — accepted main, PR #3085 |
+| 5Б | Failure автоматично стає адресованим reproducible defect, не просто логом. | Статус: DONE — accepted main, PR #3085 |
+| 5В | Bridge підтримує reconnect/idempotency і no duplicate test/effect. | Статус: DONE — accepted main, PR #3085 |
 | 6А | Описувати product journeys як versioned scenarios із prerequisites/actions/observations/expected evidence. | Статус: OPEN |
 | 6Б | Harness може працювати проти fixtures окремих планів і пізніше exact integrated product. | Статус: OPEN |
 | 6В | Coverage map показує, які capability chains ще не мають потрібного evidence level. | Статус: OPEN |
