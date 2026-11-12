@@ -134,9 +134,9 @@
 | 6А | Описувати product journeys як versioned scenarios із prerequisites/actions/observations/expected evidence. | Статус: DONE — accepted main, PR #3226 |
 | 6Б | Harness може працювати проти fixtures окремих планів і пізніше exact integrated product. | Статус: DONE — accepted main, PR #3226 |
 | 6В | Coverage map показує, які capability chains ще не мають потрібного evidence level. | Статус: DONE — accepted main, PR #3226 |
-| 7А | Інжектувати process kill, network loss, disk/corrupt artifact, stale state, provider/node failure та interrupted publication. | Статус: OPEN |
-| 7Б | Перевіряти no duplicate exposure/effects, durable recovery, diagnostics і rollback. | Статус: OPEN |
-| 7В | Fault campaign framework не вимагає final product — використовує component fixtures. | Статус: OPEN |
+| 7А | Інжектувати process kill, network loss, disk/corrupt artifact, stale state, provider/node failure та interrupted publication. | Статус: DONE — accepted main, PR #3227 |
+| 7Б | Перевіряти no duplicate exposure/effects, durable recovery, diagnostics і rollback. | Статус: DONE — accepted main, PR #3227 |
+| 7В | Fault campaign framework не вимагає final product — використовує component fixtures. | Статус: DONE — accepted main, PR #3227 |
 | 8А | Q0 component/contract, Q1 SIL, Q2 HIL, Q3 supervised physical operator/NVDA, Q4 field/canary evidence. | Статус: OPENOWNER SCALE ADDENDUM 2026-10-11 (OPEN S8 only): Розділяти для кожного SCALE profile статуси CONFIG |
 | 8Б | Кожна capability декларує потрібний evidence level; simulation не підміняє physical requirement. | Статус: OPEN |
 | 8В | Promotion policy invalidates stale evidence після behavior-changing mutation. | Статус: OPEN |
