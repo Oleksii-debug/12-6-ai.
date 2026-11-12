@@ -97,9 +97,9 @@
 | 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: DONE — accepted main, PR #3243 |
 | 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: DONE — accepted main, PR #3243 |
 | 8В | Вести unique-loss ledger і audit counters. | Статус: DONE — accepted main, PR #3243 |
-| 9А | Пакетувати ModelSpec, recipe, tokenizer/shard contract refs, budget, checkpoint policy, commands та expected evidence в portable run packet; для qualification цього плану refs можуть бути fixture identities, а real tokenizer/shards підставляються в Плані 9. | Статус: OPEN |
-| 9Б | Один packet запускається local/free/server adapters без зміни scientific semantics. | Статус: OPEN |
-| 9В | Provider-specific settings зберігаються окремо від canonical run identity. | Статус: OPEN |
+| 9А | Пакетувати ModelSpec, recipe, tokenizer/shard contract refs, budget, checkpoint policy, commands та expected evidence в portable run packet; для qualification цього плану refs можуть бути fixture identities, а real tokenizer/shards підставляються в Плані 9. | Статус: DONE — accepted main, PR #3244 |
+| 9Б | Один packet запускається local/free/server adapters без зміни scientific semantics. | Статус: DONE — accepted main, PR #3244 |
+| 9В | Provider-specific settings зберігаються окремо від canonical run identity. | Статус: DONE — accepted main, PR #3244 |
 | 10А | Виміряти memory, throughput, tokens/sec, checkpoint I/O і expected run time на підтримуваних profiles. | Статус: OPENДОДАТОК 2026-10-11 — послідовний benchmark усіх семи SCALE profiles: 500M, 750M, 1B, 2B, 3B, 4B, 5 |
 | 10Б | Визначити admission rules, щоб завідомо impossible run не стартував. | Статус: OPEN |
 | 10В | Resource metrics не змінюють scientific recipe без нової version. | Статус: OPEN |
