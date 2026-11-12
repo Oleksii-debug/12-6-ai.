@@ -4,7 +4,7 @@
 
 **Plan 3 has 12 Sections, 8/12 DONE (2026-11-12).** [#3243](https://github.com/Oleksii-debug/12-6-ai./pull/3243) integrated ordered exposure accounting and atomic cursor and trainer state recovery. Section 9 is the next open section.
 
-**Plan 8 has 11 Sections, 6/11 DONE (2026-11-12).** [#3226](https://github.com/Oleksii-debug/12-6-ai./pull/3226) integrated the versioned scenario harness and evidence coverage map. Section 7 is the next open section.
+**Plan 8 has 11 Sections, 7/11 DONE (2026-11-12).** [#3227](https://github.com/Oleksii-debug/12-6-ai./pull/3227) integrated the eight-case fault campaign, process-exit recovery and stable journal readback. Section 8 is the next open section.
 
 **Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
 
