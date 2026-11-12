@@ -76,12 +76,12 @@
 | 1А | Завершити canonical decoder-only Transformer contract: embeddings, RoPE, attention/GQA, RMSNorm, SwiGLU/MLP, LM head, context, tying, parameter count. | Статус: DONE. РІШЕННЯ ВЛАСНИКА 2026-10-11 — НОВИЙ ЦІЛЬОВИЙ МАСШТАБ, лише для OPEN-робіт. Історичні 20M/200M, п |
 | 1Б | Initialization має бути deterministic за manifest/seed, незалежним від training launcher і random-init для canonical Base; foreign pretrained/instruct/aligned weights не можуть бути ancestor canonical Base checkpoint. | Статус: DONE — успадковано з раніше прийнятого батьківського розділу 1; не відкривати. |
 | 1В | Додати serialization/version compatibility та architecture validation. | Статус: DONE — успадковано з раніше прийнятого батьківського розділу 1; не відкривати. |
-| 2А | Перевірити forward/backward, masking, labels, loss normalization, padding/packing boundaries і no-future leakage. | Статус: OPEN |
-| 2Б | Додати reference math/gradient checks, dtype/precision tests і pathological inputs. | Статус: OPEN |
-| 2В | Numerical contract однаковий для local/server/distributed adapters у межах tolerance. | Статус: OPEN |
-| 3А | Визначити versioned optimizer/scheduler/batch/accumulation/precision/clipping/regularization/budget semantics. | Статус: OPEN |
-| 3Б | Recipe не залежить від конкретного compute provider; provider може змінити execution, але не scientific meaning. | Статус: OPEN |
-| 3В | Зберігати exact recipe hash у run/checkpoint manifests. | Статус: OPEN |
+| 2А | Перевірити forward/backward, masking, labels, loss normalization, padding/packing boundaries і no-future leakage. | Статус: DONE — accepted main, PR #3228 |
+| 2Б | Додати reference math/gradient checks, dtype/precision tests і pathological inputs. | Статус: DONE — accepted main, PR #3228 |
+| 2В | Numerical contract однаковий для local/server/distributed adapters у межах tolerance. | Статус: DONE — accepted main, PR #3228 |
+| 3А | Визначити versioned optimizer/scheduler/batch/accumulation/precision/clipping/regularization/budget semantics. | Статус: DONE — accepted main, PR #3234 |
+| 3Б | Recipe не залежить від конкретного compute provider; provider може змінити execution, але не scientific meaning. | Статус: DONE — accepted main, PR #3234 |
+| 3В | Зберігати exact recipe hash у run/checkpoint manifests. | Статус: DONE — accepted main, PR #3234 |
 | 4А | Реалізувати optimizer/scheduler із deterministic step semantics і warmup/decay policy. | Статус: OPEN |
 | 4Б | Виявляти NaN/Inf/overflow/divergence, bounded recovery і fail-closed corruption handling. | Статус: OPEN |
 | 4В | Кваліфікувати mixed precision/gradient scaling там, де підтримується. | Статус: OPEN |
