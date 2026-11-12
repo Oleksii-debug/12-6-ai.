@@ -2,7 +2,7 @@
 
 **Plan 2 is terminal DONE, 18/18 Sections (2026-11-12).** Sections 16, 17 and 18 were integrated through [#3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229), [#3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) and [#3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236). The accepted local Plan 9 data release is pinned in [the release authority](evidence/plan2_s18/release_authority_v1.json) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Google Docs remains the plan specification. Its status mirror is read-only through the connected account. Earlier counts remain historical snapshots.
 
-**Plan 3 has 12 Sections, 10/12 DONE (2026-11-13).** [#3248](https://github.com/Oleksii-debug/12-6-ai./pull/3248) integrated the provider-neutral launcher and checkpoint migration. Sections 10B and 10C are accepted. Section 10A still requires exact-profile physical measurements. Section 12 is the next independent engineering section.
+**Plan 3 has 12 Sections, 11/12 DONE (2026-11-13).** [#3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted the versioned training runtime and verified the real Plan 2 handoff. Section 10A is the remaining open section and requires exact-profile physical measurements.
 
 **Plan 8 has 11 Sections, 10/11 DONE (2026-11-13).** [#3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) integrated the exact Git freeze, merge preview and accepted-main readback verifier. Section 11 is the next open section.
 
