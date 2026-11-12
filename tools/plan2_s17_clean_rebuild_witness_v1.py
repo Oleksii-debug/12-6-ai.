@@ -175,8 +175,8 @@ def _physical_tree_pin(root: Path) -> tuple[tuple[str, int, int, int, int, int],
             if kind == "d":
                 _need(stat.S_ISDIR(info.st_mode), "linked or unusual directory")
             else:
-                _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
-                      "linked or unusual file")
+                _need(stat.S_ISREG(info.st_mode), "linked or unusual file")
+                _need(info.st_nlink == 1, "hardlinked artifact member")
             pinned.append((kind + ":" + path.relative_to(root).as_posix(),
                            info.st_dev, info.st_ino, info.st_size,
                            info.st_mtime_ns, info.st_ctime_ns))
