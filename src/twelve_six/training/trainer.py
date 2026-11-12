@@ -273,7 +273,34 @@ class Trainer:
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
             return torch.zeros((), device=self.device)
-        return torch.sqrt(squared_norm)
+        norm = torch.sqrt(squared_norm)
+        if not torch.isfinite(norm).item():
+            raise NonFiniteTrainingError(f"non-finite gradient norm at micro_step={self.micro_step}")
+        return norm
+
+    @torch.no_grad()
+    def _assert_finite_update(self) -> None:
+        # An optimizer or scheduler may return successfully after producing
+        # non-finite state. Such an update cannot be counted or checkpointed.
+        tensors = list(self.model.parameters())
+        tensors.extend(
+            value
+            for state in self.optimizer.state.values()
+            for value in state.values()
+            if isinstance(value, Tensor)
+        )
+        finite_by_device: dict[torch.device, Tensor] = {}
+        for value in tensors:
+            finite = torch.isfinite(value).all()
+            if value.device in finite_by_device:
+                finite_by_device[value.device] &= finite
+            else:
+                finite_by_device[value.device] = finite
+        if (
+            not all(flag.item() for flag in finite_by_device.values())
+            or not all(math.isfinite(float(group["lr"])) for group in self.optimizer.param_groups)
+        ):
+            raise NonFiniteTrainingError(f"non-finite optimizer state at micro_step={self.micro_step}")
 
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
@@ -328,11 +355,12 @@ class Trainer:
                     )
 
                 self.scaler.step(self.optimizer)
-                self.optimizer_step += 1
                 self.scaler.update()
-                self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
+                self._assert_finite_update()
+                self.optimizer.zero_grad(set_to_none=True)
+                self.optimizer_step += 1
             except Exception:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
@@ -379,8 +407,11 @@ class Trainer:
         consumed = 0
         final_metrics: StepMetrics | None = None
 
-        for batch in batches:
-            if self.optimizer_step >= self.config.max_steps:
+        iterator = iter(batches)
+        while self.optimizer_step < self.config.max_steps:
+            try:
+                batch = next(iterator)
+            except StopIteration:
                 break
             metrics = self.train_microbatch(batch)
             consumed += 1

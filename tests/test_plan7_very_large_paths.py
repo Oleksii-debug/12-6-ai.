@@ -96,23 +96,23 @@ def test_partial_corrupt_duplicate_reordered_and_lost_all_replicas_denied():
     ({"paid_compute_requested": True}, "paid_compute_denied"),
 ])
 def test_resource_admission_denials(changes, reason):
-    c, l, a, p, s, m = fixture()
+    c, limits, a, p, s, m = fixture()
     c = replace(c, **changes)
-    assert reason in assess(args=(c, l, a, p, s, m))["reasons"]
+    assert reason in assess(args=(c, limits, a, p, s, m))["reasons"]
 
 
 def test_topology_and_economic_fail_closed():
-    c, l, a, p, s, m = fixture()
-    report = assess(args=(c, l, a, replace(p, workers_per_node=7), s, m))
+    c, limits, a, p, s, m = fixture()
+    report = assess(args=(c, limits, a, replace(p, workers_per_node=7), s, m))
     assert "topology_mismatch" in report["reasons"]
-    report = assess_very_large("30B", "DENSE", c, l, a, p, s, m,
+    report = assess_very_large("30B", "DENSE", c, limits, a, p, s, m,
                                hourly_usd=1000.0, budget_usd=1.0)
     assert "economic_budget_denied" in report["reasons"]
     assert report["launch_authorized"] is False
 
 
 def test_unsupported_and_adversarial_input_types_fail_closed():
-    c, l, a, p, s, m = fixture()
+    c, limits, a, p, s, m = fixture()
     for tier in ("3B", "300B", True):
         with pytest.raises(VeryLargeDenied):
             very_large_recipe(tier)
@@ -128,8 +128,8 @@ def test_unsupported_and_adversarial_input_types_fail_closed():
             inspect_transport(p, s, m, lost_nodes=lost)
     object.__setattr__(p, "workers_per_node", True)
     with pytest.raises(ValueError):
-        assess(args=(c, l, a, p, s, m))
+        assess(args=(c, limits, a, p, s, m))
     for cost in (float("nan"), float("inf"), True, -1):
         with pytest.raises(ValueError):
-            assess_very_large("30B", "DENSE", c, l, a, replace(p, workers_per_node=8),
+            assess_very_large("30B", "DENSE", c, limits, a, replace(p, workers_per_node=8),
                               s, m, hourly_usd=cost, budget_usd=0)

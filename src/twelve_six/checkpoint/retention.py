@@ -14,6 +14,7 @@ from .core import CheckpointCompatibilityError
 from .selection import (
     CheckpointCandidate,
     _materialize,
+    _require_sha256,
     select_best,
     select_chronological,
     select_final,
@@ -35,6 +36,7 @@ def plan_checkpoint_retention(
     candidates: Iterable[CheckpointCandidate],
     *,
     keep_recent: int,
+    authoritative_checkpoint_id: str | None = None,
     best_metric_name: str | None = None,
     best_mode: str | None = None,
 ) -> CheckpointRetentionPlan:
@@ -46,6 +48,9 @@ def plan_checkpoint_retention(
     kept. When best-metric authority is supplied, the unique best checkpoint
     is also kept. Every ambiguity inherited from checkpoint selection fails
     closed before a deletion candidate is emitted.
+
+    Transactional checkpoints require the exact authoritative checkpoint ID from
+    the durable run receipt. A newer published checkpoint may still be pending.
     """
 
     if not isinstance(keep_recent, int) or isinstance(keep_recent, bool) or keep_recent < 1:
@@ -57,6 +62,36 @@ def plan_checkpoint_retention(
 
     items = _materialize(candidates)
     chronological = select_chronological(items)
+    by_id = {item.checkpoint_id: item for item in items}
+    protected_ids: set[str] = set()
+    transactional = any(item.generation is not None for item in items)
+    if authoritative_checkpoint_id is not None:
+        _require_sha256(authoritative_checkpoint_id, field="authoritative_checkpoint_id")
+        authoritative = by_id.get(authoritative_checkpoint_id)
+        if authoritative is None:
+            raise CheckpointCompatibilityError(
+                "authoritative checkpoint is missing from retention input"
+            )
+        if transactional and authoritative.generation is None:
+            raise CheckpointCompatibilityError(
+                "legacy authority has no authenticated rollback parent"
+            )
+        protected_ids.add(authoritative.checkpoint_id)
+        if authoritative.parent_checkpoint_id is not None:
+            parent = by_id.get(authoritative.parent_checkpoint_id)
+            if parent is None:
+                raise CheckpointCompatibilityError("required rollback parent is missing")
+            parent_generation = parent.step if parent.generation is None else parent.generation
+            if (
+                parent.progress_key >= authoritative.progress_key
+                or parent_generation != authoritative.parent_generation
+            ):
+                raise CheckpointCompatibilityError("required rollback parent generation disagrees")
+            protected_ids.add(parent.checkpoint_id)
+    elif transactional:
+        raise CheckpointCompatibilityError(
+            "transactional retention requires an authoritative checkpoint ID"
+        )
 
     final: CheckpointCandidate | None = None
     if any(item.completed for item in items):
@@ -68,6 +103,7 @@ def plan_checkpoint_retention(
 
     newest_first = sorted(items, key=lambda item: item.progress_key, reverse=True)
     keep_ids = {item.checkpoint_id for item in newest_first[:keep_recent]}
+    keep_ids.update(protected_ids)
     keep_ids.add(chronological.checkpoint_id)
     if final is not None:
         keep_ids.add(final.checkpoint_id)
@@ -77,7 +113,9 @@ def plan_checkpoint_retention(
     # Order both outputs chronologically so plans are stable and reviewable.
     oldest_first = sorted(items, key=lambda item: item.progress_key)
     keep = tuple(item.checkpoint_id for item in oldest_first if item.checkpoint_id in keep_ids)
-    delete = tuple(item.checkpoint_id for item in oldest_first if item.checkpoint_id not in keep_ids)
+    delete = tuple(
+        item.checkpoint_id for item in oldest_first if item.checkpoint_id not in keep_ids
+    )
 
     return CheckpointRetentionPlan(
         keep=keep,

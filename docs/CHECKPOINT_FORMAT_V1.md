@@ -14,6 +14,18 @@ A checkpoint directory contains:
 
 The format was hardened before any canonical S0 checkpoint existed, so the pre-release format number remains v1. Earlier transient test artifacts that lack the vocabulary/run-manifest identities are intentionally rejected by current verification rather than treated as canonical-compatible artifacts.
 
+## Transaction generation and exposure
+
+The optional `training_config.checkpoint_transaction` record uses schema `12-6.checkpoint-transaction.v1`. It carries the publication generation, the exact parent checkpoint ID and generation, the stable training-config digest, and a versioned JSON exposure cursor with its SHA-256. The full training-config digest and checkpoint ID cover this record. The scientific run-manifest digest remains stable as cursor position advances.
+
+Generation zero has no parent. Later generations name the immediately preceding publication generation. A periodic checkpoint can have a generation below its optimizer step. The single-writer training controller publishes one checkpoint per committed step and uses the step as the generation. It reserves the cursor digest before publication and checks it and the exact parent against the run receipt when recovering a pending checkpoint.
+
+The controller supplies the verified external cursor to the stream restore callback before opening batches. The stream provider validates its own cursor semantics and returns the current position at each committed optimizer boundary. The built-in cursor records the next microbatch index for deterministic indexed streams. Checkpoints without transaction metadata remain readable.
+
+The ordered exposure runtime uses this transaction to store D04's exact next batch, unique-target counters and loss-position intervals. The cursor carries the ledger, plan, content and run identities. The nested D04 trainer binding hashes the embedded progress record, and the enclosing checkpoint ID covers the whole cursor. A replacement provider uses the same authoritative run journal and must yield the exact live predictor, target and mask tensors from the verified next batch.
+
+Retention planning for transactional checkpoints takes the current checkpoint ID from the durable run receipt and preserves its exact rollback parent. A missing or inconsistent parent prevents deletion eligibility from being issued. The planner leaves files untouched.
+
 ## Save/load invariants
 
 `save_checkpoint` stages into a sibling temporary directory, verifies the completed bundle, and only then renames it into place. Checkpoint-v1 destinations are immutable after publication: saving to an existing destination fails closed even when the historical `overwrite=True` argument is passed. That argument remains accepted only for source compatibility and does not authorize replacing an existing checkpoint.

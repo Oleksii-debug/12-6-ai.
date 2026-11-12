@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 154,
+  "source_surface_count": 159,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -78,7 +78,7 @@
     {
       "path": "src/twelve_six/checkpoint/durability.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/hf_export.py",
@@ -88,7 +88,7 @@
     {
       "path": "src/twelve_six/checkpoint/pinned_directory.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/progress_binding.py",
@@ -98,7 +98,7 @@
     {
       "path": "src/twelve_six/checkpoint/progress_trainer.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/recovery_lock.py",
@@ -108,7 +108,7 @@
     {
       "path": "src/twelve_six/checkpoint/retention.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/root_snapshot.py",
@@ -118,17 +118,17 @@
     {
       "path": "src/twelve_six/checkpoint/run_binding.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/schema_validation.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/selection.py",
       "capability_id": "checkpoint-integrity-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/state_tree.py",
@@ -139,6 +139,11 @@
       "path": "src/twelve_six/checkpoint/trainer_adapter.py",
       "capability_id": "checkpoint-integrity-mechanics",
       "origin": "accepted_main"
+    },
+    {
+      "path": "src/twelve_six/checkpoint/transaction.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/checkpoint/transactional_rng.py",
@@ -461,6 +466,11 @@
       "origin": "stacked_candidate"
     },
     {
+      "path": "src/twelve_six/evidence_control_bridge.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/evolutionary_code.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
@@ -538,7 +548,7 @@
     {
       "path": "src/twelve_six/model.py",
       "capability_id": "model-spec-identity",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/optional_risk_probes.py",
@@ -656,6 +666,11 @@
       "origin": "accepted_main"
     },
     {
+      "path": "src/twelve_six/scenario_harness.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/self_play_engine.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
@@ -728,17 +743,27 @@
     {
       "path": "src/twelve_six/training/config.py",
       "capability_id": "training-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
+    },
+    {
+      "path": "src/twelve_six/training/exposure_accounting.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/training/loss.py",
       "capability_id": "training-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
+    },
+    {
+      "path": "src/twelve_six/training/run_control.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
     },
     {
       "path": "src/twelve_six/training/trainer.py",
       "capability_id": "training-mechanics",
-      "origin": "accepted_main"
+      "origin": "modified_candidate"
     },
     {
       "path": "src/twelve_six/ubuntu_irc_execution_rights_crossbind.py",
@@ -776,6 +801,6 @@
       "origin": "accepted_main"
     }
   ],
-  "accepted_main_surface_count": 115,
-  "candidate_overlay_surface_count": 39
+  "accepted_main_surface_count": 104,
+  "candidate_overlay_surface_count": 55
 }

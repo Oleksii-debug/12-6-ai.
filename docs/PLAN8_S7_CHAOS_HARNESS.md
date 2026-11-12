@@ -3,17 +3,25 @@
 `configs/plan8/chaos/component-recovery-fixtures-v1.json` declares eight
 versioned cases: process kill, network loss, disk corruption, checkpoint
 interruption, stale state, provider failure, node failure and interrupted
-publication. Its `source_sha` pins the original Q0 fixture candidate. The
-manifest has exact expected recovery fingerprints and no external host grant.
+publication. Its `source_sha` identifies the accepted component fixture
+baseline. The manifest contains exact expected recovery fingerprints.
+Qualification separately identifies the exact checkout used to run the campaign.
 
-`run_fault` writes an exclusive, fsynced one-shot claim before injection.
-After a crash, call `recover_fault` with an independent observation; never
-rerun an already claimed effect. A mismatch leaves a durable failure receipt.
-`campaign_readback` checks claim and receipt bytes and returns passed,
-missing and failed cases. Missing cases and forged receipts cannot become a
-complete campaign. The process-kill test uses an actual child process; other
-cases are controlled component fixtures. Q0 evidence does not assert real
-network/provider outages, physical node failure or final product recovery.
+`run_fault` publishes a complete, fsynced one-shot claim before injection.
+Injection and recovery share a process lock. The operating system releases
+the lock when a worker exits. After a crash, `recover_fault` observes the
+claimed case without running the injection again. A recovery mismatch is
+recorded as a terminal failure for that campaign.
+
+`campaign_readback` takes a stable snapshot under the same process lock and
+validates claim, success and failure records. It reports claimed cases that
+still need recovery separately from unstarted cases.
+The tests kill actual local processes, close a real local socket and preserve
+observed partial bytes during checkpoint and publication rollback. The
+previous accepted bytes stay readable and an unstarted rollback fails.
+The provider and node cases exercise local
+component fixtures. External outages and whole-product recovery require
+separate evidence.
 
 Run `pytest -q tests/test_plan8_chaos_harness.py` against the exact commit.
 Physical campaigns and higher evidence levels require separate host receipts.

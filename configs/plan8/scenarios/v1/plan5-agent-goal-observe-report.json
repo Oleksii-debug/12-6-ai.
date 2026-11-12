@@ -1,0 +1,18 @@
+{
+  "capability_ids": [
+    "agent-goal-observe-report"
+  ],
+  "prerequisites": [
+    "plan5-fixture-present"
+  ],
+  "required_level": "Q2",
+  "scenario_id": "plan5-agent-goal-observe-report",
+  "schema_version": "12-6.plan8-scenario.v1",
+  "steps": [
+    {
+      "adapter_id": "agent-goal",
+      "expected_sha256": "8aa77d51fe8c3405b72d5f116dd4d9b8c29ce907355e231bde49b9b0a4894c16",
+      "step_id": "observe-fixture"
+    }
+  ]
+}

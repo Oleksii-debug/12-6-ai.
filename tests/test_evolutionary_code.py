@@ -61,9 +61,9 @@ def restart(s, decision):
 
 def test_invalid_directory_types_denied_before_staging(tmp_path):
     s = case(tmp_path)
-    with pytest.raises(TypeError, match="explicit local directories required"):
+    with pytest.raises(ValueError, match="explicit local directories required"):
         stage_candidate(s[0], s[1], sandbox_root=str(s[2]), production_root=s[3])
-    with pytest.raises(TypeError, match="explicit local directories required"):
+    with pytest.raises(ValueError, match="explicit local directories required"):
         stage_candidate(s[0], s[1], sandbox_root=s[2], production_root=str(s[3]))
     assert not s[2].exists()
 

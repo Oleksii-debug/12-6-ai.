@@ -6,10 +6,18 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Callable
+import stat
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
+
+from twelve_six.checkpoint.durability import fsync_parent_directory
+from twelve_six.checkpoint.pinned_directory import pinned_real_directory
+from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
+from twelve_six.evidence_control_bridge import _reject_bridge_redirects
 
 FAULTS = frozenset({
     "process_kill", "network_loss", "disk_corruption",
@@ -17,7 +25,9 @@ FAULTS = frozenset({
     "node_failure", "interrupted_publication",
 })
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _ID = re.compile(r"^[a-z][a-z0-9_.-]{0,95}$")
+_MAX_JOURNAL_BYTES = 65_536
 
 
 def parse_campaign_bytes(raw: bytes) -> FaultCampaign:
@@ -60,23 +70,66 @@ def _digest(value: bytes) -> str:
 
 
 def _read_exact(path: Path) -> bytes:
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 65_536:
+    try:
+        visible = path.lstat()
+    except FileNotFoundError as exc:
+        raise ValueError("missing campaign journal record") from exc
+    if not stat.S_ISREG(visible.st_mode) or (
+        getattr(visible, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ):
         raise ValueError("unsafe campaign journal")
-    return path.read_bytes()
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        if (visible.st_dev, visible.st_ino) != (opened.st_dev, opened.st_ino):
+            raise ValueError("campaign journal binding changed")
+        raw = stream.read(_MAX_JOURNAL_BYTES + 1)
+    if not raw or len(raw) > _MAX_JOURNAL_BYTES:
+        raise ValueError("unsafe campaign journal")
+    return raw
+
+
+def _present(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _write_once(path: Path, value: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.parent.is_symlink() or path.is_symlink():
-        raise ValueError("unsafe campaign journal path")
+    temporary: Path | None = None
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with NamedTemporaryFile(mode="wb", dir=path.parent, prefix=".staged-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+        fsync_parent_directory(path)
     except FileExistsError as exc:
         raise ValueError("effect already claimed; never replay") from exc
-    with os.fdopen(fd, "wb") as stream:
-        stream.write(value)
-        stream.flush()
-        os.fsync(stream.fileno())
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _journal_directory(root: Path, identity: str) -> Path:
+    if not isinstance(root, Path) or root.is_symlink():
+        raise ValueError("unsafe campaign root")
+    directory = root / identity
+    _reject_bridge_redirects(directory)
+    return directory
+
+
+@contextmanager
+def _locked_journal(root: Path, identity: str, *, create: bool = True) -> Iterator[Path]:
+    directory = _journal_directory(root, identity)
+    lock = root / ".chaos-locks" / identity
+    _reject_bridge_redirects(lock)
+    with exclusive_recovery_lock(lock):
+        _reject_bridge_redirects(directory)
+        with pinned_real_directory(directory, create=create) as pinned:
+            yield pinned.path
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,8 +143,8 @@ class FaultCase:
             raise ValueError("invalid fault case identifier")
         if type(self.fault) is not str or self.fault not in FAULTS:
             raise ValueError("unsupported fault")
-        if type(self.expected_recovery_sha256) is not str or not re.fullmatch(
-            r"[0-9a-f]{64}", self.expected_recovery_sha256
+        if type(self.expected_recovery_sha256) is not str or not _SHA256.fullmatch(
+            self.expected_recovery_sha256
         ):
             raise ValueError("invalid recovery witness SHA-256")
 
@@ -104,21 +157,21 @@ class FaultCampaign:
     schema_version: str = "12-6.plan8-chaos-campaign.v1"
 
     def __post_init__(self) -> None:
-        if self.schema_version != "12-6.plan8-chaos-campaign.v1":
+        if type(self.schema_version) is not str or self.schema_version != "12-6.plan8-chaos-campaign.v1":
             raise ValueError("unsupported campaign version")
         if type(self.campaign_id) is not str or not _ID.fullmatch(self.campaign_id):
             raise ValueError("invalid campaign identifier")
         if type(self.source_sha) is not str or not _SHA40.fullmatch(self.source_sha):
             raise ValueError("exact source SHA required")
-        if type(self.cases) is not tuple or not self.cases:
-            raise ValueError("campaign needs cases")
-        ids = [case.case_id for case in self.cases]
-        if len(set(ids)) != len(ids) or ids != sorted(ids):
-            raise ValueError("cases must be unique and sorted")
+        if type(self.cases) is not tuple or not 1 <= len(self.cases) <= 32:
+            raise ValueError("campaign must contain 1..32 cases")
         for case in self.cases:
             if type(case) is not FaultCase:
                 raise ValueError("invalid fault case")
             case.__post_init__()
+        ids = [case.case_id for case in self.cases]
+        if len(set(ids)) != len(ids) or ids != sorted(ids):
+            raise ValueError("cases must be unique and sorted")
 
     def identity_sha256(self) -> str:
         self.__post_init__()
@@ -133,6 +186,90 @@ class FaultCampaign:
         }))
 
 
+def _case_identity(campaign: FaultCampaign, case: FaultCase) -> str:
+    if type(campaign) is not FaultCampaign:
+        raise ValueError("campaign must have exact type")
+    identity = campaign.identity_sha256()
+    if type(case) is not FaultCase or case not in campaign.cases:
+        raise ValueError("case is outside campaign")
+    return identity
+
+
+def _claim_bytes(identity: str, case: FaultCase) -> bytes:
+    return _bytes({"campaign": identity, "case": case.case_id})
+
+
+def _receipt(
+    campaign: FaultCampaign,
+    identity: str,
+    case: FaultCase,
+) -> dict[str, object]:
+    return {
+        "schema_version": "12-6.plan8-chaos-receipt.v1",
+        "campaign_sha256": identity,
+        "source_sha": campaign.source_sha,
+        "case_id": case.case_id,
+        "fault": case.fault,
+        "recovery_sha256": case.expected_recovery_sha256,
+        "effect_replayed": False,
+        "evidence_level": "Q0",
+    }
+
+
+def _failure_bytes(identity: str, case: FaultCase, observed: str) -> bytes:
+    return _bytes({
+        "schema_version": "12-6.plan8-chaos-failure.v1",
+        "campaign_sha256": identity,
+        "case_id": case.case_id,
+        "observed_sha256": observed,
+        "expected_sha256": case.expected_recovery_sha256,
+    }) + b"\n"
+
+
+def _validate_failure(path: Path, identity: str, case: FaultCase) -> None:
+    raw = _read_exact(path)
+    try:
+        value = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError("campaign failure receipt was corrupted") from exc
+    observed = value.get("observed_sha256") if type(value) is dict else None
+    if (
+        type(observed) is not str
+        or not _SHA256.fullmatch(observed)
+        or observed == case.expected_recovery_sha256
+        or raw != _failure_bytes(identity, case, observed)
+    ):
+        raise ValueError("campaign failure receipt was corrupted")
+
+
+def _recover_locked(
+    directory: Path,
+    campaign: FaultCampaign,
+    identity: str,
+    case: FaultCase,
+    recover: Callable[[], Any],
+) -> dict[str, object]:
+    if _read_exact(directory / (case.case_id + ".claim")) != _claim_bytes(identity, case):
+        raise ValueError("claim was corrupted")
+    failure = directory / (case.case_id + ".failure")
+    if _present(failure):
+        _validate_failure(failure, identity, case)
+        raise ValueError("conflicting durable failure receipt")
+    payload = _receipt(campaign, identity, case)
+    raw = _bytes(payload) + b"\n"
+    receipt = directory / (case.case_id + ".receipt")
+    existing = _present(receipt)
+    if existing and _read_exact(receipt) != raw:
+        raise ValueError("conflicting durable recovery receipt")
+    observed = _digest(_bytes(recover()))
+    if observed != case.expected_recovery_sha256:
+        _write_once(failure, _failure_bytes(identity, case, observed))
+        raise ValueError("recovery witness mismatch")
+    if not existing:
+        _write_once(receipt, raw)
+    return payload
+
+
 def run_fault(
     root: Path,
     campaign: FaultCampaign,
@@ -141,25 +278,21 @@ def run_fault(
     inject: Callable[[], Any],
     recover: Callable[[], Any],
 ) -> dict[str, object]:
-    """Fence an effect before injection; recover via observation, never rerun it."""
-    campaign.__post_init__()
-    if type(case) is not FaultCase or case not in campaign.cases:
-        raise ValueError("case is outside campaign")
-    if not isinstance(root, Path) or root.is_symlink():
-        raise ValueError("unsafe campaign root")
-    identity = campaign.identity_sha256()
-    directory = root / identity
-    claim = directory / (case.case_id + ".claim")
-    receipt = directory / (case.case_id + ".receipt")
-    if receipt.exists():
-        raise ValueError("case already has receipt; never replay")
-    _write_once(claim, _bytes({"campaign": identity, "case": case.case_id}))
-    try:
-        inject()
-    except (OSError, RuntimeError):
-        # A fault is expected; the independent recovery witness decides success.
-        return recover_fault(root, campaign, case, recover=recover)
-    return recover_fault(root, campaign, case, recover=recover)
+    """Publish a one-shot claim before injection and serialize recovery."""
+    identity = _case_identity(campaign, case)
+    with _locked_journal(root, identity) as directory:
+        claim = directory / (case.case_id + ".claim")
+        receipt = directory / (case.case_id + ".receipt")
+        failure = directory / (case.case_id + ".failure")
+        if _present(receipt) or _present(failure):
+            raise ValueError("case already has a durable outcome; never replay")
+        _write_once(claim, _claim_bytes(identity, case))
+        try:
+            inject()
+        except (OSError, RuntimeError):
+            # The independent recovery witness decides whether the fault was contained.
+            pass
+        return _recover_locked(directory, campaign, identity, case, recover)
 
 
 def recover_fault(
@@ -169,100 +302,59 @@ def recover_fault(
     *,
     recover: Callable[[], Any],
 ) -> dict[str, object]:
-    """Recovery is repeatable only when the original witness bytes agree."""
-    campaign.__post_init__()
-    if type(case) is not FaultCase or case not in campaign.cases:
-        raise ValueError("case is outside campaign")
-    if not isinstance(root, Path) or root.is_symlink():
-        raise ValueError("unsafe campaign root")
-    identity = campaign.identity_sha256()
-    directory = root / identity
-    if directory.is_symlink():
-        raise ValueError("unsafe campaign journal path")
-    if _read_exact(directory / (case.case_id + ".claim")) != _bytes({
-        "campaign": identity, "case": case.case_id
-    }):
-        raise ValueError("claim was corrupted")
-    observed = _digest(_bytes(recover()))
-    if observed != case.expected_recovery_sha256:
-        failure = _bytes({
-            "schema_version": "12-6.plan8-chaos-failure.v1",
-            "campaign_sha256": identity,
-            "case_id": case.case_id,
-            "observed_sha256": observed,
-            "expected_sha256": case.expected_recovery_sha256,
-        }) + b"\n"
-        failure_path = directory / (case.case_id + ".failure")
-        if failure_path.exists():
-            if _read_exact(failure_path) != failure:
-                raise ValueError("conflicting durable failure receipt")
-        else:
-            _write_once(failure_path, failure)
-        raise ValueError("recovery witness mismatch")
-    payload: dict[str, object] = {
-        "schema_version": "12-6.plan8-chaos-receipt.v1",
-        "campaign_sha256": identity,
-        "source_sha": campaign.source_sha,
-        "case_id": case.case_id,
-        "fault": case.fault,
-        "recovery_sha256": observed,
-        "effect_replayed": False,
-        "evidence_level": "Q0",
-    }
-    raw = _bytes(payload) + b"\n"
-    receipt = directory / (case.case_id + ".receipt")
-    if receipt.exists():
-        if _read_exact(receipt) != raw:
-            raise ValueError("conflicting durable recovery receipt")
-    else:
-        try:
-            _write_once(receipt, raw)
-        except ValueError:
-            if _read_exact(receipt) != raw:
-                raise
-    return payload
+    """Observe an already claimed case without executing its injection again."""
+    identity = _case_identity(campaign, case)
+    with _locked_journal(root, identity) as directory:
+        return _recover_locked(directory, campaign, identity, case, recover)
 
 
-def campaign_readback(root: Path, campaign: FaultCampaign) -> dict[str, object]:
-    """Verify durable Q0 receipts and expose missing/failing fault cases."""
-    campaign.__post_init__()
-    if not isinstance(root, Path) or root.is_symlink():
-        raise ValueError("unsafe campaign root")
-    identity = campaign.identity_sha256()
-    directory = root / identity
-    if directory.is_symlink():
-        raise ValueError("unsafe campaign journal path")
+def _readback(directory: Path | None, campaign: FaultCampaign, identity: str) -> dict[str, object]:
     passed: list[str] = []
     missing: list[str] = []
     failed: list[str] = []
+    claimed_pending: list[str] = []
     for case in campaign.cases:
+        if directory is None:
+            missing.append(case.case_id)
+            continue
         receipt = directory / (case.case_id + ".receipt")
         failure = directory / (case.case_id + ".failure")
         claim = directory / (case.case_id + ".claim")
-        if failure.exists():
-            _read_exact(failure)
-            failed.append(case.case_id)
-            continue
-        if not receipt.exists():
-            if claim.exists():
-                _read_exact(claim)
-            missing.append(case.case_id)
-            continue
-        if _read_exact(claim) != _bytes({"campaign": identity, "case": case.case_id}):
+        claimed = _present(claim)
+        recorded = _present(receipt)
+        failed_case = _present(failure)
+        if (claimed or recorded or failed_case) and _read_exact(claim) != _claim_bytes(identity, case):
             raise ValueError("claim was corrupted")
-        expected = {
-            "schema_version": "12-6.plan8-chaos-receipt.v1",
-            "campaign_sha256": identity,
-            "source_sha": campaign.source_sha,
-            "case_id": case.case_id,
-            "fault": case.fault,
-            "recovery_sha256": case.expected_recovery_sha256,
-            "effect_replayed": False,
-            "evidence_level": "Q0",
-        }
-        if _read_exact(receipt) != _bytes(expected) + b"\n":
+        if recorded and _read_exact(receipt) != _bytes(_receipt(campaign, identity, case)) + b"\n":
             raise ValueError("campaign receipt was corrupted")
-        passed.append(case.case_id)
-    return {"campaign_sha256": identity, "evidence_level": "Q0",
-            "passed": passed, "missing": missing, "failed": failed,
-            "complete": len(passed) == len(campaign.cases) and not failed}
+        if failed_case:
+            _validate_failure(failure, identity, case)
+            failed.append(case.case_id)
+        elif recorded:
+            passed.append(case.case_id)
+        else:
+            missing.append(case.case_id)
+            if claimed:
+                claimed_pending.append(case.case_id)
+    return {
+        "campaign_sha256": identity,
+        "source_sha": campaign.source_sha,
+        "evidence_level": "Q0",
+        "passed": passed,
+        "missing": missing,
+        "failed": failed,
+        "claimed_pending": claimed_pending,
+        "complete": len(passed) == len(campaign.cases),
+    }
+
+
+def campaign_readback(root: Path, campaign: FaultCampaign) -> dict[str, object]:
+    """Verify journal records and distinguish unfinished claims from unstarted cases."""
+    if type(campaign) is not FaultCampaign:
+        raise ValueError("campaign must have exact type")
+    identity = campaign.identity_sha256()
+    directory = _journal_directory(root, identity)
+    if not _present(directory):
+        return _readback(None, campaign, identity)
+    with _locked_journal(root, identity, create=False) as journal:
+        return _readback(journal, campaign, identity)
