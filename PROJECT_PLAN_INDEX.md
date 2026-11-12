@@ -6,6 +6,8 @@
 
 **Plan 8 has 11 Sections, 5/11 DONE (2026-11-12).** Section 5 is accepted through [#3085](https://github.com/Oleksii-debug/12-6-ai./pull/3085). The signed local Windows evidence covers all seven profiles. Section 6 is the next open section in [#3226](https://github.com/Oleksii-debug/12-6-ai./pull/3226).
 
+**Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
+
 # 12-6 AI — Canonical Multi-Plan Index
 
 ## Authority
