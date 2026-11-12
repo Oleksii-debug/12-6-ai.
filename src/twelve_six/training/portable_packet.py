@@ -16,6 +16,11 @@ from ..checkpoint.core import _require_exact_hex, _strict_json_object
 from ..model import BaseInitManifest, InitSpec, ModelSpec, build_canonical_base
 from .config import TrainingRecipe
 from .exposure_accounting import OrderedExposureRuntime
+from .resource_envelope import (
+    ResourceAdmissionError,
+    assess_resource_envelope,
+    observe_host_resources,
+)
 from .run_control import RunBoundary, RunControlError, RunController, RunPhase, RunReceipt
 from .trainer import Batch, Trainer
 
@@ -302,14 +307,32 @@ class PortableTrainingRun:
     def run_manifest_sha256(self) -> str:
         return self._identity.run_manifest_hash
 
-    def _trainer(self) -> Trainer:
+    def _trainer(self, *, remaining_updates: int, initial_checkpoint_needed: bool) -> Trainer:
         packet = self._packet
+        observed = observe_host_resources(self._settings.run_root, self._settings.device)
+        if packet.recipe.trainer.precision == "fp16" and not observed.device.startswith("cuda"):
+            raise ResourceAdmissionError("FP16 training requires a CUDA device")
+        resources = assess_resource_envelope(
+            self._identity.parameter_count,
+            observed,
+            remaining_updates=remaining_updates,
+            initial_checkpoint_needed=initial_checkpoint_needed,
+        )
+        if resources["denials"]:
+            raise ResourceAdmissionError(
+                f"native training resource admission failed for {packet.stage}: "
+                + ", ".join(resources["denials"])
+            )
         model = build_canonical_base(packet.model_spec, packet.init_spec, packet.initialization)
         return Trainer(model, packet.recipe.trainer, device=self._settings.device)
 
     def prepare(self) -> RunReceipt:
         with _exclusive_trainer():
-            return self._runtime.prepare(self._controller, self._trainer(), self._identity)
+            trainer = self._trainer(
+                remaining_updates=self._packet.recipe.trainer.max_steps,
+                initial_checkpoint_needed=True,
+            )
+            return self._runtime.prepare(self._controller, trainer, self._identity)
 
     def run(
         self,
@@ -319,9 +342,21 @@ class PortableTrainingRun:
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
     ) -> RunReceipt:
         with _exclusive_trainer():
+            current = self._controller.status()
+            if current.receipt_sha256 != expected_receipt_sha256:
+                raise RunControlError("stale run receipt")
+            remaining = self._packet.recipe.trainer.max_steps - current.committed_step
+            if recover and current.pending_step is not None and current.pending_tokens is not None:
+                pending = self._controller._checkpoint_path(
+                    self._controller.namespace,
+                    current.control_epoch,
+                    current.pending_step,
+                )
+                if pending.is_dir() and not pending.is_symlink():
+                    remaining -= 1
             return self._runtime.run(
                 self._controller,
-                self._trainer(),
+                self._trainer(remaining_updates=remaining, initial_checkpoint_needed=False),
                 self._identity,
                 self._batches,
                 expected_receipt_sha256=expected_receipt_sha256,
