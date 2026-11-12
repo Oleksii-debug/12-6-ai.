@@ -4,6 +4,8 @@
 
 **Plan 3 has 12 Sections, 5/12 DONE (2026-11-12).** Sections 1–5 are accepted in main through [#3098](https://github.com/Oleksii-debug/12-6-ai./pull/3098), [#3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), [#3234](https://github.com/Oleksii-debug/12-6-ai./pull/3234), [#3238](https://github.com/Oleksii-debug/12-6-ai./pull/3238), and [#3239](https://github.com/Oleksii-debug/12-6-ai./pull/3239). Section 6 is the next open section. The numbered Drive plan defines acceptance.
 
+**Plan 8 has 11 Sections, 5/11 DONE (2026-11-12).** Section 5 is accepted through [#3085](https://github.com/Oleksii-debug/12-6-ai./pull/3085). The signed local Windows evidence covers all seven profiles. Section 6 is the next open section in [#3226](https://github.com/Oleksii-debug/12-6-ai./pull/3226).
+
 # 12-6 AI — Canonical Multi-Plan Index
 
 ## Authority
