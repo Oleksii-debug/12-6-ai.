@@ -399,7 +399,9 @@ def _physical_failure_reproducer(evidence: dict[str, Any]) -> str | None:
     for action in actions:
         if not _is_exact_type(action, dict):
             raise ValueError("physical evidence action must be an exact object")
-        if action.get("verdict") != "FAIL":
+        # Pytest exit 1 means tests failed. Runner timeouts and pytest setup
+        # errors do not establish a defect reproducible by the test command.
+        if action.get("verdict") != "FAIL" or action.get("return_code") != 1:
             continue
         argv = action.get("argv")
         if (

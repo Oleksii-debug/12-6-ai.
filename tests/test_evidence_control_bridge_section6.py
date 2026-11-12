@@ -502,6 +502,7 @@ def test_physical_failure_reproducer_is_derived_from_verified_action_argv() -> N
         "actions": [
             {
                 "verdict": "FAIL",
+                "return_code": 1,
                 "argv": [
                     "/usr/bin/python3",
                     "-m",
@@ -519,11 +520,27 @@ def test_physical_failure_reproducer_is_derived_from_verified_action_argv() -> N
     )
 
 
+@pytest.mark.parametrize("return_code", [2, 3, 4, 5, 124])
+def test_physical_failure_reproducer_skips_runner_failures(return_code: int) -> None:
+    evidence = {
+        "actions": [
+            {
+                "verdict": "FAIL",
+                "return_code": return_code,
+                "argv": ["/usr/bin/python3", "-m", "pytest", "-q", "tests/test_alpha.py"],
+            }
+        ]
+    }
+
+    assert bridge_module._physical_failure_reproducer(evidence) is None
+
+
 def test_physical_failure_reproducer_rejects_noncanonical_argv() -> None:
     evidence = {
         "actions": [
             {
                 "verdict": "FAIL",
+                "return_code": 1,
                 "argv": [
                     "/usr/bin/python3",
                     "-m",
