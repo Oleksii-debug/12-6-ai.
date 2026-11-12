@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import copy
+import json
+from dataclasses import replace
 
 import pytest
+from torch import nn
 
-from twelve_six.checkpoint import CheckpointCompatibilityError, bind_checkpoint_identity, hash_json
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    bind_checkpoint_identity,
+    hash_json,
+    save_checkpoint,
+    verify_checkpoint,
+)
+from twelve_six.training.config import TrainerConfig, TrainingRecipe
 
 TOKENIZER_SHA = "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
 VOCAB_SHA = "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
@@ -129,6 +139,110 @@ def test_binds_exact_run_manifest_identity() -> None:
     assert identity.training_config["data"]["packing_version"] == "s0-byte-pack-v1"
     assert identity.optimizer == {"name": "AdamW", "lr": 0.001}
     assert identity.scheduler == {"name": "constant"}
+
+
+def frozen_recipe() -> TrainingRecipe:
+    return TrainingRecipe(
+        trainer=TrainerConfig(
+            seed=17, max_steps=20, scheduler="cosine", warmup_steps=2,
+            gradient_accumulation_steps=2, weight_decay=0.1,
+        ),
+        microbatch_size=2,
+        sequence_length=128,
+        target_unique_loss_positions=2560,
+        maximum_total_exposures=5120,
+        max_exposures_per_unique_position=2,
+    )
+
+
+def test_recipe_identity_round_trips_and_excludes_provider() -> None:
+    recipe = frozen_recipe()
+    assert TrainingRecipe.from_dict(json.loads(json.dumps(recipe.to_dict()))) == recipe
+    assert recipe.identity_sha256() == hash_json(recipe.to_dict())
+    changed_trainer = replace(recipe.trainer, gradient_accumulation_steps=4)
+    assert replace(recipe, trainer=changed_trainer).identity_sha256() != recipe.identity_sha256()
+    local = run_manifest()
+    local["training"].update(recipe.run_training_fields())
+    server = copy.deepcopy(local)
+    server["training"]["device"] = "cuda:0"
+    assert bind(local).run_manifest_hash != bind(server).run_manifest_hash
+    assert (
+        bind(local).training_config["training"]["recipe_sha256"]
+        == bind(server).training_config["training"]["recipe_sha256"]
+        == recipe.identity_sha256()
+    )
+
+
+def test_bound_recipe_is_independent_of_mutable_run_input() -> None:
+    recipe = frozen_recipe()
+    manifest = run_manifest()
+    manifest["training"].update(recipe.run_training_fields())
+    identity = bind(manifest)
+    manifest["training"]["recipe"]["trainer"]["max_steps"] = 1
+    assert identity.training_config["training"]["recipe"] == recipe.to_dict()
+
+
+def test_recipe_digest_survives_checkpoint_write_and_readback(tmp_path) -> None:
+    recipe = frozen_recipe()
+    manifest = run_manifest()
+    manifest["training"].update(recipe.run_training_fields())
+    identity = bind(manifest)
+    path = tmp_path / "recipe-checkpoint"
+    save_checkpoint(path, model=nn.Linear(1, 5070), identity=identity)
+    saved = verify_checkpoint(path)["identity"]["training_config"]["training"]
+    assert saved["recipe"] == recipe.to_dict()
+    assert saved["recipe_sha256"] == recipe.identity_sha256()
+
+
+@pytest.mark.parametrize(
+    "key", ["recipe", "recipe_sha256", "optimizer", "precision", "global_batch_tokens"]
+)
+def test_missing_or_replaced_recipe_binding_is_rejected(key) -> None:
+    manifest = run_manifest()
+    manifest["training"].update(frozen_recipe().run_training_fields())
+    manifest["training"].pop(key)
+    with pytest.raises(CheckpointCompatibilityError, match="recipe"):
+        bind(manifest)
+
+
+def test_recipe_rejects_over_budget_checkpoint_and_packing_drift() -> None:
+    recipe = frozen_recipe()
+    manifest = run_manifest()
+    manifest["training"].update(replace(recipe, sequence_length=64).run_training_fields())
+    with pytest.raises(CheckpointCompatibilityError, match="packing sequence length"):
+        bind(manifest)
+    smaller_budget = replace(
+        recipe, target_unique_loss_positions=512, maximum_total_exposures=1024
+    )
+    manifest["training"].update(smaller_budget.run_training_fields())
+    with pytest.raises(CheckpointCompatibilityError, match="recipe budget"):
+        bind(manifest)
+
+
+def test_recipe_context_cannot_exceed_the_model() -> None:
+    manifest = run_manifest()
+    recipe = replace(frozen_recipe(), sequence_length=256)
+    manifest["training"].update(recipe.run_training_fields())
+    with pytest.raises(CheckpointCompatibilityError, match="ModelSpec sequence length"):
+        bind_checkpoint_identity(
+            run_manifest=manifest,
+            model_spec=model_spec(),
+            init_spec=init_spec(),
+            tokenizer_identity=tokenizer_identity(),
+            packing_identity={**packing_identity(), "sequence_length": 256},
+            step=0,
+            tokens_seen=0,
+        )
+
+
+def test_recipe_wire_schema_rejects_provider_fields_and_invalid_budget() -> None:
+    recipe = frozen_recipe()
+    payload = recipe.to_dict()
+    payload["trainer"]["device"] = "cpu"
+    with pytest.raises(ValueError, match="TrainerConfig field"):
+        TrainingRecipe.from_dict(payload)
+    with pytest.raises(ValueError, match="exposure budget"):
+        replace(recipe, maximum_total_exposures=5121)
 
 
 def test_rejects_model_tokenizer_vocab_drift() -> None:
