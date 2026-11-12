@@ -10,6 +10,7 @@ from contextlib import closing
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from ..checkpoint import (
     CheckpointIdentity,
@@ -20,10 +21,18 @@ from ..checkpoint import (
 )
 from ..checkpoint.durability import fsync_parent_directory
 from ..checkpoint.recovery_lock import exclusive_recovery_lock
+from ..checkpoint.transaction import (
+    TRANSACTION_KEY,
+    CheckpointTransaction,
+    bind_checkpoint_transaction,
+    checkpoint_transaction,
+    exposure_cursor_schema,
+)
 from .config import TrainingRecipe
 from .trainer import Batch, Trainer
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_TRAINER_CURSOR_SCHEMA = "12-6.trainer-exposure-position.v1"
 
 
 class RunControlError(RuntimeError):
@@ -56,6 +65,8 @@ class RunReceipt:
     checkpoint_id: str
     parent_sha256: str | None
     receipt_sha256: str
+    exposure_cursor_schema: str | None = None
+    pending_cursor_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +159,8 @@ class RunController:
             "tokens_seen": 0,
             "pending_step": None,
             "pending_tokens": None,
+            "pending_cursor_sha256": None,
+            "exposure_cursor_schema": None,
             "checkpoint_epoch": 0,
         }
         if previous is not None:
@@ -166,11 +179,26 @@ class RunController:
             )
         return RunReceipt(**state, receipt_sha256=digest)
 
-    def prepare(self, trainer: Trainer, identity: CheckpointIdentity) -> RunReceipt:
+    def prepare(
+        self,
+        trainer: Trainer,
+        identity: CheckpointIdentity,
+        *,
+        exposure_cursor: Mapping[str, Any] | None = None,
+    ) -> RunReceipt:
         """Create the initial receipt once for a bound run manifest."""
         identity_sha256 = self._initial_identity(identity)
         self._require_fresh(trainer)
         self._recipe(trainer, identity)
+        cursor = self._trainer_cursor(trainer) if exposure_cursor is None else exposure_cursor
+        schema = exposure_cursor_schema(cursor)
+        initial = bind_checkpoint_transaction(
+            identity,
+            generation=0,
+            parent_generation=None,
+            parent_checkpoint_id=None,
+            exposure_cursor=cursor,
+        )
         self._prepare_base()
         with (
             exclusive_recovery_lock(self.namespace) as root,
@@ -182,15 +210,20 @@ class RunController:
             fsync_parent_directory(self.namespace)
             fsync_parent_directory(path.parent)
             if path.exists() or path.is_symlink():
-                checkpoint_id = self._recover_checkpoint(path, identity)
+                manifest = verify_checkpoint(path)
+                if exposure_cursor is None and checkpoint_transaction(manifest) is None:
+                    initial = identity
+                    schema = None
+                checkpoint_id = self._recover_checkpoint(path, initial, manifest)
                 self._restore(path, trainer, checkpoint_id, step=0, tokens=0)
             else:
-                checkpoint_id = self._save_checkpoint(path, trainer, identity)
+                checkpoint_id = self._save_checkpoint(path, trainer, initial)
             return self._append(
                 connection,
                 None,
                 identity_sha256=identity_sha256,
                 checkpoint_id=checkpoint_id,
+                exposure_cursor_schema=schema,
             )
 
     def _prepare_base(self) -> None:
@@ -217,6 +250,10 @@ class RunController:
 
     def _initial_identity(self, identity: CheckpointIdentity) -> str:
         identity.validate()
+        _need(
+            TRANSACTION_KEY not in identity.training_config,
+            "run identity must exclude checkpoint transaction state",
+        )
         _need(
             identity.run_manifest_hash == self.run_sha256
             and identity.step == 0
@@ -253,6 +290,14 @@ class RunController:
     def _checkpoint_path(root: Path, epoch: int, step: int) -> Path:
         return root / "checkpoints" / f"{epoch:08d}-{step:08d}"
 
+    def _trainer_cursor(self, trainer: Trainer) -> dict[str, Any]:
+        return {
+            "schema": _TRAINER_CURSOR_SCHEMA,
+            "run_manifest_sha256": self.run_sha256,
+            "next_microbatch_index": trainer.micro_step,
+            "tokens_seen": trainer.tokens_seen,
+        }
+
     @staticmethod
     def _save_checkpoint(path: Path, trainer: Trainer, identity: CheckpointIdentity) -> str:
         trainer.assert_checkpoint_safe()
@@ -262,8 +307,11 @@ class RunController:
         return manifest["checkpoint_id"]
 
     @staticmethod
-    def _recover_checkpoint(path: Path, expected: CheckpointIdentity) -> str:
-        manifest = verify_checkpoint(path)
+    def _recover_checkpoint(
+        path: Path,
+        expected: CheckpointIdentity,
+        manifest: Mapping[str, Any],
+    ) -> str:
         identity = {key: manifest["identity"][key] for key in asdict(expected)}
         _need(
             hash_json(identity) == hash_json(asdict(expected)),
@@ -285,7 +333,25 @@ class RunController:
         if not path.exists() and not path.is_symlink():
             return None
         expected = replace(identity, step=current.pending_step, tokens_seen=current.pending_tokens)
-        return expected, self._recover_checkpoint(path, expected)
+        manifest = verify_checkpoint(path)
+        transaction = checkpoint_transaction(manifest)
+        if current.pending_cursor_sha256 is not None:
+            _need(
+                transaction is not None
+                and transaction.exposure_cursor_sha256 == current.pending_cursor_sha256
+                and exposure_cursor_schema(transaction.exposure_cursor)
+                == current.exposure_cursor_schema,
+                "checkpoint exposure cursor differs from reserved cursor",
+            )
+            assert transaction is not None
+            expected = bind_checkpoint_transaction(
+                expected,
+                generation=current.pending_step,
+                parent_generation=current.committed_step,
+                parent_checkpoint_id=current.checkpoint_id,
+                exposure_cursor=transaction.exposure_cursor,
+            )
+        return expected, self._recover_checkpoint(path, expected, manifest)
 
     def _restore(
         self,
@@ -295,8 +361,8 @@ class RunController:
         *,
         step: int,
         tokens: int,
-    ) -> None:
-        load_trainer_checkpoint(
+    ) -> CheckpointTransaction | None:
+        loaded = load_trainer_checkpoint(
             path,
             model=trainer.model,
             trainer=trainer,
@@ -305,6 +371,7 @@ class RunController:
             expected_step=step,
             expected_tokens_seen=tokens,
         )
+        return checkpoint_transaction(loaded.manifest)
 
     def _settle_boundary(
         self,
@@ -344,11 +411,15 @@ class RunController:
         expected_receipt_sha256: str,
         recover: bool = False,
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
+        read_exposure_cursor: Callable[[Trainer], Mapping[str, Any]] | None = None,
+        restore_exposure_cursor: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> RunReceipt:
         """Advance one writer from the durable position supplied to the batch factory.
 
         Control must return the same decision when recovery replays a boundary.
         The factory must resume at the committed step and token position it receives.
+        For an external cursor, restore receives the verified cursor before the
+        iterator opens and read supplies the cursor after each optimizer step.
         """
         with (
             exclusive_recovery_lock(self.namespace) as root,
@@ -370,6 +441,12 @@ class RunController:
                 not recover or not current.control_enabled or control is not None,
                 "recovery requires the interrupted control policy",
             )
+            external_cursor = current.exposure_cursor_schema not in (None, _TRAINER_CURSOR_SCHEMA)
+            _need(
+                external_cursor == (read_exposure_cursor is not None)
+                and external_cursor == (restore_exposure_cursor is not None),
+                "exposure cursor provider differs from the prepared run",
+            )
             self._require_fresh(trainer)
             _need(
                 current.identity_sha256 == self._initial_identity(identity),
@@ -379,7 +456,7 @@ class RunController:
             pending = self._pending_checkpoint(root, current, identity) if recover else None
             if pending is not None:
                 expected, checkpoint_id = pending
-                self._restore(
+                restored = self._restore(
                     self._checkpoint_path(root, current.control_epoch, expected.step),
                     trainer,
                     checkpoint_id,
@@ -391,6 +468,7 @@ class RunController:
                     current,
                     pending_step=None,
                     pending_tokens=None,
+                    pending_cursor_sha256=None,
                     committed_step=expected.step,
                     tokens_seen=expected.tokens_seen,
                     checkpoint_epoch=current.control_epoch,
@@ -398,7 +476,7 @@ class RunController:
                     control_pending=current.control_enabled,
                 )
             else:
-                self._restore(
+                restored = self._restore(
                     self._checkpoint_path(root, current.checkpoint_epoch, current.committed_step),
                     trainer,
                     current.checkpoint_id,
@@ -417,8 +495,16 @@ class RunController:
                     phase=RunPhase.RUNNING,
                     pending_step=None,
                     pending_tokens=None,
+                    pending_cursor_sha256=None,
                     control_enabled=control is not None,
                 )
+                if (
+                    restore_exposure_cursor is not None
+                    and trainer.optimizer_step < trainer.config.max_steps
+                ):
+                    _need(restored is not None, "verified checkpoint has no exposure cursor")
+                    assert restored is not None
+                    restore_exposure_cursor(restored.exposure_cursor)
                 return self._advance(
                     root,
                     connection,
@@ -428,6 +514,7 @@ class RunController:
                     recipe,
                     batches,
                     control,
+                    read_exposure_cursor,
                 )
             except BaseException:
                 latest = self._read(connection)
@@ -445,6 +532,7 @@ class RunController:
         recipe: TrainingRecipe | None,
         batches: Callable[[RunReceipt], Iterable[Batch]],
         control: Callable[[RunBoundary], RunPhase | None] | None,
+        read_exposure_cursor: Callable[[Trainer], Mapping[str, Any]] | None,
     ) -> RunReceipt:
         if trainer.optimizer_step == trainer.config.max_steps:
             return self._append(connection, current, phase=RunPhase.COMPLETED)
@@ -469,17 +557,43 @@ class RunController:
                 recipe is None or trainer.tokens_seen <= recipe.maximum_total_exposures,
                 "optimizer step exceeds the bound training exposure budget",
             )
-            current = self._append(connection, current, pending_tokens=trainer.tokens_seen)
+            cursor = (
+                self._trainer_cursor(trainer)
+                if read_exposure_cursor is None
+                else read_exposure_cursor(trainer)
+            )
+            schema = exposure_cursor_schema(cursor)
+            _need(
+                current.exposure_cursor_schema in (None, schema),
+                "exposure cursor schema changed after preparation",
+            )
+            checkpoint_identity = bind_checkpoint_transaction(
+                replace(identity, step=step, tokens_seen=trainer.tokens_seen),
+                generation=step,
+                parent_generation=current.committed_step,
+                parent_checkpoint_id=current.checkpoint_id,
+                exposure_cursor=cursor,
+            )
+            current = self._append(
+                connection,
+                current,
+                pending_tokens=trainer.tokens_seen,
+                pending_cursor_sha256=checkpoint_identity.training_config[TRANSACTION_KEY][
+                    "exposure_cursor_sha256"
+                ],
+                exposure_cursor_schema=schema,
+            )
             checkpoint_id = self._save_checkpoint(
                 self._checkpoint_path(root, current.control_epoch, step),
                 trainer,
-                replace(identity, step=step, tokens_seen=trainer.tokens_seen),
+                checkpoint_identity,
             )
             current = self._append(
                 connection,
                 current,
                 pending_step=None,
                 pending_tokens=None,
+                pending_cursor_sha256=None,
                 committed_step=step,
                 tokens_seen=trainer.tokens_seen,
                 checkpoint_epoch=current.control_epoch,
