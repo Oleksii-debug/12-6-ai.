@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-13 PLAN 3 SECTION 12 DONE
+
+- **Plan 3 Section 12A–C DONE. 11/12 complete sections.** [PR #3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted at main `08f3d9454819a7f47406b5b4eb2758480633f5c7`. Complete tree `656186590f3bfa7b74c1992c19e95262635fe366` matches exact candidate `7154b413adca7016143a2a039770114a80a29a2a`. All six accepted GitHub blobs matched.
+- **12A DONE.** The exact suite exercised native numerical and optimizer fixtures, process failure and restart, provider migration, exposure and transactional checkpoint recovery.
+- **12B DONE.** Exact repeated runs reproduced checkpoint and exposure identity. The component descriptor independently pins 38 runtime and data handoff source files.
+- **12C DONE.** The [versioned runtime release](configs/plan3/training_runtime_release_v1.json) pins the accepted Plan 2 handoff. Accepted main reopened the real physical release, matched all three first-batch tensor digests and checked 45 active targets with an analytic FP64 loss. Receipt SHA-256 `0a285bca1689c803dd1fc7eac8ccbfad423c4191fc543a996bb4db2682bdf4ec`. The handoff readback executed zero optimizer steps.
+- The exact tree passed 528 scoped tests with eight platform skips. Thirty-six tests passed on the detached candidate and sixteen on accepted main. Ruff passed and hosted Actions remained queued. Physical full-profile Section 10A remains OPEN and prevents terminal Plan 3 completion. Plan 9 still owns campaign acceptance.
+
 # 2026-11-13 PLAN 8 SECTION 10 DONE
 
 - **Plan 8 Section 10A–C DONE. 10/11 complete sections.** [PR #3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) accepted at main `65986e78989d13430dbc32590919d014ad0a9372`. Complete tree `93a72aa8497a8bf4f2eccdfd559a51f086550a29` matches frozen head `6479b2081a5b4b27d29d5b9a8086cc1ca5a4d81a`, GitHub preview and all five changed blobs.
