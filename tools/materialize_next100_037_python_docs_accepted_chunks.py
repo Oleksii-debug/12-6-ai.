@@ -45,7 +45,7 @@ def normalize_text(text: str) -> str:
 
 
 def chunk_text(text: str, *, max_chars: int = 1200, min_chars: int = 80) -> tuple[str, ...]:
-    require(max_chars >= min_chars and min_chars >= 20, "invalid chunk limits")
+    require(max_chars >= min_chars >= 20, "invalid chunk limits")
     paragraphs = [part.strip() for part in text.split("\n") if part.strip()]
     chunks: list[str] = []
     current: list[str] = []
@@ -125,20 +125,9 @@ def fetch_exact(url: str, *, max_bytes: int = 100_000) -> bytes:
     return payload
 
 
-def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]:
-    require(authority["schema_version"] == "12-6.next100-037-python-docs-source-authority.v1", "authority schema drift")
-    require(authority["terminal_verdict"] == "ADMIT", "source authority is not ADMIT")
-    require(authority["local_free_only"] is True, "source authority is not LOCAL_FREE")
-    require(authority["claim_boundary"]["training_executed"] is False, "source authority training boundary drift")
-
+def _read_chunks(authority: dict[str, Any]) -> tuple[tuple[str, ...], int]:
     source = authority["source"]
     quality = authority["quality_privacy"]
-    expected_hashes = list(quality["accepted_normalized_sha256"])
-    require(len(expected_hashes) == quality["accepted_chunk_count"] == 14, "accepted hash cardinality drift")
-    require(len(set(expected_hashes)) == 14, "accepted hash list contains duplicates")
-    require(quality["rejected_chunk_count"] == 2, "rejected chunk cardinality drift")
-    require(quality["rejection_reasons"] == {"pii_phone": 2}, "quality rejection reason drift")
-
     raw_url = (
         "https://raw.githubusercontent.com/python/cpython/"
         + source["upstream_commit"]
@@ -148,7 +137,7 @@ def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]
     raw = fetch_exact(raw_url)
     require(len(raw) == source["raw_bytes"], "raw source byte count drift")
     require(sha256(raw) == source["raw_sha256"], "raw source SHA-256 drift")
-    git_blob = hashlib.sha1(f"blob {len(raw)}\0".encode("ascii") + raw).hexdigest()  # noqa: S324
+    git_blob = hashlib.sha1(f"blob {len(raw)}\0".encode("ascii") + raw, usedforsecurity=False).hexdigest()
     require(git_blob == source["source_git_blob_sha1"], "raw source Git blob drift")
 
     text = raw.decode("utf-8", errors="strict")[: int(source["normalization"]["truncate_chars"])]
@@ -163,9 +152,27 @@ def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]
         min_chars=int(quality["chunking"]["min_chars"]),
     )
     require(len(chunks) == quality["chunk_count"] == 16, "chunk count drift")
+    return chunks, len(normalized_bytes)
+
+
+def _verify_partition(
+    authority: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], int]:
+    require(authority["schema_version"] == "12-6.next100-037-python-docs-source-authority.v1", "authority schema drift")
+    require(authority["terminal_verdict"] == "ADMIT", "source authority is not ADMIT")
+    require(authority["local_free_only"] is True, "source authority is not LOCAL_FREE")
+    require(authority["claim_boundary"]["training_executed"] is False, "source authority training boundary drift")
+    quality = authority["quality_privacy"]
+    expected_hashes = list(quality["accepted_normalized_sha256"])
+    require(len(expected_hashes) == quality["accepted_chunk_count"] == 14, "accepted hash cardinality drift")
+    require(len(set(expected_hashes)) == 14, "accepted hash list contains duplicates")
+    require(quality["rejected_chunk_count"] == 2, "rejected chunk cardinality drift")
+    require(quality["rejection_reasons"] == {"pii_phone": 2}, "quality rejection reason drift")
+    chunks, normalized_size = _read_chunks(authority)
 
     accepted: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
+    accepted_texts: list[str] = []
     for chunk_index, chunk in enumerate(chunks):
         reason = quality_reason(chunk)
         normalized_chunk = normalize_text(chunk)
@@ -178,6 +185,7 @@ def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]
         }
         if reason is None:
             accepted.append(row)
+            accepted_texts.append(normalized_chunk)
         else:
             rejected.append({**row, "reason": reason})
 
@@ -188,8 +196,21 @@ def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]
     require([row["reason"] for row in rejected] == ["pii_phone", "pii_phone"], "rejection replay drift")
 
     total_accepted = sum(int(row["normalized_utf8_bytes"]) for row in accepted)
-    require(0 < total_accepted < len(normalized_bytes), "accepted byte capacity is invalid")
+    require(0 < total_accepted < normalized_size, "accepted byte capacity is invalid")
     require(sum(int(row["normalized_utf8_bytes"]) for row in rejected) > 0, "rejected bytes missing")
+    return accepted, rejected, accepted_texts, len(chunks)
+
+
+def verified_accepted_texts(authority: dict[str, Any]) -> list[str]:
+    """Return only the exact accepted chunks for in-memory corpus comparison."""
+    _, _, texts, _ = _verify_partition(authority)
+    return texts
+
+
+def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]:
+    accepted, rejected, _, chunk_count = _verify_partition(authority)
+    source = authority["source"]
+    total_accepted = sum(int(row["normalized_utf8_bytes"]) for row in accepted)
 
     core: dict[str, Any] = {
         "schema_version": SCHEMA,
@@ -201,7 +222,7 @@ def materialize(authority: dict[str, Any], *, source_sha: str) -> dict[str, Any]
         "upstream_commit": source["upstream_commit"],
         "raw_sha256": source["raw_sha256"],
         "normalized_source_sha256": source["normalization"]["normalized_sha256"],
-        "chunk_count": len(chunks),
+        "chunk_count": chunk_count,
         "accepted_chunk_count": len(accepted),
         "rejected_chunk_count": len(rejected),
         "accepted_normalized_utf8_bytes": total_accepted,
