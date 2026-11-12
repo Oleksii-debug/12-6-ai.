@@ -9,6 +9,12 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 2 SECTION 17 DONE
+
+- Plan 2 is **17/18 DONE**. Section 17A–C were integrated by [PR #3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) on main `613fede87d0da2fa051e51cd7041aacc796f7c9b`. The complete tree matches tested head `33b95a482266f9ed44afb39a209a700ae1ba83d3`.
+- The exact Section 15 tokenizer was recovered against the hosted manifest identity. Section 17 reused its 32,768-token vocabulary and built 1,114 training shards with 1,985,122 causal targets. The [qualification receipt](evidence/plan2_s17/physical_bundle_receipt_v1.json) binds the Section 16 corpus, independent reservations, and byte-identical 2,237-file inventory across two processes including a clean checkout.
+- Local qualification passed 19 tests and Ruff. Windows skipped one symlink test. Hosted jobs remained queued without a runner. Section 18 owns the qualified release and Plan 9 handoff.
+
 # 2026-11-12 PLAN 2 SECTION 16 DONE
 
 - Plan 2 is **16/18 DONE**. Section 16A–C were integrated by [PR #3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229) on main `3aed42cbb9234783ef7b72a6cb6b082d6f709a28`. The seven changed files match tested head `62528fce34eeedb1b285e0937238695c016cbb32` after merge.
