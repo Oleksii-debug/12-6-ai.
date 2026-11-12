@@ -9,6 +9,14 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 8 SECTION 5 DONE
+
+- **Plan 8: 5/11 DONE.** Section 5A–C integrated through [PR #3085](https://github.com/Oleksii-debug/12-6-ai./pull/3085) at accepted main `0549f46ef0cbc03f21fb8079d5e87b51d7575650`, tree `44a4c2e50cdadd0dbde386ca230da5f96b1cbde9`. All 13 changed path blobs match the qualified head `38ad7823fa1dfe72b091c31c498bb7fb6fd1e0dc`. The remaining tree differences are three existing main tracker documents.
+- **5A DONE.** Seven exact-profile actions ran and passed on a physical Windows host. Independently verified all ten signed results after deleting the temporary private signing material. The operator exercised stage, status, verify and stop through text commands.
+- **5B DONE.** An actual failing pytest process emitted a reproducible defect packet. Missing CUDA and an exceeded deadline emitted separate infrastructure records.
+- **5C DONE.** New-process readback verified durable evidence and denied replay for all ten execution cases. STOP prevented an unstarted effect. All 20 new [hash-only evidence blobs](https://github.com/Oleksii-debug/12-6-ai./tree/fef95d593514711ee7110c6aa2d96dd6874fd6ed/evidence/plan8) matched their independent readback. The public-only audit SHA-256 is `9cf1644eb61b24dd591251c8176bb253a51d1c61105c64a6f526d124ef71f242`.
+- Local qualification passed 204 tests and Ruff. Three symlink cases were deselected because the Windows account lacks the required privilege. Hosted Actions remained queued and the pinned Linux SIL runtime was unavailable locally. The signed runs qualify the local bridge; scale-size GPU training, target-provider readiness and production signing are separate gates. [Section 6](https://github.com/Oleksii-debug/12-6-ai./pull/3226) is the next open section.
+
 # 2026-11-12 PLAN 3 SECTION 5 DONE
 
 - **Plan 3: 5/12 DONE.** Section 5A–C integrated through [PR #3239](https://github.com/Oleksii-debug/12-6-ai./pull/3239) at main `ac17b7fc79635d26ee658013d4ef9d7c0c9f2d2c`. Accepted tree `547be824ca1174a6b4abad104457b4a82b7f273d` matches tested head `b677dd8b4ff7a43da0ded2e98b00f3dfdbff4c34`.
