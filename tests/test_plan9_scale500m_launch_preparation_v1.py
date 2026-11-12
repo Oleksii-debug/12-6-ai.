@@ -1,5 +1,6 @@
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -8,6 +9,7 @@ from tools import plan2_s18_physical_release_v1 as physical_release
 from tools import plan2_s18_release_integrity_v1 as release_integrity
 from tools import plan9_scale500m_launch_preparation_v1 as preparation
 from twelve_six.checkpoint import hash_json
+from twelve_six.checkpoint.transaction import bind_checkpoint_transaction, checkpoint_transaction
 from twelve_six.training.config import TrainerConfig, TrainingRecipe
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -223,6 +225,73 @@ def test_binds_checkpoint_progress_without_changing_scientific_run_identity(
     assert hash_json(first.training_config) != hash_json(second.training_config)
     with pytest.raises(preparation.LaunchPreparationDenied, match="optimizer checkpoint boundary"):
         bind(1, 2)
+
+
+def test_run_controller_cursor_hooks_preserve_exact_checkpoint_next_batch(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    batches = [
+        {"input_ids": torch.full((2, 32), index), "loss_mask": torch.tensor([[1] * 5 + [0] * 27] * 2)}
+        for index in (10, 11)
+    ]
+    monkeypatch.setattr(physical_release, "iter_release_batches", lambda *_, **__: iter(batches))
+    lock = "d" * 64
+    packet = preparation.build_candidate_packet(
+        ROOT, directory, recipe=candidate_recipe, run_id="controller-input", environment_lock_sha256=lock,
+    )
+
+    def open_input():
+        return preparation.prepare_run_controller_input(
+            ROOT, directory, packet=packet, expected_packet_sha256=packet["packet_sha256"],
+            environment_lock_sha256=lock,
+        )
+
+    identity, initial, source = open_input()
+    assert identity.run_manifest_hash == packet["run_manifest_sha256"]
+    assert identity.step == identity.tokens_seen == 0
+    assert "physical_resume_cursor_sha256" not in identity.training_config["data"]
+    hashes = packet["checkpoint_preflight"]
+    assert hashes["controller_base_training_config_sha256"] == hash_json(identity.training_config)
+    assert hashes["legacy_expected_training_config_hash"] != hashes["controller_base_training_config_sha256"]
+    assert packet["preparation"]["runtime_source"]["checkpoint_transaction"]["path"] == (
+        "src/twelve_six/checkpoint/transaction.py"
+    )
+    source.restore_exposure_cursor(initial)
+    stream = source.batches(SimpleNamespace(committed_step=0, tokens_seen=0))
+    assert next(stream) is batches[0]
+    with pytest.raises(preparation.LaunchPreparationDenied, match="trainer progress differs"):
+        source.read_exposure_cursor(SimpleNamespace(micro_step=1, tokens_seen=9))
+    cursor = source.read_exposure_cursor(SimpleNamespace(micro_step=1, tokens_seen=10))
+    txn = bind_checkpoint_transaction(
+        replace(identity, step=1, tokens_seen=10), generation=1,
+        parent_generation=0, parent_checkpoint_id="f" * 64, exposure_cursor=cursor,
+    )
+    restored = checkpoint_transaction({"identity": asdict(txn)})
+    assert restored is not None
+    _, _, fresh = open_input()
+    fresh.restore_exposure_cursor(restored.exposure_cursor)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="run receipt progress differs"):
+        next(fresh.batches(SimpleNamespace(committed_step=1, tokens_seen=9)))
+    assert list(fresh.batches(SimpleNamespace(committed_step=1, tokens_seen=10))) == batches[1:]
+    with pytest.raises(preparation.LaunchPreparationDenied, match="restore the verified exposure cursor"):
+        next(fresh.batches(SimpleNamespace(committed_step=1, tokens_seen=10)))
+
+
+def test_run_controller_input_refuses_a_batch_before_exposure_budget_is_exceeded(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    recipe = replace(candidate_recipe, target_unique_loss_positions=15, maximum_total_exposures=15)
+    batch = {"input_ids": torch.zeros((2, 32)), "loss_mask": torch.tensor([[1] * 5 + [0] * 27] * 2)}
+    monkeypatch.setattr(physical_release, "iter_release_batches", lambda *_, **__: iter([batch, batch]))
+    source = preparation.PhysicalRunInput(ROOT, directory, recipe)
+    source.restore_exposure_cursor(preparation.build_resume_cursor(ROOT, directory, recipe=recipe, next_batch_index=0))
+    batches = source.batches(SimpleNamespace(committed_step=0, tokens_seen=0))
+    assert next(batches) is batch
+    with pytest.raises(preparation.LaunchPreparationDenied, match="exceed the sealed recipe"):
+        next(batches)
+    assert source.read_exposure_cursor(SimpleNamespace(micro_step=1, tokens_seen=10))["next_batch_index"] == 1
 
 
 def test_candidate_packet_rebuild_pins_run_and_rejects_tampering(verified_boundary, candidate_recipe):

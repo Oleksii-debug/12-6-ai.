@@ -1,0 +1,18 @@
+{
+  "capability_ids": [
+    "reserved-eval-firewall"
+  ],
+  "prerequisites": [
+    "plan2-fixture-present"
+  ],
+  "required_level": "Q2",
+  "scenario_id": "plan2-reserved-eval-firewall",
+  "schema_version": "12-6.plan8-scenario.v1",
+  "steps": [
+    {
+      "adapter_id": "reserved-eval",
+      "expected_sha256": "494ec5e488501daa4a5d4dd4f73b2d1e66c9330e5fd0e1776fd290968a1e0544",
+      "step_id": "observe-fixture"
+    }
+  ]
+}

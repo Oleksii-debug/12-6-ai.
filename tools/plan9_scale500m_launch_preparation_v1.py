@@ -11,7 +11,7 @@ import hashlib
 import json
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,11 +26,15 @@ from twelve_six.checkpoint.d04_resume_binding import (
     D04_RESUME_BINDING_SCHEMA,
     D04_RESUME_SHA_FIELDS,
 )
+from twelve_six.checkpoint.transaction import TRANSACTION_SCHEMA
 from twelve_six.model import StageConfig, load_stage_config
 from twelve_six.training.config import TrainingRecipe
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+    from twelve_six.training.run_control import RunReceipt
+    from twelve_six.training.trainer import Trainer
 
 SCHEMA = "12-6.plan9-scale500m-launch-preparation.v1"
 CURSOR_SCHEMA = "12-6.plan9-s18-physical-resume-cursor.v1"
@@ -46,6 +50,7 @@ RUNTIME_PATHS = {
     "run_control": "src/twelve_six/training/run_control.py",
     "checkpoint_binding": "src/twelve_six/checkpoint/run_binding.py",
     "checkpoint_resume": "src/twelve_six/checkpoint/d04_resume_binding.py",
+    "checkpoint_transaction": "src/twelve_six/checkpoint/transaction.py",
     "model": "src/twelve_six/model.py",
     "release_reader": "tools/plan2_s18_physical_release_v1.py",
     "release_consumer": "tools/plan2_s18_plan9_consumer_v1.py",
@@ -244,7 +249,9 @@ def build_preparation(
         "checkpoint_resume_contract": {
             "plan3_entrypoint": "twelve_six.checkpoint.bind_checkpoint_identity",
             "trainer_restore_entrypoint": "twelve_six.checkpoint.load_trainer_checkpoint",
-            "physical_cursor_checkpoint_expectation": "expected_training_config_hash",
+            "legacy_cursor_checkpoint_expectation": "expected_training_config_hash",
+            "controller_input_entrypoint": "prepare_run_controller_input",
+            "controller_transaction_schema": TRANSACTION_SCHEMA,
             "d04_schema": D04_RESUME_BINDING_SCHEMA,
             "d04_required_data_fields": list(D04_RESUME_SHA_FIELDS),
             "d04_plan_and_checkpoint_bound": False,
@@ -342,7 +349,7 @@ def bind_resume_checkpoint_identity(
         candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
         run_id=run_id, optimizer_step=optimizer_step,
     )
-    return identity
+    return _bind_legacy_cursor(identity, cursor)
 
 
 def _bind_checkpoint_preflight(
@@ -402,11 +409,14 @@ def _bind_checkpoint_preflight(
         tokens_seen=cursor["consumed_loss_positions"],
         environment_lock_hash=environment_lock_sha256,
     )
-    # The scientific run manifest stays stable as the cursor advances. Plan 3
-    # verifies this progress-bound digest via expected_training_config_hash.
+    return run_manifest, model_spec, init_spec, identity
+
+
+def _bind_legacy_cursor(identity: CheckpointIdentity, cursor: dict[str, Any]) -> CheckpointIdentity:
+    """Preserve the older progress-hash verifier independently of RunController."""
     bound = dict(identity.training_config)
     bound["data"] = {**bound["data"], "physical_resume_cursor_sha256": cursor["cursor_sha256"]}
-    return run_manifest, model_spec, init_spec, replace(identity, training_config=bound)
+    return replace(identity, training_config=bound)
 
 
 def build_candidate_packet(
@@ -433,7 +443,10 @@ def build_candidate_packet(
         "run_manifest_sha256": identity.run_manifest_hash,
         "physical_cursor": cursor,
         "checkpoint_preflight": {
-            "expected_training_config_hash": hash_json(identity.training_config),
+            "legacy_expected_training_config_hash": hash_json(
+                _bind_legacy_cursor(identity, cursor).training_config,
+            ),
+            "controller_base_training_config_sha256": hash_json(identity.training_config),
             "optimizer_step": identity.step,
             "tokens_seen": identity.tokens_seen,
             "checkpoint_artifact_verified": False,
@@ -466,6 +479,91 @@ def verify_candidate_packet(
     _require(actual["packet_sha256"] == expected_packet_sha256,
              "candidate packet differs from the verified release, source, lock or physical prefix")
     return actual
+
+
+class PhysicalRunInput:
+    """Connect the sealed S18 stream to a single RunController writer."""
+
+    def __init__(self, root: Path, release: Path, recipe: TrainingRecipe) -> None:
+        self._root = root
+        self._release = release
+        self._recipe = recipe
+        self._cursor: dict[str, Any] | None = None
+        self._iterator: Iterator[dict[str, Tensor]] | None = None
+        self._total_blocks = 0
+
+    def restore_exposure_cursor(self, cursor: Mapping[str, Any]) -> None:
+        """Reopen the real release and its exact committed prefix before reading input."""
+        self._cursor = None
+        self._iterator = None
+        supplied = dict(cursor)
+        digest = supplied.get("cursor_sha256")
+        _require(type(digest) is str, "checkpoint exposure cursor lacks its physical digest")
+        preparation, batches = _verify_resume_cursor(
+            self._root, self._release, self._recipe, supplied, digest,
+        )
+        self._total_blocks = preparation["data"]["packed_block_count"]
+        self._cursor, self._iterator = supplied, batches
+
+    def batches(self, receipt: RunReceipt) -> Iterator[dict[str, Tensor]]:
+        cursor, source = self._cursor, self._iterator
+        if cursor is None or source is None:
+            raise LaunchPreparationDenied("restore the verified exposure cursor before opening batches")
+        accumulation = self._recipe.trainer.gradient_accumulation_steps
+        _require(
+            cursor["next_batch_index"] == receipt.committed_step * accumulation
+            and cursor["consumed_loss_positions"] == receipt.tokens_seen,
+            "run receipt progress differs from the verified exposure cursor",
+        )
+        self._iterator = None
+        for batch in source:
+            positions = cursor["consumed_loss_positions"] + int(batch["loss_mask"].sum().item())
+            _require(positions <= self._recipe.maximum_total_exposures,
+                     "next batch would exceed the sealed recipe exposure budget")
+            blocks = cursor["consumed_blocks"] + int(batch["input_ids"].shape[0])
+            core = {key: value for key, value in cursor.items() if key != "cursor_sha256"}
+            core.update(
+                next_batch_index=cursor["next_batch_index"] + 1,
+                consumed_blocks=blocks,
+                consumed_loss_positions=positions,
+                complete=blocks == self._total_blocks,
+            )
+            cursor = {**core, "cursor_sha256": _sha(_canonical(core))}
+            self._cursor = cursor
+            yield batch
+
+    def read_exposure_cursor(self, trainer: Trainer) -> dict[str, Any]:
+        """Return the position to publish with the successful optimizer state."""
+        cursor = self._cursor
+        if cursor is None:
+            raise LaunchPreparationDenied("no verified exposure cursor is available")
+        _require(
+            cursor["next_batch_index"] == trainer.micro_step
+            and cursor["consumed_loss_positions"] == trainer.tokens_seen,
+            "trainer progress differs from the physical exposure cursor",
+        )
+        return dict(cursor)
+
+
+def prepare_run_controller_input(
+    root: Path, release: Path, *, packet: dict[str, Any], expected_packet_sha256: str,
+    environment_lock_sha256: str,
+) -> tuple[CheckpointIdentity, dict[str, Any], PhysicalRunInput]:
+    """Return an initial identity and cursor hooks without running the controller."""
+    verified = verify_candidate_packet(
+        root, release, packet=packet, expected_packet_sha256=expected_packet_sha256,
+        environment_lock_sha256=environment_lock_sha256,
+    )
+    cursor = verified["physical_cursor"]
+    _require(cursor["next_batch_index"] == 0, "controller setup requires the initial candidate packet")
+    run = verified["run_manifest"]
+    recipe = TrainingRecipe.from_dict(run["training"]["recipe"])
+    _, _, _, identity = _bind_checkpoint_preflight(
+        root, verified["preparation"], recipe, cursor,
+        candidate_git_sha=run["candidate"]["git_sha"], environment_lock_sha256=environment_lock_sha256,
+        run_id=run["run_id"], optimizer_step=0,
+    )
+    return identity, cursor, PhysicalRunInput(root, release, recipe)
 
 
 def check_one_pass_data_budget(

@@ -91,9 +91,9 @@
 | 6А | Checkpoint містить model/optimizer/scheduler/RNG/exposure cursor/config/manifests із hashes і parent generation. | Статус: DONE — accepted main, PR #3240 |
 | 6Б | Публікація create-only/atomic; partial/corrupt checkpoint не стає resumable authority. | Статус: DONE — accepted main, PR #3240 |
 | 6В | Retention/GC не видаляє потрібний rollback parent. | Статус: DONE — accepted main, PR #3240 |
-| 7А | Відновлення в новому process/machine має продовжувати exact next exposure та training state. | Статус: OPEN |
-| 7Б | Порівняти uninterrupted vs stop/resume trajectories в deterministic режимі. | Статус: OPEN |
-| 7В | Corrupt/missing dependency fail-closed із actionable diagnostics. | Статус: OPEN |
+| 7А | Відновлення в новому process/machine має продовжувати exact next exposure та training state. | Статус: DONE — accepted main, PR #3242 |
+| 7Б | Порівняти uninterrupted vs stop/resume trajectories в deterministic режимі. | Статус: DONE — accepted main, PR #3242 |
+| 7В | Corrupt/missing dependency fail-closed із actionable diagnostics. | Статус: DONE — accepted main, PR #3242 |
 | 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: OPEN |
 | 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: OPEN |
 | 8В | Вести unique-loss ledger і audit counters. | Статус: OPEN |
@@ -131,9 +131,9 @@
 | 5А | Доставляти exact candidate/test packet на host і повертати execution receipts/issues/artifacts; локальний operator path має давати доступні text status/verify/stop controls без миші. | Статус: DONE — accepted main, PR #3085 |
 | 5Б | Failure автоматично стає адресованим reproducible defect, не просто логом. | Статус: DONE — accepted main, PR #3085 |
 | 5В | Bridge підтримує reconnect/idempotency і no duplicate test/effect. | Статус: DONE — accepted main, PR #3085 |
-| 6А | Описувати product journeys як versioned scenarios із prerequisites/actions/observations/expected evidence. | Статус: OPEN |
-| 6Б | Harness може працювати проти fixtures окремих планів і пізніше exact integrated product. | Статус: OPEN |
-| 6В | Coverage map показує, які capability chains ще не мають потрібного evidence level. | Статус: OPEN |
+| 6А | Описувати product journeys як versioned scenarios із prerequisites/actions/observations/expected evidence. | Статус: DONE — accepted main, PR #3226 |
+| 6Б | Harness може працювати проти fixtures окремих планів і пізніше exact integrated product. | Статус: DONE — accepted main, PR #3226 |
+| 6В | Coverage map показує, які capability chains ще не мають потрібного evidence level. | Статус: DONE — accepted main, PR #3226 |
 | 7А | Інжектувати process kill, network loss, disk/corrupt artifact, stale state, provider/node failure та interrupted publication. | Статус: OPEN |
 | 7Б | Перевіряти no duplicate exposure/effects, durable recovery, diagnostics і rollback. | Статус: OPEN |
 | 7В | Fault campaign framework не вимагає final product — використовує component fixtures. | Статус: OPEN |
