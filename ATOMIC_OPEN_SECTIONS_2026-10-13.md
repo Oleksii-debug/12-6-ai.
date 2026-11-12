@@ -88,9 +88,9 @@
 | 5А | Визначити PREPARED/RUNNING/PAUSED/STOPPED/FAILED/COMPLETED та control epochs. | Статус: DONE — accepted main, PR #3239 |
 | 5Б | Заборонити одночасні writers одного run identity або duplicate optimizer advancement. | Статус: DONE — accepted main, PR #3239 |
 | 5В | Pause/Stop/restart мають deterministic durable receipts. | Статус: DONE — accepted main, PR #3239 |
-| 6А | Checkpoint містить model/optimizer/scheduler/RNG/exposure cursor/config/manifests із hashes і parent generation. | Статус: OPEN |
-| 6Б | Публікація create-only/atomic; partial/corrupt checkpoint не стає resumable authority. | Статус: OPEN |
-| 6В | Retention/GC не видаляє потрібний rollback parent. | Статус: OPEN |
+| 6А | Checkpoint містить model/optimizer/scheduler/RNG/exposure cursor/config/manifests із hashes і parent generation. | Статус: DONE — accepted main, PR #3240 |
+| 6Б | Публікація create-only/atomic; partial/corrupt checkpoint не стає resumable authority. | Статус: DONE — accepted main, PR #3240 |
+| 6В | Retention/GC не видаляє потрібний rollback parent. | Статус: DONE — accepted main, PR #3240 |
 | 7А | Відновлення в новому process/machine має продовжувати exact next exposure та training state. | Статус: OPEN |
 | 7Б | Порівняти uninterrupted vs stop/resume trajectories в deterministic режимі. | Статус: OPEN |
 | 7В | Corrupt/missing dependency fail-closed із actionable diagnostics. | Статус: OPEN |
