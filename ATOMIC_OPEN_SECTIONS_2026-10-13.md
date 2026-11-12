@@ -94,21 +94,21 @@
 | 7А | Відновлення в новому process/machine має продовжувати exact next exposure та training state. | Статус: DONE — accepted main, PR #3242 |
 | 7Б | Порівняти uninterrupted vs stop/resume trajectories в deterministic режимі. | Статус: DONE — accepted main, PR #3242 |
 | 7В | Corrupt/missing dependency fail-closed із actionable diagnostics. | Статус: DONE — accepted main, PR #3242 |
-| 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: OPEN |
-| 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: OPEN |
-| 8В | Вести unique-loss ledger і audit counters. | Статус: OPEN |
-| 9А | Пакетувати ModelSpec, recipe, tokenizer/shard contract refs, budget, checkpoint policy, commands та expected evidence в portable run packet; для qualification цього плану refs можуть бути fixture identities, а real tokenizer/shards підставляються в Плані 9. | Статус: OPEN |
-| 9Б | Один packet запускається local/free/server adapters без зміни scientific semantics. | Статус: OPEN |
-| 9В | Provider-specific settings зберігаються окремо від canonical run identity. | Статус: OPEN |
+| 8А | Реалізувати runtime exposure accounting проти stable exposure-contract fixtures Migration Baseline v1 і атомарно commit next exposure разом із training state; production exposure manifest Плану 2 підставляється лише в Плані 9. | Статус: DONE — accepted main, PR #3243 |
+| 8Б | Retry/provider migration не може створити duplicate causal-loss contribution. | Статус: DONE — accepted main, PR #3243 |
+| 8В | Вести unique-loss ledger і audit counters. | Статус: DONE — accepted main, PR #3243 |
+| 9А | Пакетувати ModelSpec, recipe, tokenizer/shard contract refs, budget, checkpoint policy, commands та expected evidence в portable run packet; для qualification цього плану refs можуть бути fixture identities, а real tokenizer/shards підставляються в Плані 9. | Статус: DONE — accepted main, PR #3244 |
+| 9Б | Один packet запускається local/free/server adapters без зміни scientific semantics. | Статус: DONE — accepted main, PR #3244 |
+| 9В | Provider-specific settings зберігаються окремо від canonical run identity. | Статус: DONE — accepted main, PR #3244 |
 | 10А | Виміряти memory, throughput, tokens/sec, checkpoint I/O і expected run time на підтримуваних profiles. | Статус: OPENДОДАТОК 2026-10-11 — послідовний benchmark усіх семи SCALE profiles: 500M, 750M, 1B, 2B, 3B, 4B, 5 |
-| 10Б | Визначити admission rules, щоб завідомо impossible run не стартував. | Статус: OPEN |
-| 10В | Resource metrics не змінюють scientific recipe без нової version. | Статус: OPEN |
-| 11А | Створити replaceable local/runner/server launcher interface з common lifecycle/status/artifact receipts. | Статус: OPEN |
-| 11Б | Provider failure не змінює run identity; migration/resume відбувається через canonical checkpoint. | Статус: OPEN |
-| 11В | Немає provider-specific hidden training code path; paid/cloud provider не активується автономно без explicit owner authorization або чинної budget policy. | Статус: OPEN |
-| 12А | Пройти tiny/synthetic deterministic training, crash/restart, provider-switch, numerical і checkpoint campaigns. | Статус: OPEN |
-| 12Б | Довести reproducibility/semantic parity на exact candidate. | Статус: OPEN |
-| 12В | Зафіксувати terminal Training Runtime release, готовий спожити artifacts Плану 2 у Плані 9. | Статус: OPEN |
+| 10Б | Визначити admission rules, щоб завідомо impossible run не стартував. | Статус: DONE — accepted main, PR #3245 |
+| 10В | Resource metrics не змінюють scientific recipe без нової version. | Статус: DONE — accepted main, PR #3245 |
+| 11А | Створити replaceable local/runner/server launcher interface з common lifecycle/status/artifact receipts. | Статус: DONE — accepted main, PR #3248 |
+| 11Б | Provider failure не змінює run identity; migration/resume відбувається через canonical checkpoint. | Статус: DONE — accepted main, PR #3248 |
+| 11В | Немає provider-specific hidden training code path; paid/cloud provider не активується автономно без explicit owner authorization або чинної budget policy. | Статус: DONE — accepted main, PR #3248 |
+| 12А | Пройти tiny/synthetic deterministic training, crash/restart, provider-switch, numerical і checkpoint campaigns. | Статус: DONE — accepted main, PR #3250 |
+| 12Б | Довести reproducibility/semantic parity на exact candidate. | Статус: DONE — accepted main, PR #3250 |
+| 12В | Зафіксувати terminal Training Runtime release, готовий спожити artifacts Плану 2 у Плані 9. | Статус: DONE — accepted main, PR #3250 |
 
 ## План 8: 33 самостійних розділів
 
@@ -134,18 +134,18 @@
 | 6А | Описувати product journeys як versioned scenarios із prerequisites/actions/observations/expected evidence. | Статус: DONE — accepted main, PR #3226 |
 | 6Б | Harness може працювати проти fixtures окремих планів і пізніше exact integrated product. | Статус: DONE — accepted main, PR #3226 |
 | 6В | Coverage map показує, які capability chains ще не мають потрібного evidence level. | Статус: DONE — accepted main, PR #3226 |
-| 7А | Інжектувати process kill, network loss, disk/corrupt artifact, stale state, provider/node failure та interrupted publication. | Статус: OPEN |
-| 7Б | Перевіряти no duplicate exposure/effects, durable recovery, diagnostics і rollback. | Статус: OPEN |
-| 7В | Fault campaign framework не вимагає final product — використовує component fixtures. | Статус: OPEN |
-| 8А | Q0 component/contract, Q1 SIL, Q2 HIL, Q3 supervised physical operator/NVDA, Q4 field/canary evidence. | Статус: OPENOWNER SCALE ADDENDUM 2026-10-11 (OPEN S8 only): Розділяти для кожного SCALE profile статуси CONFIG |
-| 8Б | Кожна capability декларує потрібний evidence level; simulation не підміняє physical requirement. | Статус: OPEN |
-| 8В | Promotion policy invalidates stale evidence після behavior-changing mutation. | Статус: OPEN |
-| 9А | Стандартизувати defect packet, test receipt, candidate freeze, repair parent, retest і promotion records. | Статус: OPEN |
-| 9Б | Deduplicate repeated same defect і зберігати causality across retries/workers. | Статус: OPEN |
-| 9В | Evidence artifacts мають hashes/retention/provenance. | Статус: OPEN |
-| 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: OPEN |
-| 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: OPEN |
-| 10В | DONE тільки після post-merge exact readback. | Статус: OPEN |
+| 7А | Інжектувати process kill, network loss, disk/corrupt artifact, stale state, provider/node failure та interrupted publication. | Статус: DONE — accepted main, PR #3227 |
+| 7Б | Перевіряти no duplicate exposure/effects, durable recovery, diagnostics і rollback. | Статус: DONE — accepted main, PR #3227 |
+| 7В | Fault campaign framework не вимагає final product — використовує component fixtures. | Статус: DONE — accepted main, PR #3227 |
+| 8А | Q0 component/contract, Q1 SIL, Q2 HIL, Q3 supervised physical operator/NVDA, Q4 field/canary evidence. | Статус: DONE — accepted main, PR #3246 |
+| 8Б | Кожна capability декларує потрібний evidence level; simulation не підміняє physical requirement. | Статус: DONE — accepted main, PR #3246 |
+| 8В | Promotion policy invalidates stale evidence після behavior-changing mutation. | Статус: DONE — accepted main, PR #3246 |
+| 9А | Стандартизувати defect packet, test receipt, candidate freeze, repair parent, retest і promotion records. | Статус: DONE — accepted main, PR #3247 |
+| 9Б | Deduplicate repeated same defect і зберігати causality across retries/workers. | Статус: DONE — accepted main, PR #3247 |
+| 9В | Evidence artifacts мають hashes/retention/provenance. | Статус: DONE — accepted main, PR #3247 |
+| 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: DONE — accepted main, PR #3249 |
+| 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: DONE — accepted main, PR #3249 |
+| 10В | DONE тільки після post-merge exact readback. | Статус: DONE — accepted main, PR #3249 |
 | 11А | Пройти SIL→defect→repair→retest, physical agent simulation/proxy, chaos та evidence-lifecycle campaigns. | Статус: OPEN |
 | 11Б | Підтвердити integration із repositories/artifacts без залежності від actual production champion. | Статус: OPEN |
 | 11В | Зафіксувати terminal Qualification Fabric release. | Статус: OPEN |

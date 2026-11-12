@@ -28,6 +28,7 @@ from twelve_six.checkpoint.d04_resume_binding import (
 )
 from twelve_six.checkpoint.transaction import TRANSACTION_SCHEMA
 from twelve_six.model import StageConfig, load_stage_config
+from twelve_six.training import runtime_release
 from twelve_six.training.config import TrainingRecipe
 
 if TYPE_CHECKING:
@@ -48,6 +49,8 @@ RUNTIME_PATHS = {
     "trainer": "src/twelve_six/training/trainer.py",
     "trainer_config": "src/twelve_six/training/config.py",
     "run_control": "src/twelve_six/training/run_control.py",
+    "runtime_release_verifier": "src/twelve_six/training/runtime_release.py",
+    "runtime_release_descriptor": runtime_release.RELEASE_PATH,
     "checkpoint_binding": "src/twelve_six/checkpoint/run_binding.py",
     "checkpoint_resume": "src/twelve_six/checkpoint/d04_resume_binding.py",
     "checkpoint_transaction": "src/twelve_six/checkpoint/transaction.py",
@@ -176,6 +179,19 @@ def build_preparation(
     _require(type(count) is int and count > 0 and count == authority["training_targets"]
              and consumer["tokenizer_manifest_sha256"] == tokenizer["source_manifest_sha256"],
              "released tokenizer or ordered target count differs from Plan 2 authority")
+    released_runtime = runtime_release.verify_runtime_release(root)
+    runtime_handoff = released_runtime["plan2_handoff"]
+    _require(
+        released_runtime["qualification"] == "LOCAL_COMPONENT"
+        and released_runtime["full_profile_measurement_status"] == "OPEN_EXTERNAL"
+        and released_runtime["campaign_authorized"] is False
+        and runtime_handoff["release_manifest_sha256"] == authority["release_manifest_sha256"]
+        and runtime_handoff["release_authority_sha256"] == authority["authority_sha256"]
+        and runtime_handoff["plan9_binding_sha256"] == members["plan9-binding.json"]
+        and runtime_handoff["training_targets"] == count
+        and runtime_handoff["vocab_size"] == config.model.vocab_size,
+        "released Plan 3 runtime does not bind the exact Plan 2 handoff",
+    )
     block_size, block_count = packing["block_size"], packing["block_count"]
     _require(
         packing["manifest_sha256"] == consumer["packing_manifest_sha256"]
@@ -184,6 +200,7 @@ def build_preparation(
         and packing["tokenizer_manifest_sha256"] == tokenizer["source_manifest_sha256"]
         and packing["target_count"] == count
         and type(block_size) is int and 2 <= block_size <= config.model.max_seq_len
+        and runtime_handoff["first_batch_shape"] == [2, block_size]
         and type(block_count) is int and block_count > 0 and count <= block_size * block_count,
         "physical packing width, count, or identity differs from the accepted release",
     )
@@ -243,6 +260,13 @@ def build_preparation(
             "final_test_payload_opened": False,
         },
         "runtime_source": runtime,
+        "plan3_runtime_release": {
+            "descriptor_path": runtime_release.RELEASE_PATH,
+            "descriptor_sha256": runtime_release.RELEASE_SHA256,
+            "qualification": released_runtime["qualification"],
+            "full_profile_measurement_status": released_runtime["full_profile_measurement_status"],
+            "plan2_handoff": runtime_handoff,
+        },
         "recipe_sha256": None if recipe is None else recipe.identity_sha256(),
         "candidate_training_fields": training_fields,
         "campaign_recipe_accepted": False,
@@ -396,6 +420,7 @@ def _bind_checkpoint_preflight(
         "environment": {"lock_sha256": environment_lock_sha256},
         "evaluation": preparation["evaluation"],
         "runtime_source": preparation["runtime_source"],
+        "plan3_runtime_release": preparation["plan3_runtime_release"],
         "campaign_authorized": False,
     }
     model_spec, init_spec = profile.model.to_dict(), profile.init.to_dict()
@@ -427,6 +452,15 @@ def build_candidate_packet(
     """Assemble one portable candidate record from verified inputs and cursor evidence."""
     candidate_git_sha = _candidate_checkout_sha(root)
     preparation, cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
+    handoff = runtime_release.verify_plan2_handoff(root, release)
+    _require(
+        handoff["runtime_release_sha256"] == preparation["plan3_runtime_release"]["descriptor_sha256"]
+        and handoff["plan2_handoff"] == preparation["plan3_runtime_release"]["plan2_handoff"]
+        and type(handoff["optimizer_steps_executed"]) is int
+        and handoff["optimizer_steps_executed"] == 0
+        and handoff["campaign_authorized"] is False,
+        "physical Plan 2 handoff differs from the released Plan 3 runtime",
+    )
     run_manifest, model, init, identity = _bind_checkpoint_preflight(
         root, preparation, recipe, cursor,
         candidate_git_sha=candidate_git_sha, environment_lock_sha256=environment_lock_sha256,
@@ -442,6 +476,10 @@ def build_candidate_packet(
         "run_manifest": run_manifest,
         "run_manifest_sha256": identity.run_manifest_hash,
         "physical_cursor": cursor,
+        "plan3_physical_handoff": {
+            "aligned_loss_verified": True,
+            "optimizer_steps_executed": handoff["optimizer_steps_executed"],
+        },
         "checkpoint_preflight": {
             "legacy_expected_training_config_hash": hash_json(
                 _bind_legacy_cursor(identity, cursor).training_config,

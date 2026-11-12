@@ -68,6 +68,7 @@ class RunReceipt:
     receipt_sha256: str
     exposure_cursor_schema: str | None = None
     pending_cursor_sha256: str | None = None
+    control_policy_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +157,7 @@ class RunController:
             "phase": RunPhase.PREPARED,
             "control_enabled": False,
             "control_pending": False,
+            "control_policy_sha256": None,
             "committed_step": 0,
             "tokens_seen": 0,
             "pending_step": None,
@@ -428,6 +430,8 @@ class RunController:
         control: Callable[[RunBoundary], RunPhase | None] | None = None,
         read_exposure_cursor: Callable[[Trainer], Mapping[str, Any]] | None = None,
         restore_exposure_cursor: Callable[[Mapping[str, Any]], None] | None = None,
+        admit_progress: Callable[[RunReceipt], None] | None = None,
+        control_policy_sha256: str | None = None,
     ) -> RunReceipt:
         """Advance one writer from the durable position supplied to the batch factory.
 
@@ -435,7 +439,17 @@ class RunController:
         The factory must resume at the committed step and token position it receives.
         For an external cursor, restore receives the verified cursor before the
         iterator opens and read supplies the cursor after each optimizer step.
+        Optional admission runs under the writer lock after checkpoint recovery.
         """
+        _need(
+            control_policy_sha256 is None
+            or (
+                control is not None
+                and isinstance(control_policy_sha256, str)
+                and _SHA256.fullmatch(control_policy_sha256) is not None
+            ),
+            "bound control requires a callback and an exact SHA-256",
+        )
         with (
             exclusive_recovery_lock(self.namespace) as root,
             closing(self._connect(root)) as connection,
@@ -455,6 +469,12 @@ class RunController:
             _need(
                 not recover or not current.control_enabled or control is not None,
                 "recovery requires the interrupted control policy",
+            )
+            _need(
+                not recover
+                or not current.control_enabled
+                or current.control_policy_sha256 == control_policy_sha256,
+                "recovery control policy differs from the interrupted writer",
             )
             external_cursor = current.exposure_cursor_schema not in (None, _TRAINER_CURSOR_SCHEMA)
             _need(
@@ -503,6 +523,8 @@ class RunController:
                     current = self._settle_boundary(connection, current, control)
                     if current.phase in {RunPhase.PAUSED, RunPhase.STOPPED}:
                         return current
+                if admit_progress is not None:
+                    admit_progress(current)
                 current = self._append(
                     connection,
                     current,
@@ -512,6 +534,7 @@ class RunController:
                     pending_tokens=None,
                     pending_cursor_sha256=None,
                     control_enabled=control is not None,
+                    control_policy_sha256=control_policy_sha256,
                 )
                 if (
                     restore_exposure_cursor is not None

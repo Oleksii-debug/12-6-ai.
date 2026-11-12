@@ -3,7 +3,7 @@
   "observed_main_sha": "a6c4c269babbac134679a70b719e86e3fbcd4932",
   "observed_main_tree_sha": "9363c3cad0bdf8c58034a4a47a10d6d87421a123",
   "source_root": "src/twelve_six",
-  "source_surface_count": 157,
+  "source_surface_count": 166,
   "surfaces": [
     {
       "path": "src/twelve_six/__init__.py",
@@ -52,6 +52,11 @@
     },
     {
       "path": "src/twelve_six/champion_lifecycle.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/chaos_harness.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
     },
@@ -466,6 +471,16 @@
       "origin": "stacked_candidate"
     },
     {
+      "path": "src/twelve_six/evidence_lineage.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/evidence_policy.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/evolutionary_code.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
@@ -492,6 +507,11 @@
     },
     {
       "path": "src/twelve_six/integration/release_fixture.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/integration_qualification.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
     },
@@ -741,12 +761,37 @@
       "origin": "modified_candidate"
     },
     {
+      "path": "src/twelve_six/training/exposure_accounting.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/training/launcher.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/training/loss.py",
       "capability_id": "training-mechanics",
       "origin": "modified_candidate"
     },
     {
+      "path": "src/twelve_six/training/portable_packet.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/training/resource_envelope.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
       "path": "src/twelve_six/training/run_control.py",
+      "capability_id": "peer-source-qualification-pending",
+      "origin": "stacked_candidate"
+    },
+    {
+      "path": "src/twelve_six/training/runtime_release.py",
       "capability_id": "peer-source-qualification-pending",
       "origin": "stacked_candidate"
     },
@@ -792,5 +837,5 @@
     }
   ],
   "accepted_main_surface_count": 104,
-  "candidate_overlay_surface_count": 53
+  "candidate_overlay_surface_count": 62
 }

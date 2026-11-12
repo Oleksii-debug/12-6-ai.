@@ -9,6 +9,77 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-13 PLAN 3 SECTION 12 DONE
+
+- **Plan 3 Section 12A–C DONE. 11/12 complete sections.** [PR #3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted at main `08f3d9454819a7f47406b5b4eb2758480633f5c7`. Complete tree `656186590f3bfa7b74c1992c19e95262635fe366` matches exact candidate `7154b413adca7016143a2a039770114a80a29a2a`. All six accepted GitHub blobs matched.
+- **12A DONE.** The exact suite exercised native numerical and optimizer fixtures, process failure and restart, provider migration, exposure and transactional checkpoint recovery.
+- **12B DONE.** Exact repeated runs reproduced checkpoint and exposure identity. The component descriptor independently pins 38 runtime and data handoff source files.
+- **12C DONE.** The [versioned runtime release](configs/plan3/training_runtime_release_v1.json) pins the accepted Plan 2 handoff. Accepted main reopened the real physical release, matched all three first-batch tensor digests and checked 45 active targets with an analytic FP64 loss. Receipt SHA-256 `0a285bca1689c803dd1fc7eac8ccbfad423c4191fc543a996bb4db2682bdf4ec`. The handoff readback executed zero optimizer steps.
+- The exact tree passed 528 scoped tests with eight platform skips. Thirty-six tests passed on the detached candidate and sixteen on accepted main. Ruff passed and hosted Actions remained queued. Physical full-profile Section 10A remains OPEN and prevents terminal Plan 3 completion. Plan 9 still owns campaign acceptance.
+
+# 2026-11-13 PLAN 8 SECTION 10 DONE
+
+- **Plan 8 Section 10A–C DONE. 10/11 complete sections.** [PR #3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) accepted at main `65986e78989d13430dbc32590919d014ad0a9372`. Complete tree `93a72aa8497a8bf4f2eccdfd559a51f086550a29` matches frozen head `6479b2081a5b4b27d29d5b9a8086cc1ca5a4d81a`, GitHub preview and all five changed blobs.
+- **10A DONE.** The verifier freezes the clean checkout, exact commit, tree, ownership scope and dependencies. Git settings cannot hide changed submodule entries.
+- **10B DONE.** It validates the expected head and the predicted merge topology and tree against current main before a guarded integration.
+- **10C DONE.** The verifier read the actual accepted main ref and checked exact ancestry and tree. The new API independently verified its own PR integration. Accepted receipt SHA-256 `f6df4ca0d58c4f6a82cbac3d4a99b10872e12e4392d0af9c0904c2e806403d25`.
+- The exact local suite passed 172 tests, Ruff and both inventories. Three unchanged Windows SIL fixture failures reproduced at the accepted base and were excluded from the platform selection. Accepted main passed 15 focused tests. Hosted Actions remained queued. Section 11 is next.
+
+# 2026-11-13 PLAN 3 SECTION 11 DONE
+
+- **Plan 3 Section 11A–C DONE. 10/12 complete sections.** [PR #3248](https://github.com/Oleksii-debug/12-6-ai./pull/3248) accepted at main `31a32b44940ba12205278b01c0c9f3c41d9c45da`. Complete tree `159a9d80508061ba62df64cadbebe5dbb3d56641` matches frozen head `a7ff3592ecb134f10755880f505828a2bb347947`.
+- **11A DONE.** One typed wire contract exposes launch, status and artifact receipts. The receiver verifies the native checkpoint manifest, payload identities and transaction cursor.
+- **11B DONE.** Local, fresh spawned runner and loopback HTTP fixture endpoints share the same scientific packet, journal and checkpoint path. After provider failure the run reproduced the uninterrupted final checkpoint and cursor. Recovery preserves the original STOP or PAUSE intent.
+- **11C DONE.** All built-in adapters use the incumbent native trainer. Server dispatch requires an explicitly supplied authority. Local tests verified that denial occurs before the transport is called.
+- The exact tree passed 192 scoped tests. Eleven tests passed on the detached remote head and eleven on accepted main. Ruff passed and hosted Actions remained queued. The test run used a bounded fixture. Section 12 is the next independent engineering section.
+
+# 2026-11-13 PLAN 8 SECTION 9 DONE
+
+- **Plan 8 Section 9A–C DONE. 9/11 sections complete.** [PR #3247](https://github.com/Oleksii-debug/12-6-ai./pull/3247) accepted at main `986f33b063cd081e48c77e5dec9fb4de63a8af12`. Complete tree `c2021eeb8963a89baaad8fff1144995ff6e050ea` matches frozen head `2fe188bd0d772145d4c8681efcbd78706cfd28a9`. All five accepted path blobs matched.
+- **9A DONE.** The durable ledger links the exact observation, candidate freeze, retests and an independently evaluated promotion decision.
+- **9B DONE.** Stable defect identity deduplicates repeated observations while preserving worker and retry provenance. Two actual Windows processes converged on one durable record. Wrong causal parents and forged promotion readback were rejected.
+- **9C DONE.** Logical and raw artifact digests distinguish locally retained bytes from external references. Reopen verifies bytes, transaction rollback and an independent snapshot pin.
+- Exact remote-head qualification passed 245 tests, Ruff, whitespace and both inventories. Three Windows symlink cases were unavailable. Accepted main passed 11 focused tests. Hosted Actions remained queued. Section 10 is next.
+
+# 2026-11-13 PLAN 3 SECTIONS 10B AND 10C DONE
+
+- **Plan 3 Section 10B–C DONE. Section 10A remains OPEN. 9/12 complete sections.** [PR #3245](https://github.com/Oleksii-debug/12-6-ai./pull/3245) accepted at main `cabd9b0a1de4f01480823dd13f1096436a2abd92`. Complete tree `4b7895842ebe8dc75fb093ba0d3b8d14a68fb446` matches frozen candidate `4f6068e71f74d25b693f7ebf90fbd0814e08797a`.
+- **10B DONE.** Native admission checks available memory and the actual checkpoint volume before allocating model weights. The current unpruned publication policy accounts for both copies of tied weights written by the serializer and verifies pending recovery under the writer lock before discounting a durable update.
+- **10C DONE.** Host measurements and resource verdicts remain outside the canonical scientific packet. The local tests verify invariant recipe and run identity across resource observations.
+- **10A OPEN / INTERNAL_DONE_BLOCKED_EXTERNAL.** The integrated component SHA is `cabd9b0a1de4f01480823dd13f1096436a2abd92`. The exact seven-profile capacity receipt `e95c48008dc49fd8d09d6c36255497db60d411bcfabdfa527e48f139e3ee325c` sampled 4,311,736,320 available RAM bytes and 10,686,054,400 free checkpoint-volume bytes. Available RAM ruled out 500M, and available RAM plus disk ruled out 750M through 5B. A separate 920-parameter synthetic fixture measured one native optimizer boundary and checkpoint write/reload. Full-profile peak RAM, sustained throughput/throttling, SSD wear and full-profile restart still require a capable selected host.
+- Broad local qualification recorded 216 passes and four platform skips. The one Plan 8 package integrity failure on the Windows CRLF checkout passed on a Git-byte checkout. Exact candidate and accepted main passed 31 and 17 targeted tests respectively. Ruff passed and hosted Actions remained queued.
+
+# 2026-11-12 PLAN 8 SECTION 8 DONE
+
+- **Plan 8 Section 8A–C DONE. 8/11 sections complete.** [PR #3246](https://github.com/Oleksii-debug/12-6-ai./pull/3246) accepted at main `4f70e91615913dfc8ce4cb4b39faea27e752a8a9`. Complete tree `05177f367e56423c39c0ce746d8a4ce6b6576a5a` matches frozen head `233a37336daf1cbffd7438ff75b3cd1ed848fa6e`, including all six changed blobs.
+- **8A DONE.** The policy distinguishes Q0 fixture scope, verified SIL, signed physical action evidence and separately scoped supervised and field evidence.
+- **8B DONE.** The trusted policy declares requirements for all 26 current capabilities. Seven versioned scale profiles distinguish config, proxy, host, training authority and learned qualification. Actual readback yielded config-defined for all seven profiles.
+- **8C DONE.** Candidate, package, registry, policy and signed role checks reject stale or relabeled evidence and keep the incumbent independent promotion decision. Policy SHA-256 is `170f601e1ba26624266d163aee17cc7bccfcc56d51add063e025acefc1d9b9a4`.
+- The exact local tree passed 135 tests, Ruff, the inventory validators and eight raw runtime blob checks. Windows lacked symlink privilege for two fixtures. Hosted Actions remained queued. Section 9 is next.
+
+# 2026-11-12 PLAN 3 SECTION 9 DONE
+
+- **Plan 3 Section 9A–C DONE. 9/12 sections complete.** [PR #3244](https://github.com/Oleksii-debug/12-6-ai./pull/3244) accepted at main `fb46f2e91d253361517759eb4dbcca419f3be151`. Complete tree `1494bb326bab7c44f2a28065745b7f7e987e51f5` matches frozen head `78d683a8f8b9c090d57da1a7e203d48735802443`. All five GitHub source blobs matched.
+- **9A DONE.** The versioned packet binds ModelSpec, initialization seed, scientific recipe, data and tokenizer references, exposure budget, checkpoint policy, commands and expected evidence.
+- **9B DONE.** Three local fixture adapter roles exercised the same controller and authoritative journal. After an injected adapter disconnect, the recovered run matched the uninterrupted final checkpoint, cursor and native artifact hashes.
+- **9C DONE.** Device, provider and host paths are in a separate execution envelope. Changing that envelope does not change the scientific run identity. A changed lock or data contract fails preflight.
+- The detached candidate passed 205 scoped tests and Ruff. Accepted main passed 22 additional checks. Hosted Actions remained queued. Section 10 is next.
+
+# 2026-11-12 PLAN 8 SECTION 7 DONE
+
+- **Plan 8 Section 7A–C DONE. 7/11 sections complete.** [PR #3227](https://github.com/Oleksii-debug/12-6-ai./pull/3227) accepted at main `272595b6c034e66aec2c33f51265675b78269801`. Complete tree `f298e1937bd9980cf1011517cb6cc55659653c79` matches the exact frozen candidate `5279ffc481cf15ecdf3736bf30a627c1492347ff`.
+- **7A DONE.** Eight versioned local cases exercised process termination, a real socket close, corrupt artifacts, stale state, a controlled provider failure, interrupted checkpoint and publication, and local replica survival.
+- **7B DONE.** The shared process lock serializes injection, recovery and readback. Durable claims and terminal records survive abrupt process exit. Recovery verifies the observed effect before accepting it and blocks duplicate execution. Rollback preserves the actual interrupted bytes and prior accepted bytes.
+- **7C DONE.** A fresh process verified the complete component campaign. The exact tree passed 146 tests, Ruff and both inventory checks. Windows lacked symlink privilege for two cases and hosted CI remained queued. Provider outage and whole-product acceptance retain their separate evidence requirements. Section 8 is next.
+
+# 2026-11-12 PLAN 3 SECTION 8 DONE
+
+- **Plan 3 Section 8A–C DONE. 8/12 sections complete.** [PR #3243](https://github.com/Oleksii-debug/12-6-ai./pull/3243) accepted at main `88a889972addac133ba06df686adb483ea44a700`. Complete tree `7d4181c77e11a3914d4a7fb67d85b6e054ca57f2` matches exact frozen head `f7a60f1b1f4f36142ad86a8f76cf2e8490ff095a`.
+- **8A DONE.** The runtime authenticates ordered inputs, targets and loss masks before exposing batches to Trainer. It commits the exact next exposure and training state together in the checkpoint transaction.
+- **8B DONE.** A replacement fixture provider resumed on the same authoritative journal. Recovery rejected a stale receipt, recovered partial accumulation, and adopted a published checkpoint without repeating committed exposures.
+- **8C DONE.** The unique-loss ledger and trainer counters reconcile at each committed boundary. Altered counts, foreign authority and a rehashed false cursor were refused. The test uses the stable D04 fixture contract. The real Plan 2 dataset binds in Plan 9.
+- The broad local suite passed 193 tests with five platform skips. Nine tests passed on the synchronized exact head and 17 on accepted main. Ruff passed and hosted Actions remained queued. Section 9 is next.
+
 # 2026-11-12 PLAN 3 SECTION 7 AND PLAN 8 SECTION 6 DONE
 
 - **Plan 3 Section 7A–C DONE. 7/12 sections complete.** [PR #3242](https://github.com/Oleksii-debug/12-6-ai./pull/3242) merged at `599d4770ef8ab32a7516ee7774c2596234fb55d7`, tree `771fee9faeece6c0e13b8816727a8279f6f040fe`. Both changed blobs match exact candidate `d21f6e5a9b7184d4269468662d988645deb9ecbf`. Distinct Windows processes with relocated source and run roots resumed the ordered D04 fixture after a pause and after an abrupt exit following checkpoint publication. The next exposure, stochastic AdamW/scheduler/RNG trajectory and final checkpoint ID matched the uninterrupted baseline. Corrupt and missing dependencies were rejected before the next batch with actionable diagnostics. Broad local tests passed 368 cases with eight platform skips and two temporary disk-write failures. Both affected tests passed in a 30-test exact-head rerun. Eight accepted-main checks and Ruff passed. Hosted CI remained queued. Section 8 is next.
@@ -69,6 +140,9 @@
 - Section 17 is the next open section. It consumes this exact admitted partition and the existing frozen 32K tokenizer. Section 18 owns the release and Plan 9 handoff.
 
 # 2026-11-12 PLAN 9 AND PLAN 10 LOCAL INTEGRATION CHECKPOINT
+
+- **Current Plan 9 draft head `2b349f9d26bb396694ed39a5277f740650389cb6`.** The transactional checkpoint hooks accepted the real Plan 2 cursor after 32 batches and 1,772 active targets. Two next batches matched after reopening the cursor through the accepted checkpoint transaction format. A real batch that exceeded the configured ceiling was rejected before delivery. The candidate tree passed 51 focused tests and the detached remote head passed 13 Plan 9 tests. This probe executed zero optimizer steps. [Current #3237 readback](https://github.com/Oleksii-debug/12-6-ai./pull/3237)
+- **Plan 10 local continuity checkpoint.** Two independent repeats each used three Nika processes and two distinct tiny model weight identities. The stored task result passed from one model to the other, and reopening the completed task issued zero new generations. The earlier model remained callable for review. The existing persisted settings require HTTPS for the configured API route, so this proof uses programmatic local registration. The production model and device evidence remain pending. [#3241 peer evidence](https://github.com/Oleksii-debug/12-6-ai./pull/3241)
 
 - **Plan 9 Section 1A–C OPEN.** [Draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) exact head `6c567d238efbe5485ad67cae973728aa070c65d4` exports and independently reopens a canonical SCALE-500M candidate packet using the accepted Plan 2 physical release. The one-pass prefix verifies 1,772 causal targets over 32 batches and rights evidence covering seven source families and 22 notices. The normal release loader rejects a locally self-sealed fixture. The exact remote head passed 37 focused tests and Ruff. The broader scope passed 175 tests.
 - The candidate packet SHA-256 is `51b05ce3ed07314c74d8e7514adc0f123df1545c0056d13d0aaa81df2b3143e1`. It is still an offline preflight. Final campaign recipe, measured target host, campaign authority and runtime stop qualification are pending. Plan 9 Sections 16–20 retain their historical decisions.

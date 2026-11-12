@@ -22,6 +22,8 @@ Generation zero has no parent. Later generations name the immediately preceding 
 
 The controller supplies the verified external cursor to the stream restore callback before opening batches. The stream provider validates its own cursor semantics and returns the current position at each committed optimizer boundary. The built-in cursor records the next microbatch index for deterministic indexed streams. Checkpoints without transaction metadata remain readable.
 
+The ordered exposure runtime uses this transaction to store D04's exact next batch, unique-target counters and loss-position intervals. The cursor carries the ledger, plan, content and run identities. The nested D04 trainer binding hashes the embedded progress record, and the enclosing checkpoint ID covers the whole cursor. A replacement provider uses the same authoritative run journal and must yield the exact live predictor, target and mask tensors from the verified next batch.
+
 Retention planning for transactional checkpoints takes the current checkpoint ID from the durable run receipt and preserves its exact rollback parent. A missing or inconsistent parent prevents deletion eligibility from being issued. The planner leaves files untouched.
 
 ## Save/load invariants

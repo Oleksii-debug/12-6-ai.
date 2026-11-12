@@ -10,6 +10,7 @@ from tools import plan2_s18_release_integrity_v1 as release_integrity
 from tools import plan9_scale500m_launch_preparation_v1 as preparation
 from twelve_six.checkpoint import hash_json
 from twelve_six.checkpoint.transaction import bind_checkpoint_transaction, checkpoint_transaction
+from twelve_six.training import runtime_release
 from twelve_six.training.config import TrainerConfig, TrainingRecipe
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,6 +100,26 @@ def verified_boundary(tmp_path, monkeypatch):
         "training_targets": consumer["ordered_target_count"],
     }
     monkeypatch.setattr(preparation, "_open_release", lambda *_: authority)
+    handoff = {
+        "release_manifest_sha256": authority["release_manifest_sha256"],
+        "release_authority_sha256": authority["authority_sha256"],
+        "plan9_binding_sha256": members["plan9-binding.json"],
+        "training_targets": authority["training_targets"],
+        "vocab_size": model.model.vocab_size,
+        "first_batch_shape": [2, packing["block_size"]],
+    }
+    monkeypatch.setattr(runtime_release, "verify_runtime_release", lambda *_: {
+        "qualification": "LOCAL_COMPONENT",
+        "full_profile_measurement_status": "OPEN_EXTERNAL",
+        "campaign_authorized": False,
+        "plan2_handoff": handoff,
+    })
+    monkeypatch.setattr(runtime_release, "verify_plan2_handoff", lambda *_: {
+        "runtime_release_sha256": runtime_release.RELEASE_SHA256,
+        "plan2_handoff": handoff,
+        "optimizer_steps_executed": 0,
+        "campaign_authorized": False,
+    })
     return tmp_path, authority
 
 
@@ -109,6 +130,8 @@ def test_binds_primary_inputs_without_launching(verified_boundary):
     assert result["profile"]["initialization"]["ancestor_checkpoint_sha256"] is None
     assert result["data"]["ordered_causal_loss_positions"] == 20
     assert result["recipe_sha256"] is None
+    assert result["plan3_runtime_release"]["descriptor_sha256"] == runtime_release.RELEASE_SHA256
+    assert result["plan3_runtime_release"]["full_profile_measurement_status"] == "OPEN_EXTERNAL"
     assert result["campaign_authorized"] is result["training_executed"] is False
     assert result == preparation.build_preparation(ROOT, directory)
 
@@ -125,6 +148,20 @@ def test_rejects_campaign_authority_in_data_handoff(verified_boundary):
     authority["campaign_authorized"] = True
     with pytest.raises(preparation.LaunchPreparationDenied, match="without campaign authority"):
         preparation.build_preparation(ROOT, directory)
+
+
+def test_runtime_release_and_live_handoff_must_bind_the_same_plan2_authority(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    probe = runtime_release.verify_plan2_handoff(ROOT, directory)
+    probe["plan2_handoff"] = {**probe["plan2_handoff"], "release_authority_sha256": "e" * 64}
+    monkeypatch.setattr(runtime_release, "verify_plan2_handoff", lambda *_: probe)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="physical Plan 2 handoff differs"):
+        preparation.build_candidate_packet(
+            ROOT, directory, recipe=candidate_recipe, run_id="inconsistent-runtime",
+            environment_lock_sha256="d" * 64,
+        )
 
 
 @pytest.fixture
@@ -303,6 +340,8 @@ def test_candidate_packet_rebuild_pins_run_and_rejects_tampering(verified_bounda
     assert packet["run_manifest_sha256"] == hash_json(packet["run_manifest"])
     assert packet["run_manifest"]["training"]["recipe_sha256"] == candidate_recipe.identity_sha256()
     assert packet["run_manifest"]["candidate"]["git_sha"] == preparation.detect_git_sha(ROOT)
+    assert packet["run_manifest"]["plan3_runtime_release"] == packet["preparation"]["plan3_runtime_release"]
+    assert packet["plan3_physical_handoff"] == {"aligned_loss_verified": True, "optimizer_steps_executed": 0}
     assert packet["checkpoint_preflight"]["checkpoint_transaction_verified"] is False
     assert packet["checkpoint_preflight"]["checkpoint_artifact_verified"] is False
     assert packet["environment_lock_qualification"] == "PINNED_BYTES_ONLY"

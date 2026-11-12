@@ -1,0 +1,32 @@
+{
+  "schema_version": "12-6.plan8-evidence-policy.v1",
+  "capability_registry_sha256": "cc57f2cc3ab6b8bab8acdb055c806615e786554255e2e99925f3737931b5f4f0",
+  "requirements": {
+    "accelerated-scaling-research": "Q2",
+    "ai-qa-repair-control": "Q1",
+    "byte-tokenizer-runtime": "Q0",
+    "checkpoint-integrity-mechanics": "Q1",
+    "data-governance-mechanics": "Q1",
+    "deterministic-packing-mechanics": "Q0",
+    "executable-capability-map": "Q0",
+    "github-sil-qualification": "Q1",
+    "learned-20m-base": "Q2",
+    "learned20m-control-plane": "Q1",
+    "model-spec-identity": "Q0",
+    "package-runtime": "Q2",
+    "peer-source-qualification-pending": "Q1",
+    "physical-qualification-fabric": "Q2",
+    "portable-run-authority": "Q1",
+    "post-base-instruction-descendant": "Q1",
+    "post-base-preference-descendant": "Q1",
+    "post-base-research-verification": "Q1",
+    "project-control-plane": "Q1",
+    "replaceable-cognitive-core-shell": "Q1",
+    "scale141-recovery": "Q1",
+    "split-robustness": "Q0",
+    "training-mechanics": "Q1",
+    "unified-generation-identity": "Q1",
+    "windows-nvda-final-product": "Q3",
+    "windows-operator-cli-packaging": "Q1"
+  }
+}
