@@ -9,6 +9,13 @@
 - **2В DONE (числовий контракт):** новий процес і розбиття батча перевірено CI. На прийнятому `main` локальна перевірка двох окремих CPU-процесів PyTorch DDP/Gloo з нерівними частками цілей дала максимальну абсолютну похибку втрати `4.44e-16` і градієнтів `1.11e-16` при `atol=1e-12`. Фізична кваліфікація інших середовищ належить розділам 10–11.
 - **Розділ 2 DONE:** [PR #3228](https://github.com/Oleksii-debug/12-6-ai./pull/3228), кандидат `060b0142678eb7ce53e7a548e50bacee1c7d7518`, [CI #38344842057](https://github.com/Oleksii-debug/12-6-ai./actions/runs/38344842057) SUCCESS, прийнято у `main@01e9cf7553a30a30d524cbe4db73bd62efa0eb16`. Усі шість змінених файлів збігаються з кандидатом. На прийнятому коміті 97/97 локальних тестів моделі та числового контракту пройшли. Наступний розділ Плану 3 — 3 (контракт навчального рецепта).
 
+# 2026-11-12 PLAN 8 SECTION 7 DONE
+
+- **Plan 8 Section 7A–C DONE. 7/11 sections complete.** [PR #3227](https://github.com/Oleksii-debug/12-6-ai./pull/3227) accepted at main `272595b6c034e66aec2c33f51265675b78269801`. Complete tree `f298e1937bd9980cf1011517cb6cc55659653c79` matches the exact frozen candidate `5279ffc481cf15ecdf3736bf30a627c1492347ff`.
+- **7A DONE.** Eight versioned local cases exercised process termination, a real socket close, corrupt artifacts, stale state, a controlled provider failure, interrupted checkpoint and publication, and local replica survival.
+- **7B DONE.** The shared process lock serializes injection, recovery and readback. Durable claims and terminal records survive abrupt process exit. Recovery verifies the observed effect before accepting it and blocks duplicate execution. Rollback preserves the actual interrupted bytes and prior accepted bytes.
+- **7C DONE.** A fresh process verified the complete component campaign. The exact tree passed 146 tests, Ruff and both inventory checks. Windows lacked symlink privilege for two cases and hosted CI remained queued. Provider outage and whole-product acceptance retain their separate evidence requirements. Section 8 is next.
+
 # 2026-11-12 PLAN 3 SECTION 8 DONE
 
 - **Plan 3 Section 8A–C DONE. 8/12 sections complete.** [PR #3243](https://github.com/Oleksii-debug/12-6-ai./pull/3243) accepted at main `88a889972addac133ba06df686adb483ea44a700`. Complete tree `7d4181c77e11a3914d4a7fb67d85b6e054ca57f2` matches exact frozen head `f7a60f1b1f4f36142ad86a8f76cf2e8490ff095a`.
