@@ -47,6 +47,13 @@ def _root(path: Path) -> Path:
     return path.resolve(strict=True)
 
 
+def _path_handle_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Windows can report creation time for path stats and metadata change
+    # time for the handle. Compare the common creation timestamp across APIs.
+    timestamp = getattr(info, "st_birthtime_ns", info.st_ctime_ns) if os.name == "nt" else info.st_ctime_ns
+    return info.st_size, info.st_mtime_ns, timestamp
+
+
 def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
     _need(stat.S_ISREG(observed.st_mode) and observed.st_nlink == 1,
           "nonregular or hardlinked artifact member")
@@ -61,8 +68,7 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
                   "artifact member replaced before read")
             _need(before.st_nlink == 1,
                   "artifact member hardlinked before read")
-            _need((before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
-                  (observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns),
+            _need(_path_handle_stamp(before) == _path_handle_stamp(observed),
                   "artifact member changed before read")
             hasher = hashlib.sha256()
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -81,10 +87,8 @@ def _hash_regular_file(path: Path, observed: os.stat_result) -> str:
         raise RebuildDenied("artifact member disappeared") from exc
     _need(stat.S_ISREG(latest.st_mode) and latest.st_nlink == 1,
           "artifact member hardlinked after read")
-    _need((latest.st_dev, latest.st_ino, latest.st_size,
-           latest.st_mtime_ns, latest.st_ctime_ns) ==
-          (after.st_dev, after.st_ino, after.st_size,
-           after.st_mtime_ns, after.st_ctime_ns),
+    _need((latest.st_dev, latest.st_ino, _path_handle_stamp(latest)) ==
+          (after.st_dev, after.st_ino, _path_handle_stamp(after)),
           "artifact member changed after read")
     return hasher.hexdigest()
 

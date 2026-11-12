@@ -1,8 +1,11 @@
 """W4 S17: same-byte physical replacements must invalidate NONRELEASE receipts."""
-from pathlib import Path
 import os
+from pathlib import Path
+
 import pytest
+
 from tools import plan2_s17_clean_rebuild_witness_v1 as w
+
 
 def trees(tmp_path: Path):
     a, b = tmp_path / "a", tmp_path / "b"

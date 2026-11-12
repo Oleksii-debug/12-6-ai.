@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tools import plan2_s17_clean_rebuild_witness_v1 as witness
 from tools import plan2_s17_frozen_tokenizer_v1 as frozen
 from tools import plan2_s17_physical_bundle_v1 as bundle
 from tools.plan2_s15_real_32k_bpe_v1 import Real32kBpeDenied
@@ -59,3 +60,9 @@ def test_reserved_roles_bind_both_languages_without_payload():
     assert set(roles) == {"validation", "test"}
     assert [roles[role]["records"] for role in ("validation", "test")] == [10, 16]
     assert all("text" not in member for role in roles.values() for member in role["members"])
+
+
+def test_rebuild_witness_reads_a_member_written_by_the_bundle(tmp_path):
+    raw = b"verified shard bytes"
+    bundle._publish(tmp_path, "shard.json", raw)
+    assert witness.inventory(tmp_path) == ({"shard.json": witness.digest(raw)}, len(raw))
