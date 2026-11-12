@@ -103,9 +103,9 @@
 | 10А | Виміряти memory, throughput, tokens/sec, checkpoint I/O і expected run time на підтримуваних profiles. | Статус: OPENДОДАТОК 2026-10-11 — послідовний benchmark усіх семи SCALE profiles: 500M, 750M, 1B, 2B, 3B, 4B, 5 |
 | 10Б | Визначити admission rules, щоб завідомо impossible run не стартував. | Статус: DONE — accepted main, PR #3245 |
 | 10В | Resource metrics не змінюють scientific recipe без нової version. | Статус: DONE — accepted main, PR #3245 |
-| 11А | Створити replaceable local/runner/server launcher interface з common lifecycle/status/artifact receipts. | Статус: OPEN |
-| 11Б | Provider failure не змінює run identity; migration/resume відбувається через canonical checkpoint. | Статус: OPEN |
-| 11В | Немає provider-specific hidden training code path; paid/cloud provider не активується автономно без explicit owner authorization або чинної budget policy. | Статус: OPEN |
+| 11А | Створити replaceable local/runner/server launcher interface з common lifecycle/status/artifact receipts. | Статус: DONE — accepted main, PR #3248 |
+| 11Б | Provider failure не змінює run identity; migration/resume відбувається через canonical checkpoint. | Статус: DONE — accepted main, PR #3248 |
+| 11В | Немає provider-specific hidden training code path; paid/cloud provider не активується автономно без explicit owner authorization або чинної budget policy. | Статус: DONE — accepted main, PR #3248 |
 | 12А | Пройти tiny/synthetic deterministic training, crash/restart, provider-switch, numerical і checkpoint campaigns. | Статус: OPEN |
 | 12Б | Довести reproducibility/semantic parity на exact candidate. | Статус: OPEN |
 | 12В | Зафіксувати terminal Training Runtime release, готовий спожити artifacts Плану 2 у Плані 9. | Статус: OPEN |
