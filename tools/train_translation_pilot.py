@@ -8,7 +8,8 @@ import json
 import os
 import random
 import sys
-from collections.abc import Iterator, Sequence
+from collections import defaultdict
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -146,9 +147,45 @@ def translate(
     generated = model.generate(
         torch.tensor([prompt]), max_new_tokens=min(max_new_tokens, available), do_sample=False,
     )[0, len(prompt):].tolist()
+    return _decode(tokenizer, generated)
+
+
+def _decode(tokenizer: ByteBPE32k, generated: list[int]) -> str:
     if tokenizer.eos_id in generated:
         generated = generated[:generated.index(tokenizer.eos_id)]
     return tokenizer.decode(generated, errors="replace")
+
+
+@torch.inference_mode()
+def _translation_lookup(
+    model: TwelveSixDecoder, tokenizer: ByteBPE32k,
+    examples: Sequence[TranslationExample], max_new_tokens: int, batch_size: int,
+) -> Callable[[str, str], str]:
+    model.eval()
+    groups = defaultdict(list)
+    seen = set()
+    for example in examples:
+        key = example.direction, example.source
+        if key not in seen:
+            seen.add(key)
+            prompt = prompt_ids(tokenizer, *key)
+            groups[len(prompt)].append((key, prompt))
+    translations = {}
+    for length, prompts in sorted(groups.items()):
+        for start in range(0, len(prompts), batch_size):
+            batch = prompts[start:start + batch_size]
+            generated = model.generate(
+                torch.tensor([prompt for _, prompt in batch]),
+                max_new_tokens=min(max_new_tokens, model.spec.max_seq_len - length),
+                do_sample=False,
+            )[:, length:].tolist()
+            for (key, _), ids in zip(batch, generated, strict=True):
+                translations[key] = _decode(tokenizer, ids)
+
+    def lookup(direction: str, source: str) -> str:
+        return translations[direction, source]
+
+    return lookup
 
 
 def _source_only_examples(rows: Sequence[dict], tokenizer: ByteBPE32k, context: int):
@@ -368,13 +405,14 @@ def _external_evaluation(args: argparse.Namespace, manifest: dict, tokenizer: By
         "run_manifest_sha256": hash_json(manifest),
         "step": args.step,
         "generation_limit_tokens": args.max_new_tokens,
+        "evaluation_batch_size": args.eval_batch_size,
         "source_context_exclusions": len(rows) * 2 - len(eligible),
         "source_copy": evaluate_translation(eligible, lambda _, source: source)["by_direction"],
         "initial": evaluate_translation(
-            eligible, lambda d, s: translate(initial, tokenizer, d, s, args.max_new_tokens),
+            eligible, _translation_lookup(initial, tokenizer, eligible, args.max_new_tokens, args.eval_batch_size),
         ),
         "trained": evaluate_translation(
-            eligible, lambda d, s: translate(restored, tokenizer, d, s, args.max_new_tokens),
+            eligible, _translation_lookup(restored, tokenizer, eligible, args.max_new_tokens, args.eval_batch_size),
         ),
     })
 
@@ -389,13 +427,14 @@ def _evaluate_tatoeba(args: argparse.Namespace, manifest: dict, tokenizer: ByteB
     model = _restore_model(args.run, args.step, manifest)
     examples = _source_only_examples(sample, tokenizer, model.spec.max_seq_len)
     summary = evaluate_translation(
-        examples, lambda d, s: translate(model, tokenizer, d, s, args.max_new_tokens),
+        examples, _translation_lookup(model, tokenizer, examples, args.max_new_tokens, args.eval_batch_size),
     )
     _write_json(args.output, {
         "run_manifest_sha256": hash_json(manifest),
         "step": args.step,
         "split": args.split,
         "generation_limit_tokens": args.max_new_tokens,
+        "evaluation_batch_size": args.eval_batch_size,
         "source_context_exclusions": len(sample) * 2 - len(examples),
         **summary,
     })
@@ -436,6 +475,7 @@ def main() -> None:
     evaluate.add_argument("--pairs-sha256", required=True)
     evaluate.add_argument("--output", type=Path, required=True)
     evaluate.add_argument("--max-new-tokens", type=int, default=64)
+    evaluate.add_argument("--eval-batch-size", type=int, default=16)
     tatoeba = subparsers.add_parser("evaluate-tatoeba", help="Score one frozen Tatoeba split")
     tatoeba.add_argument("--run", type=Path, required=True)
     tatoeba.add_argument("--step", type=int, required=True)
@@ -444,6 +484,7 @@ def main() -> None:
     tatoeba.add_argument("--pair-count", type=int, default=100)
     tatoeba.add_argument("--output", type=Path, required=True)
     tatoeba.add_argument("--max-new-tokens", type=int, default=40)
+    tatoeba.add_argument("--eval-batch-size", type=int, default=16)
     args = parser.parse_args()
     if args.command == "train":
         if min(args.batch_size, args.eval_pairs, args.threads, args.layers, args.length_window_batches) < 1:
@@ -455,6 +496,8 @@ def main() -> None:
     manifest = json.loads((args.run / "run.json").read_bytes())
     if args.max_new_tokens < 1:
         parser.error("generation token budget must be positive")
+    if getattr(args, "eval_batch_size", 1) < 1:
+        parser.error("evaluation batch size must be positive")
     torch.set_num_threads(manifest["threads"])
     tokenizer = _tokenizer(manifest)
     if args.command == "evaluate":
