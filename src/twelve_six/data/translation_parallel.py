@@ -417,6 +417,7 @@ def main() -> None:
     build = modes.add_parser("build", help="Build from the pinned original exports")
     build.add_argument("--sources", required=True, type=Path)
     build.add_argument("--out", required=True, type=Path)
+    build.add_argument("--train-count", type=int, default=DEFAULT_COUNTS["train"])
     verify = modes.add_parser("verify", help="Verify all three splits against an external digest")
     verify.add_argument("--directory", required=True, type=Path)
     verify.add_argument("--manifest-sha256", required=True)
@@ -427,7 +428,9 @@ def main() -> None:
     evaluation.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     if args.mode == "build":
-        result = materialize_translation_dataset(args.sources, args.out)
+        result = materialize_translation_dataset(
+            args.sources, args.out, counts={**DEFAULT_COUNTS, "train": args.train_count},
+        )
     elif args.mode == "verify":
         result = verify_translation_dataset(args.directory, expected_manifest_sha256=args.manifest_sha256)
     else:

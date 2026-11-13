@@ -90,17 +90,34 @@ def collate(examples: Sequence[tuple[list[int], int]], pad_id: int) -> dict[str,
     return {"input_ids": inputs, "labels": labels}
 
 
-def _batches(examples: Sequence, batch_size: int, seed: int, start: int) -> Iterator[list]:
-    per_epoch = (len(examples) + batch_size - 1) // batch_size
+def _batches(
+    examples: Sequence, batch_size: int, seed: int, start: int, length_window_batches: int = 1,
+) -> Iterator[list]:
+    per_epoch = _epoch_batches(len(examples), batch_size)
     epoch, first = divmod(start, per_epoch)
     while True:
         order = list(range(len(examples)))
         random.Random(seed + epoch).shuffle(order)
-        for batch_index in range(first, per_epoch):
-            start_index = batch_index * batch_size
-            yield [examples[i] for i in order[start_index:start_index + batch_size]]
+        if length_window_batches > 1:
+            window = batch_size * length_window_batches
+            for offset in range(0, len(order), window):
+                order[offset:offset + window] = sorted(
+                    order[offset:offset + window], key=lambda index: len(examples[index][0]),
+                )
+        batches = [order[i:i + batch_size] for i in range(0, len(order), batch_size)]
+        if length_window_batches > 1:
+            last = batches.pop() if len(batches[-1]) < batch_size else None
+            random.Random(seed ^ (epoch + 1)).shuffle(batches)
+            if last is not None:
+                batches.append(last)
+        for indexes in batches[first:]:
+            yield [examples[index] for index in indexes]
         epoch += 1
         first = 0
+
+
+def _epoch_batches(examples: int, batch_size: int) -> int:
+    return (examples + batch_size - 1) // batch_size
 
 
 @torch.inference_mode()
@@ -218,11 +235,19 @@ def _sample(rows: Sequence[dict], count: int, seed: int) -> list[dict]:
 
 
 def _new_manifest(args: argparse.Namespace, train_rows: Sequence[dict]) -> dict:
-    tokenizer = _fit_tokenizer(train_rows, args.vocab_size, args.seed)
+    tokenizer_source = (
+        json.loads(args.tokenizer_from.read_bytes()) if args.tokenizer_from is not None else None
+    )
+    tokenizer = (
+        _tokenizer(tokenizer_source)
+        if tokenizer_source is not None
+        else _fit_tokenizer(train_rows, args.vocab_size, args.seed)
+    )
     spec = ModelSpec(
         schema_version=1, vocab_size=tokenizer.vocab_size, max_seq_len=args.context,
-        d_model=96, n_layers=4, n_heads=4, n_kv_heads=2, head_dim=24,
-        d_ff=256, rope_rotary_dim=24,
+        d_model=args.width, n_layers=args.layers, n_heads=4, n_kv_heads=2,
+        head_dim=args.width // 4, d_ff=((args.width * 8 + 47) // 48) * 16,
+        rope_rotary_dim=args.width // 4,
     )
     init = InitSpec()
     base = BaseInitManifest(1, spec.identity_sha256(), init.identity_sha256(), args.seed)
@@ -238,7 +263,11 @@ def _new_manifest(args: argparse.Namespace, train_rows: Sequence[dict]) -> dict:
         "model_spec": spec.to_dict(), "init_spec": init.to_dict(), "initialization": base.to_dict(),
         "training": asdict(config), "merges": [list(pair) for pair in tokenizer.merges],
         "tokenizer": tokenizer.identity.to_dict(), "batch_size": args.batch_size,
+        "tokenizer_origin_run_sha256": (
+            hash_json(tokenizer_source) if tokenizer_source is not None else None
+        ),
         "eval_pairs": args.eval_pairs, "threads": args.threads,
+        "length_window_batches": args.length_window_batches,
     }
 
 
@@ -290,7 +319,10 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
             expected_step=args.resume, **_expected(manifest),
         )
     model.train()
-    stream = _batches(encoded, batch_size, config.seed, trainer.optimizer_step)
+    stream = _batches(
+        encoded, batch_size, config.seed, trainer.optimizer_step,
+        manifest.get("length_window_batches", 1),
+    )
     checkpoint_id = None
     while trainer.optimizer_step < stop:
         metrics = trainer.train_microbatch(collate(next(stream), tokenizer.pad_id))
@@ -308,9 +340,11 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
     readback_loss = _loss(restored, validation, tokenizer.pad_id, batch_size)
     if readback_loss != validation_loss:
         raise ValueError("restored checkpoint validation loss differs")
+    epochs, remaining = divmod(stop, _epoch_batches(len(encoded), batch_size))
     summary: dict[str, Any] = {
         "checkpoint_id": checkpoint_id, "step": stop, "target_tokens": trainer.tokens_seen,
         "parameters": model.spec.parameter_count(), "train_examples_in_context": len(encoded),
+        "training_examples_seen": epochs * len(encoded) + remaining * batch_size,
         "train_examples_excluded": len(train_rows) * 2 - len(encoded),
         "validation_examples": len(validation), "validation_loss": validation_loss,
         "initial_validation_loss": json.loads((root / "initial.json").read_bytes())["validation_loss"],
@@ -382,9 +416,13 @@ def main() -> None:
     fit.add_argument("--eval-pairs", type=int, default=48)
     fit.add_argument("--context", type=int, default=96)
     fit.add_argument("--vocab-size", type=int, default=2048)
+    fit.add_argument("--tokenizer-from", type=Path, help="Reuse the tokenizer from a recorded training run")
     fit.add_argument("--threads", type=int, default=3)
     fit.add_argument("--seed", type=int, default=1701)
     fit.add_argument("--lr", type=float, default=0.001)
+    fit.add_argument("--width", type=int, default=96)
+    fit.add_argument("--layers", type=int, default=4)
+    fit.add_argument("--length-window-batches", type=int, default=1)
     infer = subparsers.add_parser("translate")
     infer.add_argument("--run", type=Path, required=True)
     infer.add_argument("--step", type=int, required=True)
@@ -408,8 +446,10 @@ def main() -> None:
     tatoeba.add_argument("--max-new-tokens", type=int, default=40)
     args = parser.parse_args()
     if args.command == "train":
-        if min(args.batch_size, args.eval_pairs, args.threads) < 1:
-            parser.error("batch size, evaluation pair count and CPU threads must be positive")
+        if min(args.batch_size, args.eval_pairs, args.threads, args.layers, args.length_window_batches) < 1:
+            parser.error("batch, layer, evaluation, thread and window counts must be positive")
+        if args.width < 8 or args.width % 8:
+            parser.error("model width must be a positive multiple of eight")
         train(args)
         return
     manifest = json.loads((args.run / "run.json").read_bytes())

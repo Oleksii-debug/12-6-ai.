@@ -20,6 +20,22 @@ python -m tools.train_translation_pilot translate --run $run --step 1800 --direc
 python -m tools.train_translation_pilot evaluate-tatoeba --run $run --step 1800 --data $data --split test --output "$run/tatoeba-test.json"
 ```
 
+For the expanded CPU experiment, build the same snapshot with
+`--train-count 100000`. The dataset keeps the original validation and test
+partitions. Its manifest SHA-256 is
+`ffffa19f1ff3b570bb3f554e1607b2936c4c52d969836727c3a917fda0872022`.
+
+```powershell
+python -m tools.train_translation_pilot train --data ../mt-tatoeba-en-uk-100k-v1 --data-sha256 ffffa19f1ff3b570bb3f554e1607b2936c4c52d969836727c3a917fda0872022 --run ../mt-run-en-uk-100k-01 --steps 8400 --stop-after 4200 --checkpoint-every 1400 --batch-size 24 --eval-pairs 100 --tokenizer-from "$run/run.json" --width 128 --layers 4 --length-window-batches 16
+python -m tools.train_translation_pilot train --data ../mt-tatoeba-en-uk-100k-v1 --data-sha256 ffffa19f1ff3b570bb3f554e1607b2936c4c52d969836727c3a917fda0872022 --run ../mt-run-en-uk-100k-01 --resume 4200 --checkpoint-every 1400
+```
+
+The tokenizer reuse option restores only verified merge rules and records
+their originating run digest. Model weights still start from the new seed.
+Length grouping sorts bounded shuffled windows before batching, then shuffles
+full batches and preserves the final partial batch. The recorded window size
+and seed reproduce the order at resume.
+
 The training process records the model, tokenizer, schedule, data manifest and
 Git revision in `run.json`. Each saved checkpoint includes model, optimizer,
 scheduler, RNG and progress state. Resume reopens that state before selecting
