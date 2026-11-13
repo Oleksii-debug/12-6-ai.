@@ -54,10 +54,94 @@ def test_pilot_storage_denial_is_deferred_only_for_pending_recovery(monkeypatch,
     monkeypatch.setattr(pilot, "assess_resource_envelope", lambda *_a, **_kw: {
         "denials": [DISK_FLOOR_DENIAL], "unpruned_checkpoint_volume_floor_bytes": 10,
     })
+    monkeypatch.setattr(pilot.native, "restore_memory_floors", lambda *_: (1, 1))
     cfg = SimpleNamespace(model=object())
     with pytest.raises(RuntimeError, match=DISK_FLOOR_DENIAL):
         pilot._admit(cfg, tmp_path, remaining=2, prepare=False)
     pilot._admit(cfg, tmp_path, remaining=2, prepare=False, defer_disk=True)
+
+
+def test_resume_admission_uses_restore_memory_floor_even_during_pending_recovery(monkeypatch, tmp_path):
+    monkeypatch.setattr(pilot, "observe_host_resources", lambda *_: HostResources("cuda:0", 1, 1, 0))
+    monkeypatch.setattr(pilot, "assess_resource_envelope", lambda *_a, **_kw: {
+        "denials": [DISK_FLOOR_DENIAL], "unpruned_checkpoint_volume_floor_bytes": 10,
+    })
+    monkeypatch.setattr(pilot.native, "restore_memory_floors", lambda *_: (2, 2))
+    cfg = SimpleNamespace(model=object())
+    with pytest.raises(RuntimeError, match="PILOT_HOST_MEMORY_BELOW_RESTORE_ENVELOPE.*PILOT_DEVICE"):
+        pilot._admit(cfg, tmp_path, remaining=2, prepare=False, defer_disk=True)
+
+
+def test_benchmark_receipt_binds_runtime_profile_and_checkpoint_restore(monkeypatch, tmp_path):
+    commit, tree, model, profile, checkpoint = (char * 64 for char in "abcde")
+    lock = {"runtime_release_version": 2}
+    candidate = {"git_sha": commit, "modelspec_sha256": model, "initialization": {}, "parameter_count": 42}
+    packet = {"profile_sha256": profile, "run": {"candidate": candidate}}
+    context = {"boot_id": "this-boot", "device": {"uuid": "gpu"}, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": 2}}
+    preflight = {
+        "schema": pilot.native.SCHEMA, "source_git_sha": commit, "source_tree_sha": tree,
+        "profile": pilot.PROFILE, "profile_config_sha256_lf": profile, "model_spec_sha256": model,
+        "initialization": {}, "capacity": {
+            "parameter_count": 42, "disposition": "CAPACITY_SCREEN_PASSED", "benchmark_capacity_denials": [],
+        },
+    }
+    measured = {
+        "schema": pilot.native.MEASUREMENT_SCHEMA,
+        "scope": "SYNTHETIC_SINGLE_OPTIMIZER_BOUNDARY_AND_FRESH_PROCESS_RESTORE",
+        "profile": pilot.PROFILE, "device": "cuda:0", "source_git_sha": commit,
+        "environment": {**lock, "cublas_workspace_config": ":4096:8"},
+        "campaign_authorized": False, "optimizer_steps_executed": 1,
+        "capacity_preflight": {**preflight, "receipt_sha256": pilot.hash_json(preflight)},
+        "measurement": {"execution_context": context, "boundary": {
+            "evidence_class": "MEASURED_SINGLE_OPTIMIZER_BOUNDARY",
+            "model_spec_sha256": model, "parameter_count": 42,
+            "tokens_seen": 31, "checkpoint_id": checkpoint,
+        }},
+        "fresh_process_restore": {
+            "checkpoint_id": checkpoint, "tokens_seen": 31, "committed_step": 1, "execution_context": context,
+        },
+    }
+    monkeypatch.setattr(pilot.native, "_git", lambda *_: tree.encode())
+    receipt = tmp_path / "benchmark.json"
+
+    def save(value):
+        raw = pilot.canonical({**value, "receipt_sha256": pilot.hash_json(value)})
+        receipt.write_bytes(raw)
+        return pilot.sha(raw)
+
+    pin = save(measured)
+    assert pilot._verify_benchmark(tmp_path, packet, receipt, pin, lock) == context
+    with pytest.raises(ValueError, match="bytes differ"):
+        pilot._verify_benchmark(tmp_path, packet, receipt, "f" * 64, lock)
+    with pytest.raises(ValueError, match="runtime, model or measured restore"):
+        pilot._verify_benchmark(tmp_path, packet, receipt, pin, {"runtime_release_version": 1})
+    measured["fresh_process_restore"]["execution_context"] = {**context, "device": {"uuid": "other-gpu"}}
+    with pytest.raises(ValueError, match="runtime, model or measured restore"):
+        pilot._verify_benchmark(tmp_path, packet, receipt, save(measured), lock)
+
+
+def test_execute_rejects_changed_benchmark_gpu_or_volume_before_model(monkeypatch, tmp_path):
+    monkeypatch.setattr(pilot.sys, "platform", "linux")
+    monkeypatch.setattr(pilot.native, "_verify_measurement_inputs", lambda *_: {"profile_id": "linux-x86_64"})
+    monkeypatch.setattr(pilot.native, "_cuda_environment", lambda *_: None)
+    monkeypatch.setattr(pilot, "Trainer", lambda *_a, **_kw: pytest.fail("trainer was constructed"))
+    context = {"boot_id": "same", "device": {"uuid": "gpu"}, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": 2}}
+    monkeypatch.setattr(pilot, "_verify_benchmark", lambda *_: context)
+    monkeypatch.setattr(pilot.native, "cuda_checkpoint_context", lambda *_: {
+        **context, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": 3},
+    })
+    args = SimpleNamespace(
+        scratch=tmp_path, action="prepare", execute=True, expected_packet_sha256="f" * 64,
+        install_report=tmp_path / "install.json", install_report_sha256="e" * 64,
+        benchmark_receipt=tmp_path / "benchmark.json", benchmark_receipt_sha256="d" * 64,
+    )
+    packet = {
+        "run_manifest_sha256": "a" * 64, "packet_sha256": "f" * 64,
+        "run": {"candidate": {"git_sha": "b" * 40},
+                "environment": {"lock_sha256": "c" * 64, "profile_id": "linux-x86_64"}},
+    }
+    with pytest.raises(ValueError, match="GPU or checkpoint filesystem differs"):
+        pilot.execute(tmp_path, packet, None, args)
 
 
 def test_readback_rejects_wrong_cursor_even_with_matching_checkpoint_id(monkeypatch, tmp_path):

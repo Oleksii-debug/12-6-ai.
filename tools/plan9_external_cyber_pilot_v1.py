@@ -23,6 +23,7 @@ from twelve_six.checkpoint import (
     hash_json,
     verify_checkpoint,
 )
+from twelve_six.checkpoint.core import _strict_json_object
 from twelve_six.checkpoint.transaction import checkpoint_transaction
 from twelve_six.model import build_canonical_base
 from twelve_six.training import Trainer, runtime_release
@@ -32,7 +33,7 @@ from twelve_six.training.resource_envelope import (
     assess_resource_envelope,
     observe_host_resources,
 )
-from twelve_six.training.run_control import RunController, RunPhase
+from twelve_six.training.run_control import RunControlError, RunController, RunPhase
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "12-6.plan9-scale500m-cyber-pilot.v1"
@@ -40,6 +41,7 @@ PROFILE = "SCALE-500M"
 RECIPE = "configs/plan9/scale500m_cyber_pilot_recipe_v1.json"
 ROLE = "evidence/plan9_cyber_candidate/pilot_data_scope_v1.json"
 RIGHTS_DECISION = "evidence/plan9_cyber_candidate/pilot_source_decision_v1.json"
+PRIVACY_REVIEW = "evidence/plan9_cyber_candidate/pilot_privacy_context_v1.json"
 REQUIRED_INPUTS = ("receipt.json", "packing-manifest.json", "shards/shard-000000.json", "shards/shard-000001.json")
 CHECKPOINT_HEADROOM = 1024**3
 HALF = 2
@@ -94,6 +96,8 @@ def build_packet(root: Path, bundle: Path, profile_id: str) -> tuple[dict, objec
     scope = json.loads(scope_raw)
     if sha(_exact(root, commit, RIGHTS_DECISION)) != scope["source_decision_sha256"]:
         raise ValueError("pilot source decision differs from the pinned data scope")
+    if sha(_exact(root, commit, PRIVACY_REVIEW)) != scope["privacy_context_sha256"]:
+        raise ValueError("pilot privacy review differs from the pinned data scope")
     corpus_raw = _read(bundle / "receipt.json")
     pack_raw = _read(bundle / "packing-manifest.json")
     rights_raw = _read(bundle / "rights/receipt.json", 250_000)
@@ -228,6 +232,11 @@ def _admit(cfg, scratch: Path, *, remaining: int, prepare: bool, defer_disk: boo
     report = assess_resource_envelope(cfg.model, observed, remaining_updates=remaining,
                                       initial_checkpoint_needed=prepare)
     denials = [reason for reason in report["denials"] if not (defer_disk and reason == DISK_FLOOR_DENIAL)]
+    host_floor, device_floor = native.restore_memory_floors(report, "cuda:0")
+    if (observed.host_available_bytes or 0) < host_floor:
+        denials.append("PILOT_HOST_MEMORY_BELOW_RESTORE_ENVELOPE")
+    if (observed.device_available_bytes or 0) < device_floor:
+        denials.append("PILOT_DEVICE_MEMORY_BELOW_RESTORE_ENVELOPE")
     if not defer_disk and observed.checkpoint_volume_free_bytes < (
         report["unpruned_checkpoint_volume_floor_bytes"] + CHECKPOINT_HEADROOM
     ):
@@ -236,10 +245,65 @@ def _admit(cfg, scratch: Path, *, remaining: int, prepare: bool, defer_disk: boo
         raise RuntimeError("pilot resource admission denied: " + ", ".join(denials))
 
 
+def _verify_benchmark(root: Path, packet: dict, path: Path, expected_sha: str, lock: dict) -> dict:
+    raw = _read(path, 250_000)
+    if sha(raw) != expected_sha:
+        raise ValueError("benchmark receipt bytes differ from the reviewed digest")
+    measured = _strict_json_object(
+        raw, artifact="benchmark receipt", invalid_message="invalid external CUDA benchmark receipt",
+    )
+    receipt_sha = measured.pop("receipt_sha256")
+    run = packet["run"]
+    candidate = run["candidate"]
+    commit = candidate["git_sha"]
+    preflight = measured["capacity_preflight"]
+    preflight_core = {key: value for key, value in preflight.items() if key != "receipt_sha256"}
+    result = measured["measurement"]
+    boundary = result["boundary"]
+    restored = measured["fresh_process_restore"]
+    context = result["execution_context"]
+    if (
+        hash_json(measured) != receipt_sha
+        or measured["schema"] != native.MEASUREMENT_SCHEMA
+        or measured["scope"] != "SYNTHETIC_SINGLE_OPTIMIZER_BOUNDARY_AND_FRESH_PROCESS_RESTORE"
+        or measured["profile"] != PROFILE or measured["device"] != "cuda:0"
+        or measured["source_git_sha"] != commit
+        or measured["environment"] != {**lock, "cublas_workspace_config": ":4096:8"}
+        or measured["campaign_authorized"] is not False
+        or type(measured["optimizer_steps_executed"]) is not int
+        or measured["optimizer_steps_executed"] != 1
+        or preflight["schema"] != native.SCHEMA
+        or hash_json(preflight_core) != preflight["receipt_sha256"]
+        or preflight["source_git_sha"] != commit
+        or preflight["source_tree_sha"] != native._git(root, "rev-parse", f"{commit}^{{tree}}").decode().strip()
+        or preflight["profile"] != PROFILE or preflight["profile_config_sha256_lf"] != packet["profile_sha256"]
+        or preflight["model_spec_sha256"] != candidate["modelspec_sha256"]
+        or preflight["initialization"] != candidate["initialization"]
+        or preflight["capacity"]["parameter_count"] != candidate["parameter_count"]
+        or boundary["evidence_class"] != "MEASURED_SINGLE_OPTIMIZER_BOUNDARY"
+        or boundary["model_spec_sha256"] != candidate["modelspec_sha256"]
+        or boundary["parameter_count"] != candidate["parameter_count"]
+        or boundary["tokens_seen"] != native.WIDTH - 1
+        or native.SHA256.fullmatch(boundary["checkpoint_id"]) is None
+        or restored["checkpoint_id"] != boundary["checkpoint_id"]
+        or restored["tokens_seen"] != boundary["tokens_seen"]
+        or restored["committed_step"] != 1
+        or not native.checkpoint_context_matches(context, restored["execution_context"])
+    ):
+        raise ValueError("benchmark receipt differs from the exact pilot runtime, model or measured restore")
+    native._require_capacity(preflight)
+    return context
+
+
 def execute(root: Path, packet: dict, stream, args) -> dict:
     controller = RunController(args.scratch, packet["run_manifest_sha256"])
     if args.action == "status":
-        return asdict(controller.status())
+        try:
+            return asdict(controller.status())
+        except RunControlError as exc:
+            if str(exc) != "run has not been prepared":
+                raise
+            return {"phase": "UNPREPARED"}
     if args.action == "verify-checkpoint":
         receipt = controller.status()
         if receipt.receipt_sha256 != args.expected_receipt_sha256:
@@ -265,13 +329,19 @@ def execute(root: Path, packet: dict, stream, args) -> dict:
         raise ValueError("execution requires --execute and the exact reviewed packet digest")
     if args.install_report is None or not native.SHA256.fullmatch(args.install_report_sha256 or ""):
         raise ValueError("execution requires the exact Linux wheel-install report")
+    if args.benchmark_receipt is None or not native.SHA256.fullmatch(args.benchmark_receipt_sha256 or ""):
+        raise ValueError("execution requires the exact measured external CUDA benchmark receipt")
     run = packet["run"]
     commit = run["candidate"]["git_sha"]
-    native._verify_measurement_inputs(root, commit, run["environment"]["lock_sha256"],
-                                      args.install_report, args.install_report_sha256, 2)
-    if native.dependency_lock.current_profile_id() != run["environment"]["profile_id"]:
+    lock = native._verify_measurement_inputs(
+        root, commit, run["environment"]["lock_sha256"], args.install_report, args.install_report_sha256, 2,
+    )
+    if lock["profile_id"] != run["environment"]["profile_id"]:
         raise ValueError("pilot packet Linux lock does not match this host")
+    context = _verify_benchmark(root, packet, args.benchmark_receipt, args.benchmark_receipt_sha256, lock)
     native._cuda_environment(":4096:8")
+    if not native.checkpoint_context_matches(context, native.cuda_checkpoint_context(args.scratch, "cuda:0")):
+        raise ValueError("pilot GPU or checkpoint filesystem differs from the measured benchmark")
     cfg, init, _ = native._profile(root, commit, PROFILE)
     recipe = TrainingRecipe.from_dict(run["training"]["recipe"])
     identity = CheckpointIdentity(**packet["identity"])
@@ -321,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-receipt-sha256")
     parser.add_argument("--install-report", type=Path)
     parser.add_argument("--install-report-sha256")
+    parser.add_argument("--benchmark-receipt", type=Path)
+    parser.add_argument("--benchmark-receipt-sha256")
     parser.add_argument("--recover", action="store_true")
     args = parser.parse_args(argv)
     try:
