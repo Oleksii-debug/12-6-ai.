@@ -202,6 +202,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/benchmark_plan3_native.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/bootstrap_dependency_lock.py",
       "capability_id": "peer-source-qualification-pending"
     },

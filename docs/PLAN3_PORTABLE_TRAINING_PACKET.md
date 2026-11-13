@@ -51,6 +51,20 @@ optimizer-only and optimizer-plus-checkpoint time projections for the same
 fixture. Checkpoint throughput includes serialization, verification and durable
 publication.
 
+For a read-only resource screen before physical qualification, pass one
+checked-in scale profile and the intended local checkpoint volume.
+
+```bash
+PYTHONPATH=src python -m tools.benchmark_plan3_native SCALE-500M \
+  --scratch "$CHECKPOINT_DIRECTORY" --device cuda:0
+```
+
+The command also accepts `--device cpu`. It pins the Git revision, profile,
+initialization, runtime lock and a four-step synthetic benchmark recipe.
+It reports observed host/device capacity and arithmetic checkpoint limits
+without allocating weights, starting an optimizer or writing a checkpoint.
+A passing capacity screen still requires an actual physical measurement.
+
 ## Launcher lifecycle
 
 `TrainingLauncher` sends the same typed prepare, run, status and artifact
