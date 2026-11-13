@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import runpy
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 AUTHORITY = ROOT / "configs/data/next100_037_python_docs_source_authority_v1.json"
 EVIDENCE = ROOT / "evidence/d03/cpython_docs_current_main_convergence_v1.json"
 VALIDATOR = ROOT / "tools/validate_next100_037_python_docs_source_authority.py"
+HISTORICAL_IMPORT = "063caf0d71350361744d49da2b03069d934c1274"
+EXTENDED_MATERIALIZER = "tools/materialize_next100_037_python_docs_accepted_chunks.py"
+# The accepted Plan 2 S16 revision exposes verified text to corpus comparison.
+CURRENT_MATERIALIZER_BLOB = "f9b4766f9ed38f5cee8150b84b782cde58a9a10f"
 
 EXPECTED_BLOBS = {
     "configs/data/next100_037_python_docs_source_authority_v1.json": (
@@ -19,9 +24,7 @@ EXPECTED_BLOBS = {
     "docs/NEXT100_037_PYTHON_DOCS_SOURCE_AUTHORITY.md": (
         "701790c6826aca9cda1a57100762ab3dbd33627c"
     ),
-    "tools/materialize_next100_037_python_docs_accepted_chunks.py": (
-        "0635bb18cec8b9db2d339b044485aa8ab5c28847"
-    ),
+    EXTENDED_MATERIALIZER: "0635bb18cec8b9db2d339b044485aa8ab5c28847",
     "tools/validate_next100_037_python_docs_source_authority.py": (
         "9b2f7e7895fc620e5f152c00d893866c28afdcc1"
     ),
@@ -29,8 +32,7 @@ EXPECTED_BLOBS = {
 EXPECTED_EVIDENCE_ID = "23ad2d93d3e4f1d830feeed0ef446e52bffa201ae517590accf08c679ba3c14c"
 
 
-def _git_blob_sha1(path: Path) -> str:
-    payload = path.read_bytes()
+def _git_blob_sha1(payload: bytes) -> str:
     header = f"blob {len(payload)}\0".encode("ascii")
     return hashlib.sha1(header + payload).hexdigest()
 
@@ -44,7 +46,12 @@ def _canonical(value: object) -> bytes:
 
 def test_scientific_files_are_exact_historical_pr467_blobs() -> None:
     for relative_path, expected_blob in EXPECTED_BLOBS.items():
-        assert _git_blob_sha1(ROOT / relative_path) == expected_blob
+        payload = subprocess.check_output(
+            ["git", "show", f"{HISTORICAL_IMPORT}:{relative_path}"], cwd=ROOT,
+        )
+        assert _git_blob_sha1(payload) == expected_blob, relative_path
+        live_blob = CURRENT_MATERIALIZER_BLOB if relative_path == EXTENDED_MATERIALIZER else expected_blob
+        assert _git_blob_sha1((ROOT / relative_path).read_bytes()) == live_blob, relative_path
 
 
 def test_historical_authority_validator_passes_on_exact_bytes() -> None:

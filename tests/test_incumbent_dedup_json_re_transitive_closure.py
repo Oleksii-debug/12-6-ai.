@@ -47,7 +47,12 @@ def _isolated_indexed_test(test):
 
 
 class _LazyIndexed:
-    _module: ModuleType | None = None
+    # Forward the wrapped module namespace as well, so pytest restores attributes
+    # where the proxy actually writes them.
+    __slots__ = ("_module",)
+
+    def __init__(self) -> None:
+        self._module: ModuleType | None = None
 
     def _load_module(self) -> ModuleType:
         module = object.__getattribute__(self, "_module")
