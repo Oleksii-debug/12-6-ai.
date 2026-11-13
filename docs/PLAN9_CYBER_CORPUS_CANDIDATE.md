@@ -33,6 +33,9 @@ The repository receives the code and receipts only.
    exercise knowledge retrieval. Some technique names appear in training.
    This suite stays outside the training bundle.
 
+Recreate the general inputs using [Plan 2 Section 16](PLAN2_SECTION16_SOURCE_ADMISSION.md)
+and [Plan 2 Section 18](PLAN2_SECTION18_LOCAL_RELEASE.md).
+
 ```powershell
 $env:PYTHONPATH = 'src;.'
 python -m tools.plan9_prepare_cyber_candidate_v1 --sources '<CISA and NIST>' --general-train '<S16 train.jsonl>' --general-release '<accepted S18 directory>' --out '<new corpus directory>'
@@ -40,6 +43,7 @@ python -m tools.plan9_cyber_holdout_audit_v1 --candidate '<new corpus directory>
 python -m tools.plan9_cyber_independent_eval_v1 build --source '<MITRE directory>' --corpus '<new corpus directory>' --out '<new evaluation directory>'
 python -m tools.plan9_cyber_independent_eval_v1 score --cases '<evaluation directory>/cases.jsonl' --cases-sha256 5117a6523f3d257bd762de027e8f81bc63f1498457279b5c7cd76a3053d2dc23 --predictions '<candidate predictions JSONL>'
 python -m tools.plan9_scale500m_launch_preparation_v1 --prepare-cyber-gpu-profiles '<new corpus directory>'
+python -m tools.plan9_cyber_exposure_stage_v1 --candidate '<new corpus directory>' --out '<new local train-only directory>'
 ```
 
 On Linux, set `PYTHONPATH=src:.` instead of the PowerShell assignment.
@@ -51,6 +55,14 @@ three blocks per microbatch and three microbatches per update, for 2,537
 updates. This schedule is not an approved recipe. Actual GPU capacity,
 checkpoint throughput, data release, external transfer and campaign
 authority are separate gates.
+
+The train-only staging command copies verified shards and their source
+notices into a new local directory. It seals the exact source segment,
+token offset and token identity for all 669,079 causal positions. The
+bundle omits raw training text and both evaluation payloads. The ordered
+exposure identity and the byte hashes of the 357 ledger shards make
+independent reproduction checkable. Two builds produced the same 745 files.
+The accepted Plan 2 loader continues to reject this development bundle.
 
 Predictions are JSONL objects with exactly `id` and `prediction` string
 fields. Provide one prediction per case. The scorer extracts and

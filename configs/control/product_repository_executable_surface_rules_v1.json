@@ -442,6 +442,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan9_cyber_exposure_stage_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan9_cyber_holdout_audit_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },

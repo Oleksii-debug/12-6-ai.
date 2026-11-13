@@ -18,12 +18,17 @@ def test_committed_receipts_bind_exact_cyber_majority_and_eval_only():
     candidate = json.loads(raw)
     holdout = json.loads((EVIDENCE / "holdout_receipt.json").read_bytes())
     independent = json.loads((EVIDENCE / "attack_eval_receipt.json").read_bytes())
+    exposure = json.loads((EVIDENCE / "exposure_receipt.json").read_bytes())
     assert candidate_sha == holdout["candidate_receipt_sha256"] == independent["candidate_receipt_sha256"]
+    assert exposure["candidate_receipt_sha256"] == candidate_sha
     assert independent["verified_training_sha256"] == candidate["files"]["train.jsonl"]
     cyber = candidate["causal_targets"]["cyber"]
     total = sum(candidate["causal_targets"].values())
     assert 100 * cyber >= corpus.CYBER_PERCENT * total
     assert candidate["cyber_share_ppm"] == cyber * 1_000_000 // total
+    assert exposure["targets"] == total and exposure["blocks"] == candidate["blocks"]
+    assert exposure["raw_training_text_included"] is exposure["evaluation_payload_opened"] is False
+    assert exposure["campaign_authorized"] is exposure["external_data_transfer_authorized"] is False
     assert candidate["public_redistribution_authorized"] is candidate["campaign_authorized"] is False
     assert independent["evaluation_only"] is True and independent["training_uses_evaluation"] is False
 
