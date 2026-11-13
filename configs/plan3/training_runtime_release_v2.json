@@ -1,0 +1,73 @@
+{
+  "campaign_authorized": false,
+  "full_profile_measurement_status": "OPEN_EXTERNAL",
+  "plan2_handoff": {
+    "first_batch_shape": [
+      2,
+      32
+    ],
+    "first_batch_targets": 45,
+    "first_batch_tensor_sha256_i64le": {
+      "input_ids": "ac81a22dd007df67ccba59c9b0cfdecd424f7a8542de29c18f2270d5feb6f9e1",
+      "loss_mask": "c3d9ae6a781680758b535c7b024490b70a5d8d16554c3231cf00644a5e5ced91",
+      "target_ids": "080684ea8268b4594c26c8b377820f5bf9f3423fe68668f077846af0b0f220a6"
+    },
+    "plan9_binding_sha256": "e42d06057895e9248507005f90faa5a458b849c3ebbd5b3aba4628bc54b45a02",
+    "release_authority_sha256": "858bf6852fcd418ff50e7726d5e8e6e5ca6efb2075bc86166361494f2c39abda",
+    "release_manifest_sha256": "883f0e3949b7a64a07bcc1236bf7aaf86ed5d84deba4c5aa60d2bfcb83c21ad2",
+    "tensor_fields": [
+      "input_ids",
+      "target_ids",
+      "loss_mask"
+    ],
+    "training_targets": 1985122,
+    "vocab_size": 32768
+  },
+  "predecessor": {
+    "accepted_git_sha": "08f3d9454819a7f47406b5b4eb2758480633f5c7",
+    "descriptor_sha256": "12002302e78dd32593a682c06e9677ef2b45150b19dad5b9c64b737fc8e5234e",
+    "schema": "12-6.plan3.training-runtime-release.v1"
+  },
+  "qualification": "LOCAL_COMPONENT",
+  "runtime_source_sha256_lf": {
+    "evidence/plan2_s18/release_authority_v1.json": "e90cd3a2052a6808da7208fe9a304b4f8bbbb67c46329016210f9fda239eca78",
+    "src/twelve_six/checkpoint/__init__.py": "d350cba9f7787ae072a3bdc36ccc5d23394ac84185ae99197500237ce0d33928",
+    "src/twelve_six/checkpoint/core.py": "5fdee1e37e76c84dcdf85cb0ff77d887be942c580310ae117d2d64dbbb253310",
+    "src/twelve_six/checkpoint/d04_resume_binding.py": "6c509c9e7578b268da65b290b675d998e3ae6dd773f83e01a908305005936aa7",
+    "src/twelve_six/checkpoint/durability.py": "c44ae3e61076540706e570e7f0cc67354d599a53a71c29bd57c60590d749c16f",
+    "src/twelve_six/checkpoint/hf_export.py": "61981f01c35e3f99d7779d32884dfae71f4f54be667ee637f04ff7fc26ef0517",
+    "src/twelve_six/checkpoint/pinned_directory.py": "02f34217521a64cb6efbe6d01a9529d1d2119ab296b7a71ea90e6125f783fa32",
+    "src/twelve_six/checkpoint/progress_binding.py": "a69766c4537126e4df41f8d7f037bb80aa3204181b53ec4b2bb4387d68fa4b4f",
+    "src/twelve_six/checkpoint/progress_trainer.py": "a8982388b2db9922eb423fe63f5753964141eb854264b5fc5b3f1a9892ae225c",
+    "src/twelve_six/checkpoint/recovery_lock.py": "fecb2dfcc9220d9ce1386ac45122fe533cae423db3ae5ea758b8ca6c38e6bea8",
+    "src/twelve_six/checkpoint/retention.py": "dfb488e226e7dcb7ae4fb895470d499ef681f02d163003ed513fc606b8bae860",
+    "src/twelve_six/checkpoint/root_snapshot.py": "60128baaa16ec8984d11cbe98ae4293151ae2f6aca69664662bfc1bf96efdcd3",
+    "src/twelve_six/checkpoint/run_binding.py": "8bea108c3168e99df53fdca41b4b1254c2861a02081a586ba50bb8047e3530f4",
+    "src/twelve_six/checkpoint/schema_validation.py": "05609acb144c406990106cfbb9db050011dd4cdd46f069f4587743f654546e03",
+    "src/twelve_six/checkpoint/selection.py": "89d3804a770366e418be5813d14547078cff3826f0e1c8e91ce41ac0bfc74ae7",
+    "src/twelve_six/checkpoint/state_tree.py": "19948374b2accd6f54135968e6d419bce64ac0437b04c1736d4ef6ab3651b5ab",
+    "src/twelve_six/checkpoint/trainer_adapter.py": "176168f5798e84bde8c4c7c04d9d1ab8a8cfd4f3a0b54833df7d9f6229a151d8",
+    "src/twelve_six/checkpoint/transaction.py": "d7332a13c11352dbe4ce4d0e28abe53f826c50c47f935cb4bb13d9935920a4d1",
+    "src/twelve_six/checkpoint/transactional_rng.py": "34654645209d54f3f0b37726585b667b30913117b50ac35264c3ff258e770349",
+    "src/twelve_six/data/deterministic_exposure_order.py": "65cdd916820d476953ac53e585150e2065f23e9af32941432d8baac8b25eadf0",
+    "src/twelve_six/data/identity_safe_exposure_guard.py": "d5ecd21fce811df579e190016f311410529d3187cfa3b743062ae55d4abe140a",
+    "src/twelve_six/data/ordered_exposure_resume.py": "1887f2b95beedf2cac81d93ced013edfb9df29c6e163453b3f5d07107bd0ebbe",
+    "src/twelve_six/data/unique_loss_ledger_v2.py": "276b3af55d2688d40706d85562364623deba7125aae8b392d20fa9a56839f74f",
+    "src/twelve_six/model.py": "ea7f57f735567786431ea3bac14ace984f84c10df5c8408c487f09259e581985",
+    "src/twelve_six/training/__init__.py": "e48f10d81f29d4f60ae9023f6ff36d5746b29c2877e85fbfdeba603c9adaadf9",
+    "src/twelve_six/training/config.py": "64e68502e202895de8f4b7223b8c4d5c6422b70315b4657564849087af05ad87",
+    "src/twelve_six/training/exposure_accounting.py": "0bb972903688e4c46bdcab526ca7444e09281eb8252ce89b07b4e4da480b2fe5",
+    "src/twelve_six/training/launcher.py": "01f1904bb7392d26b4bff66e05981d4a5ece479f414fbda5550106bcc9d140b5",
+    "src/twelve_six/training/loss.py": "3a048022cedd839573d3083104035678ec7b68cbd77bccb141a28a02979984f3",
+    "src/twelve_six/training/portable_packet.py": "c03c4d1e39bb028a114c686822743f4972b0a726c523b8c75e43082e1d2fdd61",
+    "src/twelve_six/training/resource_envelope.py": "bc6f107501128c6ff48fdfa0cb1da04c7f3424e9fc334898fbb897b0acce0de6",
+    "src/twelve_six/training/run_control.py": "2177f4fb52fc91c0c0a58343f440b362b6b79e273633f47aa9d21bb31da2e584",
+    "src/twelve_six/training/trainer.py": "ba797509c6fd470963c06e77858328bd430e36211afbd6a0d7cd38e0c9350395",
+    "tools/plan2_s17_exposure_stream_v1.py": "6973670c742931cf51466fda7dae7fc34c93a0ecd10e86c126c173ce434e67bb",
+    "tools/plan2_s17_train_packing_v1.py": "1b311df78969312c0dbc47d061ba7f7258e9815dddc1769ea531a61e4af8126b",
+    "tools/plan2_s18_physical_release_v1.py": "4ab54c8d85c5fd22fcf5fbf3e0f7c4dd7a4f7b41b175790bb11ada6ebe6f9599",
+    "tools/plan2_s18_plan9_consumer_v1.py": "cc9372ec5dae8f1802c91b88de443ba3266bbcdcfa2a1d2383de5101eb0c6772",
+    "tools/plan2_s18_release_integrity_v1.py": "e9d3603b2c90b0d558f901f9dcbfb91d3de7eecdd40f2741dfe892fe59c4688c"
+  },
+  "schema": "12-6.plan3.training-runtime-release.v2"
+}
