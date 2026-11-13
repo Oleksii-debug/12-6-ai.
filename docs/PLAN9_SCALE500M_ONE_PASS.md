@@ -18,6 +18,21 @@ python -m tools.plan9_scale500m_launch_preparation_v1 --release $release --inspe
 
 The packet command hashes the input lock bytes. Use the committed LF file, or a checkout with line-ending conversion disabled. Its SHA-256 is `a94337bafdfc74ad2779d3c05b2f315048c1c39200a3011825ac6ebdff7b628f`. An inspection denial returns exit code 2 and a structured receipt. A successful capacity screen still leaves full measurements and campaign acceptance pending.
 
+For preparation on an external single CUDA device, the following commands bind
+the committed Linux lock and report resource floors for one full FP32 AdamW replica.
+These commands only read the repository and the verified data release.
+
+```powershell
+python -m tools.plan9_scale500m_launch_preparation_v1 --release $release --build-external-gpu-packet linux-x86_64 --run-id scale500m-external-gpu-general-v1
+python -m tools.plan9_scale500m_launch_preparation_v1 --release $release --verify-external-gpu-packet '<saved packet JSON>' --packet-sha256 '<independently pinned packet SHA-256>'
+```
+
+The preparation order is 500M, 1B, then 2B. This general baseline measures the
+interfaces against the already accepted corpus. The future cyber-focused campaign
+requires a separately admitted data release and independent evaluation. The external
+host still needs measured device capacity, runtime lock verification and checkpoint
+recovery evidence.
+
 The native runtime publishes a checkpoint at each committed optimizer boundary. The initial weights and all 2,969 checkpoints need at least 18,107,765,944,320 bytes under its current storage policy. An accepted host must be measured for training, checkpoint I/O and restart. The controller fails if it cannot commit a reserved optimizer step, encounters exhaustion, or exceeds the exposure ceiling. For the full campaign, separately pin the operator's stop criteria and execution authority before training. A paused checkpoint retirement prototype has been tested locally on tiny checkpoints. It does not change the active storage admission policy.
 
 [Incumbent Plan 9 PR](https://github.com/Oleksii-debug/12-6-ai./pull/3237)
