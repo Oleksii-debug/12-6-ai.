@@ -5,17 +5,17 @@
 2. Direct GitHub issue/PR collections, central control issue, active swarm claims and permanent lane issues.
 3. Auditor evidence.
 4. Drive canonical docs/research/reports.
-5. Chat text only when not yet durably recorded.
+5. Informal records only when no durable record exists.
 
 ## Universal pulse
 Any owner message equivalent to START / CONTINUE / NEXT / AUTOPULSE triggers live recovery and work. A worker never asks what to continue if state is recoverable.
 
-## Universal identical-prompt swarm
-For large disposable-chat swarms, use `docs/SWARM_300_COORDINATION.md`, `docs/UNIVERSAL_SWARM_PROMPT.md`, `configs/swarm/swarm300_protocol_v2.json` and control issue #723.
+## Parallel development protocol
+For large parallel development runs, use `docs/SWARM_300_COORDINATION.md`, `docs/UNIVERSAL_SWARM_PROMPT.md`, `configs/swarm/swarm300_protocol_v2.json` and control issue #723.
 
 GitHub is the only ownership/claim authority. Drive is not a lock registry.
 
-Every identical-prompt worker performs a read-only scout before its first mutation, self-registers through one GitHub issue, derives a two-dimensional lane/work-kind routing slot from the issue number, compares multiple candidate packages, publishes one canonical semantic `SWARM_LANE_KEY`, wins direct-collection exact-key arbitration before Product edits, and leaves durable branch/SHA/PR/CI/handoff evidence in the same claim issue.
+Each participant performs a read-only scout before its first mutation, self-registers through one GitHub issue, derives a two-dimensional lane/work-kind routing slot from the issue number, compares multiple candidate packages, publishes one canonical semantic `SWARM_LANE_KEY`, wins direct-collection exact-key arbitration before Product edits, and leaves durable branch/SHA/PR/CI/handoff evidence in the same claim issue.
 
 An older canonical active issue/PR that semantically owns a surface beats a later swarm claim even if it lacks swarm metadata. GitHub Search is discovery-only for exact races; direct paginated open-issue state is used for exact-key arbitration. Exact-key races resolve by earliest GitHub `created_at`, then lowest issue number.
 
@@ -43,7 +43,7 @@ One Product surface has one active owner unless explicitly coordinated. Safe ove
 Before material edits, a swarm worker performs semantic collision review and direct-collection exact-key arbitration. Losing a claim means rotate to another task rather than proceeding in parallel.
 
 ## CI discipline
-Use shared repository CI for normal swarm work. Do not create one-off Actions workflows per disposable worker. Queued, running or action-required checks are NOT TESTED, never PASS.
+Use shared repository CI for normal swarm work. Reuse shared workflows across assignments. Queued, running or action-required checks are NOT TESTED, never PASS.
 
 CI pressure for universal swarm work is measured from queued + in-progress Actions: GREEN <=25, AMBER 26..100, RED >=101. RED routine work prefers strong local validation plus branch/SHA/issue handoff rather than adding remote fanout; critical terminal unblock/integrity/integration evidence may still justify a remote run.
 

@@ -1,16 +1,10 @@
-# Universal autonomous swarm prompt — SWARM-300-V2
+# Parallel development handbook — SWARM-300-V2
 
-Copy the prompt below unchanged into each new project chat.
-
----
-
-You are one autonomous development worker inside a large parallel swarm working on the GitHub repository `Oleksii-debug/12-6-ai.`. Hundreds of other chats may receive this exact same prompt at nearly the same time. Your job is to independently recover live truth, choose a high-value unclaimed vertical, claim it collision-safely, execute a large end-to-end package, verify it, and leave durable GitHub evidence without asking the owner to assign work.
-
-You are not rewarded for producing a PR, a commit, or a large amount of text. You are rewarded for materially reducing a real project blocker or completing a coherent subsystem package without duplicating another active owner.
+This handbook applies to parallel work in `Oleksii-debug/12-6-ai.`. Verify current repository state, choose an unassigned engineering package, claim it under the collision rules, and record implementation and verification evidence in GitHub. Prioritize work that removes a project blocker or completes a coherent subsystem.
 
 ## 0. NON-NEGOTIABLE OPERATING MODEL
 
-Live GitHub is truth. Exact SHA/branch/PR/Actions evidence outranks issue prose; GitHub control/lane issues outrank Drive; Drive outranks chat-only claims. Never use stale chat context as current authority when GitHub can be read.
+Use current GitHub evidence in this order: exact commits, branches, pull requests and Actions results, then control and lane issues. Consult Drive for supporting records and informal notes only after the durable records.
 
 GitHub is the only ownership/claim registry. Google Drive may hold reports/research/backups but is never a lock service.
 
@@ -344,7 +338,7 @@ Takeover is allowed only when ALL are true:
 4. no active CI plausibly belonging to the claimant;
 5. takeover evidence is recorded explicitly.
 
-Do not steal active work because another chat is slower.
+Respect existing active assignments.
 
 ## 16. DO NOT FINISH A SMALL PACKAGE
 
@@ -395,10 +389,8 @@ LEASE: RELEASED
 
 If the result materially changes a permanent lane, leave a concise pointer there.
 
-Your user-facing final response is concise and factual: claim, delivered vertical, exact SHA/PR/CI, proven result, blockers and next safe action. Do not expose private chain-of-thought.
+Summarize the scope, delivered work, exact commit and PR, verification results, blockers and next action.
 
 ## 19. FINAL RULE
 
-You are a decentralized engineer/researcher, not a task-list consumer. Read before writing. Diversify across 120 coarse slots. Compare multiple candidate packages. Claim one canonical semantic surface. Arbitrate exact races from direct issue collections. Deliver a large vertical with real validation. Apply GitHub/CI backpressure. Late-bind concurrent evidence. Leave durable truth.
-
-Begin now.
+Verify current state before making changes. Use the 120 routing slots, compare candidate packages and claim one canonical scope. Resolve competing claims from the issue collection. Validate the complete package, follow GitHub and CI rate controls, and record current evidence in GitHub.

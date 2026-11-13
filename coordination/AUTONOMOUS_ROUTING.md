@@ -12,12 +12,12 @@ NEXT_AUDIT_RULE: first capable worker after >=6h since LAST_GLOBAL_AUDIT, or imm
 
 ## Authority and startup rule
 
-Every scheduled worker, Codex Cloud run and Work run MUST, before substantive work:
+Before substantive work, contributors and scheduled jobs must:
 
 1. recover exact repository `Oleksii-debug/12-6-ai.` (the trailing period is part of the repository name);
 2. read this file;
 3. read `docs/TRAINING_COMPUTE_AND_SCALING_STRATEGY_2026-09-07.md`;
-4. recover current `main`, #548, its home lane, relevant open/recent PRs, exact-head CI and active Work/Codex claims;
+4. recover current `main`, #548, its home lane, relevant open/recent PRs, exact-head CI and active cross-lane assignments;
 5. perform exact + semantic collision/ownership review before mutation, before PR/merge action and before final verdict.
 
 Live exact GitHub evidence overrides stale text in this routing file. If a named PR/head below moved, was merged, closed or superseded, follow the current canonical successor instead of reviving stale lineage.
@@ -250,16 +250,16 @@ CURRENT NEXT:
 1. Recover live main and current canonical carrier/reconciliation line each run. Around this audit #831/#802 are the D10 ancestry surfaces; follow the live successor if they move.
 2. Keep one current-main-ancestor carrier, integrate only terminal collision-safe deltas and require fresh exact-head CI after every material intake.
 3. Do not transfer stale green across main/head movement. Repair shared Ruff/bootstrap/workflow/API drift centrally rather than making every domain branch patch it.
-4. Track active Work/Codex claims before taking cross-lane code. Assign them the largest unowned packages, not scheduled-worker duplicates.
+4. Check active assignments before taking cross-lane work. Reserve the largest unowned packages for cross-lane integration and avoid duplicating scheduled work.
 5. Maintain the exact strategy: terminal20 mandatory; ~100M optional risk probe; measured ~200M default next product-scale feasibility; 1B only after terminal~200M.
 6. Own the cross-environment compute matrix and automatic post-terminal20 ~200M feasibility packet.
 7. A ~200M GO must include measured data capacity, memory, optimizer state, activation/accumulation/checkpoint plan, throughput, checkpoint transport, exact backend/runtime and available compute.
 8. If direct ~200M is uncertain, define the smallest bounded 50M/100M probe that resolves a named uncertainty. Never run a full campaign only to satisfy old sequencing.
-9. Perform global audit when >=6h old OR immediately after a major change such as terminal Rada admission, positive pack ledger, first optimizer update, terminal20, major Work/Codex result or active-owner collision. Update this routing file, then immediately return to productive integration work.
+9. Perform global audit when >=6h old OR immediately after a major change such as terminal Rada admission, positive pack ledger, first optimizer update, terminal20, major cross-lane result or active-owner collision. Update this routing file, then immediately return to productive integration work.
 
-## Work / Codex routing
+## Cross-lane integration
 
-Before taking work, both must read live routing and all active claims. A long Work/Codex run should take the largest **unowned** cross-lane package and leave durable GitHub state; it must not duplicate one of the five scheduled producers.
+Review current routing and active assignments before taking cross-lane work. Choose the largest **unowned** package, record progress in GitHub and avoid duplicating the five scheduled lanes.
 
 At EPOCH-0005 the high-value package families are:
 
@@ -269,7 +269,7 @@ At EPOCH-0005 the high-value package families are:
 - portable compute/run integration if no active Work package already owns it;
 - post-terminal20 measured ~200M feasibility.
 
-Never assume a Work/Codex package named in this file is still active hours later. Reconstruct live ownership first.
+Confirm current ownership before relying on a package listed here.
 
 ## Worker scheduling topology
 

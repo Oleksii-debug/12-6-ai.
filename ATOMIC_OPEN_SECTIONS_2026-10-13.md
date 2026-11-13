@@ -235,7 +235,7 @@
 | 3А | Зібрати exact release package через reusable packaging/signing/update primitives Плану 1: runtime, champion/tokenizer/config, licenses, SBOM, manifests, cards та verification utilities без dev/secrets. | Статус: OPEN |
 | 3Б | Signed installer/archive/update channel перевіряє signatures/hashes і робить atomic migration/rollback. | Статус: OPEN |
 | 3В | Clean install/update/uninstall/reinstall кваліфікуються на exact package. | Статус: OPEN |
-| 4А | Підв’язати exact product candidate до keyboard/NVDA-friendly operator/harness Плану 8 та наявних CLI/text paths. Окремий bespoke ChatGPT-like GUI не є обов’язковим, якщо доступний operator path повністю покриває declared workflow. | Статус: OPEN |
+| 4А | Підв’язати exact product candidate до keyboard/NVDA-friendly operator/harness Плану 8 та наявних CLI/text paths. Окремий чат-інтерфейс не є обов’язковим, якщо доступний operator path повністю покриває declared workflow. | Статус: OPEN |
 | 4Б | Критичні states/errors/logs мають semantic text parity і selectable/copyable output. | Статус: OPEN |
 | 4В | NVDA-specific physical verification не ставиться тут автоматично; вона окремо нижче. | Статус: OPEN |
 | 5А | Застосувати scenario harness Плану 8 до exact integrated candidate: champion inference, agent, memory/tools, self-learning, recovery, update. | Статус: OPEN |

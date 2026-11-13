@@ -1,10 +1,10 @@
 # Global Coordinator Bridge
 
-12-6 AI participates in the owner's cross-project autonomous development control plane.
+12-6 AI uses the shared cross-project coordination process.
 
 ## Purpose
 
-Workers, Codex Cloud and Work must not rely on stale prompt text as the current project plan. Before substantive work, reconstruct the newest project state and read the current coordination surfaces. The cross-project coordinator updates priorities; workers consume those priorities rather than requiring manual prompt rewrites from Oleksii.
+Before substantive work, verify the current project state and read the coordination records. The cross-project coordinator updates the shared priorities, which guide scheduled work and integration.
 
 ## Coordination hierarchy
 
@@ -14,17 +14,17 @@ Workers, Codex Cloud and Work must not rely on stale prompt text as the current 
 
 ## Audit cadence
 
-Do not depend on exact wall-clock slots. If the configured project audit interval has expired, the first available coordinator-capable run performs the audit and refreshes the plan. A missed run due to credits/usage does not invalidate the system; the next successful run reconstructs live state and continues.
+Do not depend on exact wall-clock slots. If the configured project audit interval has expired, the first available coordinator-capable run performs the audit and refreshes the plan. After a missed run, the next available coordinator reconstructs the current state and resumes the audit.
 
 Suggested active-project audit interval: 4–6 hours, with immediate refresh after major convergence/integration changes.
 
-## Codex Cloud
+## Extended integration
 
-On start, Codex reads the current project plan and avoids packages already assigned to scheduled workers. It takes a large unowned package, persists progress after coherent milestones, and refreshes recommendations when a major change invalidates worker direction. Do not wait until the last turn of a long run to leave coordination state.
+Review the current plan, select a large unowned package and avoid overlapping scheduled assignments. Record progress after each coherent milestone. Update the shared priorities when a major change affects scheduled work.
 
-## Work
+## Periodic technical audit
 
-Work acts as a periodic high-capability architect/auditor. It may review the full project and update the current plan after major architectural, scientific or integration changes. Oleksii should not need to copy new prompts into five scheduled workers after each Work run.
+Review the full project after major architectural, scientific or integration changes and record updated priorities in the shared plan.
 
 ## 12-6 current product priority
 
