@@ -146,9 +146,9 @@
 | 10А | Candidate freeze забороняє unrelated mutation до terminal gate. | Статус: DONE — accepted main, PR #3249 |
 | 10Б | Integration використовує expected-head/topology checks і не втрачає qualified tree. | Статус: DONE — accepted main, PR #3249 |
 | 10В | DONE тільки після post-merge exact readback. | Статус: DONE — accepted main, PR #3249 |
-| 11А | Пройти SIL→defect→repair→retest, physical agent simulation/proxy, chaos та evidence-lifecycle campaigns. | Статус: OPEN |
-| 11Б | Підтвердити integration із repositories/artifacts без залежності від actual production champion. | Статус: OPEN |
-| 11В | Зафіксувати terminal Qualification Fabric release. | Статус: OPEN |
+| 11А | Пройти SIL→defect→repair→retest, physical agent simulation/proxy, chaos та evidence-lifecycle campaigns. | Статус: DONE — accepted main, PR #3251 |
+| 11Б | Підтвердити integration із repositories/artifacts без залежності від actual production champion. | Статус: DONE — accepted main, PR #3251 |
+| 11В | Зафіксувати terminal Qualification Fabric release. | Статус: DONE — accepted main, PR #3251 |
 
 ## План 9: 63 самостійних розділів
 
