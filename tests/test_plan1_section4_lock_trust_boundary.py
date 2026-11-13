@@ -66,6 +66,19 @@ def test_rejects_rehashed_absolute_profile_path(tmp_path: Path) -> None:
         validate_lock_index(root=checkout, index_path=INDEX)
 
 
+def test_rejects_rehashed_backslash_profile_path(tmp_path: Path) -> None:
+    checkout = _copy_fixture(tmp_path)
+    path = checkout / INDEX
+    index = json.loads(path.read_text(encoding="utf-8"))
+    record = index["profiles"]["windows-x86_64"]
+    record["path"] = record["path"].replace("/", "\\")
+    index.pop("index_sha256")
+    index["index_sha256"] = sha256_bytes(canonical_json_bytes(index))
+    path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with pytest.raises(DependencyLockError, match="unsafe lock path"):
+        validate_lock_index(root=checkout, index_path=INDEX)
+
+
 def _load_verifier():
     import importlib.util
 
@@ -75,6 +88,30 @@ def _load_verifier():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_verifier_preserves_canonical_paths_for_the_lock_contract(monkeypatch) -> None:
+    verifier = _load_verifier()
+    profile_id = verifier.LOCK.current_profile_id()
+    validate_index = verifier.LOCK.validate_lock_index
+    validate_profile = verifier.LOCK.validate_profile_manifest
+
+    def strict_index(*, root, index_path):
+        assert type(index_path) is str and index_path == INDEX
+        return validate_index(root=root, index_path=index_path)
+
+    def strict_profile(*, root, manifest_path, enforce_current_platform):
+        assert type(manifest_path) is str and "\\" not in manifest_path
+        return validate_profile(
+            root=root, manifest_path=manifest_path, enforce_current_platform=enforce_current_platform,
+        )
+
+    monkeypatch.setattr(verifier.LOCK, "assert_exact_python", lambda: None)
+    monkeypatch.setattr(verifier.LOCK, "validate_lock_index", strict_index)
+    monkeypatch.setattr(verifier.LOCK, "validate_profile_manifest", strict_profile)
+    index, profile = verifier.validate_committed_profile(profile_id)
+    assert profile["profile_id"] == profile_id
+    assert index["profiles"][profile_id]["manifest_sha256"] == profile["manifest_sha256"]
 
 
 def test_windows_venv_python_layout(tmp_path: Path) -> None:

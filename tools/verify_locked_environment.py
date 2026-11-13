@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_PATH = Path("requirements/locks/index.json")
+INDEX_PATH = "requirements/locks/index.json"
 LOCK_MODULE = ROOT / "src" / "twelve_six" / "integration" / "dependency_lock.py"
 _LOCK_LINE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]*==[^\s;@/\\]+(?: --hash=sha256:[0-9a-f]{64})+$"
@@ -85,10 +85,9 @@ def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str,
             f"requested profile {expected!r} does not match current platform {current!r}"
         )
     record = index["profiles"][expected]
-    profile_path = _safe_relative_path(record["path"])
     profile = LOCK.validate_profile_manifest(
         root=ROOT,
-        manifest_path=profile_path.relative_to(ROOT),
+        manifest_path=record["path"],
         enforce_current_platform=True,
     )
     for group, lock_record in profile["locks"].items():
@@ -288,7 +287,7 @@ def verify_install(
             "profile_id": profile["profile_id"],
             "python": profile["python"],
             "lock_index": {
-                "path": INDEX_PATH.as_posix(),
+                "path": INDEX_PATH,
                 "file_sha256": _sha256_file(ROOT / INDEX_PATH),
                 "index_sha256": index["index_sha256"],
             },
