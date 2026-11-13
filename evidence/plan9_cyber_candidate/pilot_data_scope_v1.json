@@ -1,0 +1,20 @@
+{
+  "schema": "12-6.plan9-cyber-pilot-data-scope.v1",
+  "corpus_receipt_sha256": "68fac420223b639efbf5d8dc203367322e23bd01b24d1d82bc61943ddc67df41",
+  "rights_receipt_sha256": "55065f081aa55d6cde11fa27959d6244b390253de59e455cdbe017666d932b79",
+  "source_decision_sha256": "a7e562e6d6232dc1367a039746ff5bc91746deef12480fcd94a71dfe8aee2a00",
+  "input_sha256": {
+    "packing-manifest.json": "4c47e88d6dad443db5ffeccdbafb50be943bb11d7e9c4271933c4a10b6e3796e",
+    "receipt.json": "68fac420223b639efbf5d8dc203367322e23bd01b24d1d82bc61943ddc67df41",
+    "shards/shard-000000.json": "f521d2265ef92e8b19aecf62c7487f455d11d96118c4c7810d40e43b67a44d96",
+    "shards/shard-000001.json": "8f486a6a181d5f95f7b114f69eddf6529ab454244de9e47154e8607ffadc3adf"
+  },
+  "staged_blocks": 128,
+  "pilot_blocks": 96,
+  "staged_loss_positions_by_source": {"cisa-kev": 128, "cve-list-v5": 3418, "ua.verba.franko1901": 174},
+  "pilot_loss_positions_by_source": {"cisa-kev": 128, "cve-list-v5": 2394, "ua.verba.franko1901": 174},
+  "full_packing_metadata_included": true,
+  "evaluation_payloads_included": false,
+  "rights_status": "LOCAL_STAGING_ONLY",
+  "external_data_transfer_authorized": false
+}
