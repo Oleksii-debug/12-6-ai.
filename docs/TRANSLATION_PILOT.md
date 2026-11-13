@@ -36,6 +36,15 @@ Length grouping sorts bounded shuffled windows before batching, then shuffles
 full batches and preserves the final partial batch. The recorded window size
 and seed reproduce the order at resume.
 
+A fresh optimizer phase accepts `--parent-run`, `--parent-step`, and
+`--parent-checkpoint-id` to initialize from an exact verified checkpoint.
+It inherits the parent's context by default. Pass `--context 192` to extend
+a 96-token run. The child records its own model spec and keeps the parent
+checkpoint identity for provenance. The native decoder uses rotary positions,
+so this change leaves tensor shapes and parameter count intact. Quality at
+longer lengths needs separate evaluation. Resuming an existing phase uses
+its recorded context.
+
 The training process records the model, tokenizer, schedule, data manifest and
 Git revision in `run.json`. Each saved checkpoint includes model, optimizer,
 scheduler, RNG and progress state. Resume reopens that state before selecting
