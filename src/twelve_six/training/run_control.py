@@ -328,7 +328,8 @@ class RunController:
         try:
             return verify_checkpoint(path)
         except CheckpointError as exc:
-            exc.add_note(f"Run {self.run_sha256} cannot verify recovery checkpoint {path}.")
+            restore_path = self.namespace / "checkpoints" / path.name
+            exc.add_note(f"Run {self.run_sha256} cannot verify recovery checkpoint {restore_path}.")
             raise
 
     def _pending_checkpoint(
@@ -383,8 +384,9 @@ class RunController:
                 expected_tokens_seen=tokens,
             )
         except CheckpointError as exc:
+            restore_path = self.namespace / "checkpoints" / path.name
             exc.add_note(
-                f"Run {self.run_sha256} requires checkpoint {checkpoint_id} at {path} "
+                f"Run {self.run_sha256} requires checkpoint {checkpoint_id} at {restore_path} "
                 f"for step {step}. Restore the exact verified checkpoint before retrying."
             )
             raise

@@ -69,3 +69,15 @@ fields. Provide one prediction per case. The scorer extracts and
 deduplicates mitigation IDs case-insensitively, then macro-averages set
 precision, recall, F1 and exact match across cases. It also reports each
 tactic. Scoring is offline and does not call a model.
+
+A separate fictional triage suite covers 20 paired scenarios in English
+and Ukrainian. Each prompt includes the project-authored test playbook.
+The strict scorer measures incident priority, action and affected asset,
+and reports missed confirmed P1 priorities. These are development cases
+for evaluating instruction following; they are not operational guidance
+or a reserved champion acceptance set.
+
+```bash
+PYTHONPATH=src:. python -m tools.plan9_cyber_triage_eval_v1 build --out '<new triage directory>'
+PYTHONPATH=src:. python -m tools.plan9_cyber_triage_eval_v1 score --key '<triage directory>/answer-key.jsonl' --key-sha256 539a6669e822316e103762a8a5db654c2ef845de547a4701021b162ab00b3f29 --predictions '<candidate predictions JSONL>'
+```

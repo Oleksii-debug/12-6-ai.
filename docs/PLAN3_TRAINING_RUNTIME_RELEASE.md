@@ -1,15 +1,18 @@
 # Plan 3 training runtime release
 
-The [release descriptor](../configs/plan3/training_runtime_release_v1.json)
+The [v2 release descriptor](../configs/plan3/training_runtime_release_v2.json)
 pins the incumbent model, recipe, numerical objective, trainer, controller,
 checkpoint, exposure, portable packet and launcher sources. It binds their
-Plan 9 data handoff to the accepted local Plan 2 S18 authority.
+Plan 9 data handoff to the accepted local Plan 2 S18 authority. Version 2
+reports the operator's checkpoint path in recovery diagnostics while retaining
+the pinned directory for checkpoint operations. The data handoff is identical
+to [v1](../configs/plan3/training_runtime_release_v1.json).
 
 From a source checkout, verify the descriptor and its source digests. The
 verifier normalizes CRLF to LF before hashing checkout files.
 
 ```bash
-PYTHONPATH=src python -m twelve_six.training.runtime_release --root .
+PYTHONPATH=src python -m twelve_six.training.runtime_release --root . --release-version 2
 ```
 
 Use the same command with the path to the accepted local physical release
@@ -17,8 +20,14 @@ to reopen it through Plan 2's verified reader.
 
 ```bash
 PYTHONPATH=src python -m twelve_six.training.runtime_release --root . \
-  --physical-release "$RELEASE"
+  --release-version 2 --physical-release "$RELEASE"
 ```
+
+The API and CLI default to version 1 for existing consumers. To reproduce
+that release, use a checkout of its accepted commit
+`08f3d9454819a7f47406b5b4eb2758480633f5c7`. Pass `release_version=2` to
+`verify_runtime_release` or `verify_plan2_handoff` for the repaired runtime.
+The handoff receipt binds the descriptor digest of the selected version.
 
 The handoff probe checks the exact digests of the aligned batch tensors from
 the verified checkout. The batch has shape `[2, 32]` with 45 active positions.

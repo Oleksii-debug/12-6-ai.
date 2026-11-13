@@ -58,6 +58,7 @@ EXTERNAL_GPU_SCHEMA = "12-6.plan9-scale500m-external-gpu-candidate.v1"
 GPU_PROFILE_PLAN_SCHEMA = "12-6.plan9-external-gpu-profile-plan.v1"
 CYBER_GPU_PREPARATION_SCHEMA = "12-6.plan9-cyber-external-gpu-preparation.v1"
 CYBER_EVIDENCE = "evidence/plan9_cyber_candidate"
+PLAN3_RUNTIME_RELEASE_VERSION = 2
 EXTERNAL_GPU_PROFILES = ("linux-x86_64", "linux-aarch64")
 LOCK_INDEX = "requirements/locks/index.json"
 LOCK_INDEX_SHA256 = "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
@@ -83,7 +84,7 @@ RUNTIME_PATHS = {
     "trainer_config": "src/twelve_six/training/config.py",
     "run_control": "src/twelve_six/training/run_control.py",
     "runtime_release_verifier": "src/twelve_six/training/runtime_release.py",
-    "runtime_release_descriptor": runtime_release.RELEASE_PATH,
+    "runtime_release_descriptor": runtime_release.RELEASE_V2_PATH,
     "dependency_lock_verifier": "src/twelve_six/integration/dependency_lock.py",
     "checkpoint_binding": "src/twelve_six/checkpoint/run_binding.py",
     "checkpoint_resume": "src/twelve_six/checkpoint/d04_resume_binding.py",
@@ -312,7 +313,7 @@ def build_preparation(
     _require(type(count) is int and count > 0 and count == authority["training_targets"]
              and consumer["tokenizer_manifest_sha256"] == tokenizer["source_manifest_sha256"],
              "released tokenizer or ordered target count differs from Plan 2 authority")
-    released_runtime = runtime_release.verify_runtime_release(root)
+    released_runtime = runtime_release.verify_runtime_release(root, release_version=PLAN3_RUNTIME_RELEASE_VERSION)
     runtime_handoff = released_runtime["plan2_handoff"]
     _require(
         released_runtime["qualification"] == "LOCAL_COMPONENT"
@@ -394,8 +395,8 @@ def build_preparation(
         },
         "runtime_source": runtime,
         "plan3_runtime_release": {
-            "descriptor_path": runtime_release.RELEASE_PATH,
-            "descriptor_sha256": runtime_release.RELEASE_SHA256,
+            "descriptor_path": runtime_release.RELEASE_V2_PATH,
+            "descriptor_sha256": runtime_release.RELEASE_V2_SHA256,
             "qualification": released_runtime["qualification"],
             "full_profile_measurement_status": released_runtime["full_profile_measurement_status"],
             "plan2_handoff": runtime_handoff,
@@ -585,7 +586,7 @@ def build_candidate_packet(
     """Assemble one portable candidate record from verified inputs and cursor evidence."""
     candidate_git_sha = _candidate_checkout_sha(root)
     preparation, cursor, _ = _open_batch_stream(root, release, recipe, next_batch_index)
-    handoff = runtime_release.verify_plan2_handoff(root, release)
+    handoff = runtime_release.verify_plan2_handoff(root, release, release_version=PLAN3_RUNTIME_RELEASE_VERSION)
     _require(
         handoff["runtime_release_sha256"] == preparation["plan3_runtime_release"]["descriptor_sha256"]
         and handoff["plan2_handoff"] == preparation["plan3_runtime_release"]["plan2_handoff"]

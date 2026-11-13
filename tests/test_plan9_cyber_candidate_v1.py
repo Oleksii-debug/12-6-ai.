@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tools import plan9_cyber_independent_eval_v1 as cyber_eval
+from tools import plan9_cyber_triage_eval_v1 as triage
 from tools import plan9_prepare_cyber_candidate_v1 as corpus
 from tools.plan9_scale500m_launch_preparation_v1 import LaunchPreparationDenied, _audit_cyber_shards
 
@@ -56,6 +57,23 @@ def test_gpu_inventory_checks_exact_shard_bytes_and_actual_masks(tmp_path):
     bad_count = stage([1, 0, 0])
     with pytest.raises(LaunchPreparationDenied, match="block target count changed"):
         _audit_cyber_shards(tmp_path, bad_count)
+
+
+def test_triage_development_cases_match_receipt_and_score_both_languages(tmp_path):
+    output = tmp_path / "triage"
+    assert triage.build(output) == json.loads((EVIDENCE / "triage_receipt.json").read_bytes())
+    key = output / "answer-key.jsonl"
+    rows = triage.read_rows(key.read_bytes())
+    first = next(case_id for case_id, row in rows.items() if row["answer"]["priority"] == "P1")
+    predictions = tmp_path / "predictions.jsonl"
+    predictions.write_bytes(b"".join(triage.canonical({
+        "id": case_id,
+        "prediction": json.dumps({**row["answer"], "priority": "P2"} if case_id == first else row["answer"]),
+    }) for case_id, row in rows.items()))
+    result = triage.score(key, triage.sha(key.read_bytes()), predictions)
+    assert result["metrics"]["exact"] == 39
+    assert result["metrics"]["confirmed_p1_undertriage"] == 1
+    assert result["paired_exact"] == 19
 
 
 def test_mitigation_scorer_checks_ids_and_reports_macro_set_metrics(tmp_path):

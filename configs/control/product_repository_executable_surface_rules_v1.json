@@ -454,6 +454,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/plan9_cyber_triage_eval_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan9_prepare_cyber_candidate_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },
