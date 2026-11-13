@@ -54,6 +54,7 @@ PACKET_SCHEMA = "12-6.plan9-scale500m-candidate-packet.v1"
 DATA_BUDGET_SCHEMA = "12-6.plan9-scale500m-one-pass-data-budget.v1"
 NATIVE_PREFLIGHT_SCHEMA = "12-6.plan9-scale500m-native-launch-preflight.v1"
 EXTERNAL_GPU_SCHEMA = "12-6.plan9-scale500m-external-gpu-candidate.v1"
+GPU_PROFILE_PLAN_SCHEMA = "12-6.plan9-external-gpu-profile-plan.v1"
 EXTERNAL_GPU_PROFILES = ("linux-x86_64", "linux-aarch64")
 LOCK_INDEX = "requirements/locks/index.json"
 LOCK_INDEX_SHA256 = "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
@@ -65,6 +66,15 @@ PROFILE = "SCALE-500M"
 PROFILE_FILE = "configs/stages/scale_500m.json"
 PACKET_TOOL_FILE = "tools/plan9_scale500m_launch_preparation_v1.py"
 PROFILE_SHA256 = "1007a6b2519086a3e52fc06eb57a44a38ee38992bacbb922bb72b82b423b0339"
+GPU_PROFILE_SOURCES = {
+    PROFILE: (PROFILE_FILE, PROFILE_SHA256),
+    "SCALE-1B": (
+        "configs/stages/scale_1b.json", "cda103c731761388f76deec4a1a3eb6baec7a1466072bc6366d45bedb4bf3221",
+    ),
+    "SCALE-2B": (
+        "configs/stages/scale_2b.json", "6d860f3a8867212e4f09bf275accbb8be371d8868e08f4ff1b85f98c020daba6",
+    ),
+}
 RUNTIME_PATHS = {
     "trainer": "src/twelve_six/training/trainer.py",
     "trainer_config": "src/twelve_six/training/config.py",
@@ -246,19 +256,21 @@ def _open_release(root: Path, release: Path) -> dict[str, Any]:
     return open_release(root, release)
 
 
-def _load_profile(root: Path) -> tuple[StageConfig, dict[str, Any]]:
-    path = root / PROFILE_FILE
-    raw = _read(path).replace(b"\r\n", b"\n")
-    _require(_sha(raw) == PROFILE_SHA256, "primary scale profile differs from the accepted source")
-    config = load_stage_config(path)
-    seed = json.loads(raw)["base_init_manifest"]
+def _load_profile(root: Path, profile: str = PROFILE) -> tuple[StageConfig, dict[str, Any]]:
+    path, source_sha256 = GPU_PROFILE_SOURCES[profile]
+    raw = _read(root / path).replace(b"\r\n", b"\n")
+    _require(_sha(raw) == source_sha256, f"{profile} profile differs from the accepted source")
+    document = json.loads(raw)
+    config = load_stage_config(root / path)
+    seed = document["base_init_manifest"]
     _require(
-        config.stage == PROFILE and config.canonical_base == "random_init"
+        config.stage == profile and document["profile_id"] == profile
+        and config.canonical_base == "random_init"
         and seed["weights_origin"] == "random_init" and seed["ancestor_checkpoint_sha256"] is None
         and seed["model_spec_sha256"] == config.model.identity_sha256()
         and seed["init_spec_sha256"] == config.init.identity_sha256()
         and type(seed["seed"]) is int and seed["seed"] >= 0,
-        "primary scale profile is not a fresh canonical Base",
+        f"{profile} profile is not a fresh canonical Base",
     )
     return config, seed
 
@@ -716,6 +728,72 @@ def inspect_native_launch(
     return {**report, "native_preflight_sha256": _sha(_canonical(report))}
 
 
+def _gpu_resource_floors(model: ModelSpec, *, remaining_updates: int | None) -> dict[str, Any]:
+    envelope = assess_resource_envelope(
+        model, HostResources("cuda", None, None, 0),
+        remaining_updates=1 if remaining_updates is None else remaining_updates,
+        initial_checkpoint_needed=True,
+    )
+    return {
+        "minimum_device_bytes_for_adamw": envelope["fp32_adamw_device_bytes"],
+        "minimum_device_bytes_at_native_save": envelope["native_checkpoint_save_device_bytes"],
+        "minimum_host_checkpoint_staging_bytes": envelope["checkpoint_payload_floor_bytes"],
+        "minimum_initial_checkpoint_payload_bytes": envelope["serialized_model_weight_bytes"],
+        "minimum_optimizer_checkpoint_payload_bytes": envelope["checkpoint_payload_floor_bytes"],
+        "minimum_unpruned_checkpoint_volume_bytes": (
+            None if remaining_updates is None else envelope["unpruned_checkpoint_volume_floor_bytes"]
+        ),
+    }
+
+
+def plan_external_gpu_profiles(root: Path) -> dict[str, Any]:
+    """Report the three exact native profile floors without selecting a device or starting a run."""
+    checkout = _candidate_checkout_sha(root)
+    recipe = TrainingRecipe.from_dict(json.loads(_exact_checkout_bytes(root, checkout, ONE_PASS_RECIPE_FILE)))
+    _require(recipe.identity_sha256() == ONE_PASS_RECIPE_SHA256, "external GPU baseline recipe pin changed")
+    profiles = []
+    for profile, (source, source_sha256) in GPU_PROFILE_SOURCES.items():
+        _exact_checkout_bytes(root, checkout, source)
+        config, seed = _load_profile(root, profile)
+        baseline = recipe if profile == PROFILE else None
+        updates = None if baseline is None else baseline.trainer.max_steps
+        profiles.append({
+            "profile": profile,
+            "profile_source_path": source,
+            "profile_source_sha256": source_sha256,
+            "model_spec_sha256": config.model.identity_sha256(),
+            "init_spec_sha256": config.init.identity_sha256(),
+            "parameters": config.model.parameter_count(),
+            "max_context_tokens": config.model.max_seq_len,
+            "initialization": seed,
+            "general_baseline_recipe_sha256": None if baseline is None else baseline.identity_sha256(),
+            "general_baseline_optimizer_updates": updates,
+            "campaign_recipe_sha256": None,
+            "campaign_data_release_sha256": None,
+            "resource_floors": _gpu_resource_floors(config.model, remaining_updates=updates),
+        })
+    core = {
+        "schema": GPU_PROFILE_PLAN_SCHEMA,
+        "source_git_sha": checkout,
+        "profile_preparation_order": list(GPU_PROFILE_SOURCES),
+        "profiles": profiles,
+        "resource_evidence": "ARITHMETIC_ONLY",
+        "gpu_count": 1,
+        "optimizer_state_layout": "ONE_FULL_FP32_ADAMW_REPLICA",
+        "pending": [
+            "qualify_scale_specific_cybersecurity_majority_data_and_independent_eval",
+            "bind_scale_specific_campaign_recipe_and_update_horizon",
+            "measure_selected_gpu_memory_checkpoint_storage_and_recovery",
+            "verify_selected_runtime_and_obtain_campaign_authority",
+        ],
+        "target_profile_measured": False,
+        "campaign_authorized": False,
+        "training_executed": False,
+        "paid_compute_used": False,
+    }
+    return {**core, "gpu_profile_plan_sha256": _sha(_canonical(core))}
+
+
 def build_external_gpu_packet(
     root: Path, release: Path, *, lock_profile: str, run_id: str,
 ) -> dict[str, Any]:
@@ -747,16 +825,11 @@ def build_external_gpu_packet(
         and budget["campaign_authorized"] is False,
         "accepted data budget differs from the external GPU baseline candidate",
     )
-    floors = assess_resource_envelope(
-        ModelSpec.from_dict(candidate["model_spec"]),
-        HostResources("cuda", None, None, 0),
-        remaining_updates=recipe.trainer.max_steps,
-        initial_checkpoint_needed=True,
-    )
+    floors = _gpu_resource_floors(ModelSpec.from_dict(candidate["model_spec"]), remaining_updates=recipe.trainer.max_steps)
     core = {
         "schema": EXTERNAL_GPU_SCHEMA,
         "decision": "EXTERNAL_GPU_BASELINE_PREPARED_CAMPAIGN_PENDING",
-        "profile_preparation_order": ["SCALE-500M", "SCALE-1B", "SCALE-2B"],
+        "profile_preparation_order": list(GPU_PROFILE_SOURCES),
         "candidate": candidate,
         "execution_requirements": {
             "placement": "EXTERNAL",
@@ -765,10 +838,10 @@ def build_external_gpu_packet(
             "optimizer_state_layout": "ONE_FULL_REPLICA",
             "environment_lock": lock,
             "resource_evidence": "ARITHMETIC_ONLY",
-            "minimum_device_bytes_for_adamw": floors["fp32_adamw_device_bytes"],
-            "minimum_device_bytes_at_native_save": floors["native_checkpoint_save_device_bytes"],
-            "minimum_host_checkpoint_staging_bytes": floors["checkpoint_payload_floor_bytes"],
-            "minimum_unpruned_checkpoint_volume_bytes": floors["unpruned_checkpoint_volume_floor_bytes"],
+            "minimum_device_bytes_for_adamw": floors["minimum_device_bytes_for_adamw"],
+            "minimum_device_bytes_at_native_save": floors["minimum_device_bytes_at_native_save"],
+            "minimum_host_checkpoint_staging_bytes": floors["minimum_host_checkpoint_staging_bytes"],
+            "minimum_unpruned_checkpoint_volume_bytes": floors["minimum_unpruned_checkpoint_volume_bytes"],
         },
         "data": {
             "purpose": "GENERAL_BASELINE",
@@ -956,7 +1029,7 @@ def check_one_pass_data_budget(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("."))
-    parser.add_argument("--release", type=Path, required=True)
+    parser.add_argument("--release", type=Path, help="Verified local data release for data-bound modes")
     parser.add_argument("--recipe", type=Path, help="Explicit candidate TrainingRecipe v1 JSON")
     parser.add_argument("--next-batch-index", type=int, help="Inspect the sealed stream cursor")
     modes = parser.add_mutually_exclusive_group()
@@ -965,6 +1038,8 @@ def main() -> int:
     modes.add_argument("--inspect-native-launch", type=Path, help="Check a pinned candidate on this local host")
     modes.add_argument("--build-external-gpu-packet", choices=EXTERNAL_GPU_PROFILES,
                        help="Prepare the general baseline for an external CUDA GPU without measuring a host")
+    modes.add_argument("--plan-external-gpu-profiles", action="store_true",
+                       help="Print 500M, 1B and 2B GPU floors without opening data or measuring a host")
     modes.add_argument("--verify-external-gpu-packet", type=Path, help="Reopen a pinned external GPU baseline")
     modes.add_argument("--check-one-pass-budget", action="store_true", help="Check rights and exact data budget")
     parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
@@ -976,6 +1051,16 @@ def main() -> int:
     args = parser.parse_args()
     try:
         root = args.root.resolve(strict=True)
+        if args.plan_external_gpu_profiles:
+            _require(all(value is None for value in (
+                args.release, args.recipe, args.next_batch_index, args.environment_lock,
+                args.run_id, args.packet_sha256, args.checkpoint_root,
+            )) and args.optimizer_step == 0 and args.device == "cpu",
+                     "profile planning accepts --root only")
+            sys.stdout.buffer.write(_canonical(plan_external_gpu_profiles(root)))
+            return 0
+        if args.release is None:
+            raise LaunchPreparationDenied("data-bound modes require --release")
         recipe = None if args.recipe is None else TrainingRecipe.from_dict(json.loads(_read(args.recipe)))
         if args.build_external_gpu_packet is not None:
             if args.run_id is None:

@@ -33,6 +33,19 @@ requires a separately admitted data release and independent evaluation. The exte
 host still needs measured device capacity, runtime lock verification and checkpoint
 recovery evidence.
 
+Print the ordered resource plan directly from the three pinned ModelSpecs.
+This command needs only the checkout.
+
+~~~powershell
+python -m tools.plan9_scale500m_launch_preparation_v1 --plan-external-gpu-profiles
+~~~
+
+The report shows device memory and checkpoint payload floors in bytes for one
+full FP32 AdamW replica. For 1B and 2B it leaves the campaign recipe, admitted
+dataset, update count and total checkpoint storage unset until each is specified.
+The 500M total applies to the pinned general one-pass baseline. Target GPU
+memory and checkpoint performance still require measurement.
+
 The native runtime publishes a checkpoint at each committed optimizer boundary. The initial weights and all 2,969 checkpoints need at least 18,107,765,944,320 bytes under its current storage policy. An accepted host must be measured for training, checkpoint I/O and restart. The controller fails if it cannot commit a reserved optimizer step, encounters exhaustion, or exceeds the exposure ceiling. For the full campaign, separately pin the operator's stop criteria and execution authority before training. A paused checkpoint retirement prototype has been tested locally on tiny checkpoints. It does not change the active storage admission policy.
 
 [Incumbent Plan 9 PR](https://github.com/Oleksii-debug/12-6-ai./pull/3237)

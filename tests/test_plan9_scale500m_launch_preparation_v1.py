@@ -447,6 +447,35 @@ def test_native_lock_verifies_exact_git_bytes_in_crlf_checkout(monkeypatch):
         preparation._native_lock_binding(ROOT, sha)
 
 
+def test_external_gpu_profile_plan_has_independent_specs_and_native_floors(monkeypatch):
+    def reject_probe(*_):
+        pytest.fail("arithmetic planning must not open a data release or observe a host")
+
+    monkeypatch.setattr(preparation, "observe_host_resources", reject_probe)
+    monkeypatch.setattr(preparation, "_open_release", reject_probe)
+    plan = preparation.plan_external_gpu_profiles(ROOT)
+    assert plan == preparation.plan_external_gpu_profiles(ROOT)
+    assert plan["profile_preparation_order"] == ["SCALE-500M", "SCALE-1B", "SCALE-2B"]
+    small, medium, large = plan["profiles"]
+    assert [profile["profile"] for profile in (small, medium, large)] == plan["profile_preparation_order"]
+    assert [profile["parameters"] for profile in (small, medium, large)] == [494_204_160, 1_018_983_168, 1_996_654_592]
+    assert plan["resource_evidence"] == "ARITHMETIC_ONLY"
+    assert plan["target_profile_measured"] is plan["campaign_authorized"] is plan["training_executed"] is False
+    assert small["general_baseline_recipe_sha256"] == preparation.ONE_PASS_RECIPE_SHA256
+    assert small["general_baseline_optimizer_updates"] == 2_969
+    assert small["resource_floors"]["minimum_unpruned_checkpoint_volume_bytes"] == 18_107_765_944_320
+    for profile in (medium, large):
+        assert profile["general_baseline_recipe_sha256"] is None
+        assert profile["general_baseline_optimizer_updates"] is None
+        assert profile["campaign_recipe_sha256"] is profile["campaign_data_release_sha256"] is None
+        floors = profile["resource_floors"]
+        assert floors["minimum_unpruned_checkpoint_volume_bytes"] is None
+        assert floors["minimum_optimizer_checkpoint_payload_bytes"] == (
+            floors["minimum_initial_checkpoint_payload_bytes"] + 8 * profile["parameters"]
+        )
+        assert floors["minimum_device_bytes_at_native_save"] == 28 * profile["parameters"]
+
+
 def test_external_gpu_packet_uses_pinned_linux_and_one_replica_without_host_probe(monkeypatch):
     recipe = TrainingRecipe.from_dict(
         json.loads((ROOT / preparation.ONE_PASS_RECIPE_FILE).read_bytes()),
