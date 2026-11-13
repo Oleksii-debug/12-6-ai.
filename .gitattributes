@@ -1,0 +1,2 @@
+# These canonical receipts are pinned by SHA-256, including their line ending.
+evidence/plan9_cyber_candidate/*.json text eol=lf

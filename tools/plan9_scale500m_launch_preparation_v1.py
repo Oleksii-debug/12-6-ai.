@@ -12,6 +12,7 @@ import importlib
 import json
 import platform
 import re
+import stat
 import subprocess
 import sys
 from collections.abc import Iterator, Mapping
@@ -55,6 +56,8 @@ DATA_BUDGET_SCHEMA = "12-6.plan9-scale500m-one-pass-data-budget.v1"
 NATIVE_PREFLIGHT_SCHEMA = "12-6.plan9-scale500m-native-launch-preflight.v1"
 EXTERNAL_GPU_SCHEMA = "12-6.plan9-scale500m-external-gpu-candidate.v1"
 GPU_PROFILE_PLAN_SCHEMA = "12-6.plan9-external-gpu-profile-plan.v1"
+CYBER_GPU_PREPARATION_SCHEMA = "12-6.plan9-cyber-external-gpu-preparation.v1"
+CYBER_EVIDENCE = "evidence/plan9_cyber_candidate"
 EXTERNAL_GPU_PROFILES = ("linux-x86_64", "linux-aarch64")
 LOCK_INDEX = "requirements/locks/index.json"
 LOCK_INDEX_SHA256 = "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
@@ -794,6 +797,128 @@ def plan_external_gpu_profiles(root: Path) -> dict[str, Any]:
     return {**core, "gpu_profile_plan_sha256": _sha(_canonical(core))}
 
 
+def _cyber_linked(path: Path) -> bool:
+    metadata = path.lstat()
+    return path.is_symlink() or bool(getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _audit_cyber_shards(candidate: Path, pack: dict[str, Any]) -> tuple[int, int, int]:
+    shards = pack["shards"]
+    shard_root = candidate / "shards"
+    _require(not _cyber_linked(shard_root) and shard_root.is_dir(),
+             "cyber shard directory is missing or linked")
+    _require({p.name for p in shard_root.iterdir()} ==
+             {f"shard-{i:06d}.json" for i in range(len(shards))}, "cyber shard inventory changed")
+    blocks = targets = 0
+    for i, shard in enumerate(shards):
+        member = f"shards/shard-{i:06d}.json"
+        _require(shard["path"] == member, "cyber shard manifest order changed")
+        _require(not _cyber_linked(candidate / member), f"linked cyber shard: {member}")
+        raw = _read(candidate / member)
+        _require(len(raw) == shard["byte_count"] and _sha(raw) == shard["sha256"],
+                 f"cyber shard bytes changed: {member}")
+        value = json.loads(raw)
+        _require(value["shard_index"] == i and value["block_size"] == pack["block_size"],
+                 f"cyber shard identity changed: {member}")
+        shard_targets = 0
+        for block in value["blocks"]:
+            mask = block["loss_mask"]
+            _require(len(mask) == pack["block_size"] and all(type(bit) is int and bit in (0, 1) for bit in mask),
+                     f"invalid causal mask: {member}")
+            actual = sum(mask)
+            _require(0 < actual == block["target_count"], f"cyber block target count changed: {member}")
+            shard_targets += actual
+        _require(len(value["blocks"]) == shard["block_count"] and shard_targets == shard["target_count"],
+                 f"cyber shard accounting changed: {member}")
+        blocks += len(value["blocks"])
+        targets += shard_targets
+    return len(shards), blocks, targets
+
+
+def prepare_cyber_gpu_profiles(root: Path, candidate: Path) -> dict[str, Any]:
+    """Audit frozen development shards and estimate profile exposure without creating launch authority."""
+    plan = plan_external_gpu_profiles(root)
+    checkout = plan["source_git_sha"]
+    evidence_names = ("corpus", "holdout", "attack_eval")
+    evidence = {
+        key: _exact_checkout_bytes(root, checkout, f"{CYBER_EVIDENCE}/{key}_receipt.json")
+        for key in evidence_names
+    }
+    pins = {key: _sha(raw) for key, raw in evidence.items()}
+    corpus = json.loads(evidence["corpus"])
+    holdout = json.loads(evidence["holdout"])
+    independent = json.loads(evidence["attack_eval"])
+    _require(corpus["scope"] == "SOURCE_VERIFIED_DEVELOPMENT_CANDIDATE"
+             and corpus["public_redistribution_authorized"] is corpus["campaign_authorized"] is False
+             and holdout["candidate_receipt_sha256"] == independent["candidate_receipt_sha256"] == pins["corpus"]
+             and independent["verified_training_sha256"] == corpus["files"]["train.jsonl"]
+             and independent["evaluation_only"] is True and independent["training_uses_evaluation"] is False,
+             "cyber development receipts disagree")
+    _require(not _cyber_linked(candidate) and candidate.is_dir(),
+             "cyber candidate directory is missing or linked")
+    receipt_path = candidate / "receipt.json"
+    _require(not _cyber_linked(receipt_path) and _read(receipt_path) == evidence["corpus"],
+             "cyber candidate receipt changed")
+    for name, expected in corpus["files"].items():
+        if name in {"validation.jsonl", "test.jsonl", "packing-manifest.json"}:
+            continue
+        _require(name in {"train.jsonl", "LICENSE-cisa.txt", "LICENSE-nist.txt", "general-rights/rights-attribution.json"}
+                 or re.fullmatch(r"general-rights/notices/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*/)*"
+                                 r"[A-Za-z0-9_-][A-Za-z0-9_.-]*", name) is not None,
+                 "unexpected cyber evidence member")
+        member = candidate / name
+        for parent in member.relative_to(candidate).parents:
+            path = candidate / parent
+            _require(not _cyber_linked(path), f"linked cyber member: {name}")
+        _require(not _cyber_linked(member) and _sha(_read(member, limit=8_000_000)) == expected,
+                 f"cyber member bytes changed: {name}")
+    packing_path = candidate / "packing-manifest.json"
+    _require(not _cyber_linked(packing_path), "linked cyber packing manifest")
+    pack = _read_pinned_json(packing_path, corpus["files"]["packing-manifest.json"], limit=8_000_000)
+    shards, blocks, targets = _audit_cyber_shards(candidate, pack)
+    _require(blocks == pack["block_count"] == corpus["blocks"]
+             and targets == pack["target_count"] == sum(corpus["causal_targets"].values())
+             and pack["actual_loss_targets_by_stratum"] == corpus["causal_targets"], "cyber target accounting changed")
+    blocks_per_microbatch = 3
+    accumulation = 3
+    blocks_per_update = blocks_per_microbatch * accumulation
+    _require(blocks > 0 and blocks % blocks_per_update == 0, "example schedule does not divide cyber blocks exactly")
+    profiles = []
+    for row in plan["profiles"]:
+        _require(pack["block_size"] <= row["max_context_tokens"], "cyber block exceeds profile context")
+        profiles.append({
+            "profile": row["profile"],
+            "model_spec_sha256": row["model_spec_sha256"],
+            "parameters": row["parameters"],
+            "max_context_tokens": row["max_context_tokens"],
+            "campaign_data_release_sha256": None,
+            "campaign_recipe_sha256": None,
+        })
+    core = {
+        "schema": CYBER_GPU_PREPARATION_SCHEMA,
+        "scope": "DEVELOPMENT_PLANNING_ONLY",
+        "source_git_sha": checkout,
+        "gpu_profile_plan_sha256": plan["gpu_profile_plan_sha256"],
+        "evidence_sha256": pins,
+        "profiles": profiles,
+        "verified_training_inventory": {
+            "shards": shards, "blocks": blocks, "block_size": pack["block_size"],
+            "causal_targets_by_stratum": corpus["causal_targets"], "cyber_share_ppm": corpus["cyber_share_ppm"],
+        },
+        "example_one_pass_arithmetic": {
+            "blocks_per_microbatch": blocks_per_microbatch, "gradient_accumulation_microbatches": accumulation,
+            "microbatches": blocks // blocks_per_microbatch, "optimizer_updates": blocks // blocks_per_update,
+            "unique_causal_targets": targets, "recipe_approved": False,
+        },
+        "evaluation_payload_opened": False,
+        "external_data_transfer_authorized": False,
+        "campaign_authorized": False,
+        "can_start_training": False,
+        "training_executed": False,
+    }
+    return {**core, "preparation_sha256": _sha(_canonical(core))}
+
+
 def build_external_gpu_packet(
     root: Path, release: Path, *, lock_profile: str, run_id: str,
 ) -> dict[str, Any]:
@@ -1040,6 +1165,8 @@ def main() -> int:
                        help="Prepare the general baseline for an external CUDA GPU without measuring a host")
     modes.add_argument("--plan-external-gpu-profiles", action="store_true",
                        help="Print 500M, 1B and 2B GPU floors without opening data or measuring a host")
+    modes.add_argument("--prepare-cyber-gpu-profiles", type=Path,
+                       help="Audit local cyber development shards against the ordered GPU profiles")
     modes.add_argument("--verify-external-gpu-packet", type=Path, help="Reopen a pinned external GPU baseline")
     modes.add_argument("--check-one-pass-budget", action="store_true", help="Check rights and exact data budget")
     parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
@@ -1058,6 +1185,14 @@ def main() -> int:
             )) and args.optimizer_step == 0 and args.device == "cpu",
                      "profile planning accepts --root only")
             sys.stdout.buffer.write(_canonical(plan_external_gpu_profiles(root)))
+            return 0
+        if args.prepare_cyber_gpu_profiles is not None:
+            _require(all(value is None for value in (
+                args.release, args.recipe, args.next_batch_index, args.environment_lock,
+                args.run_id, args.packet_sha256, args.checkpoint_root,
+            )) and args.optimizer_step == 0 and args.device == "cpu",
+                     "cyber profile preparation accepts the candidate path and --root only")
+            sys.stdout.buffer.write(_canonical(prepare_cyber_gpu_profiles(root, args.prepare_cyber_gpu_profiles)))
             return 0
         if args.release is None:
             raise LaunchPreparationDenied("data-bound modes require --release")
