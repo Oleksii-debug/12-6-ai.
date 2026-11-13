@@ -330,9 +330,9 @@ def verify_translation_dataset(directory: Path, *, expected_manifest_sha256: str
 
 def materialize_flores_devtest(
     archive_directory: Path, train_directory: Path, destination: Path, *,
-    expected_train_manifest_sha256: str,
+    expected_train_manifest_sha256: str, all_pairs: bool = False,
 ) -> dict[str, Any]:
-    """Keep a deterministic independent FLORES-200 evaluation sample outside training."""
+    """Keep a deterministic independent FLORES-200 evaluation set outside training."""
     train = load_translation_split(
         train_directory, expected_manifest_sha256=expected_train_manifest_sha256, split="train",
     )
@@ -372,13 +372,15 @@ def materialize_flores_devtest(
             "topic": topic,
         })
     eligible.sort(key=lambda row: _digest(row["pair_id"].encode()))
-    _require(len(eligible) >= 100, "insufficient independent FLORES-200 references")
-    selected = b"".join(map(_canonical, eligible[:100]))
+    minimum = 1 if all_pairs else 100
+    _require(len(eligible) >= minimum, "insufficient independent FLORES-200 references")
+    rows = eligible if all_pairs else eligible[:100]
+    selected = b"".join(map(_canonical, rows))
     notice = (
         "FLORES-200 English–Ukrainian devtest, Meta AI / NLLB Team and the linked source articles.\n"
         "https://github.com/facebookresearch/flores/tree/main/flores200\n"
         "CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/.\n"
-        "Changes: selected 100 unchanged aligned text pairs after exact normalized overlap screening.\n"
+        f"Changes: selected {len(rows)} unchanged aligned text pairs after exact normalized overlap screening.\n"
         "Every row carries the original article URL. This bundle is reserved for evaluation.\n"
     ).encode()
     receipt = {
@@ -391,11 +393,12 @@ def materialize_flores_devtest(
         "tatoeba_train_manifest_sha256": expected_train_manifest_sha256,
         "source_rows": len(english),
         "train_overlap_rows_excluded": overlap,
-        "selection": "first-100-by-sha256-of-original-line-pair-id",
+        "selection": ("all-by-sha256-of-original-line-pair-id" if all_pairs
+                      else "first-100-by-sha256-of-original-line-pair-id"),
         "normalization": "NFKC-casefold-alphanumeric",
         "evaluation_only": True,
         "file": "devtest.jsonl",
-        "rows": 100,
+        "rows": len(rows),
         "sha256": _digest(selected),
         "notice_sha256": _digest(notice),
     }
@@ -421,11 +424,12 @@ def main() -> None:
     verify = modes.add_parser("verify", help="Verify all three splits against an external digest")
     verify.add_argument("--directory", required=True, type=Path)
     verify.add_argument("--manifest-sha256", required=True)
-    evaluation = modes.add_parser("flores-devtest", help="Create an isolated evaluation-only FLORES-200 sample")
+    evaluation = modes.add_parser("flores-devtest", help="Create an isolated evaluation-only FLORES-200 set")
     evaluation.add_argument("--archive-directory", required=True, type=Path)
     evaluation.add_argument("--train-directory", required=True, type=Path)
     evaluation.add_argument("--train-manifest-sha256", required=True)
     evaluation.add_argument("--out", required=True, type=Path)
+    evaluation.add_argument("--all-pairs", action="store_true", help="Keep every pair that passes overlap screening")
     args = parser.parse_args()
     if args.mode == "build":
         result = materialize_translation_dataset(
@@ -437,6 +441,7 @@ def main() -> None:
         result = materialize_flores_devtest(
             args.archive_directory, args.train_directory, args.out,
             expected_train_manifest_sha256=args.train_manifest_sha256,
+            all_pairs=args.all_pairs,
         )
     print(json.dumps(result, sort_keys=True))
 
