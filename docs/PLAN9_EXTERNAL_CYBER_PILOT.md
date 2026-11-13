@@ -47,6 +47,8 @@ execution=(--execute --expected-packet-sha256 "$PACKET_SHA"
   --expected-receipt-sha256 "$INITIAL_RECEIPT_SHA" > paused.json
 "${pilot[@]}" run "${common[@]}" "${execution[@]}" \
   --expected-receipt-sha256 "$PAUSED_RECEIPT_SHA" > completed.json
+"${pilot[@]}" verify-checkpoint "${common[@]}" \
+  --expected-receipt-sha256 "$COMPLETED_RECEIPT_SHA" > checkpoint-proof.json
 ```
 
 This path uses one visible CUDA GPU, selects `cuda:0`, and retains all five

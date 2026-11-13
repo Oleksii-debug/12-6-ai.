@@ -17,7 +17,13 @@ import torch
 from tools import benchmark_plan3_native as native
 from tools import cyber_pilot_stream
 from tools import plan9_scale500m_launch_preparation_v1 as preparation
-from twelve_six.checkpoint import CheckpointIdentity, bind_checkpoint_identity, hash_json
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    bind_checkpoint_identity,
+    hash_json,
+    verify_checkpoint,
+)
+from twelve_six.checkpoint.transaction import checkpoint_transaction
 from twelve_six.model import build_canonical_base
 from twelve_six.training import Trainer, runtime_release
 from twelve_six.training.config import TrainingRecipe
@@ -234,6 +240,25 @@ def execute(root: Path, packet: dict, stream, args) -> dict:
     controller = RunController(args.scratch, packet["run_manifest_sha256"])
     if args.action == "status":
         return asdict(controller.status())
+    if args.action == "verify-checkpoint":
+        receipt = controller.status()
+        if receipt.receipt_sha256 != args.expected_receipt_sha256:
+            raise ValueError("checkpoint verification requires the current durable receipt digest")
+        path = controller._checkpoint_path(controller.namespace, receipt.checkpoint_epoch, receipt.committed_step)
+        manifest = verify_checkpoint(path)
+        transaction = checkpoint_transaction(manifest)
+        expected = packet["checkpoints"][receipt.committed_step]
+        if (
+            manifest["checkpoint_id"] != receipt.checkpoint_id
+            or manifest["identity"]["run_manifest_hash"] != controller.run_sha256
+            or manifest["identity"]["step"] != receipt.committed_step
+            or manifest["identity"]["tokens_seen"] != receipt.tokens_seen
+            or transaction is None or transaction.exposure_cursor != expected
+            or expected["consumed_loss_positions"] != receipt.tokens_seen
+        ):
+            raise ValueError("checkpoint bytes, cursor and durable receipt do not agree")
+        return {"run": asdict(receipt), "manifest_sha256": hash_json(manifest),
+                "cursor": expected, "checkpoint_verified": True}
     if sys.platform != "linux":
         raise ValueError("pilot execution requires Linux on an external CUDA host")
     if not args.execute or args.expected_packet_sha256 != packet["packet_sha256"]:
@@ -285,7 +310,8 @@ def execute(root: Path, packet: dict, stream, args) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("plan", "stage-input", "status", "prepare", "run"), nargs="?", default="plan")
+    parser.add_argument("action", choices=("plan", "stage-input", "status", "verify-checkpoint", "prepare", "run"),
+                        nargs="?", default="plan")
     parser.add_argument("--bundle", required=True, type=Path)
     parser.add_argument("--lock-profile", default="linux-x86_64", choices=preparation.EXTERNAL_GPU_PROFILES)
     parser.add_argument("--stage-dir", type=Path)
