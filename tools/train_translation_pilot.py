@@ -11,7 +11,7 @@ import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -284,7 +284,7 @@ def _new_manifest(args: argparse.Namespace, train_rows: Sequence[dict]) -> dict:
         else _fit_tokenizer(train_rows, args.vocab_size, args.seed)
     )
     spec = ModelSpec(
-        schema_version=1, vocab_size=tokenizer.vocab_size, max_seq_len=args.context,
+        schema_version=1, vocab_size=tokenizer.vocab_size, max_seq_len=args.context or 96,
         d_model=args.width, n_layers=args.layers, n_heads=4, n_kv_heads=2,
         head_dim=args.width // 4, d_ff=((args.width * 8 + 47) // 48) * 16,
         rope_rotary_dim=args.width // 4,
@@ -326,10 +326,23 @@ def _continued_manifest(args: argparse.Namespace) -> dict:
     head = detect_git_sha(Path(__file__).resolve().parents[1])
     if head is None:
         raise ValueError("translation training requires a Git checkout")
+    parent_spec = ModelSpec.from_dict(parent["model_spec"])
+    context = args.context if args.context is not None else parent_spec.max_seq_len
+    if context < parent_spec.max_seq_len:
+        raise ValueError("continuation context must preserve or extend the parent context")
+    spec = replace(parent_spec, max_seq_len=context)
+    parent_initialization = BaseInitManifest.from_dict(parent["initialization"])
+    if parent_initialization.model_spec_sha256 != parent_spec.identity_sha256():
+        raise ValueError("parent initialization does not match its recorded model spec")
+    initialization = replace(
+        parent_initialization, model_spec_sha256=spec.identity_sha256(),
+    )
     return {
         **parent,
         "git_sha": head,
         "data_sha256": args.data_sha256,
+        "model_spec": spec.to_dict(),
+        "initialization": initialization.to_dict(),
         "training": asdict(config),
         "batch_size": args.batch_size,
         "eval_pairs": args.eval_pairs,
@@ -366,6 +379,8 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
     )
     if manifest["schema"] != SCHEMA or manifest["data_sha256"] != args.data_sha256:
         raise ValueError("run and dataset identities differ")
+    if args.resume is not None and args.context not in (None, manifest["model_spec"]["max_seq_len"]):
+        raise ValueError("resume context differs from the recorded training run")
     torch.set_num_threads(manifest["threads"])
     tokenizer = _tokenizer(manifest)
     context, batch_size = manifest["model_spec"]["max_seq_len"], manifest["batch_size"]
@@ -386,6 +401,10 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
         if hash_json(parent) != manifest["weight_parent"]["run_manifest_sha256"]:
             raise ValueError("parent translation run changed before checkpoint restore")
         model = _restore_model(args.parent_run, args.parent_step, parent, args.parent_checkpoint_id)
+        if manifest["model_spec"] != parent["model_spec"]:
+            extended = _model(manifest)
+            extended.load_state_dict(model.state_dict(), strict=True)
+            model = extended
     else:
         model = _model(manifest)
     trainer = Trainer(model, config, device="cpu")
@@ -495,7 +514,7 @@ def main() -> None:
     fit.add_argument("--checkpoint-every", type=int, default=300)
     fit.add_argument("--batch-size", type=int, default=16)
     fit.add_argument("--eval-pairs", type=int, default=48)
-    fit.add_argument("--context", type=int, default=96)
+    fit.add_argument("--context", type=int, help="New context limit (96 from scratch, inherited for continuation)")
     fit.add_argument("--vocab-size", type=int, default=2048)
     fit.add_argument("--tokenizer-from", type=Path, help="Reuse the tokenizer from a recorded training run")
     fit.add_argument("--parent-run", type=Path, help="Start a new optimizer phase from verified weights")
@@ -537,6 +556,8 @@ def main() -> None:
             parser.error("batch, layer, evaluation, thread and window counts must be positive")
         if args.width < 8 or args.width % 8:
             parser.error("model width must be a positive multiple of eight")
+        if args.context is not None and args.context < 1:
+            parser.error("context must be positive")
         parent = (args.parent_run, args.parent_step, args.parent_checkpoint_id)
         if any(value is not None for value in parent) and (
             any(value is None for value in parent) or args.resume is not None
