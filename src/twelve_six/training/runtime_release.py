@@ -17,6 +17,12 @@ from . import loss as training_loss
 
 RELEASE_PATH = "configs/plan3/training_runtime_release_v1.json"
 RELEASE_SHA256 = "12002302e78dd32593a682c06e9677ef2b45150b19dad5b9c64b737fc8e5234e"
+RELEASE_V2_PATH = "configs/plan3/training_runtime_release_v2.json"
+RELEASE_V2_SHA256 = "4253e27609b925f5764ad0285a48fabb3d4751ad231d8f48227e99c648f83856"
+_RELEASES = {
+    1: (RELEASE_PATH, RELEASE_SHA256),
+    2: (RELEASE_V2_PATH, RELEASE_V2_SHA256),
+}
 
 
 class TrainingRuntimeReleaseError(ValueError):
@@ -30,25 +36,33 @@ def _read_lf(root: Path, relative: str) -> bytes:
     return path.read_bytes().replace(b"\r\n", b"\n")
 
 
-def verify_runtime_release(root: Path) -> dict[str, Any]:
-    """Verify the fixed release descriptor and its incumbent source files."""
-    root = root.resolve(strict=True)
-    raw = _read_lf(root, RELEASE_PATH)
-    if hashlib.sha256(raw).hexdigest() != RELEASE_SHA256:
+def _verify_runtime_release(root: Path, release_version: int) -> tuple[dict[str, Any], str]:
+    if type(release_version) is not int or release_version not in _RELEASES:
+        raise TrainingRuntimeReleaseError("unsupported training runtime release version")
+    release_path, release_sha256 = _RELEASES[release_version]
+    raw = _read_lf(root, release_path)
+    if hashlib.sha256(raw).hexdigest() != release_sha256:
         raise TrainingRuntimeReleaseError("training runtime release descriptor changed")
     release = json.loads(raw)
     for relative, expected in release["runtime_source_sha256_lf"].items():
         if hashlib.sha256(_read_lf(root, relative)).hexdigest() != expected:
             raise TrainingRuntimeReleaseError(f"release source changed: {relative}")
+    return release, release_sha256
+
+
+def verify_runtime_release(root: Path, *, release_version: int = 1) -> dict[str, Any]:
+    """Verify the fixed release descriptor and its incumbent source files."""
+    release, _ = _verify_runtime_release(root.resolve(strict=True), release_version)
     return release
 
 
-def verify_plan2_handoff(root: Path, physical_release: Path) -> dict[str, Any]:
+def verify_plan2_handoff(root: Path, physical_release: Path, *, release_version: int = 1) -> dict[str, Any]:
     """Reopen the accepted local data release and verify the aligned loss interface."""
     from tools import plan2_s18_physical_release_v1 as reader
 
     root = root.resolve(strict=True)
-    handoff = verify_runtime_release(root)["plan2_handoff"]
+    release, release_sha256 = _verify_runtime_release(root, release_version)
+    handoff = release["plan2_handoff"]
     if (
         Path(__file__).resolve() != (root / "src/twelve_six/training/runtime_release.py").resolve()
         or Path(training_loss.__file__).resolve()
@@ -88,7 +102,7 @@ def verify_plan2_handoff(root: Path, physical_release: Path) -> dict[str, Any]:
     if not math.isclose(loss, expected, rel_tol=0, abs_tol=2e-12):
         raise TrainingRuntimeReleaseError("Plan 2 first batch failed the aligned loss check")
     result = {
-        "runtime_release_sha256": RELEASE_SHA256,
+        "runtime_release_sha256": release_sha256,
         "plan2_handoff": handoff,
         "aligned_loss": loss,
         "optimizer_steps_executed": 0,
@@ -101,11 +115,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--physical-release", type=Path)
+    parser.add_argument("--release-version", type=int, choices=tuple(_RELEASES), default=1)
     args = parser.parse_args()
     if args.physical_release is None:
-        result = verify_runtime_release(args.root)
+        result = verify_runtime_release(args.root, release_version=args.release_version)
     else:
-        result = verify_plan2_handoff(args.root, args.physical_release)
+        result = verify_plan2_handoff(args.root, args.physical_release, release_version=args.release_version)
     print(json.dumps(result, sort_keys=True))
 
 

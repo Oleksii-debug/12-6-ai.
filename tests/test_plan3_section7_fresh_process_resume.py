@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import random
 import shutil
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from torch import nn
 
 from twelve_six.checkpoint import CheckpointError, hash_json, verify_checkpoint
 from twelve_six.checkpoint.transaction import checkpoint_transaction
-from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.training import Trainer, TrainerConfig, run_control
 from twelve_six.training.run_control import RunController, RunPhase
 
 
@@ -331,3 +332,59 @@ def test_checkpoint_dependency_failure_preserves_trainer_and_authoritative_recei
     assert fresh.trajectory == []
     torch.testing.assert_close(fresh.model.embedding.weight, original, atol=0, rtol=0)
     assert controller.status() == paused
+
+
+@pytest.mark.parametrize(
+    ("damage", "error"),
+    [("missing", "checkpoint directory does not exist"), ("corrupt", "size mismatch")],
+)
+def test_checkpoint_failure_reports_operator_path_from_locked_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, damage: str, error: str,
+) -> None:
+    source = tmp_path / "source.json"
+    identity = _fixture(source)
+    controller, receipt = _prepare(tmp_path / "state", source, identity)
+    operator_path = _checkpoint_path(controller, epoch=0, step=0)
+    if damage == "missing":
+        operator_path.rename(operator_path.with_name("unavailable"))
+    else:
+        (operator_path / "weights.safetensors").write_bytes(b"corrupt")
+
+    locked_root = tmp_path / "locked-root"
+    if os.name == "nt":
+        # Model the POSIX lock's alternate pathname on Windows.
+        controller.namespace.rename(locked_root)
+
+        @contextmanager
+        def lock(namespace: Path):
+            assert namespace == controller.namespace
+            yield locked_root
+
+        monkeypatch.setattr(run_control, "exclusive_recovery_lock", lock)
+
+    def unexpected_batch(_receipt):
+        pytest.fail("recovery failure must precede opening the batch source")
+
+    def unexpected_cursor(_):
+        pytest.fail("recovery failure must precede accessing the exposure cursor")
+
+    fresh = RecordingTrainer(19)
+    with pytest.raises(CheckpointError, match=error) as failure:
+        controller.run(
+            fresh,
+            identity,
+            unexpected_batch,
+            expected_receipt_sha256=receipt.receipt_sha256,
+            read_exposure_cursor=unexpected_cursor,
+            restore_exposure_cursor=unexpected_cursor,
+        )
+    detail = "\n".join(failure.value.__notes__)
+    assert f"requires checkpoint {receipt.checkpoint_id} at {operator_path}" in detail
+    assert str(locked_root) not in detail
+    assert "/proc/self/fd/" not in detail
+    assert "/dev/fd/" not in detail
+    assert fresh.optimizer_step == 0
+    assert fresh.trajectory == []
+    if os.name == "nt":
+        locked_root.rename(controller.namespace)
+    assert controller.status() == receipt
