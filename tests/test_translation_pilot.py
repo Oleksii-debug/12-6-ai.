@@ -33,6 +33,28 @@ def test_resume_schedule_handles_partial_batch_and_epoch_boundary():
         assert [next(resumed) for _ in range(8 - step)] == expected[step:]
 
 
+def test_length_grouping_reduces_padding_and_preserves_resume_order():
+    examples = [(list(range(n)), n) for n in range(4, 57)]
+    batch_size = 8
+    batches_per_epoch = 7
+    plain = pilot._batches(examples, batch_size, seed=8, start=0)
+    grouped = pilot._batches(examples, batch_size, seed=8, start=0, length_window_batches=8)
+    original = [next(plain) for _ in range(batches_per_epoch)]
+    expected = [next(grouped) for _ in range(batches_per_epoch * 2)]
+    for start in (0, batches_per_epoch):
+        epoch = expected[start:start + batches_per_epoch]
+        assert sorted(item[1] for batch in epoch for item in batch) == list(range(4, 57))
+        assert len(epoch[-1]) == 5
+    plain_slots = sum(len(batch) * max(item[1] for item in batch) for batch in original)
+    grouped_slots = sum(
+        len(batch) * max(item[1] for item in batch) for batch in expected[:batches_per_epoch]
+    )
+    assert grouped_slots < plain_slots
+    for step in (0, 3, 6, 7, 9):
+        replayed = pilot._batches(examples, batch_size, seed=8, start=step, length_window_batches=8)
+        assert [next(replayed) for _ in range(len(expected) - step)] == expected[step:]
+
+
 def test_generation_uses_source_only_and_trims_eos():
     tokenizer = ByteBPE32k([], required_vocab_size=260)
     expected = pilot.prompt_ids(tokenizer, "uk-en", "Так.")
