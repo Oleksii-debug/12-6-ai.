@@ -113,3 +113,30 @@ def test_batched_evaluation_groups_equal_prompts_and_preserves_output():
         assert lookup(example.direction, example.source) == pilot.translate(
             model, tokenizer, example.direction, example.source, 8,
         )
+
+
+def test_continued_manifest_pins_weight_parent_and_new_schedule(tmp_path, monkeypatch):
+    parent = {
+        "schema": pilot.SCHEMA, "git_sha": "c" * 40, "data_sha256": "a" * 64,
+        "tokenizer": {"version": "frozen"}, "model_spec": {"vocab_size": 2048},
+        "training": {"seed": 1701},
+    }
+    (tmp_path / "run.json").write_text(pilot.json.dumps(parent), encoding="utf-8")
+    monkeypatch.setattr(pilot, "detect_git_sha", lambda _: "d" * 40)
+    args = SimpleNamespace(
+        parent_run=tmp_path, parent_step=8400, parent_checkpoint_id="b" * 64,
+        lr=0.0003, steps=2400, seed=1701, shuffle_seed=2001, data_sha256="a" * 64,
+        batch_size=24, eval_pairs=100, threads=3, length_window_batches=16,
+    )
+    continued = pilot._continued_manifest(args)
+    assert continued["weight_parent"] == {
+        "run_manifest_sha256": pilot.hash_json(parent), "checkpoint_id": "b" * 64, "step": 8400,
+    }
+    assert continued["model_spec"] == parent["model_spec"]
+    assert continued["tokenizer"] == parent["tokenizer"]
+    assert continued["training"]["learning_rate"] == 0.0003
+    assert continued["shuffle_seed"] == 2001
+    assert continued["training"]["seed"] == 1701
+    args.parent_checkpoint_id = "unverified"
+    with pytest.raises(ValueError, match="earlier translation run"):
+        pilot._continued_manifest(args)

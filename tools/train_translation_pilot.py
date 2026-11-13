@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
@@ -272,6 +273,8 @@ def _sample(rows: Sequence[dict], count: int, seed: int) -> list[dict]:
 
 
 def _new_manifest(args: argparse.Namespace, train_rows: Sequence[dict]) -> dict:
+    if args.parent_run is not None:
+        return _continued_manifest(args)
     tokenizer_source = (
         json.loads(args.tokenizer_from.read_bytes()) if args.tokenizer_from is not None else None
     )
@@ -305,6 +308,39 @@ def _new_manifest(args: argparse.Namespace, train_rows: Sequence[dict]) -> dict:
         ),
         "eval_pairs": args.eval_pairs, "threads": args.threads,
         "length_window_batches": args.length_window_batches,
+        "shuffle_seed": args.shuffle_seed if args.shuffle_seed is not None else args.seed,
+    }
+
+
+def _continued_manifest(args: argparse.Namespace) -> dict:
+    parent = json.loads((args.parent_run / "run.json").read_bytes())
+    if (
+        parent["schema"] != SCHEMA or args.parent_step < 1
+        or re.fullmatch(r"[0-9a-f]{64}", args.parent_checkpoint_id) is None
+    ):
+        raise ValueError("a valid earlier translation run and positive checkpoint step are required")
+    config = TrainerConfig(
+        learning_rate=args.lr, max_steps=args.steps, seed=args.seed,
+        scheduler="cosine", warmup_steps=min(40, args.steps // 10),
+    )
+    head = detect_git_sha(Path(__file__).resolve().parents[1])
+    if head is None:
+        raise ValueError("translation training requires a Git checkout")
+    return {
+        **parent,
+        "git_sha": head,
+        "data_sha256": args.data_sha256,
+        "training": asdict(config),
+        "batch_size": args.batch_size,
+        "eval_pairs": args.eval_pairs,
+        "threads": args.threads,
+        "length_window_batches": args.length_window_batches,
+        "shuffle_seed": args.shuffle_seed if args.shuffle_seed is not None else args.seed,
+        "weight_parent": {
+            "run_manifest_sha256": hash_json(parent),
+            "checkpoint_id": args.parent_checkpoint_id,
+            "step": args.parent_step,
+        },
     }
 
 
@@ -345,7 +381,13 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
     ]
     if not encoded or not validation:
         raise ValueError("pilot needs nonempty train and validation sets within context")
-    model = _model(manifest)
+    if args.resume is None and args.parent_run is not None:
+        parent = json.loads((args.parent_run / "run.json").read_bytes())
+        if hash_json(parent) != manifest["weight_parent"]["run_manifest_sha256"]:
+            raise ValueError("parent translation run changed before checkpoint restore")
+        model = _restore_model(args.parent_run, args.parent_step, parent, args.parent_checkpoint_id)
+    else:
+        model = _model(manifest)
     trainer = Trainer(model, config, device="cpu")
     if args.resume is None:
         _write_json(root / "initial.json", {"validation_loss": _loss(model, validation, tokenizer.pad_id, batch_size)})
@@ -357,7 +399,7 @@ def _train_locked(args: argparse.Namespace, root: Path) -> None:
         )
     model.train()
     stream = _batches(
-        encoded, batch_size, config.seed, trainer.optimizer_step,
+        encoded, batch_size, manifest.get("shuffle_seed", config.seed), trainer.optimizer_step,
         manifest.get("length_window_batches", 1),
     )
     checkpoint_id = None
@@ -456,8 +498,12 @@ def main() -> None:
     fit.add_argument("--context", type=int, default=96)
     fit.add_argument("--vocab-size", type=int, default=2048)
     fit.add_argument("--tokenizer-from", type=Path, help="Reuse the tokenizer from a recorded training run")
+    fit.add_argument("--parent-run", type=Path, help="Start a new optimizer phase from verified weights")
+    fit.add_argument("--parent-step", type=int)
+    fit.add_argument("--parent-checkpoint-id")
     fit.add_argument("--threads", type=int, default=3)
     fit.add_argument("--seed", type=int, default=1701)
+    fit.add_argument("--shuffle-seed", type=int)
     fit.add_argument("--lr", type=float, default=0.001)
     fit.add_argument("--width", type=int, default=96)
     fit.add_argument("--layers", type=int, default=4)
@@ -491,6 +537,12 @@ def main() -> None:
             parser.error("batch, layer, evaluation, thread and window counts must be positive")
         if args.width < 8 or args.width % 8:
             parser.error("model width must be a positive multiple of eight")
+        parent = (args.parent_run, args.parent_step, args.parent_checkpoint_id)
+        if any(value is not None for value in parent) and (
+            any(value is None for value in parent) or args.resume is not None
+            or args.tokenizer_from is not None
+        ):
+            parser.error("a fresh continuation requires all three parent options and uses the parent tokenizer")
         train(args)
         return
     manifest = json.loads((args.run / "run.json").read_bytes())
