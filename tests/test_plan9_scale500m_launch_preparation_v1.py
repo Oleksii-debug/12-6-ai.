@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -377,6 +379,48 @@ def test_cli_candidate_checkout_rejects_runtime_drift(monkeypatch):
 
     monkeypatch.setattr(preparation, "_read", read_changed)
     with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
+        preparation._candidate_checkout_sha(ROOT)
+
+
+def test_candidate_source_rejects_preloaded_foreign_dependency_in_a_fresh_process(tmp_path):
+    relative = preparation.RUNTIME_PATHS["dependency_lock_verifier"]
+    foreign = tmp_path / "dependency_lock.py"
+    foreign.write_bytes((ROOT / relative).read_bytes())
+    script = """
+import importlib.util
+import sys
+from pathlib import Path
+
+name = "twelve_six.integration.dependency_lock"
+spec = importlib.util.spec_from_file_location(name, sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.modules[name] = module
+spec.loader.exec_module(module)
+from tools import plan9_scale500m_launch_preparation_v1 as preparation
+
+assert preparation.dependency_lock is module
+try:
+    preparation._candidate_checkout_sha(Path.cwd())
+except preparation.LaunchPreparationDenied as exc:
+    assert "loaded source differs from candidate checkout: " + name == str(exc)
+else:
+    raise AssertionError("foreign dependency was accepted")
+"""
+    subprocess.run([sys.executable, "-c", script, str(foreign)], cwd=ROOT, check=True)
+
+
+def test_candidate_source_checks_transitive_physical_release_helpers(monkeypatch):
+    read = preparation._read
+    helper = ROOT / "tools/plan2_physical_materialization_v1.py"
+
+    def read_changed(path, limit=2_000_000):
+        raw = read(path, limit)
+        return raw + b"# transitive source changed\n" if path == helper else raw
+
+    monkeypatch.setattr(preparation, "_read", read_changed)
+    with pytest.raises(
+        preparation.LaunchPreparationDenied, match=r"candidate source differs.*plan2_physical_materialization",
+    ):
         preparation._candidate_checkout_sha(ROOT)
 
 

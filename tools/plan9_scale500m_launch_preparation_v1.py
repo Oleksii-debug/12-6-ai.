@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import platform
+import re
 import subprocess
 import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import FunctionType, ModuleType
 from typing import TYPE_CHECKING, Any
 
 from twelve_six.checkpoint import (
@@ -68,6 +71,7 @@ RUNTIME_PATHS = {
     "release_integrity": "tools/plan2_s18_release_integrity_v1.py",
     "reference_inference": "tools/inference_runtime.py",
 }
+_FIRST_PARTY_MODULE = re.compile(r"^(?:tools|twelve_six)(?:\.|$)")
 
 
 class LaunchPreparationDenied(ValueError):
@@ -113,9 +117,100 @@ def _candidate_checkout_sha(root: Path) -> str:
         raise LaunchPreparationDenied("a Git checkout is required to bind the candidate source")
     _require(Path(__file__).resolve() == (root / PACKET_TOOL_FILE).resolve(),
              "run the packet tool from the candidate checkout")
-    for path in (PROFILE_FILE, PACKET_TOOL_FILE, *RUNTIME_PATHS.values()):
-        _exact_checkout_bytes(root, sha, path)
+    dependencies = set(sys.modules) & {
+        "tools", "twelve_six", "twelve_six.checkpoint", "twelve_six.checkpoint.run_binding",
+        "twelve_six.integration.dependency_lock", "twelve_six.model",
+        "twelve_six.training.config", "twelve_six.training.runtime_release",
+        "twelve_six.training.resource_envelope",
+    }
+    _loaded_checkout_paths(root, dependencies)
+    # The release reader imports the physical consumer lazily when iteration starts.
+    for module in ("tools.plan2_s18_physical_release_v1", "tools.plan2_s18_plan9_consumer_v1"):
+        importlib.import_module(module)
+        dependencies.add(module)
+
+    _verify_loaded_checkout_sources(
+        root, sha, dependencies,
+        required_paths={PROFILE_FILE, PACKET_TOOL_FILE, *RUNTIME_PATHS.values()},
+    )
     return sha
+
+
+def _loaded_checkout_paths(root: Path, dependencies: set[str]) -> set[str]:
+    """Require first-party Python imports to resolve within this checkout."""
+    root = root.resolve()
+    paths = set()
+    checked = set()
+    pending = sorted(dependencies)
+    while pending:
+        name = pending.pop()
+        if name in checked:
+            continue
+        checked.add(name)
+        module = sys.modules[name]
+        package = name.partition(".")[0]
+        relative = ("" if package == "tools" else "src/") + name.replace(".", "/")
+        parent = name.rpartition(".")[0]
+        if parent and parent in sys.modules:
+            pending.append(parent)
+        origin = getattr(module, "__file__", None)
+        locations = getattr(module, "__path__", None)
+        if locations is not None:
+            _require({Path(path).resolve() for path in locations} == {root / relative},
+                     f"loaded package path differs from candidate checkout: {name}")
+        if origin is None:
+            _require(locations is not None,
+                     f"loaded namespace differs from candidate checkout: {name}")
+            continue
+        expected = relative + ("/__init__.py" if locations is not None else ".py")
+        spec = getattr(module, "__spec__", None)
+        _require(Path(origin).resolve() == root / expected,
+                 f"loaded source differs from candidate checkout: {name}")
+        _require(spec is not None and spec.origin is not None and Path(spec.origin).resolve() == root / expected,
+                 f"loaded source specification differs from candidate checkout: {name}")
+        paths.add(expected)
+        for value in tuple(vars(module).values()):
+            if isinstance(value, ModuleType):
+                dependency = value.__name__
+                # Import machinery attaches unrelated child modules to packages.
+                if locations is not None and dependency.startswith(name + "."):
+                    continue
+            elif isinstance(value, (FunctionType, type)):
+                dependency = getattr(value, "__module__", "") or ""
+            else:
+                continue
+            if _FIRST_PARTY_MODULE.match(dependency) and dependency in sys.modules:
+                pending.append(dependency)
+    return paths
+
+
+def _verify_loaded_checkout_sources(root: Path, sha: str, dependencies: set[str], *, required_paths: set[str]) -> None:
+    paths = _loaded_checkout_paths(root, dependencies) | required_paths
+    try:
+        records = subprocess.check_output(
+            ["git", "ls-tree", "-r", "-z", sha, "--", *sorted(paths)],
+            cwd=root, stderr=subprocess.PIPE, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaunchPreparationDenied("cannot read candidate source identities from Git HEAD") from exc
+    blobs = {}
+    for record in records.split(b"\0"):
+        if record:
+            metadata, path = record.split(b"\t", 1)
+            mode, kind, digest = metadata.decode("ascii").split()
+            if kind == "blob" and mode in {"100644", "100755"}:
+                blobs[path.decode("utf-8")] = digest
+    algorithm = "sha1" if len(sha) == 40 else "sha256"
+    for path in sorted(paths):
+        _require(path in blobs, f"candidate source not present at Git HEAD: {path}")
+        raw = _read(root / path)
+        # Git identifies a blob by its header and bytes. Accept a CRLF checkout
+        # of the same LF blob while retaining the committed byte identity.
+        matches = any(
+            hashlib.new(algorithm, f"blob {len(data)}\0".encode("ascii") + data).hexdigest() == blobs[path]
+            for data in (raw, raw.replace(b"\r\n", b"\n"))
+        )
+        _require(matches, f"candidate source differs from Git HEAD: {path}")
 
 
 def _exact_checkout_bytes(root: Path, sha: str, path: str) -> bytes:
