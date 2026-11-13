@@ -15,7 +15,8 @@ permissions:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The full suite can exceed 30 minutes on standard runners.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
