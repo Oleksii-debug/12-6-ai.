@@ -80,3 +80,36 @@ def test_renamed_valid_checkpoint_is_refused_before_model_load(tmp_path, monkeyp
     monkeypatch.setattr(pilot, "prepare_checkpoint_load", lambda _: verified)
     with pytest.raises(ValueError, match="differs from the requested step"):
         pilot._restore_model(tmp_path, 2, {})
+
+
+def test_batched_evaluation_groups_equal_prompts_and_preserves_output():
+    tokenizer = ByteBPE32k([], required_vocab_size=260)
+    examples = [
+        TranslationExample("a", "en-uk", "Go.", "Іди."),
+        TranslationExample("b", "en-uk", "Hi.", "Вітаю."),
+        TranslationExample("c", "en-uk", "Go.", "Ідіть."),
+        TranslationExample("d", "uk-en", "Йди.", "Go."),
+    ]
+
+    class Model:
+        def __init__(self):
+            self.spec = SimpleNamespace(max_seq_len=64)
+            self.calls = []
+
+        def eval(self):
+            return self
+
+        def generate(self, prompt, *, max_new_tokens, do_sample):
+            assert not do_sample
+            self.calls.append(tuple(prompt.shape))
+            first_source_byte = prompt[:, len("en-uk\n") + 1:len("en-uk\n") + 2]
+            eos = torch.full_like(first_source_byte, tokenizer.eos_id)
+            return torch.cat((prompt, first_source_byte, eos), dim=1)
+
+    model = Model()
+    lookup = pilot._translation_lookup(model, tokenizer, examples, 8, 4)
+    assert sorted(batch for batch, _ in model.calls) == [1, 2]
+    for example in examples:
+        assert lookup(example.direction, example.source) == pilot.translate(
+            model, tokenizer, example.direction, example.source, 8,
+        )
