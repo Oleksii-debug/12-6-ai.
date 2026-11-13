@@ -1,4 +1,4 @@
-# 15 AUTOPULSE WORK CHATS — Bootstrap Index
+# Autopulse development lanes
 
 Canonical central control: Issue #1.
 
@@ -19,8 +19,6 @@ Permanent lanes:
 - R01 #15 — Research / Scaling Architect
 - C01 #16 — Compute / Run Controller
 
-Full bootstrap prompts are stored in Google Drive folder `18_BOOTSTRAP_PROMPTS_15_CHATS` and in the v0.2 bootstrap release package maintained by the Coordinator.
-
-Universal pulse after one-time bootstrap: `СТАРТ. AUTOPULSE. Продовжуй.` Any equivalent clear START/CONTINUE/NEXT message should trigger live recovery and work.
+The coordinator maintains the v0.2 startup package in the project’s Drive. At each start or resume, check the current repository state before taking an assignment.
 
 Workers must read docs/AUTOPULSE_CONTROL.md and docs/PROJECT_INSTRUCTIONS.md plus their permanent lane issue before starting implementation.

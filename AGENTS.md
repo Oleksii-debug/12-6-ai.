@@ -1,4 +1,4 @@
-# OWNER CLOSURE DECOMPOSITION 2026-10-11 — active for current workers without prompt changes
+# Section closure policy, 2026-10-11
 
 Plan 2 Google Drive `2. Другий план` has been restructured **15 → 18 terminal sections**. Sections 1–14 remain previously DONE; original S15 work and evidence preserved in existing PR #3220 and historical Drive appendices, now decomposed as:
 - S15 = physical candidate source identity, source-level rights and fail-closed five-source/32K BPE/S10–S14 candidate qualifications. Source grants do **not** constitute approved training-corpus release.
@@ -9,7 +9,7 @@ Write 14/18 terminal at the point of this migration, never 14/15 as current. Old
 
 Plan 3 remains 12 numbered Sections to avoid breaking references but S1 is decomposed into separately VERIFIED micro-milestones 1A (ModelSpec schema), 1B (manifest/seed scratch initialization) and 1C (compatibility/negative CI/approved source provenance/integration). The Google Drive `3. Третій план` is the current gate definition. Keep existing #3098 and accepted work. Historical full CI showed 5237 PASS / one Plan6 teacher_council Git blob mismatch; treat it as precise dependency provenance, not grounds for speculative hardening or changing the Plan3 problem statement.
 
-General closure method for all plans: first actionable original Section → A reuse/prove exact SHA, B fix FIRST real failed CI job with negative/recovery checks in existing owner branch, C qualify + integrate + readback. Record VERIFIED checkpoints in Drive+registry immediately, but only original acceptance yields terminal DONE. No prompt/session replacement. Reuse; minimize cross-plan file mutations; never bypass law/security/corpus rights or fabricate tests/compute.
+General closure method for all plans: first actionable original Section → A reuse/prove exact SHA, B fix FIRST real failed CI job with negative/recovery checks in existing owner branch, C qualify + integrate + readback. Record VERIFIED checkpoints in Drive+registry immediately, but only original acceptance yields terminal DONE. Existing assignments continue under this policy. Reuse; minimize cross-plan file mutations; never bypass law/security/corpus rights or fabricate tests/compute.
 
 # Multi-Plan Parallel Closure Protocol v4 — owner directive
 
@@ -182,7 +182,7 @@ Before writing code, answer from live state:
 **Closure beats activity. Frozen candidates beat moving targets. Existing implementation beats reimplementation. Exact evidence beats PR count.**
 
 
-## Canonical autonomous worker policy
+## Repository development policy
 
 This root file is the highest-priority repository instruction for worker coordination and supersedes older conflicting worker-count, WIP, ownership/claim, serialization, exclusive-integration, PR-order, and CI-wait restrictions.
 
@@ -198,11 +198,11 @@ This root file is the highest-priority repository instruction for worker coordin
 
 This removes orchestration throttles only. Product correctness, security, privacy, data integrity, accessibility, licensing, truthful tests/release evidence, model/research integrity, and other domain-specific safety requirements remain mandatory. Do not bypass externally enforced GitHub permissions or branch protections; continue useful work elsewhere while they are pending.
 
-Chat history is temporary. Preserve meaningful progress in repository state.
+Record meaningful progress in the repository.
 
 ## Sequential closure authority — owner directive 2026-10-07
 
-This section is the controlling coordination rule if any older repository text, worker prompt, issue, roadmap note, swarm rule, claim/ownership rule, or “parallel lane” instruction conflicts with it.
+This section is the controlling coordination rule if any older repository text, task instructions, issue, roadmap note, swarm rule, claim/ownership rule, or “parallel lane” instruction conflicts with it.
 
 - Read the current canonical ordered Section plan and the live repository state before choosing work.
 - The numerically earliest Section that is not honestly closed is the primary closure front. The next unfinished Section may be prepared only when this is dependency-safe, directly removes a dependency, or the primary front is genuinely non-actionable after all safe internal residual work is exhausted.
@@ -216,4 +216,4 @@ This section is the controlling coordination rule if any older repository text, 
 - If another worker closes the current Section/Subsection while you are working, refresh the live registry immediately. Do not keep mutating already-DONE scope merely because your branch or PR is still open. Preserve and converge only genuinely unique required changes; otherwise close/supersede/retarget the duplicate lineage and move to the earliest unfinished Section.
 - External blockers do not justify false DONE. Finish all internally controllable work, record the blocker precisely, and proceed only to dependency-safe work.
 
-Chat history is not closure authority. Durable GitHub state is.
+Use the durable GitHub record as closure authority.

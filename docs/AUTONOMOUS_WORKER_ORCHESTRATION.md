@@ -6,7 +6,7 @@ Scheduled work, extended integration and periodic technical audits use the same 
 
 Five development lanes share responsibility for periodic coordination.
 
-## Core rule: stable prompts, live routing
+## Stable configuration and current routing
 
 Keep recurring job configuration stable and derive specific assignments from the current routing record.
 
@@ -18,7 +18,7 @@ Recommended live authority:
 - live GitHub main/PR/issues/CI/ownership — operational truth;
 - Drive mirror/report — owner-readable summary and cross-account continuity.
 
-If routing conflicts with newer live GitHub state, live GitHub wins. If routing is stale, workers must not continue obsolete work merely because an old prompt named it.
+If routing conflicts with newer live GitHub state, live GitHub wins. If routing is stale, verify the current assignment before continuing.
 
 ## No dedicated 20% coordinator tax
 
@@ -65,7 +65,7 @@ Every scheduled worker run should:
 7. persist durable progress;
 8. update its short lane checkpoint for the next run.
 
-Workers should not wait for a prompt rewrite when the live project has moved.
+Update assignments from current project state.
 
 ## Ownership leases
 

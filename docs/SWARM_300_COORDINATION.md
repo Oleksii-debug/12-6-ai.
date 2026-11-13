@@ -8,15 +8,15 @@ Machine collision guard owner: PR #575 or its terminal successor; it is not assu
 
 ## Owner launch entrypoint
 
-For repetitive manual launching, the preferred copy-paste entrypoint is `docs/SWARM_BOOTSTRAP_PROMPT.md` rather than copying this entire protocol or the full worker prompt into every chat.
+Use `docs/SWARM_BOOTSTRAP_PROMPT.md` as the startup checklist.
 
-The bootstrap is intentionally short. Each new chat must read the current canonical `docs/UNIVERSAL_SWARM_PROMPT.md`, this coordination protocol, the machine-readable swarm protocol and issue #723 from live `main` before doing work. If those authorities conflict or cannot be read, the bootstrap forbids GitHub mutations and fails closed.
+Before starting, read the current handbook in `docs/UNIVERSAL_SWARM_PROMPT.md`, this coordination protocol, the machine-readable protocol and issue #723. Use live `main` for repository files. If the authorities conflict or cannot be read, make no GitHub changes.
 
-This indirection means future READY swarm protocol upgrades can be picked up by newly launched chats without the owner manually replacing a long prompt in every launch.
+Read the protocol version marked READY when each assignment starts.
 
 ## Purpose
 
-Support identical-prompt autonomous development at 200-worker scale and remain structurally safe for later 500–1000-worker experiments without pretending GitHub itself has unlimited concurrent write or CI capacity.
+Support parallel development at 200 participants and evaluate future scale at 500–1,000 against GitHub write and CI capacity.
 
 The system separates four concerns:
 
@@ -25,7 +25,7 @@ The system separates four concerns:
 3. **development concurrency** — workers may advance disjoint branches/packages in parallel;
 4. **validation concurrency** — remote PR/Actions fanout is pressure-controlled instead of scaling one-for-one with worker count.
 
-This distinction is mandatory. `1000 chats` must never be interpreted as `1000 simultaneous GitHub mutations plus 1000 CI runs`.
+Apply separate limits to participant count, simultaneous GitHub writes and concurrent CI runs.
 
 ## Truth and ownership
 
@@ -34,7 +34,7 @@ Truth order:
 2. direct GitHub issue/PR collections and claim/control/lane state;
 3. independent audit evidence;
 4. Drive reports/research/backups;
-5. chat prose.
+5. informal records.
 
 GitHub is the sole ownership registry. Drive is not a lock service.
 
@@ -215,6 +215,6 @@ Canonical Base remains random-init and pretraining-only until explicit authority
 
 ## Scale interpretation
 
-The protocol is designed so the owner can paste one prompt repeatedly. It is expected to improve throughput by reducing manual assignment and duplicate work, but it is not a promise of linear speedup. GitHub writes, active Product surfaces, integration bandwidth and CI runners become bottlenecks as worker count rises.
+The shared protocol reduces manual assignment and duplicate work. Measure GitHub writes, active product work, integration throughput and CI capacity as participant count rises.
 
-A 200-worker trial is therefore an empirical scale test. Any move to 500–1000 workers should use measured claim collision rate, rate-limit events, useful-package yield, PR/CI pressure and integration throughput from the 200-worker run rather than assuming 5x more chats produces 5x more useful development.
+A 200-worker trial is therefore an empirical scale test. Any move to 500–1000 workers should use measured claim collision rate, rate-limit events, useful-package yield, PR/CI pressure and integration throughput from the 200-worker run before increasing the participant count.

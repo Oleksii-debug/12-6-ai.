@@ -1,6 +1,6 @@
 # Global Coordinator Bridge
 
-12-6 AI participates in the owner's cross-project autonomous development control plane.
+12-6 AI uses the shared cross-project coordination process.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Before substantive work, verify the current project state and read the coordinat
 
 ## Audit cadence
 
-Do not depend on exact wall-clock slots. If the configured project audit interval has expired, the first available coordinator-capable run performs the audit and refreshes the plan. A missed run due to credits/usage does not invalidate the system; the next successful run reconstructs live state and continues.
+Do not depend on exact wall-clock slots. If the configured project audit interval has expired, the first available coordinator-capable run performs the audit and refreshes the plan. After a missed run, the next available coordinator reconstructs the current state and resumes the audit.
 
 Suggested active-project audit interval: 4–6 hours, with immediate refresh after major convergence/integration changes.
 
