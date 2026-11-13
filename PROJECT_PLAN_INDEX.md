@@ -2,11 +2,11 @@
 
 **Plan 2 is terminal DONE, 18/18 Sections (2026-11-12).** Sections 16, 17 and 18 were integrated through [#3229](https://github.com/Oleksii-debug/12-6-ai./pull/3229), [#3235](https://github.com/Oleksii-debug/12-6-ai./pull/3235) and [#3236](https://github.com/Oleksii-debug/12-6-ai./pull/3236). The accepted local Plan 9 data release is pinned in [the release authority](evidence/plan2_s18/release_authority_v1.json) on main `d1b725cf1b82b5122fe401bf0742ae2bbe22e176`. Google Docs remains the plan specification. Its status mirror is read-only through the connected account. Earlier counts remain historical snapshots.
 
-**Plan 3 has 12 Sections, 11/12 DONE (2026-11-13).** [#3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted the versioned training runtime and verified the real Plan 2 handoff. Section 10A is the remaining open section and requires exact-profile physical measurements.
+**Plan 3 has 12 Sections, 11/12 DONE (2026-11-13).** [#3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted the versioned training runtime and verified the real Plan 2 handoff. Runtime [v2 #3262](https://github.com/Oleksii-debug/12-6-ai./pull/3262) corrects checkpoint recovery diagnostics. The [external CUDA benchmark #3263](https://github.com/Oleksii-debug/12-6-ai./pull/3263) is integrated; Section 10A still requires exact-profile physical measurements.
 
 **Plan 8 is terminal DONE, 11/11 Sections (2026-11-13).** [#3251](https://github.com/Oleksii-debug/12-6-ai./pull/3251) integrated the versioned Qualification Fabric release and verified the complete campaign and exact main readback.
 
-**Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data and runtime releases. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
+**Plans 9 and 10 remain open.** [Plan 9 preparation #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) is integrated. It binds the Linux GPU general baseline and a separate cybersecurity development corpus to the ordered 500M, 1B, and 2B profiles. Section 1 awaits the accepted cyber data release, recipe, external GPU qualification, and actual campaign. Plan 10 waits for the accepted learned candidate and exact release inputs.
 
 # 12-6 AI — Canonical Multi-Plan Index
 
