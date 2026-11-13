@@ -5,6 +5,7 @@ import torch
 
 from tools import train_translation_pilot as pilot
 from tools.plan2_s15_real_32k_bpe_v1 import ByteBPE32k
+from twelve_six.model import BaseInitManifest, InitSpec, ModelSpec
 from twelve_six.translation_evaluation import TranslationExample
 
 
@@ -116,9 +117,12 @@ def test_batched_evaluation_groups_equal_prompts_and_preserves_output():
 
 
 def test_continued_manifest_pins_weight_parent_and_new_schedule(tmp_path, monkeypatch):
+    spec = ModelSpec(1, 260, 24, 16, 1, 2, 1, 8, 32, rope_rotary_dim=8)
+    init = InitSpec()
     parent = {
         "schema": pilot.SCHEMA, "git_sha": "c" * 40, "data_sha256": "a" * 64,
-        "tokenizer": {"version": "frozen"}, "model_spec": {"vocab_size": 2048},
+        "tokenizer": {"version": "frozen"}, "model_spec": spec.to_dict(), "init_spec": init.to_dict(),
+        "initialization": BaseInitManifest(1, spec.identity_sha256(), init.identity_sha256(), 1701).to_dict(),
         "training": {"seed": 1701},
     }
     (tmp_path / "run.json").write_text(pilot.json.dumps(parent), encoding="utf-8")
@@ -126,17 +130,30 @@ def test_continued_manifest_pins_weight_parent_and_new_schedule(tmp_path, monkey
     args = SimpleNamespace(
         parent_run=tmp_path, parent_step=8400, parent_checkpoint_id="b" * 64,
         lr=0.0003, steps=2400, seed=1701, shuffle_seed=2001, data_sha256="a" * 64,
-        batch_size=24, eval_pairs=100, threads=3, length_window_batches=16,
+        batch_size=24, eval_pairs=100, threads=3, length_window_batches=16, context=None,
     )
     continued = pilot._continued_manifest(args)
     assert continued["weight_parent"] == {
         "run_manifest_sha256": pilot.hash_json(parent), "checkpoint_id": "b" * 64, "step": 8400,
     }
     assert continued["model_spec"] == parent["model_spec"]
+    assert continued["initialization"] == parent["initialization"]
     assert continued["tokenizer"] == parent["tokenizer"]
     assert continued["training"]["learning_rate"] == 0.0003
     assert continued["shuffle_seed"] == 2001
     assert continued["training"]["seed"] == 1701
+    args.context = 48
+    extended = pilot._continued_manifest(args)
+    assert extended["model_spec"] == {**parent["model_spec"], "max_seq_len": 48}
+    original_model = pilot._model(parent)
+    extended_model = pilot._model(extended)
+    extended_model.load_state_dict(original_model.state_dict(), strict=True)
+    prompt = torch.ones((1, 24), dtype=torch.long)
+    torch.testing.assert_close(extended_model(prompt).logits, original_model(prompt).logits, rtol=0, atol=0)
+    assert extended_model(torch.ones((1, 25), dtype=torch.long)).logits.shape == (1, 25, 260)
+    args.context = 23
+    with pytest.raises(ValueError, match="preserve or extend"):
+        pilot._continued_manifest(args)
     args.parent_checkpoint_id = "unverified"
     with pytest.raises(ValueError, match="earlier translation run"):
         pilot._continued_manifest(args)
