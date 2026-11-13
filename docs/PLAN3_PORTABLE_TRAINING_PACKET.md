@@ -65,6 +65,33 @@ It reports observed host/device capacity and arithmetic checkpoint limits
 without allocating weights, starting an optimizer or writing a checkpoint.
 A passing capacity screen still requires an actual physical measurement.
 
+On the external Linux machine, create the exact CPython environment and install
+the committed Linux runtime lock into a fresh virtual environment with
+`pip install --require-hashes --no-deps --report "$RUNTIME_INSTALL_REPORT" -r "$RUNTIME_LOCK"`.
+Keep the source revision, raw runtime lock SHA-256 and install report SHA-256
+from that setup. Expose only the selected GPU to the process. It appears as
+`cuda:0` inside the process.
+
+```bash
+PYTHONPATH=src python -m tools.benchmark_plan3_native SCALE-500M \
+  --scratch "$CHECKPOINT_DIRECTORY" --device cuda:0 --benchmark \
+  --source-sha "$SOURCE_SHA" --runtime-release-version 2 \
+  --runtime-lock-sha256 "$RUNTIME_LOCK_SHA256" \
+  --install-report "$RUNTIME_INSTALL_REPORT" \
+  --install-report-sha256 "$RUNTIME_INSTALL_REPORT_SHA256"
+```
+
+The explicit measurement verifies the selected trusted runtime release against
+the checked-out source and requires a passing live capacity screen. It runs one
+optimizer step on 32 synthetic token IDs, writes a temporary checkpoint and
+loads that boundary in a second process after the first exits. The JSON receipt
+includes timings, per-process peak RSS and PyTorch CUDA allocator peaks.
+The allocator counters cover allocations tracked by PyTorch. The scratch
+checkpoint is removed when the command exits normally or raises a handled
+error. Run the benchmark separately for each profile. The measurement
+qualifies the synthetic boundary on that host. Multi-step restart parity and
+campaign authorization have separate evidence.
+
 ## Launcher lifecycle
 
 `TrainingLauncher` sends the same typed prepare, run, status and artifact
