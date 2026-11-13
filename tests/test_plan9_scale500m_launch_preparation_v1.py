@@ -12,6 +12,7 @@ from twelve_six.checkpoint import hash_json
 from twelve_six.checkpoint.transaction import bind_checkpoint_transaction, checkpoint_transaction
 from twelve_six.training import runtime_release
 from twelve_six.training.config import TrainerConfig, TrainingRecipe
+from twelve_six.training.resource_envelope import HostResources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -377,6 +378,66 @@ def test_cli_candidate_checkout_rejects_runtime_drift(monkeypatch):
     monkeypatch.setattr(preparation, "_read", read_changed)
     with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
         preparation._candidate_checkout_sha(ROOT)
+
+
+def test_native_lock_verifies_exact_git_bytes_in_crlf_checkout(monkeypatch):
+    read = preparation._read
+
+    def read_crlf(path, limit=2_000_000):
+        value = read(path, limit)
+        return value.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+
+    monkeypatch.setattr(preparation, "_read", read_crlf)
+    sha = preparation.detect_git_sha(ROOT)
+    lock = preparation._native_lock_binding(ROOT, sha)
+    assert lock["index_sha256"] == preparation.LOCK_INDEX_SHA256
+    assert lock["profile_id"] == preparation.dependency_lock.current_profile_id()
+
+    def changed(path, limit=2_000_000):
+        value = read_crlf(path, limit)
+        return value + b"# invalid\n" if path.name == "runtime.lock.txt" else value
+
+    monkeypatch.setattr(preparation, "_read", changed)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
+        preparation._native_lock_binding(ROOT, sha)
+
+
+def test_native_preflight_binds_initial_packet_and_denies_runtime_and_capacity(
+    verified_boundary, candidate_recipe, monkeypatch,
+):
+    directory, _ = verified_boundary
+    lock = preparation._native_lock_binding(ROOT, preparation.detect_git_sha(ROOT))
+    monkeypatch.setattr(preparation, "_native_lock_binding", lambda *_: {
+        **lock, "observed_python": {"implementation": "cpython", "version": "0.0.0"},
+    })
+    monkeypatch.setattr(preparation, "observe_host_resources", lambda *args: HostResources("cpu", 1, 1, 1))
+    packet = preparation.build_candidate_packet(
+        ROOT, directory, recipe=candidate_recipe, run_id="native-preflight",
+        environment_lock_sha256=lock["runtime_lock_sha256"],
+    )
+    report = preparation.inspect_native_launch(
+        ROOT, directory, packet=packet, expected_packet_sha256=packet["packet_sha256"],
+        checkpoint_root=directory / "not-created", device="cpu",
+    )
+    assert report["decision"] == "NATIVE_PREFLIGHT_DENIED"
+    assert set(report["denials"]) == {
+        "DEVICE_MEMORY_BELOW_FP32_ADAMW_FLOOR",
+        "DISK_BELOW_UNPRUNED_CHECKPOINT_FLOOR",
+        "PYTHON_RUNTIME_LOCK_MISMATCH",
+    }
+    assert report["resource_envelope"]["parameter_count"] == 494_204_160
+    assert report["installed_distribution_provenance_verified"] is False
+    assert report["target_profile_measured"] is report["campaign_authorized"] is False
+    assert not (directory / "not-created").exists()
+    wrong = preparation.build_candidate_packet(
+        ROOT, directory, recipe=candidate_recipe, run_id="native-preflight",
+        environment_lock_sha256="f" * 64,
+    )
+    with pytest.raises(preparation.LaunchPreparationDenied, match="verified release, source, lock"):
+        preparation.inspect_native_launch(
+            ROOT, directory, packet=wrong, expected_packet_sha256=wrong["packet_sha256"],
+            checkpoint_root=directory / "not-created", device="cpu",
+        )
 
 
 def test_candidate_packet_rejects_fixture_sealed_under_its_own_manifest(tmp_path, candidate_recipe):

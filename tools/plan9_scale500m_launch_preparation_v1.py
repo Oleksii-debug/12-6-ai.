@@ -9,11 +9,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import platform
 import subprocess
 import sys
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 from twelve_six.checkpoint import (
@@ -27,9 +29,11 @@ from twelve_six.checkpoint.d04_resume_binding import (
     D04_RESUME_SHA_FIELDS,
 )
 from twelve_six.checkpoint.transaction import TRANSACTION_SCHEMA
-from twelve_six.model import StageConfig, load_stage_config
+from twelve_six.integration import dependency_lock
+from twelve_six.model import ModelSpec, StageConfig, load_stage_config
 from twelve_six.training import runtime_release
 from twelve_six.training.config import TrainingRecipe
+from twelve_six.training.resource_envelope import assess_resource_envelope, observe_host_resources
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -41,6 +45,9 @@ SCHEMA = "12-6.plan9-scale500m-launch-preparation.v1"
 CURSOR_SCHEMA = "12-6.plan9-s18-physical-resume-cursor.v1"
 PACKET_SCHEMA = "12-6.plan9-scale500m-candidate-packet.v1"
 DATA_BUDGET_SCHEMA = "12-6.plan9-scale500m-one-pass-data-budget.v1"
+NATIVE_PREFLIGHT_SCHEMA = "12-6.plan9-scale500m-native-launch-preflight.v1"
+LOCK_INDEX = "requirements/locks/index.json"
+LOCK_INDEX_SHA256 = "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
 PROFILE = "SCALE-500M"
 PROFILE_FILE = "configs/stages/scale_500m.json"
 PACKET_TOOL_FILE = "tools/plan9_scale500m_launch_preparation_v1.py"
@@ -51,6 +58,7 @@ RUNTIME_PATHS = {
     "run_control": "src/twelve_six/training/run_control.py",
     "runtime_release_verifier": "src/twelve_six/training/runtime_release.py",
     "runtime_release_descriptor": runtime_release.RELEASE_PATH,
+    "dependency_lock_verifier": "src/twelve_six/integration/dependency_lock.py",
     "checkpoint_binding": "src/twelve_six/checkpoint/run_binding.py",
     "checkpoint_resume": "src/twelve_six/checkpoint/d04_resume_binding.py",
     "checkpoint_transaction": "src/twelve_six/checkpoint/transaction.py",
@@ -106,16 +114,21 @@ def _candidate_checkout_sha(root: Path) -> str:
     _require(Path(__file__).resolve() == (root / PACKET_TOOL_FILE).resolve(),
              "run the packet tool from the candidate checkout")
     for path in (PROFILE_FILE, PACKET_TOOL_FILE, *RUNTIME_PATHS.values()):
-        try:
-            committed = subprocess.check_output(
-                ["git", "show", f"{sha}:{path}"], cwd=root, stderr=subprocess.PIPE, timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise LaunchPreparationDenied(f"candidate source not present at Git HEAD: {path}") from exc
-        worktree = _read(root / path)
-        _require(committed.replace(b"\r\n", b"\n") == worktree.replace(b"\r\n", b"\n"),
-                 f"candidate source differs from Git HEAD: {path}")
+        _exact_checkout_bytes(root, sha, path)
     return sha
+
+
+def _exact_checkout_bytes(root: Path, sha: str, path: str) -> bytes:
+    try:
+        committed = subprocess.check_output(
+            ["git", "show", f"{sha}:{path}"], cwd=root, stderr=subprocess.PIPE, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaunchPreparationDenied(f"candidate source not present at Git HEAD: {path}") from exc
+    worktree = _read(root / path)
+    _require(committed.replace(b"\r\n", b"\n") == worktree.replace(b"\r\n", b"\n"),
+             f"candidate source differs from Git HEAD: {path}")
+    return committed
 
 
 def _open_release(root: Path, release: Path) -> dict[str, Any]:
@@ -519,6 +532,79 @@ def verify_candidate_packet(
     return actual
 
 
+def _native_lock_binding(root: Path, sha: str) -> dict[str, Any]:
+    """Validate the repository's exact lock bytes even in a CRLF checkout."""
+    index_bytes = _exact_checkout_bytes(root, sha, LOCK_INDEX)
+    index = json.loads(index_bytes)
+    _require(index.get("index_sha256") == LOCK_INDEX_SHA256, "native dependency lock index pin changed")
+    profile = dependency_lock.current_profile_id()
+    lock_paths = [
+        f"requirements/locks/{platform_id}/{filename}"
+        for platform_id in sorted(dependency_lock.SUPPORTED_PROFILES)
+        for filename in ("profile.json", "toolchain.lock.txt", "runtime.lock.txt", "dev.lock.txt")
+    ]
+    with TemporaryDirectory() as directory:
+        staged = Path(directory)
+        for relative in ("pyproject.toml", LOCK_INDEX, *lock_paths):
+            path = staged / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(index_bytes if relative == LOCK_INDEX else _exact_checkout_bytes(root, sha, relative))
+        verified = dependency_lock.validate_lock_index(root=staged, index_path=LOCK_INDEX)
+        record = verified["profiles"][profile]
+        profile_manifest = dependency_lock.validate_profile_manifest(
+            root=staged, manifest_path=record["path"],
+        )
+    return {
+        "index_sha256": verified["index_sha256"],
+        "profile_id": profile,
+        "profile_manifest_sha256": profile_manifest["manifest_sha256"],
+        "runtime_lock_sha256": profile_manifest["locks"]["runtime"]["sha256"],
+        "expected_python": profile_manifest["python"],
+        "observed_python": {"implementation": sys.implementation.name, "version": platform.python_version()},
+    }
+
+
+def inspect_native_launch(
+    root: Path, release: Path, *, packet: dict[str, Any], expected_packet_sha256: str,
+    checkpoint_root: Path, device: str,
+) -> dict[str, Any]:
+    """Observe the local environment and capacity floors without creating a training run."""
+    checkout = _candidate_checkout_sha(root)
+    lock = _native_lock_binding(root, checkout)
+    verified = verify_candidate_packet(
+        root, release, packet=packet, expected_packet_sha256=expected_packet_sha256,
+        environment_lock_sha256=lock["runtime_lock_sha256"],
+    )
+    _require(verified["physical_cursor"]["next_batch_index"] == 0,
+             "native launch inspection requires the initial candidate packet")
+    model = ModelSpec.from_dict(verified["model_spec"])
+    recipe = TrainingRecipe.from_dict(verified["run_manifest"]["training"]["recipe"])
+    resources = observe_host_resources(checkpoint_root, device)
+    envelope = assess_resource_envelope(
+        model, resources, remaining_updates=recipe.trainer.max_steps, initial_checkpoint_needed=True,
+    )
+    denials = list(envelope["denials"])
+    if any(lock["observed_python"][key] != lock["expected_python"][key]
+           for key in ("implementation", "version")):
+        denials.append("PYTHON_RUNTIME_LOCK_MISMATCH")
+    report = {
+        "schema": NATIVE_PREFLIGHT_SCHEMA,
+        "decision": "NATIVE_PREFLIGHT_DENIED" if denials else "NATIVE_FLOORS_SCREENED_CAMPAIGN_PENDING",
+        "candidate_packet_sha256": verified["packet_sha256"],
+        "run_manifest_sha256": verified["run_manifest_sha256"],
+        "source_git_sha": checkout,
+        "environment_lock": lock,
+        "resource_envelope": envelope,
+        "denials": denials,
+        "installed_distribution_provenance_verified": False,
+        "target_profile_measured": False,
+        "campaign_authorized": False,
+        "training_executed": False,
+        "paid_compute_used": False,
+    }
+    return {**report, "native_preflight_sha256": _sha(_canonical(report))}
+
+
 class PhysicalRunInput:
     """Connect the sealed S18 stream to a single RunController writer."""
 
@@ -674,11 +760,14 @@ def main() -> int:
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--build-packet", action="store_true", help="Emit a canonical candidate packet")
     modes.add_argument("--verify-packet", type=Path, help="Reopen a pinned candidate packet")
+    modes.add_argument("--inspect-native-launch", type=Path, help="Check a pinned candidate on this local host")
     modes.add_argument("--check-one-pass-budget", action="store_true", help="Check rights and exact data budget")
     parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
     parser.add_argument("--environment-lock", type=Path, help="Environment lock bytes to pin without host qualification")
     parser.add_argument("--run-id", help="Candidate run identity for packet construction")
     parser.add_argument("--optimizer-step", type=int, default=0, help="Candidate checkpoint position")
+    parser.add_argument("--checkpoint-root", type=Path, help="Local checkpoint volume to inspect")
+    parser.add_argument("--device", default="cpu", help="Local device to inspect for native launch")
     args = parser.parse_args()
     try:
         root = args.root.resolve(strict=True)
@@ -688,6 +777,23 @@ def main() -> int:
                 raise LaunchPreparationDenied("--check-one-pass-budget requires --recipe")
             sys.stdout.buffer.write(_canonical(check_one_pass_data_budget(root, args.release, recipe=recipe)))
             return 0
+        packet_path = args.verify_packet or args.inspect_native_launch
+        if packet_path is not None:
+            if args.packet_sha256 is None:
+                raise LaunchPreparationDenied("packet readback requires a trusted --packet-sha256")
+            packet_bytes = _read(packet_path)
+            packet = json.loads(packet_bytes)
+            _require(type(packet) is dict and _canonical(packet) == packet_bytes,
+                     "candidate packet must use canonical JSON bytes")
+        if args.inspect_native_launch is not None:
+            if args.checkpoint_root is None:
+                raise LaunchPreparationDenied("--inspect-native-launch requires --checkpoint-root")
+            receipt = inspect_native_launch(
+                root, args.release, packet=packet, expected_packet_sha256=args.packet_sha256,
+                checkpoint_root=args.checkpoint_root, device=args.device,
+            )
+            sys.stdout.buffer.write(_canonical(receipt))
+            return 2 if receipt["denials"] else 0
         if args.build_packet or args.verify_packet is not None:
             if args.environment_lock is None:
                 raise LaunchPreparationDenied("an explicit --environment-lock is required")
@@ -702,12 +808,6 @@ def main() -> int:
                     optimizer_step=args.optimizer_step,
                 )
             else:
-                if args.packet_sha256 is None:
-                    raise LaunchPreparationDenied("--verify-packet requires a trusted --packet-sha256")
-                packet_bytes = _read(args.verify_packet)
-                packet = json.loads(packet_bytes)
-                _require(type(packet) is dict and _canonical(packet) == packet_bytes,
-                         "candidate packet must use canonical JSON bytes")
                 receipt = verify_candidate_packet(
                     root, args.release, packet=packet,
                     expected_packet_sha256=args.packet_sha256,
