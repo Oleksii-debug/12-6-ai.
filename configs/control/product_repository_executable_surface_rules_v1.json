@@ -466,6 +466,10 @@
       "capability_id": "peer-source-qualification-pending"
     },
     {
+      "path": "tools/run_plan9_external_cyber_pilot_v1.py",
+      "capability_id": "peer-source-qualification-pending"
+    },
+    {
       "path": "tools/plan9_prepare_cyber_candidate_v1.py",
       "capability_id": "peer-source-qualification-pending"
     },

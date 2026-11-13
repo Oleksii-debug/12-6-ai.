@@ -86,6 +86,8 @@ the checked-out source and requires a passing live capacity screen. It runs one
 optimizer step on 32 synthetic token IDs, writes a temporary checkpoint and
 loads that boundary in a second process after the first exits. The JSON receipt
 includes timings, per-process peak RSS and PyTorch CUDA allocator peaks.
+It also records the GPU UUID and checkpoint filesystem identity observed in
+both measurement processes.
 The allocator counters cover allocations tracked by PyTorch. The scratch
 checkpoint is removed when the command exits normally or raises a handled
 error. Run the benchmark separately for each profile. The measurement

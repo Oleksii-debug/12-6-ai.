@@ -121,6 +121,16 @@ def test_failed_capacity_denies_before_checkpoint_or_worker(tmp_path, monkeypatc
     assert list(tmp_path.iterdir()) == []
 
 
+def test_checkpoint_context_uses_filesystem_identity_across_reboot():
+    before = {"boot_id": "first", "device": {"uuid": "gpu"}, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": 2}}
+    after = {**before, "boot_id": "second", "checkpoint_filesystem": {"st_dev": 3, "f_fsid": 2}}
+    assert tool.checkpoint_context_matches(before, after)
+    after["checkpoint_filesystem"]["f_fsid"] = None
+    assert not tool.checkpoint_context_matches(before, after)
+    after = {**before, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": None}}
+    assert tool.checkpoint_context_matches(before, after)
+
+
 def test_physical_mode_requires_an_explicit_trusted_release(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tool, "measure_profile", lambda *_, **__: pytest.fail("measurement dispatched"))
     args = [
@@ -146,8 +156,9 @@ def test_physical_measurement_uses_ordered_workers_and_removes_scratch(tmp_path,
         "source_git_sha": "a" * 40,
         "capacity": {"disposition": "CAPACITY_SCREEN_PASSED", "benchmark_capacity_denials": []},
     }
-    measured = {"boundary": {"checkpoint_id": "e" * 64, "tokens_seen": 31}}
-    restored = {"checkpoint_id": "e" * 64, "tokens_seen": 31, "committed_step": 1}
+    context = {"boot_id": "same", "device": {"uuid": "gpu"}, "checkpoint_filesystem": {"st_dev": 1, "f_fsid": 2}}
+    measured = {"boundary": {"checkpoint_id": "e" * 64, "tokens_seen": 31}, "execution_context": context}
+    restored = {"checkpoint_id": "e" * 64, "tokens_seen": 31, "committed_step": 1, "execution_context": context}
     calls = []
 
     def dispatch(operation, *args):

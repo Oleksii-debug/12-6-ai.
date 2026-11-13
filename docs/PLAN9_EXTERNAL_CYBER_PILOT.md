@@ -26,9 +26,14 @@ processing facts. Use a host and transfer scope that satisfy those facts.
 For a future external run, first qualify SCALE-500M with the
 [external CUDA benchmark](PLAN3_PORTABLE_TRAINING_PACKET.md). Use the
 same pinned Linux environment, selected GPU and checkpoint volume.
+Save the benchmark's measured JSON receipt and hash the file. The pilot checks
+the receipt against the exact source, model, runtime and installed lock. Both
+commands use the same physical GPU and checkpoint filesystem. If the filesystem
+does not provide an ID, the launcher compares its device number within one boot.
 The four-update pilot has a 26,537,477,120-byte unpruned payload floor.
 The launcher also asks for 1 GiB of space above that floor. The arithmetic
-memory floors exclude CUDA and workload overhead.
+restore envelope requires 27,611,218,944 host bytes and 14,341,032,960 free CUDA
+bytes. Workload and CUDA overhead still require measurement.
 
 On the external host, use an existing checkpoint directory and the digest
 from the locally verified packet. Prepare creates checkpoint zero. Pass
@@ -41,7 +46,8 @@ receipt. The run reads the physical cursor bound to the last checkpoint.
 pilot=(python -m tools.plan9_external_cyber_pilot_v1)
 common=(--bundle "$STAGED_INPUT" --scratch "$CHECKPOINT_DIR")
 execution=(--execute --expected-packet-sha256 "$PACKET_SHA"
-  --install-report "$INSTALL_REPORT" --install-report-sha256 "$INSTALL_REPORT_SHA")
+  --install-report "$INSTALL_REPORT" --install-report-sha256 "$INSTALL_REPORT_SHA"
+  --benchmark-receipt "$BENCHMARK_RECEIPT" --benchmark-receipt-sha256 "$BENCHMARK_RECEIPT_SHA")
 "${pilot[@]}" prepare "${common[@]}" "${execution[@]}" > initial.json
 "${pilot[@]}" run "${common[@]}" "${execution[@]}" \
   --expected-receipt-sha256 "$INITIAL_RECEIPT_SHA" > paused.json
@@ -56,3 +62,14 @@ checkpoints. The expected durable counts are 1,303 active positions at
 the pause and 2,696 at completion. Measured host evidence and an actual
 pilot receipt are still required. The full campaign has a separate
 recipe, evaluation and checkpoint cost.
+
+The command below performs the same four operations in separate processes
+and writes the available receipts into an existing results directory. If
+interrupted, rerun it against the same scratch directory and packet.
+
+```bash
+python -m tools.run_plan9_external_cyber_pilot_v1 --execute \
+  --bundle "$STAGED_INPUT" --scratch "$CHECKPOINT_DIR" --output "$RESULTS_DIR" \
+  --packet-sha256 "$PACKET_SHA" --install-report "$INSTALL_REPORT" \
+  --benchmark-receipt "$BENCHMARK_RECEIPT" --benchmark-receipt-sha256 "$BENCHMARK_RECEIPT_SHA"
+```

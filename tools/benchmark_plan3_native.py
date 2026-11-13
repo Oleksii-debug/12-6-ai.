@@ -40,7 +40,7 @@ PROFILES = {
     for name in ("500M", "750M", "1B", "2B", "3B", "4B", "5B")
 }
 SCHEMA = "12-6.plan3-native-profile-benchmark-preflight.v1"
-MEASUREMENT_SCHEMA = "12-6.plan3-native-profile-benchmark-measurement.v1"
+MEASUREMENT_SCHEMA = "12-6.plan3-native-profile-benchmark-measurement.v2"
 RUNTIME_RELEASES = {
     1: (runtime_release.RELEASE_PATH, runtime_release.RELEASE_SHA256),
     2: (runtime_release.RELEASE_V2_PATH, runtime_release.RELEASE_V2_SHA256),
@@ -91,6 +91,18 @@ def _profile(root: Path, commit: str, profile: str) -> tuple[StageConfig, BaseIn
     return config, init, hashlib.sha256(raw).hexdigest()
 
 
+def restore_memory_floors(report: dict, device: str) -> tuple[int, int]:
+    """Conservative host and device arithmetic for a native checkpoint restore."""
+    payload = report["checkpoint_payload_floor_bytes"]
+    weights = report["serialized_model_weight_bytes"]
+    device_bytes = report["native_checkpoint_save_device_bytes"]
+    host_bytes = 4 * payload + weights + HOST_RESERVE_BYTES
+    if device == "cpu":
+        host_bytes = max(host_bytes, device_bytes + HOST_RESERVE_BYTES)
+        return host_bytes, host_bytes
+    return host_bytes, max(device_bytes, 2 * payload + weights)
+
+
 def observe_profile(root: Path, scratch: Path, profile: str, device: str) -> dict:
     """Build capacity evidence and a synthetic recipe without model allocation."""
     if DEVICE.fullmatch(device) is None:
@@ -119,15 +131,7 @@ def observe_profile(root: Path, scratch: Path, profile: str, device: str) -> dic
     )
     # Separate checkpoint staging on the host from the live optimizer/model
     # device. The observation includes headroom for a fresh process to restore.
-    payload = report["checkpoint_payload_floor_bytes"]
-    weights = report["serialized_model_weight_bytes"]
-    device_bytes = report["native_checkpoint_save_device_bytes"]
-    host_bytes = 4 * payload + weights + HOST_RESERVE_BYTES
-    if device == "cpu":
-        host_bytes = max(host_bytes, device_bytes + HOST_RESERVE_BYTES)
-        device_bytes = host_bytes
-    else:
-        device_bytes = max(device_bytes, 2 * payload + weights)
+    host_bytes, device_bytes = restore_memory_floors(report, device)
     disk_bytes = report["unpruned_checkpoint_volume_floor_bytes"] + DISK_RESERVE_BYTES
     denials = list(report["denials"])
     if (observed.host_available_bytes or 0) < host_bytes:
@@ -325,9 +329,41 @@ def _cuda_environment(workspace: str) -> None:
         raise RuntimeError("benchmark requires exactly one visible NVIDIA CUDA device")
 
 
+def cuda_checkpoint_context(scratch: Path, device: str) -> dict:
+    """Read the selected physical GPU and the checkpoint filesystem identity."""
+    properties = torch.cuda.get_device_properties(device)
+    uuid = getattr(properties, "uuid", None)
+    if not uuid or not str(uuid).strip():
+        raise RuntimeError("CUDA device does not expose a stable GPU UUID")
+    checkpoint_fs = os.statvfs(scratch)
+    return {
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip(),
+        "device": {
+            "uuid": str(uuid), "name": properties.name,
+            "compute_capability": [properties.major, properties.minor],
+            "total_memory_bytes": properties.total_memory, "cuda_runtime": torch.version.cuda,
+            "torch_version": str(torch.__version__),
+        },
+        "checkpoint_filesystem": {
+            "st_dev": scratch.stat().st_dev,
+            "f_fsid": getattr(checkpoint_fs, "f_fsid", None),
+        },
+    }
+
+
 def _benchmark_preflight(root: Path, scratch: Path, profile: str, device: str, workspace: str):
     _cuda_environment(workspace)
     return observe_profile(root, scratch, profile, device)
+
+
+def checkpoint_context_matches(expected: dict, observed: dict) -> bool:
+    """Compare filesystem ID when provided, falling back to this boot's device ID."""
+    expected_fs, observed_fs = expected["checkpoint_filesystem"], observed["checkpoint_filesystem"]
+    if expected_fs["f_fsid"] and observed_fs["f_fsid"]:
+        same_fs = expected_fs["f_fsid"] == observed_fs["f_fsid"]
+    else:
+        same_fs = expected["boot_id"] == observed["boot_id"] and expected_fs["st_dev"] == observed_fs["st_dev"]
+    return expected["device"] == observed["device"] and same_fs
 
 
 def _measurement_worker(
@@ -344,7 +380,7 @@ def _measurement_worker(
     config, init, _ = _profile(root, source, profile)
     identity = _synthetic_identity(preflight, config, lock_sha)
     recipe = TrainingRecipe.from_dict(preflight["fixture"]["recipe"])
-    properties = torch.cuda.get_device_properties(device)
+    context = cuda_checkpoint_context(checkpoint.parent, device)
     torch.cuda.reset_peak_memory_stats(device)
     result = benchmark_optimizer_boundary(
         _benchmark_trainer(config, init, recipe, device),
@@ -358,11 +394,7 @@ def _measurement_worker(
         raise RuntimeError("benchmark did not consume the exact synthetic target count")
     return {
         "boundary": result, "memory": _worker_memory(device), "worker_pid": os.getpid(),
-        "device": {
-            "name": properties.name, "compute_capability": [properties.major, properties.minor],
-            "total_memory_bytes": properties.total_memory, "cuda_runtime": torch.version.cuda,
-            "torch_version": str(torch.__version__),
-        },
+        "execution_context": context,
     }
 
 
@@ -370,6 +402,7 @@ def _restore_worker(
     root: Path, device: str, preflight: dict, measured: dict, checkpoint: Path, workspace: str,
 ):
     _cuda_environment(workspace)
+    context = cuda_checkpoint_context(checkpoint.parent, device)
     observed = observe_host_resources(checkpoint.parent, device)
     limits = preflight["capacity"]
     if (
@@ -398,6 +431,7 @@ def _restore_worker(
         "committed_step": trainer.optimizer_step, "tokens_seen": trainer.tokens_seen,
         "memory": _worker_memory(device),
         "worker_pid": os.getpid(),
+        "execution_context": context,
     }
 
 
@@ -446,6 +480,7 @@ def measure_profile(
         restored["checkpoint_id"] != measured["boundary"]["checkpoint_id"]
         or restored["tokens_seen"] != measured["boundary"]["tokens_seen"]
         or restored["committed_step"] != 1
+        or not checkpoint_context_matches(measured["execution_context"], restored["execution_context"])
     ):
         raise RuntimeError("fresh process receipt differs from the measured checkpoint")
     receipt = {
