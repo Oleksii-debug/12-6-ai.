@@ -4,9 +4,9 @@
 
 **Plan 3 has 12 Sections, 11/12 DONE (2026-11-13).** [#3250](https://github.com/Oleksii-debug/12-6-ai./pull/3250) accepted the versioned training runtime and verified the real Plan 2 handoff. Section 10A is the remaining open section and requires exact-profile physical measurements.
 
-**Plan 8 has 11 Sections, 10/11 DONE (2026-11-13).** [#3249](https://github.com/Oleksii-debug/12-6-ai./pull/3249) integrated the exact Git freeze, merge preview and accepted-main readback verifier. Section 11 is the next open section.
+**Plan 8 is terminal DONE, 11/11 Sections (2026-11-13).** [#3251](https://github.com/Oleksii-debug/12-6-ai./pull/3251) integrated the versioned Qualification Fabric release and verified the complete campaign and exact main readback.
 
-**Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data release. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
+**Plans 9 and 10 remain open.** [Plan 9 Section 1 draft #3237](https://github.com/Oleksii-debug/12-6-ai./pull/3237) verifies the SCALE-500M candidate packet against the accepted data and runtime releases. [Plan 10 Section 1A draft #3241](https://github.com/Oleksii-debug/12-6-ai./pull/3241) verifies local Nika provider compatibility with a tiny fixture while the learned champion is pending.
 
 # 12-6 AI — Canonical Multi-Plan Index
 
