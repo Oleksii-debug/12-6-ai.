@@ -128,3 +128,14 @@ def test_flores_builder_screens_both_languages_and_keeps_attribution(tmp_path, m
     selected = (bundle / "devtest.jsonl").read_text(encoding="utf-8")
     assert len(selected.splitlines()) == 100
     assert "flores200:devtest:0001" not in selected and "flores200:devtest:0002" not in selected
+
+    full_bundle = tmp_path / "evaluation-full"
+    full = parallel.materialize_flores_devtest(
+        tmp_path, tmp_path, full_bundle, expected_train_manifest_sha256="f" * 64, all_pairs=True,
+    )
+    full_rows = (full_bundle / "devtest.jsonl").read_text(encoding="utf-8").splitlines()
+    assert full["rows"] == len(full_rows) == 1_010
+    assert full["train_overlap_rows_excluded"] == receipt["train_overlap_rows_excluded"]
+    assert full_rows[:100] == selected.splitlines()
+    assert "flores200:devtest:0001" not in "\n".join(full_rows)
+    assert "flores200:devtest:0002" not in "\n".join(full_rows)
