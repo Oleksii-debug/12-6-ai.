@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from dataclasses import asdict, replace
@@ -444,6 +445,61 @@ def test_native_lock_verifies_exact_git_bytes_in_crlf_checkout(monkeypatch):
     monkeypatch.setattr(preparation, "_read", changed)
     with pytest.raises(preparation.LaunchPreparationDenied, match="candidate source differs from Git HEAD"):
         preparation._native_lock_binding(ROOT, sha)
+
+
+def test_external_gpu_packet_uses_pinned_linux_and_one_replica_without_host_probe(monkeypatch):
+    recipe = TrainingRecipe.from_dict(
+        json.loads((ROOT / preparation.ONE_PASS_RECIPE_FILE).read_bytes()),
+    )
+    model, _ = preparation._load_profile(ROOT)
+    candidate = {
+        "model_spec": model.model.to_dict(),
+        "run_manifest": {"candidate": {"git_sha": preparation.detect_git_sha(ROOT)}, "run_id": "gpu-baseline"},
+        "preparation": {"data": {
+            "release_manifest_sha256": "883f0e3949b7a64a07bcc1236bf7aaf86ed5d84deba4c5aa60d2bfcb83c21ad2",
+            "release_authority_sha256": "858bf6852fcd418ff50e7726d5e8e6e5ca6efb2075bc86166361494f2c39abda",
+            "ordered_causal_loss_positions": 1_985_122,
+            "packed_block_count": 71_256,
+        }},
+    }
+    seen = []
+
+    def build_candidate(*_, **kwargs):
+        assert kwargs["recipe"] == recipe
+        seen.append(kwargs["environment_lock_sha256"])
+        return candidate
+
+    def reject_host_probe(*_):
+        pytest.fail("external baseline must not observe the current host")
+
+    monkeypatch.setattr(preparation, "build_candidate_packet", build_candidate)
+    monkeypatch.setattr(preparation, "observe_host_resources", reject_host_probe)
+    monkeypatch.setattr(preparation.dependency_lock, "current_profile_id", reject_host_probe)
+    packet = preparation.build_external_gpu_packet(ROOT, ROOT, lock_profile="linux-x86_64", run_id="gpu-baseline")
+    execution = packet["execution_requirements"]
+    assert execution["gpu_count"] == 1 and execution["optimizer_state_layout"] == "ONE_FULL_REPLICA"
+    assert execution["minimum_device_bytes_at_native_save"] == 13_837_716_480
+    assert execution["minimum_unpruned_checkpoint_volume_bytes"] == 18_107_765_944_320
+    assert execution["environment_lock"]["profile_id"] == "linux-x86_64"
+    assert seen == [execution["environment_lock"]["runtime_lock_sha256"]]
+    assert packet["profile_preparation_order"] == ["SCALE-500M", "SCALE-1B", "SCALE-2B"]
+    assert packet["data"]["purpose"] == "GENERAL_BASELINE"
+    assert packet["data"]["cybersecurity_majority_verified"] is packet["campaign_authorized"] is False
+    assert packet["target_profile_measured"] is packet["training_executed"] is False
+
+    def verify(record, digest):
+        return preparation.verify_external_gpu_packet(ROOT, ROOT, packet=record, expected_packet_sha256=digest)
+
+    assert verify(packet, packet["external_gpu_packet_sha256"]) == packet
+    modified = {**packet, "data": {**packet["data"], "cybersecurity_majority_verified": True}}
+    modified.pop("external_gpu_packet_sha256")
+    digest = preparation._sha(preparation._canonical(modified))
+    with pytest.raises(preparation.LaunchPreparationDenied, match="differs from the verified baseline"):
+        verify({**modified, "external_gpu_packet_sha256": digest}, digest)
+    with pytest.raises(preparation.LaunchPreparationDenied, match="requires a committed Linux lock"):
+        preparation.build_external_gpu_packet(
+            ROOT, ROOT, lock_profile="windows-x86_64", run_id="gpu-baseline",
+        )
 
 
 def test_native_preflight_binds_initial_packet_and_denies_runtime_and_capacity(

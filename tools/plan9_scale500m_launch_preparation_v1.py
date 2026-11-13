@@ -36,7 +36,11 @@ from twelve_six.integration import dependency_lock
 from twelve_six.model import ModelSpec, StageConfig, load_stage_config
 from twelve_six.training import runtime_release
 from twelve_six.training.config import TrainingRecipe
-from twelve_six.training.resource_envelope import assess_resource_envelope, observe_host_resources
+from twelve_six.training.resource_envelope import (
+    HostResources,
+    assess_resource_envelope,
+    observe_host_resources,
+)
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -49,8 +53,14 @@ CURSOR_SCHEMA = "12-6.plan9-s18-physical-resume-cursor.v1"
 PACKET_SCHEMA = "12-6.plan9-scale500m-candidate-packet.v1"
 DATA_BUDGET_SCHEMA = "12-6.plan9-scale500m-one-pass-data-budget.v1"
 NATIVE_PREFLIGHT_SCHEMA = "12-6.plan9-scale500m-native-launch-preflight.v1"
+EXTERNAL_GPU_SCHEMA = "12-6.plan9-scale500m-external-gpu-candidate.v1"
+EXTERNAL_GPU_PROFILES = ("linux-x86_64", "linux-aarch64")
 LOCK_INDEX = "requirements/locks/index.json"
 LOCK_INDEX_SHA256 = "870587414a9108fc5d924a0caad37cd228515ad32df6639538deba48dc901b5a"
+ONE_PASS_RECIPE_FILE = "configs/plan9/scale500m_one_pass_recipe_v1.json"
+ONE_PASS_RECIPE_SHA256 = "edc679f9c2fd301fdac52ccfca9e7d6374894f2a735bb1e202eb88e1e3e6f1af"
+ONE_PASS_BUDGET_FILE = "evidence/plan9_s1/scale500m_one_pass_data_budget_v1.json"
+ONE_PASS_BUDGET_SHA256 = "979cc86b15699773819f8c815d7c536bd446621b486fdbdb2b1a399ce34b4d04"
 PROFILE = "SCALE-500M"
 PROFILE_FILE = "configs/stages/scale_500m.json"
 PACKET_TOOL_FILE = "tools/plan9_scale500m_launch_preparation_v1.py"
@@ -628,11 +638,18 @@ def verify_candidate_packet(
 
 
 def _native_lock_binding(root: Path, sha: str) -> dict[str, Any]:
+    lock = _lock_binding(root, sha, dependency_lock.current_profile_id())
+    return {
+        **lock,
+        "observed_python": {"implementation": sys.implementation.name, "version": platform.python_version()},
+    }
+
+
+def _lock_binding(root: Path, sha: str, profile: str) -> dict[str, Any]:
     """Validate the repository's exact lock bytes even in a CRLF checkout."""
     index_bytes = _exact_checkout_bytes(root, sha, LOCK_INDEX)
     index = json.loads(index_bytes)
     _require(index.get("index_sha256") == LOCK_INDEX_SHA256, "native dependency lock index pin changed")
-    profile = dependency_lock.current_profile_id()
     lock_paths = [
         f"requirements/locks/{platform_id}/{filename}"
         for platform_id in sorted(dependency_lock.SUPPORTED_PROFILES)
@@ -647,7 +664,7 @@ def _native_lock_binding(root: Path, sha: str) -> dict[str, Any]:
         verified = dependency_lock.validate_lock_index(root=staged, index_path=LOCK_INDEX)
         record = verified["profiles"][profile]
         profile_manifest = dependency_lock.validate_profile_manifest(
-            root=staged, manifest_path=record["path"],
+            root=staged, manifest_path=record["path"], enforce_current_platform=False,
         )
     return {
         "index_sha256": verified["index_sha256"],
@@ -655,7 +672,6 @@ def _native_lock_binding(root: Path, sha: str) -> dict[str, Any]:
         "profile_manifest_sha256": profile_manifest["manifest_sha256"],
         "runtime_lock_sha256": profile_manifest["locks"]["runtime"]["sha256"],
         "expected_python": profile_manifest["python"],
-        "observed_python": {"implementation": sys.implementation.name, "version": platform.python_version()},
     }
 
 
@@ -698,6 +714,97 @@ def inspect_native_launch(
         "paid_compute_used": False,
     }
     return {**report, "native_preflight_sha256": _sha(_canonical(report))}
+
+
+def build_external_gpu_packet(
+    root: Path, release: Path, *, lock_profile: str, run_id: str,
+) -> dict[str, Any]:
+    """Prepare the exact local general-data baseline for an external single CUDA GPU."""
+    _require(lock_profile in EXTERNAL_GPU_PROFILES, "external GPU baseline requires a committed Linux lock profile")
+    checkout = _candidate_checkout_sha(root)
+    lock = _lock_binding(root, checkout, lock_profile)
+    recipe = TrainingRecipe.from_dict(json.loads(_exact_checkout_bytes(root, checkout, ONE_PASS_RECIPE_FILE)))
+    _require(recipe.identity_sha256() == ONE_PASS_RECIPE_SHA256, "external GPU baseline recipe pin changed")
+    budget = json.loads(_exact_checkout_bytes(root, checkout, ONE_PASS_BUDGET_FILE))
+    budget_core = {key: value for key, value in budget.items() if key != "data_budget_sha256"}
+    _require(budget.get("data_budget_sha256") == _sha(_canonical(budget_core)) == ONE_PASS_BUDGET_SHA256,
+             "external GPU baseline data budget pin changed")
+    candidate = build_candidate_packet(
+        root, release, recipe=recipe, environment_lock_sha256=lock["runtime_lock_sha256"], run_id=run_id,
+    )
+    data = candidate["preparation"]["data"]
+    _require(
+        candidate["run_manifest"]["candidate"]["git_sha"] == checkout
+        and budget["recipe_sha256"] == recipe.identity_sha256()
+        and budget["release_manifest_sha256"] == data["release_manifest_sha256"]
+        and budget["release_authority_sha256"] == data["release_authority_sha256"]
+        and budget["nominal_optimizer_steps"] == recipe.trainer.max_steps
+        and budget["planned_microbatches"] * recipe.microbatch_size == data["packed_block_count"]
+        and budget["planned_microbatches"] == recipe.trainer.max_steps * recipe.trainer.gradient_accumulation_steps
+        and budget["exact_one_pass_unique_loss_positions"] == data["ordered_causal_loss_positions"]
+        and budget["exact_one_pass_total_exposures"] == recipe.maximum_total_exposures
+        and budget["maximum_total_exposures"] == recipe.maximum_total_exposures
+        and budget["campaign_authorized"] is False,
+        "accepted data budget differs from the external GPU baseline candidate",
+    )
+    floors = assess_resource_envelope(
+        ModelSpec.from_dict(candidate["model_spec"]),
+        HostResources("cuda", None, None, 0),
+        remaining_updates=recipe.trainer.max_steps,
+        initial_checkpoint_needed=True,
+    )
+    core = {
+        "schema": EXTERNAL_GPU_SCHEMA,
+        "decision": "EXTERNAL_GPU_BASELINE_PREPARED_CAMPAIGN_PENDING",
+        "profile_preparation_order": ["SCALE-500M", "SCALE-1B", "SCALE-2B"],
+        "candidate": candidate,
+        "execution_requirements": {
+            "placement": "EXTERNAL",
+            "device": "cuda",
+            "gpu_count": 1,
+            "optimizer_state_layout": "ONE_FULL_REPLICA",
+            "environment_lock": lock,
+            "resource_evidence": "ARITHMETIC_ONLY",
+            "minimum_device_bytes_for_adamw": floors["fp32_adamw_device_bytes"],
+            "minimum_device_bytes_at_native_save": floors["native_checkpoint_save_device_bytes"],
+            "minimum_host_checkpoint_staging_bytes": floors["checkpoint_payload_floor_bytes"],
+            "minimum_unpruned_checkpoint_volume_bytes": floors["unpruned_checkpoint_volume_floor_bytes"],
+        },
+        "data": {
+            "purpose": "GENERAL_BASELINE",
+            "data_scope": budget["data_scope"],
+            "one_pass_budget_sha256": ONE_PASS_BUDGET_SHA256,
+            "cybersecurity_majority_verified": False,
+        },
+        "pending": [
+            "qualify_cybersecurity_majority_physical_release_and_eval_firewall",
+            "verify_external_target_cuda_driver_installed_wheels_and_measured_capacity",
+            "verify_bounded_checkpoint_storage_transport_recovery_and_stop_policy",
+            "obtain_explicit_campaign_and_compute_authority",
+        ],
+        "target_profile_measured": False,
+        "campaign_authorized": False,
+        "training_executed": False,
+        "paid_compute_used": False,
+    }
+    return {**core, "external_gpu_packet_sha256": _sha(_canonical(core))}
+
+
+def verify_external_gpu_packet(
+    root: Path, release: Path, *, packet: dict[str, Any], expected_packet_sha256: str,
+) -> dict[str, Any]:
+    """Rebuild an external GPU baseline with the trusted checkout and physical release."""
+    _require(type(packet) is dict and packet.get("external_gpu_packet_sha256") == expected_packet_sha256,
+             "external GPU packet differs from the trusted identity")
+    core = {key: value for key, value in packet.items() if key != "external_gpu_packet_sha256"}
+    _require(_sha(_canonical(core)) == expected_packet_sha256, "external GPU packet digest mismatch")
+    actual = build_external_gpu_packet(
+        root, release, lock_profile=packet["execution_requirements"]["environment_lock"]["profile_id"],
+        run_id=packet["candidate"]["run_manifest"]["run_id"],
+    )
+    _require(actual["external_gpu_packet_sha256"] == expected_packet_sha256,
+             "external GPU packet differs from the verified baseline")
+    return actual
 
 
 class PhysicalRunInput:
@@ -856,6 +963,9 @@ def main() -> int:
     modes.add_argument("--build-packet", action="store_true", help="Emit a canonical candidate packet")
     modes.add_argument("--verify-packet", type=Path, help="Reopen a pinned candidate packet")
     modes.add_argument("--inspect-native-launch", type=Path, help="Check a pinned candidate on this local host")
+    modes.add_argument("--build-external-gpu-packet", choices=EXTERNAL_GPU_PROFILES,
+                       help="Prepare the general baseline for an external CUDA GPU without measuring a host")
+    modes.add_argument("--verify-external-gpu-packet", type=Path, help="Reopen a pinned external GPU baseline")
     modes.add_argument("--check-one-pass-budget", action="store_true", help="Check rights and exact data budget")
     parser.add_argument("--packet-sha256", help="Trusted packet digest for verification")
     parser.add_argument("--environment-lock", type=Path, help="Environment lock bytes to pin without host qualification")
@@ -867,12 +977,22 @@ def main() -> int:
     try:
         root = args.root.resolve(strict=True)
         recipe = None if args.recipe is None else TrainingRecipe.from_dict(json.loads(_read(args.recipe)))
+        if args.build_external_gpu_packet is not None:
+            if args.run_id is None:
+                raise LaunchPreparationDenied("--build-external-gpu-packet requires --run-id")
+            _require(args.recipe is None and args.environment_lock is None and args.next_batch_index is None
+                     and args.optimizer_step == 0, "external GPU baseline requires the exact committed recipe and lock")
+            receipt = build_external_gpu_packet(
+                root, args.release, lock_profile=args.build_external_gpu_packet, run_id=args.run_id,
+            )
+            sys.stdout.buffer.write(_canonical(receipt))
+            return 0
         if args.check_one_pass_budget:
             if recipe is None:
                 raise LaunchPreparationDenied("--check-one-pass-budget requires --recipe")
             sys.stdout.buffer.write(_canonical(check_one_pass_data_budget(root, args.release, recipe=recipe)))
             return 0
-        packet_path = args.verify_packet or args.inspect_native_launch
+        packet_path = args.verify_packet or args.inspect_native_launch or args.verify_external_gpu_packet
         if packet_path is not None:
             if args.packet_sha256 is None:
                 raise LaunchPreparationDenied("packet readback requires a trusted --packet-sha256")
@@ -880,6 +1000,12 @@ def main() -> int:
             packet = json.loads(packet_bytes)
             _require(type(packet) is dict and _canonical(packet) == packet_bytes,
                      "candidate packet must use canonical JSON bytes")
+        if args.verify_external_gpu_packet is not None:
+            receipt = verify_external_gpu_packet(
+                root, args.release, packet=packet, expected_packet_sha256=args.packet_sha256,
+            )
+            sys.stdout.buffer.write(_canonical(receipt))
+            return 0
         if args.inspect_native_launch is not None:
             if args.checkpoint_root is None:
                 raise LaunchPreparationDenied("--inspect-native-launch requires --checkpoint-root")
