@@ -18,3 +18,14 @@ The optional evaluator accepts the original archive from the publisher's FLORES-
     python -m twelve_six.data.translation_parallel flores-devtest --archive-directory /path/to/archive-directory --train-directory /path/to/new-bundle --train-manifest-sha256 127d1b5e62899049b9f4060242e6c249a58c08eb6ed6c433a9d97f6bc1a9136d --out /path/to/new-evaluation-bundle
 
 The expected evaluation JSONL SHA-256 is ed090446f653dbb6a1555c7deb52849b724faa374f7b0650f7a6b3a182f1088d.
+
+Pass `--all-pairs` to retain every row that passes the same overlap screen.
+The full set begins with the original 100 rows in the same order. For the
+100,000-pair Tatoeba bundle, all 1,012 FLORES devtest pairs passed the screen.
+
+    python -m twelve_six.data.translation_parallel flores-devtest --archive-directory /path/to/archive-directory --train-directory /path/to/100k-bundle --train-manifest-sha256 ffffa19f1ff3b570bb3f554e1607b2936c4c52d969836727c3a917fda0872022 --out /path/to/full-evaluation-bundle --all-pairs
+
+The full evaluation JSONL SHA-256 for that Tatoeba bundle is
+`2ba4f6d855558f1485be854f11ca77e7d61d12bd05857975ea77624f6f744919`.
+The evaluator applies the model's context limit after materialization and
+reports how many directional examples it excludes.
